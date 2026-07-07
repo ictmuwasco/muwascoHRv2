@@ -1,0 +1,109 @@
+name: MUWASCO HR System - CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          tools: composer, phpcs, phpstan
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Install dependencies
+        run: composer install --no-progress --no-interaction
+
+      - name: Run PHP Code Sniffer
+        run: vendor/bin/phpcs --standard=PSR12 --extensions=php backend/app/ --ignore=vendor/
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse backend/app/ --level=6 --no-progress
+
+      - name: Run security check
+        run: |
+          # Check for hardcoded credentials
+          ! grep -r "DB_PASSWORD\|JWT_SECRET\|MAIL_PASSWORD" --include="*.php" --exclude-dir=vendor --exclude="*.env*" .
+        continue-on-error: true
+
+  tests:
+    name: Run Tests
+    needs: quality
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: hr_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          tools: composer
+
+      - name: Install dependencies
+        run: composer install --no-progress --no-interaction
+
+      - name: Run PHPUnit tests
+        run: vendor/bin/phpunit
+        env:
+          DB_DATABASE: hr_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          DB_HOST: 127.0.0.1
+          APP_ENV: testing
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [quality, tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          tools: composer
+
+      - name: Install production dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction
+
+      - name: Deploy via FTP/SFTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: /public_html/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.env
+            backend/tests/**
+            frontend/assets/js/**/*.map
+            *.md
