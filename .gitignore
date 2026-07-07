@@ -1,0 +1,62 @@
+# ── Environment & Configuration ────────────────────────────────────────────
+.env
+.env.example
+config.php
+*.local.php
+
+# ── Database ────────────────────────────────────────────────────────────────
+*.sql
+*.sql.gz
+*.sql.zip
+*.db
+*.sqlite
+muwasco (1).sql
+
+# ── Dependencies ───────────────────────────────────────────────────────────
+vendor/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Build & Cache ───────────────────────────────────────────────────────────
+/dist
+/build
+.cache
+*.cache
+*.log
+temp/
+tmp/
+
+# ── IDE & Editor ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Uploads (user content) ──────────────────────────────────────────────────
+uploads/*
+!uploads/.gitkeep
+
+# ── Archives & Backups ───────────────────────────────────────────────────────
+*.zip
+*.tar
+*.gz
+*.rar
+hrdemo.zip
+hrmuwasco.zip
+
+# ── Composer ────────────────────────────────────────────────────────────────
+composer.lock
+
+# ── PHPUnit ─────────────────────────────────────────────────────────────────
+.phpunit.result.cache
+phpunit.xml
+
+# ── OS Files ────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log

@@ -1,0 +1,29 @@
+{
+  "name": "hrdemo",
+  "version": "1.0.0",
+  "description": "MUWASCO HR Management System",
+  "private": true,
+  "scripts": {
+    "build:css": "npx tailwindcss -i ./frontend/assets/css/input.css -o ./frontend/assets/css/output.css --minify",
+    "watch:css": "npx tailwindcss -i ./frontend/assets/css/input.css -o ./frontend/assets/css/output.css --watch",
+    "build": "npm run build:css",
+    "dev": "npm run watch:css"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kabii-mwangi/hrmuwasco.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/kabii-mwangi/hrmuwasco/issues"
+  },
+  "homepage": "https://github.com/kabii-mwangi/hrmuwasco#readme",
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17"
+  }
+}
