@@ -27,7 +27,7 @@
             </div>
 
             <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-                <form action="/?route=employees/update/<?= $employee['id'] ?>" method="POST">
+                <form action="<?= BASE_URL ?>/?route=employees/update/<?= $employee['id'] ?>" method="POST">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -99,7 +99,7 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-save"></i> Update Employee
                         </button>
-                        <a href="/?route=employees" class="btn btn-secondary">
+                        <a href="<?= BASE_URL ?>/?route=employees" class="btn btn-secondary">
                             <i class="fas fa-times"></i> Cancel
                         </a>
                     </div>

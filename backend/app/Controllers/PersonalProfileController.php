@@ -47,7 +47,8 @@ class PersonalProfileController extends Controller
 
         if ($requested_token) {
             // HR/super_admin viewing someone else's profile via token
-            if (hasPermission('hr_manager') || hasPermission('super_admin')) {
+            $userRole = $_SESSION['user_role'] ?? '';
+            if (in_array($userRole, ['hr_manager', 'super_admin'])) {
                 $stmt = $conn->prepare("SELECT e.*, d.name as department_name, s.name as section_name FROM employees e LEFT JOIN departments d ON e.department_id = d.id LEFT JOIN sections s ON e.section_id = s.id WHERE e.profile_token = ?");
                 $stmt->bind_param("s", $requested_token);
                 $stmt->execute();

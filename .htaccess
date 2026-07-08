@@ -15,6 +15,10 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteRule ^(.*)$ index.php [QSA,L]
+    
+    # Handle query parameter routing (e.g., /hrdemo/?route=employees)
+    RewriteCond %{QUERY_STRING} route=
+    RewriteRule ^(.*)$ index.php [QSA,L]
 </IfModule>
 
 # Security Headers

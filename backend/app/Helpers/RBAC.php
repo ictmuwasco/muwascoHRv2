@@ -17,7 +17,6 @@ class RBAC
     public const ROLE_SUPER_ADMIN = 'super_admin';
     public const ROLE_HR_MANAGER = 'hr_manager';
     public const ROLE_DEPT_HEAD = 'dept_head';
-    public const ROLE_MANAGER = 'manager';
     public const ROLE_SECTION_HEAD = 'section_head';
     public const ROLE_SUB_SECTION_HEAD = 'sub_section_head';
     public const ROLE_OFFICER = 'officer';
@@ -90,15 +89,6 @@ class RBAC
             self::MODULE_REPORTS => ['view', 'export'],
             self::MODULE_PROFILE => ['view', 'edit'],
             self::MODULE_PERFORMANCE => ['view', 'manage'],
-        ],
-        self::ROLE_MANAGER => [
-            self::MODULE_DASHBOARD => ['view'],
-            self::MODULE_EMPLOYEES => ['view'],
-            self::MODULE_ATTENDANCE => ['view', 'manage'],
-            self::MODULE_LEAVE => ['view', 'apply', 'manage'],
-            self::MODULE_REPORTS => ['view'],
-            self::MODULE_PROFILE => ['view', 'edit'],
-            self::MODULE_PERFORMANCE => ['view'],
         ],
         self::ROLE_SECTION_HEAD => [
             self::MODULE_DASHBOARD => ['view'],
@@ -269,7 +259,6 @@ class RBAC
             self::ROLE_SUPER_ADMIN => 'Super Admin',
             self::ROLE_HR_MANAGER => 'HR Manager',
             self::ROLE_DEPT_HEAD => 'Department Head',
-            self::ROLE_MANAGER => 'Manager',
             self::ROLE_SECTION_HEAD => 'Section Head',
             self::ROLE_SUB_SECTION_HEAD => 'Sub Section Head',
             self::ROLE_OFFICER => 'Officer',

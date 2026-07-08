@@ -66,12 +66,6 @@ class Application
         
         // Debug logging
         error_log("Routing URI: {$uri}, ScriptName: {$scriptName}, ScriptDir: {$scriptDir}");
-        
-        // Default route
-        if ($uri === '' || $uri === '/') {
-            $this->redirectToLogin();
-            return;
-        }
 
         // Route mapping
         $routes = [
@@ -145,108 +139,60 @@ class Application
             'leave' => [ApplyLeaveController::class, 'indexAction'],
         ];
 
-        // Check for query parameter routing (fallback when mod_rewrite is not available)
-        $route = $_GET['route'] ?? '';
+        // Determine which route to use (query parameter takes priority for non-mod_rewrite)
+        $route = $_GET['route'] ?? $uri;
         
-        if ($route) {
-            // Check if route exists in routes array
-            if (isset($routes[$route])) {
-                [$controllerClass, $action] = $routes[$route];
-                $this->dispatch($controllerClass, $action);
-                return;
-            }
-            
-            // Check for dynamic routes with query parameters
-            if (preg_match('#^employees/view/(\d+)$#', $route, $matches)) {
-                $controller = new EmployeesController();
-                $controller->viewAction((int)$matches[1]);
-                return;
-            }
-
-            if (preg_match('#^employees/edit/(\d+)$#', $route, $matches)) {
-                $controller = new EmployeesController();
-                $controller->editAction((int)$matches[1]);
-                return;
-            }
-
-            if (preg_match('#^departments/view/(\d+)$#', $route, $matches)) {
-                $controller = new DepartmentsController();
-                $controller->viewAction((int)$matches[1]);
-                return;
-            }
-
-            // Permission Overrides dynamic routes
-            if (preg_match('#^admin/permission-overrides/manage/(\d+)$#', $route, $matches)) {
-                $controller = new PermissionOverridesController();
-                $controller->manageAction((int)$matches[1]);
-                return;
-            }
-
-            if (preg_match('#^admin/permission-overrides/save/(\d+)$#', $route, $matches)) {
-                $controller = new PermissionOverridesController();
-                $controller->saveAction((int)$matches[1]);
-                return;
-            }
-
-            if (preg_match('#^admin/permission-overrides/effective/(\d+)$#', $route, $matches)) {
-                $controller = new PermissionOverridesController();
-                $controller->effectivePermissionsAction((int)$matches[1]);
-                return;
-            }
-
-            if ($route === 'admin/permission-overrides/search') {
-                $controller = new PermissionOverridesController();
-                $controller->searchAction();
-                return;
-            }
-        }
-        
-        // Check if route exists (for mod_rewrite enabled servers)
-        if (isset($routes[$uri])) {
-            [$controllerClass, $action] = $routes[$uri];
+        // Check if route exists in routes array
+        if (isset($routes[$route])) {
+            [$controllerClass, $action] = $routes[$route];
             $this->dispatch($controllerClass, $action);
             return;
         }
 
-        // Check for dynamic routes (e.g., employees/view/123) - for mod_rewrite enabled servers
-        if (preg_match('#^employees/view/(\d+)$#', $uri, $matches)) {
+        // Default route
+        if ($uri === '' || $uri === '/') {
+            $this->redirectToLogin();
+            return;
+        }
+
+        // Check for dynamic routes
+        if (preg_match('#^employees/view/(\d+)$#', $route, $matches)) {
             $controller = new EmployeesController();
             $controller->viewAction((int)$matches[1]);
             return;
         }
 
-        if (preg_match('#^employees/edit/(\d+)$#', $uri, $matches)) {
+        if (preg_match('#^employees/edit/(\d+)$#', $route, $matches)) {
             $controller = new EmployeesController();
             $controller->editAction((int)$matches[1]);
             return;
         }
 
-        if (preg_match('#^departments/view/(\d+)$#', $uri, $matches)) {
+        if (preg_match('#^departments/view/(\d+)$#', $route, $matches)) {
             $controller = new DepartmentsController();
             $controller->viewAction((int)$matches[1]);
             return;
         }
 
-        // Permission Overrides dynamic routes - for mod_rewrite enabled servers
-        if (preg_match('#^admin/permission-overrides/manage/(\d+)$#', $uri, $matches)) {
+        if (preg_match('#^admin/permission-overrides/manage/(\d+)$#', $route, $matches)) {
             $controller = new PermissionOverridesController();
             $controller->manageAction((int)$matches[1]);
             return;
         }
 
-        if (preg_match('#^admin/permission-overrides/save/(\d+)$#', $uri, $matches)) {
+        if (preg_match('#^admin/permission-overrides/save/(\d+)$#', $route, $matches)) {
             $controller = new PermissionOverridesController();
             $controller->saveAction((int)$matches[1]);
             return;
         }
 
-        if (preg_match('#^admin/permission-overrides/effective/(\d+)$#', $uri, $matches)) {
+        if (preg_match('#^admin/permission-overrides/effective/(\d+)$#', $route, $matches)) {
             $controller = new PermissionOverridesController();
             $controller->effectivePermissionsAction((int)$matches[1]);
             return;
         }
 
-        if ($uri === 'admin/permission-overrides/search') {
+        if ($route === 'admin/permission-overrides/search') {
             $controller = new PermissionOverridesController();
             $controller->searchAction();
             return;

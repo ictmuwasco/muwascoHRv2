@@ -26,7 +26,7 @@
                 <h1 class="text-3xl font-bold text-gray-900">Employees</h1>
                 <p class="text-gray-600 mt-1">Manage employee records</p>
             </div>
-            <a href="/?route=employees/create" class="btn btn-primary">
+            <a href="<?= BASE_URL ?>/?route=employees/create" class="btn btn-primary">
                 <i class="fas fa-plus mr-2"></i>Add Employee
             </a>
         </div>

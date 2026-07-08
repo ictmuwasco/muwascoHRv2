@@ -20,7 +20,7 @@ require_once __DIR__ . '/../../../../backend/bootstrap.php';
 // Check permission
 $rbac = \App\Helpers\RBAC::getInstance();
 if (!$rbac->currentUserCan('employees', 'view')) {
-    header('Location: /hrdemo/');
+    header('Location: /hrdemo/?route=dashboard');
     exit();
 }
 
@@ -233,7 +233,7 @@ $unreadNotifications = $notificationService->getUnreadCount($userId);
                                     <tr>
                                         <td><?= htmlspecialchars($emp['employee_id']) ?></td>
                                         <td>
-                                            <a href="/hrdemo/personal_profile.php?token=<?= urlencode($emp['profile_token']) ?>" 
+                                            <a href="?route=personal&token=<?= urlencode($emp['profile_token']) ?>" 
                                                class="text-primary-600 hover:text-primary-800">
                                                 <?= htmlspecialchars(trim($emp['first_name'] . ' ' . $emp['last_name'] . ' ' . ($emp['surname'] ?? ''))) ?>
                                             </a>
@@ -256,7 +256,7 @@ $unreadNotifications = $notificationService->getUnreadCount($userId);
                                                         class="btn btn-primary btn-sm" title="Edit">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
-                                                <a href="/hrdemo/personal_profile.php?token=<?= urlencode($emp['profile_token']) ?>" 
+                                                <a href="?route=personal&token=<?= urlencode($emp['profile_token']) ?>" 
                                                    class="btn btn-info btn-sm" title="View Profile">
                                                     <i class="fas fa-eye"></i>
                                                 </a>
