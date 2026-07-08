@@ -76,12 +76,12 @@
                             </td>
                             <td class="px-6 py-4">
                                 <div class="flex items-center gap-2">
-                                    <a href="/?route=personal&token=<?= htmlspecialchars($emp['profile_token'] ?? '') ?>"
+                                    <a href="<?= BASE_URL ?>/?route=personal&token=<?= htmlspecialchars($emp['profile_token'] ?? '') ?>"
                                        class="text-blue-600 hover:text-blue-800 transition-colors"
                                        title="View Profile">
                                          <i class="fas fa-eye"></i>
                                      </a>
-                                     <a href="/?route=employees/edit/<?= $emp['id'] ?>"
+                                     <a href="<?= BASE_URL ?>/?route=employees/edit/<?= $emp['id'] ?>"
                                         class="text-amber-600 hover:text-amber-700 transition-colors"
                                         title="Edit">
                                          <i class="fas fa-edit"></i>

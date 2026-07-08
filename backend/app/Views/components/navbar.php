@@ -80,8 +80,8 @@ $auth = \App\Helpers\Auth::getInstance();
             </li>
             <?php endif; ?>
 
-            <!-- Leave Management - Super Admin, HR Manager, Dept Head, Manager, Section Head, Sub Section Head, Officer -->
-            <?php if ($auth->isSuperAdmin() || $auth->isHRManager() || $auth->isDeptHead() || in_array($auth->role(), ['officer', 'section_head', 'sub_section_head', 'manager'])): ?>
+            <!-- Leave Management - Super Admin, HR Manager, Dept Head, Section Head, Sub Section Head, Officer -->
+            <?php if ($auth->isSuperAdmin() || $auth->isHRManager() || $auth->isDeptHead() || in_array($auth->role(), ['officer', 'section_head', 'sub_section_head'])): ?>
             <li>
                 <a href="<?= BASE_URL ?>/?route=leave" class="flex items-center gap-3 px-3 lg:px-4 py-2 lg:py-3 rounded-xl text-sm font-medium transition-all duration-300 <?= str_contains($_SERVER['REQUEST_URI'], '/leave') ? 'bg-primary-400/20 text-primary-400 border border-primary-400/30' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white hover:border hover:border-gray-300 dark:hover:border-white/10' ?>">
                     <i class="fas fa-calendar-alt w-5 text-center flex-shrink-0"></i>

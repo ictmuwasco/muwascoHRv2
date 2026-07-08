@@ -91,7 +91,8 @@ class AuthorizationService
 
         // Check cache first
         if (isset($this->cachedPermissions[$pageId])) {
-            return $this->cachedPermissions[$pageId] === 'allow';
+            // 'allow' (user grant) or 'role' (role permission) both mean access granted
+            return $this->cachedPermissions[$pageId] === 'allow' || $this->cachedPermissions[$pageId] === 'role';
         }
 
         // If not in cache, default to deny
@@ -402,17 +403,17 @@ class AuthorizationService
         return [
             'dashboard',
             'employees',
+            'departments',
             'attendance',
             'leave',
-            'payroll',
-            'complaints',
             'reports',
-            'appraisal',
             'users',
-            'roles',
-            'settings',
+            'admin',
             'audit',
-            'notifications'
+            'profile',
+            'performance',
+            'consent',
+            'permission_overrides'
         ];
     }
 
@@ -426,17 +427,17 @@ class AuthorizationService
         return [
             'dashboard' => 'Dashboard',
             'employees' => 'Employees',
+            'departments' => 'Departments',
             'attendance' => 'Attendance',
             'leave' => 'Leave Management',
-            'payroll' => 'Payroll',
-            'complaints' => 'Complaints',
             'reports' => 'Reports',
-            'appraisal' => 'Performance Appraisal',
             'users' => 'User Management',
-            'roles' => 'Roles & Permissions',
-            'settings' => 'Settings',
+            'admin' => 'Admin',
             'audit' => 'Audit Trail',
-            'notifications' => 'Notifications'
+            'profile' => 'Profile',
+            'performance' => 'Performance',
+            'consent' => 'Consent',
+            'permission_overrides' => 'Permission Overrides'
         ];
     }
 
