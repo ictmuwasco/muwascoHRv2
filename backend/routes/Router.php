@@ -4,12 +4,7 @@ declare(strict_types=1);
 
 namespace App;
 
-/**
- * API Router - Handles incoming API requests and routes them to controllers.
- * 
- * Matches request URI against defined routes, resolves parameters,
- * checks authentication, and dispatches to the appropriate controller method.
- */
+
 class Router
 {
     private array $routes;
@@ -76,9 +71,9 @@ class Router
         // Extract route parameters
         $params = $this->extractParams($uri, $route['path']);
 
-        // Dispatch
+        // Dispatch - use array_values to avoid PHP 8+ named parameter issues
         try {
-            call_user_func_array([$controller, $methodName], $params);
+            call_user_func_array([$controller, $methodName], array_values($params));
         } catch (\Exception $e) {
             \logger()->error('Route dispatch error', [
                 'uri' => $uri,
@@ -101,9 +96,16 @@ class Router
             return null;
         }
 
-        // Sort routes by specificity (longest first) for better matching
+        // Sort routes: literal routes first (fewer params), then by length for specificity
         $routes = $this->routes[$method];
-        uksort($routes, fn($a, $b) => strlen($b) - strlen($a));
+        uksort($routes, function($a, $b) {
+            $aParams = preg_match_all('/\{([a-zA-Z_]+)\}/', $a);
+            $bParams = preg_match_all('/\{([a-zA-Z_]+)\}/', $b);
+            if ($aParams !== $bParams) {
+                return $aParams - $bParams;
+            }
+            return strlen($b) - strlen($a);
+        });
 
         foreach ($routes as $path => $handler) {
             if ($this->matches($uri, $path)) {
@@ -150,11 +152,20 @@ class Router
         $uri = parse_url($uri, PHP_URL_PATH);
         $uri = rtrim($uri, '/');
         
-        // Remove base path if any
-        $basePath = dirname($_SERVER['SCRIPT_NAME']);
-        if ($basePath !== '/' && str_starts_with($uri, $basePath)) {
-            $uri = substr($uri, strlen($basePath));
+        // Get script name (e.g., /hrdemo/api.php or /hrdemo/index.php)
+        $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+        $scriptDir = rtrim(dirname($scriptName), '/');
+        
+        // Remove base directory path (e.g., /hrdemo)
+        if ($scriptDir !== '/' && $scriptDir !== '' && str_starts_with($uri, $scriptDir)) {
+            $uri = substr($uri, strlen($scriptDir));
         }
+        
+        // Remove leading slash to match route patterns
+        $uri = ltrim($uri, '/');
+        
+        // Log for debugging
+        error_log("Router URI: {$uri}, ScriptName: {$scriptName}, ScriptDir: {$scriptDir}");
         
         return $uri ?: '/';
     }

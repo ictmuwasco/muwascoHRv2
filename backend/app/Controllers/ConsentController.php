@@ -6,14 +6,6 @@ namespace App\Controllers;
 
 use App\Core\Controller;
 
-/**
- * ConsentController
- *
- * Handles employee consent management and viewing.
- * Provides clean interface for tracking consent status across the organization.
- *
- * Place: backend/app/Controllers/ConsentController.php
- */
 class ConsentController extends Controller
 {
     /**
@@ -27,8 +19,9 @@ class ConsentController extends Controller
             return;
         }
 
-        // Only HR managers and super admins can manage consents
-        if (!hasPermission('hr_manager') && !hasPermission('super_admin')) {
+        // Only admins, HR managers and super admins can manage consents
+        $userRole = $_SESSION['user_role'] ?? '';
+        if (!in_array($userRole, ['super_admin', 'hr_manager', 'admin', 'administrator'])) {
             $_SESSION['flash_error'] = 'You do not have permission to access this resource.';
             $this->redirect('dashboard');
             return;
@@ -37,7 +30,8 @@ class ConsentController extends Controller
         // Skip permission check for pending consent users
         $isPendingConsent = isset($_SESSION['pending_user_id']) && isset($_SESSION['pending_auth_time']);
         
-        if (!$isPendingConsent && !hasPermission('hr_manager') && !hasPermission('super_admin')) {
+        $userRole = $_SESSION['user_role'] ?? '';
+        if (!$isPendingConsent && !in_array($userRole, ['super_admin', 'hr_manager', 'admin', 'administrator'])) {
             $_SESSION['flash_error'] = 'You do not have permission to access this resource.';
             $this->redirect('dashboard');
             return;
@@ -400,13 +394,145 @@ class ConsentController extends Controller
 
     private function exportPDF(\mysqli $conn, array $filters): void
     {
-        $_SESSION['flash_error'] = 'PDF export is not yet implemented.';
-        $this->redirect('consent-management');
+        // Get all consents with filters (no pagination for export)
+        $consents = $this->getEmployeeConsents($conn, $filters, 1, 10000);
+        
+        // Get stats for header info
+        $stats = $this->getConsentStats($conn, $filters);
+        
+        // Generate HTML for PDF
+        $html = '<!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Consent Management Report</title>
+            <style>
+                body { font-family: Arial, sans-serif; font-size: 12px; }
+                h1 { color: #333; border-bottom: 2px solid #333; padding-bottom: 10px; }
+                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                th { background-color: #f0f0f0; padding: 8px; border: 1px solid #ddd; text-align: left; }
+                td { padding: 8px; border: 1px solid #ddd; }
+                .header { margin-bottom: 20px; }
+                .stats { display: flex; gap: 20px; margin-bottom: 20px; }
+                .stat-box { padding: 10px; background: #f5f5f5; border-radius: 4px; }
+                .footer { margin-top: 30px; font-size: 10px; color: #666; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Employee Consent Management Report</h1>
+                <p>Generated: ' . date('Y-m-d H:i:s') . '</p>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-box">
+                    <strong>Total Employees:</strong> ' . $stats['total_employees'] . '
+                </div>
+                <div class="stat-box">
+                    <strong>Consented:</strong> ' . $stats['consented_employees'] . '
+                </div>
+                <div class="stat-box">
+                    <strong>Pending:</strong> ' . $stats['pending_consents'] . '
+                </div>
+                <div class="stat-box">
+                    <strong>Completion Rate:</strong> ' . $stats['completion_rate'] . '%
+                </div>
+            </div>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Employee ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Department</th>
+                        <th>Position</th>
+                        <th>Status</th>
+                        <th>Consent Date</th>
+                        <th>IP Address</th>
+                    </tr>
+                </thead>
+                <tbody>';
+        
+        foreach ($consents as $c) {
+            $status = $c['consent_given'] ? 'Consented' : 'Pending';
+            $html .= '<tr>
+                <td>' . htmlspecialchars($c['employee_id']) . '</td>
+                <td>' . htmlspecialchars($c['first_name'] . ' ' . $c['last_name']) . '</td>
+                <td>' . htmlspecialchars($c['email']) . '</td>
+                <td>' . htmlspecialchars($c['department_name'] ?? 'N/A') . '</td>
+                <td>' . htmlspecialchars($c['designation'] ?? 'N/A') . '</td>
+                <td>' . $status . '</td>
+                <td>' . ($c['consent_date'] ? date('M d, Y', strtotime($c['consent_date'])) : 'N/A') . '</td>
+                <td>' . ($c['ip_address'] ? htmlspecialchars($c['ip_address']) : 'N/A') . '</td>
+            </tr>';
+        }
+        
+        $html .= '</tbody>
+            </table>
+            <div class="footer">
+                <p>MUWASCO HR System - Confidential</p>
+            </div>
+        </body>
+        </html>';
+        
+        // Output as HTML (can be printed to PDF from browser)
+        header('Content-Type: text/html; charset=utf-8');
+        header('Content-Disposition: inline; filename="consent_report_' . date('Y-m-d') . '.html"');
+        echo $html;
+        exit();
     }
 
     private function exportExcel(\mysqli $conn, array $filters): void
     {
-        $_SESSION['flash_error'] = 'Excel export is not yet implemented.';
-        $this->redirect('consent-management');
+        // Get all consents with filters (no pagination for export)
+        $consents = $this->getEmployeeConsents($conn, $filters, 1, 10000);
+        
+        // Get stats for header info
+        $stats = $this->getConsentStats($conn, $filters);
+        
+        // Generate CSV content
+        $filename = 'consent_report_' . date('Y-m-d') . '.csv';
+        
+        // Set headers for CSV download
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        
+        // Open output stream
+        $output = fopen('php://output', 'w');
+        
+        // Add BOM for UTF-8
+        fputs($output, "\xEF\xBB\xBF");
+        
+        // Add header row
+        fputcsv($output, [
+            'Employee ID',
+            'First Name',
+            'Last Name',
+            'Email',
+            'Department',
+            'Position',
+            'Consent Status',
+            'Consent Date',
+            'IP Address'
+        ]);
+        
+        // Add data rows
+        foreach ($consents as $c) {
+            fputcsv($output, [
+                $c['employee_id'],
+                $c['first_name'],
+                $c['last_name'],
+                $c['email'],
+                $c['department_name'] ?? 'N/A',
+                $c['designation'] ?? 'N/A',
+                $c['consent_given'] ? 'Consented' : 'Pending',
+                $c['consent_date'] ? date('Y-m-d', strtotime($c['consent_date'])) : 'N/A',
+                $c['ip_address'] ?? 'N/A'
+            ]);
+        }
+        
+        fclose($output);
+        exit();
     }
 }

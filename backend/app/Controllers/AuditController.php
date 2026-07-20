@@ -11,7 +11,6 @@ use App\Services\AuditService;
  * AuditController
  *
  * Handles audit trail viewing and filtering.
- * Displays only meaningful business events (CREATE, UPDATE, DELETE, APPROVAL, etc.)
  *
  * Place: backend/app/Controllers/AuditController.php
  */
@@ -37,7 +36,8 @@ class AuditController extends Controller
         }
 
         // Only super admins, HR managers, and auditors can view audit logs
-        if (!hasPermission('view_audit_logs') && !hasPermission('audit')) {
+        $userRole = $_SESSION['user_role'] ?? '';
+        if (!in_array($userRole, ['super_admin', 'hr_manager', 'auditor'])) {
             $_SESSION['flash_error'] = 'You do not have permission to access audit logs.';
             $this->redirect('dashboard');
             return;
@@ -45,10 +45,7 @@ class AuditController extends Controller
 
         $conn = $this->getDbConnection();
 
-        // Build filters
         $filters = [];
-        $params = [];
-        $types = '';
 
         if (!empty($_GET['user_id'])) {
             $filters['user_id'] = (int)$_GET['user_id'];
@@ -74,22 +71,17 @@ class AuditController extends Controller
             $filters['search'] = $_GET['search'];
         }
 
-        // Pagination
         $page = max(1, (int)($_GET['page'] ?? 1));
         $limit = 50;
         $offset = ($page - 1) * $limit;
 
-        // Get filter options
-        $users = $this->getFilterOptions($conn, 'user_id', 'username');
+        $users = $this->getFilterOptions($conn, 'user_id', 'user_id');
         $actions = $this->getFilterOptions($conn, 'action_type', 'action_type');
         $tables = $this->getFilterOptions($conn, 'table_name', 'table_name', "WHERE table_name IS NOT NULL");
 
-        // Get logs with pagination
         $logs = $this->getAuditLogs($conn, $filters, $limit, $offset);
         $totalLogs = $this->getAuditLogsCount($conn, $filters);
         $totalPages = (int)ceil($totalLogs / $limit);
-
-        // Get statistics
         $stats = $this->getAuditStatistics($conn, $filters);
 
         $this->view('audit/index', [
@@ -117,7 +109,8 @@ class AuditController extends Controller
             return;
         }
 
-        if (!hasPermission('view_audit_logs') && !hasPermission('audit')) {
+        $userRole = $_SESSION['user_role'] ?? '';
+        if (!in_array($userRole, ['super_admin', 'hr_manager', 'auditor'])) {
             $_SESSION['flash_error'] = 'You do not have permission to export audit logs.';
             $this->redirect('dashboard');
             return;
@@ -141,13 +134,9 @@ class AuditController extends Controller
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Private helpers
-    // ──────────────────────────────────────────────────────────────────────────
-
     private function getFilterOptions(\mysqli $conn, string $field, string $alias, string $extraWhere = ''): array
     {
-        $query = "SELECT DISTINCT {$field} as {$alias} FROM audit_logs {$extraWhere} ORDER BY {$alias}";
+        $query = "SELECT DISTINCT {$field} as {$alias}, {$field} as id, username FROM audit_logs {$extraWhere} ORDER BY {$alias}";
         $result = $conn->query($query);
         return $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
     }
@@ -298,7 +287,6 @@ class AuditController extends Controller
         $types = '';
         $params = [];
 
-        // Apply same filters
         if (!empty($filters['user_id'])) {
             $sql .= " AND al.user_id = ?";
             $types .= 'i';
@@ -341,34 +329,13 @@ class AuditController extends Controller
 
     private function exportPDF(\mysqli $conn, array $filters): void
     {
-        // PDF export implementation
         $_SESSION['flash_error'] = 'PDF export is not yet implemented.';
         $this->redirect('audit-dashboard');
     }
 
     private function exportExcel(\mysqli $conn, array $filters): void
     {
-        // Excel export implementation
         $_SESSION['flash_error'] = 'Excel export is not yet implemented.';
         $this->redirect('audit-dashboard');
     }
 }
-
-</parameter>
-<task_progress>
-- [x] Examine current audit_dashboard.php
-- [x] Examine current consent_management.php
-- [x] Review NotificationService for audit logging
-- [x] Search for existing audit service/logging
-- [x] Review AuditService implementation
-- [x] Review AuditLogger implementation
-- [x] Create AuditController
-- [ ] Create Audit view with modern design
-- [ ] Create ConsentController
-- [ ] Create Consent view with improved UX
-- [ ] Set up routes
-- [ ] Verify audit coverage across all controllers
-- [ ] Standardize audit logging
-- [ ] Delete legacy files
-</task_progress>
-</write_to_file>
