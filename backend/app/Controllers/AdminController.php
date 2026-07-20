@@ -27,9 +27,9 @@ class AdminController extends Controller
             return;
         }
 
-        // Only HR managers and super admins can access admin
-        $auth = \App\Helpers\Auth::getInstance();
-        if (!($auth->isHRManager() || $auth->isSuperAdmin())) {
+        // Only admins, HR managers and super admins can access admin
+        $userRole = $_SESSION['user_role'] ?? '';
+        if (!in_array($userRole, ['super_admin', 'hr_manager', 'admin', 'administrator'])) {
             $_SESSION['flash_error'] = 'You do not have permission to access this resource.';
             $this->redirect('dashboard');
             return;

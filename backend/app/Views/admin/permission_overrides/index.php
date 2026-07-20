@@ -60,7 +60,7 @@
                 </h5>
             </div>
             <div class="p-6">
-                <form method="GET" action="/admin/permission-overrides" class="grid grid-cols-1 md:grid-cols-6 gap-4">
+                <form method="GET" action="<?= BASE_URL ?>/?route=admin/permission-overrides" class="grid grid-cols-1 md:grid-cols-6 gap-4">
                     <div>
                         <label for="search" class="block text-sm font-medium text-gray-700 mb-2">Search</label>
                         <input type="text" 
@@ -181,7 +181,7 @@
                                             <?php endif; ?>
                                         </td>
                                         <td class="px-4 py-4">
-                                            <a href="/admin/permission-overrides/manage/<?= $emp['user_id'] ?>" 
+                                            <a href="<?= BASE_URL ?>/?route=admin/permission-overrides/manage/<?= $emp['user_id'] ?>" 
                                                class="inline-flex items-center px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition duration-200"
                                                title="Manage Permissions">
                                                 <i class="fas fa-edit mr-1"></i>Manage

@@ -41,14 +41,14 @@
                     </div>
                 </div>
                 <div class="mt-4">
-                    <a href="/admin/permission-overrides" class="inline-flex items-center px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg transition duration-200">
+                    <a href="<?= BASE_URL ?>/?route=admin/permission-overrides" class="inline-flex items-center px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg transition duration-200">
                         <i class="fas fa-arrow-left mr-2"></i>Back to List
                     </a>
                 </div>
             </div>
         </div>
 
-        <form id="permissionForm" method="POST" action="/admin/permission-overrides/save/<?= $employee['user_id'] ?>">
+        <form id="permissionForm" method="POST" action="<?= BASE_URL ?>/?route=admin/permission-overrides/save/<?= $employee['user_id'] ?>">
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
             
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -179,9 +179,9 @@
                                 <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-lg font-medium transition duration-200 flex items-center justify-center" id="saveButton">
                                     <i class="fas fa-save mr-2"></i>Save Changes
                                 </button>
-                                <a href="/admin/permission-overrides" class="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-lg font-medium transition duration-200 flex items-center justify-center">
-                                    <i class="fas fa-times mr-2"></i>Cancel
-                                </a>
+                <a href="<?= BASE_URL ?>/?route=admin/permission-overrides" class="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded-lg font-medium transition duration-200 flex items-center justify-center">
+                    <i class="fas fa-times mr-2"></i>Cancel
+                </a>
                             </div>
                             <div class="mt-4" id="changeIndicator" style="display: none;">
                                 <div class="bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 p-3 rounded-lg">

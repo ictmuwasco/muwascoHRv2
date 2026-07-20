@@ -150,22 +150,35 @@
     @apply mb-6;
   }
   .form-label {
-    @apply block mb-2 text-white font-semibold text-sm uppercase tracking-wider;
+    @apply block mb-2 font-semibold text-sm uppercase tracking-wider;
   }
+  
+  /* Light mode form styles (default) */
+  .form-label {
+    color: #374151;
+  }
+  
   .form-input,
   .form-select {
-    @apply w-full px-4 py-3 bg-white/5 border-2 border-white/10 rounded-xl text-white text-sm transition-all duration-300 backdrop-blur-sm;
+    @apply w-full px-4 py-3 border-2 rounded-xl text-sm transition-all duration-300 backdrop-blur-sm;
+    background-color: #ffffff;
+    border-color: #d1d5db;
+    color: #111827;
   }
+  
+  .form-input::placeholder {
+    color: #9ca3af;
+  }
+  
   .form-input:focus,
   .form-select:focus {
-    @apply outline-none border-primary-400;
+    @apply outline-none;
+    border-color: #00d4ff;
     box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.15);
-    background: rgba(255, 255, 255, 0.08);
+    background-color: #ffffff;
     transform: translateY(-1px);
   }
-  .form-input::placeholder {
-    @apply text-gray-500;
-  }
+  
   select.form-select {
     @apply cursor-pointer appearance-none;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
@@ -174,7 +187,35 @@
     background-size: 1.5em 1.5em;
     padding-right: 3rem;
   }
+  
   select.form-select option {
+    background: #ffffff;
+    color: #111827;
+  }
+  
+  /* Dark mode form styles */
+  html.dark .form-label {
+    color: #d1d5db;
+  }
+  
+  html.dark .form-input,
+  html.dark .form-select {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-color: hsla(0, 0%, 100%, 0.1);
+    color: #ffffff;
+  }
+  
+  html.dark .form-input::placeholder {
+    color: #9ca3af;
+  }
+  
+  html.dark .form-input:focus,
+  html.dark .form-select:focus {
+    background-color: rgba(255, 255, 255, 0.08);
+    border-color: #00d4ff;
+  }
+  
+  html.dark select.form-select option {
     background: #1a1a2e;
     color: #ffffff;
   }
@@ -333,21 +374,21 @@
     animation: fadeIn 0.3s ease-out;
   }
   .modal-content {
-    @apply bg-dark-glass backdrop-blur-xl border border-white/10 rounded-2xl p-0 w-full max-w-2xl max-h-[90vh] overflow-hidden;
+    @apply bg-dark-glass backdrop-blur-xl border border-white/10 rounded-2xl p-0 w-full max-w-2xl max-h-[90vh] flex flex-col;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
     animation: slideUp 0.3s ease-out;
   }
   .modal-header {
-    @apply flex items-center justify-between p-6 border-b border-white/10 bg-white/5;
+    @apply flex items-center justify-between p-6 border-b border-white/10 bg-white/5 flex-shrink-0;
   }
   .modal-header h3 {
     @apply text-xl font-semibold text-white;
   }
   .modal-body {
-    @apply p-6 overflow-y-auto;
+    @apply p-6 overflow-y-auto flex-1;
   }
   .modal-footer {
-    @apply flex items-center justify-end gap-3 p-6 border-t border-white/10;
+    @apply flex items-center justify-end gap-3 p-6 border-t border-white/10 flex-shrink-0;
   }
 
   /* ── Login Page ─────────────────────────────── */
@@ -374,6 +415,74 @@
   .text-gradient {
     @apply bg-gradient-to-r from-primary-400 to-secondary-400 bg-clip-text text-transparent;
   }
+  /* Employee modals - edit/add styled scrolled modal */
+  .modal-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+  }
+  .modal-container .modal-dialog {
+    position: relative;
+    width: 90%;
+    max-width: 900px;
+    max-height: 90vh;
+    overflow-y: auto;
+    margin: 0 auto;
+  }
+  .modal-container .modal-content {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+  .modal-container .modal-header {
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: 10;
+  }
+  .modal-container .modal-body {
+    padding: 1rem 1.5rem;
+  }
+  .modal-container .close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    color: #6b7280;
+  }
+  .modal-container .close:hover {
+    color: #111827;
+  }
+  @media (max-width: 768px) {
+    .modal-container { align-items: flex-start; }
+    .modal-container .modal-dialog { width: 100%; max-height: 100vh; border-radius: 0; }
+    .modal-container .modal-content { border-radius: 0; }
+    .modal-container .modal-body { padding: 0.75rem; }
+  }
+  html.dark .modal-container .modal-content,
+  html.dark .modal-container .modal-header {
+    background: #1a1a2e !important;
+    border-color: #374151 !important;
+  }
+  html.dark .modal-container .modal-dialog::-webkit-scrollbar-track { background: #0f0f23; }
+  html.dark .modal-container .modal-dialog::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+  html.dark .modal-container .close { color: #9ca3af; }
+  html.dark .modal-container .close:hover { color: #fff; }
+
   /* Login page: animated shimmer border */
   .shimmer-border {
     background-size: 300% 100%;

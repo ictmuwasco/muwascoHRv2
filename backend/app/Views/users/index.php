@@ -1,35 +1,56 @@
 <?php
-/**
- * Users View
- *
- * Displays user management interface with search, add, edit, and delete functionality.
- * Place: backend/app/Views/users/index.php
- */
 
-// Ensure RBAC functions are loaded
 if (!function_exists('hasPermission')) {
-    require_once dirname(__DIR__, 2) . '/auth.php';
+    require_once dirname(__DIR__, 2) . '/Helpers/Auth.php';
+}
+
+// Helper functions
+if (!function_exists('getRoleBadge')) {
+    function getRoleBadge(string $role): string {
+        $badges = [
+            'super_admin' => 'badge-danger',
+            'hr_manager' => 'badge-warning',
+            'admin' => 'badge-primary',
+            'administrator' => 'badge-primary',
+            'dept_head' => 'badge-info',
+            'manager' => 'badge-info',
+            'section_head' => 'badge-secondary',
+            'sub_section_head' => 'badge-secondary',
+            'officer' => 'badge-success',
+            'employee' => 'badge-light',
+        ];
+        return $badges[$role] ?? 'badge-light';
+    }
+}
+
+if (!function_exists('formatDate')) {
+    function formatDate(?string $d): string {
+        return $d ? date('M d, Y', strtotime($d)) : 'N/A';
+    }
 }
 
 $pageTitle = 'Users Management - HR Management System';
 include __DIR__ . '/../components/header_bar.php';
-include __DIR__ . '/../components/navbar.php';
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="<?= $_SESSION['theme'] ?? 'light' ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle) ?></title>
     <link rel="stylesheet" href="<?= BASE_URL ?>/frontend/assets/css/output.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="<?= BASE_URL ?>/frontend/assets/js/theme.js"></script>
 </head>
-<body class="min-h-screen"
-      style="background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);">
+<body class="min-h-screen bg-gray-50 text-gray-900">
 
-<div class="container">
-    <div class="main-content">
+<div class="flex pt-16">
+    <!-- Sidebar -->
+    <?php include __DIR__ . '/../components/navbar.php'; ?>
+    
+    <!-- Main Content -->
+    <div class="flex-1 ml-64 p-8">
         <div class="content">
 
             <?php if (isset($_SESSION['flash_message'])): ?>
@@ -47,32 +68,34 @@ include __DIR__ . '/../components/navbar.php';
             <?php $activeTab = 'users'; include __DIR__ . '/../components/admin_tabs.php'; ?>
 
             <!-- Search Section -->
-            <div class="search-section">
-                <div class="search-header">
-                    <div class="search-title">
-                        <i class="fas fa-search"></i> Search Users by Name
+            <div class="bg-white dark:bg-dark-secondary/50 backdrop-blur-xl border border-gray-200 dark:border-white/20 rounded-2xl shadow-lg p-6 mb-6">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                    <i class="fas fa-search mr-2 text-primary-400"></i>Search Users by Name
+                </h3>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs text-gray-600 dark:text-gray-400 mb-2">Search</label>
+                        <input type="text" 
+                               id="searchInput" 
+                               placeholder="Type a name to search..."
+                               onkeyup="filterTable()"
+                               class="w-full px-4 py-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded-lg text-gray-900 dark:text-white text-sm
+                                      focus:outline-none focus:border-primary-400 focus:ring-1 focus:ring-primary-400">
                     </div>
-                    <button onclick="document.getElementById('addUserModal').style.display='block'" class="btn btn-success">
-                        <i class="fas fa-plus"></i> Add User
-                    </button>
+                    
+                    <div class="flex items-center gap-3 pt-2">
+                        <button onclick="filterTable()" class="btn btn-primary">
+                            <i class="fas fa-search mr-2"></i>Search
+                        </button>
+                        <button onclick="clearSearch()" class="btn btn-secondary">
+                            <i class="fas fa-times mr-2"></i>Clear
+                        </button>
+                    </div>
                 </div>
                 
-                <div class="search-box">
-                    <input type="text" 
-                           id="searchInput" 
-                           class="search-input" 
-                           placeholder="Type a name to search..."
-                           onkeyup="filterTable()">
-                    <button class="search-btn" onclick="filterTable()">
-                        <i class="fas fa-search"></i> Search
-                    </button>
-                    <button class="clear-btn" onclick="clearSearch()">
-                        <i class="fas fa-times"></i> Clear
-                    </button>
-                </div>
-                
-                <div class="search-stats" id="searchStats">
-                    Showing <span id="visibleCount"><?= count($allUsers) ?></span> of <?= count($allUsers) ?> users
+                <div class="mt-4 text-sm text-gray-600 dark:text-gray-400">
+                    Showing <span id="visibleCount" class="text-gray-900 dark:text-white font-medium"><?= count($allUsers) ?></span> of <?= count($allUsers) ?> users
                 </div>
             </div>
 
@@ -113,61 +136,9 @@ include __DIR__ . '/../components/navbar.php';
     </div>
 </div>
 
-<!-- ADD USER MODAL -->
-<div id="addUserModal" class="modal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>Add New User</h3>
-            <span class="close" onclick="closeModal('addUserModal')">&times;</span>
-        </div>
-        <form method="POST" action="/users/add">
-            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf_token) ?>">
-            <div class="form-row">
-                <div class="form-group"><label>First Name *</label><input type="text" class="form-control" name="first_name" required></div>
-                <div class="form-group"><label>Last Name *</label><input type="text" class="form-control" name="last_name" required></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>Surname</label><input type="text" class="form-control" name="surname"></div>
-                <div class="form-group"><label>Email *</label><input type="email" class="form-control" name="email" required></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Password * <small>(min 6)</small></label>
-                    <input type="password" class="form-control" name="password" required minlength="6">
-                </div>
-                <div class="form-group">
-                    <label>Role *</label>
-                    <select class="form-control" name="role" required>
-                        <option value="">Select Role</option>
-                        <?php foreach ($valid_roles as $r): ?>
-                            <option value="<?= htmlspecialchars($r) ?>"><?= htmlspecialchars(ucwords(str_replace('_',' ',$r))) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-            </div>
-            <div class="form-row">
-                <div class="form-group">
-                    <label>Gender</label>
-                    <select class="form-control" name="gender"><option value="">Select</option><option value="male">Male</option><option value="female">Female</option></select>
-                </div>
-                <div class="form-group"><label>Designation</label><input type="text" class="form-control" name="designation"></div>
-            </div>
-            <div class="form-row">
-                <div class="form-group"><label>Phone</label><input type="text" class="form-control" name="phone"></div>
-                <div class="form-group"><label>Employee ID</label><input type="text" class="form-control" name="employee_id"></div>
-            </div>
-            <div class="form-group"><label>Address</label><textarea class="form-control" name="address" rows="2"></textarea></div>
-            <div class="form-actions">
-                <button type="submit" class="btn btn-success">Create User</button>
-                <button type="button" class="btn btn-secondary" onclick="closeModal('addUserModal')">Cancel</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <!-- EDIT USER MODAL -->
-<div id="editUserModal" class="modal">
-    <div class="modal-content">
+<div id="editUserModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+    <div class="modal-content" style="background-color: white; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 600px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); position: relative;">
         <div class="modal-header">
             <h3>Edit User</h3>
             <span class="close" onclick="closeModal('editUserModal')">&times;</span>
@@ -222,8 +193,8 @@ include __DIR__ . '/../components/navbar.php';
 </div>
 
 <!-- RESET PASSWORD MODAL -->
-<div id="resetModal" class="modal">
-    <div class="modal-content">
+<div id="resetModal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+    <div class="modal-content" style="background-color: white; margin: 5% auto; padding: 20px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); position: relative;">
         <div class="modal-header">
             <h3>Reset Password</h3>
             <span class="close" onclick="closeModal('resetModal')">&times;</span>
@@ -378,14 +349,14 @@ function closeModal(id) {
 }
 
 window.addEventListener('click', e => {
-    ['addUserModal','editUserModal','resetModal'].forEach(id => {
+    ['editUserModal','resetModal'].forEach(id => {
         if (e.target === document.getElementById(id)) closeModal(id);
     });
 });
 
 document.addEventListener('keydown', e => {
     if (e.key==='Escape') {
-        ['addUserModal','editUserModal','resetModal'].forEach(closeModal);
+        ['editUserModal','resetModal'].forEach(closeModal);
     }
 });
 
@@ -457,6 +428,10 @@ function doDelete(id, name) {
     document.getElementById('deleteForm').submit();
 }
 </script>
+
+</div>
+</div>
+</div>
 
 </body>
 </html>

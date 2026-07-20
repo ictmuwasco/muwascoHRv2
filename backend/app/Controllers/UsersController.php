@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Core\Controller;
+use App\Services\AuditService;
 
 /**
  * UsersController
@@ -15,6 +16,14 @@ use App\Core\Controller;
  */
 class UsersController extends Controller
 {
+    private AuditService $audit;
+
+    public function __construct()
+    {
+        parent::__construct();
+        $this->audit = AuditService::getInstance();
+    }
+
     /**
      * Display users list
      * GET /users
@@ -26,9 +35,9 @@ class UsersController extends Controller
             return;
         }
 
-        // Only HR managers and super admins can view users
-        $auth = \App\Helpers\Auth::getInstance();
-        if (!$auth->hasPermission('hr_manager', 'view') && !$auth->hasPermission('super_admin', 'view')) {
+        // Only admins, HR managers and super admins can view users
+        $userRole = $_SESSION['user_role'] ?? '';
+        if (!in_array($userRole, ['super_admin', 'hr_manager', 'admin', 'administrator'])) {
             $_SESSION['flash_error'] = 'You do not have permission to access this resource.';
             $this->redirect('dashboard');
             return;
@@ -232,6 +241,9 @@ class UsersController extends Controller
             throw new Exception('New password must be at least 6 characters.');
         }
 
+        // Get old user data for audit
+        $oldUser = $conn->query("SELECT * FROM users WHERE id = '{$id}'")->fetch_assoc();
+
         // Check if email exists for another user
         $chk = $conn->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
         $chk->bind_param('ss', $email, $id);
@@ -266,6 +278,22 @@ class UsersController extends Controller
         if ($st->execute()) {
             $_SESSION['flash_message'] = 'User updated successfully!';
             $_SESSION['flash_type'] = 'success';
+            
+            // Audit log
+            $this->audit->logUpdate(
+                'users',
+                (int)$id,
+                $oldUser,
+                array_merge($oldUser, [
+                    'first_name' => $first_name,
+                    'last_name' => $last_name,
+                    'email' => $email,
+                    'role' => $role,
+                    'designation' => $designation,
+                    'is_active' => $is_active,
+                ]),
+                "Updated user: {$first_name} {$last_name}"
+            );
         } else {
             throw new Exception('Error updating user: ' . $conn->error);
         }
@@ -280,12 +308,23 @@ class UsersController extends Controller
             throw new Exception('You cannot delete your own account.');
         }
 
+        // Get user data before deletion for audit
+        $oldUser = $conn->query("SELECT * FROM users WHERE id = '{$id}'")->fetch_assoc();
+
         $st = $conn->prepare("DELETE FROM users WHERE id = ?");
         $st->bind_param('s', $id);
 
         if ($st->execute() && $st->affected_rows > 0) {
             $_SESSION['flash_message'] = 'User deleted successfully!';
             $_SESSION['flash_type'] = 'success';
+            
+            // Audit log
+            $this->audit->logDelete(
+                'users',
+                (int)$id,
+                $oldUser,
+                "Deleted user: " . ($oldUser['first_name'] ?? '') . " " . ($oldUser['last_name'] ?? '')
+            );
         } else {
             throw new Exception('Error deleting user: ' . $conn->error);
         }
@@ -300,6 +339,9 @@ class UsersController extends Controller
             throw new Exception('Password must be at least 6 characters.');
         }
 
+        // Get user data for audit
+        $user = $conn->query("SELECT * FROM users WHERE id = '{$id}'")->fetch_assoc();
+
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $st = $conn->prepare("UPDATE users SET password=?, updated_at=NOW() WHERE id=?");
         $st->bind_param('ss', $hash, $id);
@@ -307,6 +349,16 @@ class UsersController extends Controller
         if ($st->execute()) {
             $_SESSION['flash_message'] = 'Password reset successfully!';
             $_SESSION['flash_type'] = 'success';
+            
+            // Audit log
+            $this->audit->log(
+                'PASSWORD_RESET',
+                "Reset password for user: " . ($user['first_name'] ?? '') . " " . ($user['last_name'] ?? ''),
+                [
+                    'table_name' => 'users',
+                    'record_id' => (int)$id,
+                ]
+            );
         } else {
             throw new Exception('Error resetting password: ' . $conn->error);
         }

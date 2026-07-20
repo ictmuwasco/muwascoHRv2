@@ -128,6 +128,12 @@ class Application
             // Admin
             'admin' => [AdminController::class, 'indexAction'],
             'admin/permission-overrides' => [PermissionOverridesController::class, 'indexAction'],
+            'admin/permission-overrides/manage' => [PermissionOverridesController::class, 'manageAction'],
+            'admin/permission-overrides/save' => [PermissionOverridesController::class, 'saveAction'],
+            'admin/permission-overrides/effective' => [PermissionOverridesController::class, 'effectivePermissionsAction'],
+            'admin/permission-overrides/search' => [PermissionOverridesController::class, 'searchAction'],
+            'consent-management' => [ConsentController::class, 'indexAction'],
+            'consent-management/export' => [ConsentController::class, 'exportAction'],
             'users' => [UsersController::class, 'indexAction'],
             'audit' => [AuditController::class, 'indexAction'],
             
