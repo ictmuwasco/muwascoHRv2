@@ -130,6 +130,11 @@ return [
         'api/modules' => ['controller' => 'RoleController', 'method' => 'modules', 'auth' => true],
         'api/actions' => ['controller' => 'RoleController', 'method' => 'actions', 'auth' => true],
         
+        // Organization Routes
+        'api/organization/sections' => ['controller' => 'EmployeesController', 'method' => 'getSections', 'auth' => true],
+        'api/organization/sub-sections' => ['controller' => 'EmployeesController', 'method' => 'getSubsections', 'auth' => true],
+        'api/organization/hierarchy' => ['controller' => 'EmployeesController', 'method' => 'getOrganizationHierarchy', 'auth' => true],
+
         // Settings Routes
         'api/settings' => ['controller' => 'SettingsController', 'method' => 'index', 'auth' => true],
     ],

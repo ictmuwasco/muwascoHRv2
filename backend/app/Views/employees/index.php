@@ -44,7 +44,28 @@
             <?php unset($_SESSION['flash_message'], $_SESSION['flash_type']); ?>
         <?php endif; ?>
 
-        <!-- Tabs -->
+        <!-- Search Bar (replaces the old search tab) -->
+        <div class="mb-6">
+            <form method="GET" action="<?= BASE_URL ?>/?route=employees" class="flex items-center gap-3 bg-white rounded-lg border border-gray-200 px-4 py-3 shadow-sm">
+                <i class="fas fa-search text-gray-400"></i>
+                <input type="hidden" name="route" value="employees">
+                <input type="text" 
+                       name="search" 
+                       class="flex-1 border-0 outline-none text-sm bg-transparent" 
+                       placeholder="Search by first, middle or surname..."
+                       value="<?= htmlspecialchars($search ?? '') ?>">
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
+                    <i class="fas fa-search"></i> Search
+                </button>
+                <?php if (!empty($search)): ?>
+                <a href="<?= BASE_URL ?>/?route=employees" class="px-3 py-2 text-sm text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i> Clear
+                </a>
+                <?php endif; ?>
+            </form>
+        </div>
+
+        <!-- Tabs (list only - search tab removed) -->
         <?php
         $activeTab = $_GET['tab'] ?? 'list';
         $tabs = [
@@ -63,20 +84,6 @@
                     'type_filter' => $type_filter,
                     'status_filter' => $status_filter,
                     'csrf_token' => $csrf_token,
-                ])
-            ],
-            [
-                'id' => 'search',
-                'label' => 'Search & Filter',
-                'active' => $activeTab === 'search',
-                'content' => $this->renderPartial('employees/partials/search', [
-                    'departments' => $departments,
-                    'sections' => $sections,
-                    'search' => $search,
-                    'department_filter' => $department_filter,
-                    'section_filter' => $section_filter,
-                    'type_filter' => $type_filter,
-                    'status_filter' => $status_filter,
                 ])
             ],
         ];

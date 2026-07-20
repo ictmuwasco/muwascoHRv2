@@ -63,10 +63,10 @@ class EmployeesController extends Controller
         $types = '';
 
         if (!empty($search)) {
-            $where_conditions[] = "(e.first_name LIKE ? OR e.last_name LIKE ? OR e.employee_id LIKE ? OR e.email LIKE ?)";
+            $where_conditions[] = "(e.first_name LIKE ? OR e.last_name LIKE ? OR e.surname LIKE ? OR d.name LIKE ? OR s.name LIKE ?)";
             $search_param = "%$search%";
-            $params = array_merge($params, [$search_param, $search_param, $search_param, $search_param]);
-            $types .= 'ssss';
+            $params = array_merge($params, [$search_param, $search_param, $search_param, $search_param, $search_param]);
+            $types .= 'sssss';
         }
         if (!empty($department_filter)) {
             $where_conditions[] = "e.department_id = ?";
@@ -545,10 +545,15 @@ class EmployeesController extends Controller
         }
 
         $conn = $this->getDbConnection();
-        $stmt = $conn->prepare("SELECT id, name FROM sections WHERE department_id = ? AND status = 'active' ORDER BY name");
+        $stmt = $conn->prepare("SELECT id, name FROM sections WHERE department_id = ? ORDER BY name");
         $stmt->bind_param('i', $departmentId);
         $stmt->execute();
-        $sections = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $result = $stmt->get_result();
+        if (!$result) {
+            $this->json(['success' => false, 'data' => [], 'error' => $conn->error], 500);
+            return;
+        }
+        $sections = $result->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
 
         $this->json(['success' => true, 'data' => $sections]);
@@ -573,10 +578,15 @@ class EmployeesController extends Controller
         }
 
         $conn = $this->getDbConnection();
-        $stmt = $conn->prepare("SELECT id, name FROM subsections WHERE section_id = ? AND status = 'active' ORDER BY name");
+        $stmt = $conn->prepare("SELECT id, name FROM subsections WHERE section_id = ? ORDER BY name");
         $stmt->bind_param('i', $sectionId);
         $stmt->execute();
-        $subsections = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $result = $stmt->get_result();
+        if (!$result) {
+            $this->json(['success' => false, 'data' => [], 'error' => $conn->error], 500);
+            return;
+        }
+        $subsections = $result->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
 
         $this->json(['success' => true, 'data' => $subsections]);
