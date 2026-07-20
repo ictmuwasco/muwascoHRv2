@@ -159,49 +159,23 @@ $unreadNotifications = $notificationService->getUnreadCount($userId);
                         </div>
                     </div>
 
-                    <!-- Search & Filters -->
-                    <div class="card">
-                        <h3 class="card-title mb-4">Search & Filter</h3>
-                        <form method="GET" action="" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div>
-                                <input type="text" 
-                                       name="search" 
-                                       class="form-input" 
-                                       placeholder="Search by name, ID, or email..."
-                                       value="<?= htmlspecialchars($_GET['search'] ?? '') ?>">
-                            </div>
-                            <div>
-                                <select name="department" class="form-select">
-                                    <option value="">All Departments</option>
-                                    <?php
-                                    $db = \db();
-                                    $departments = $db->fetchAll("SELECT * FROM departments ORDER BY name");
-                                    foreach ($departments as $dept):
-                                    ?>
-                                    <option value="<?= (int)$dept['id'] ?>" <?= ($_GET['department'] ?? '') == $dept['id'] ? 'selected' : '' ?>>
-                                        <?= htmlspecialchars($dept['name']) ?>
-                                    </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div>
-                                <select name="type" class="form-select">
-                                    <option value="">All Types</option>
-                                    <option value="officer" <?= ($_GET['type'] ?? '') === 'officer' ? 'selected' : '' ?>>Officer</option>
-                                    <option value="section_head" <?= ($_GET['type'] ?? '') === 'section_head' ? 'selected' : '' ?>>Section Head</option>
-                                    <option value="manager" <?= ($_GET['type'] ?? '') === 'manager' ? 'selected' : '' ?>>Manager</option>
-                                    <option value="hr_manager" <?= ($_GET['type'] ?? '') === 'hr_manager' ? 'selected' : '' ?>>HR Manager</option>
-                                    <option value="dept_head" <?= ($_GET['type'] ?? '') === 'dept_head' ? 'selected' : '' ?>>Department Head</option>
-                                    <option value="managing_director" <?= ($_GET['type'] ?? '') === 'managing_director' ? 'selected' : '' ?>>Managing Director</option>
-                                </select>
-                            </div>
-                            <div>
-                                <button type="submit" class="btn btn-primary w-full">
-                                    <i class="fas fa-search"></i> Search
-                                </button>
-                            </div>
-                        </form>
-                    </div>
+                    <!-- Simple Search Bar -->
+                    <form method="GET" action="" class="flex items-center gap-3 bg-white rounded-lg border border-gray-200 px-4 py-3 shadow-sm">
+                        <i class="fas fa-search text-gray-400"></i>
+                        <input type="text" 
+                               name="search" 
+                               class="flex-1 border-0 outline-none text-sm bg-transparent" 
+                               placeholder="Search by name..."
+                               value="<?= htmlspecialchars($_GET['search'] ?? '') ?>">
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                        <?php if (!empty($_GET['search'])): ?>
+                        <a href="/hrdemo/frontend/pages/employees/" class="px-3 py-2 text-sm text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times"></i> Clear
+                        </a>
+                        <?php endif; ?>
+                    </form>
 
                     <!-- Employees Table -->
                     <div class="card">

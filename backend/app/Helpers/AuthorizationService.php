@@ -335,7 +335,7 @@ class AuthorizationService
 
     /**
      * Check if the current user is authorized to manage permission overrides.
-     * Only Super Administrators can manage permission overrides.
+     * Only Super Administrators and HR Managers can manage permission overrides.
      * 
      * @return bool
      */
@@ -345,7 +345,9 @@ class AuthorizationService
             return false;
         }
 
-        return $_SESSION['user_role'] === 'super_admin';
+        // Only super_admin and hr_manager have permission_overrides permissions
+        $allowedRoles = ['super_admin', 'hr_manager'];
+        return in_array($_SESSION['user_role'], $allowedRoles);
     }
 
     /**
@@ -354,14 +356,21 @@ class AuthorizationService
     public function requirePermissionManager(): void
     {
         if (!$this->isPermissionManager()) {
+            error_log("PERMISSION DEBUG: User role in session: " . ($_SESSION['user_role'] ?? 'NOT SET'));
+            error_log("PERMISSION DEBUG: User ID in session: " . ($_SESSION['user_id'] ?? 'NOT SET'));
+            error_log("PERMISSION DEBUG: Request URI: " . ($_SERVER['REQUEST_URI'] ?? 'NOT SET'));
+            
             if ($this->isApiRequest()) {
                 http_response_code(403);
                 echo json_encode(['error' => 'Forbidden: Only Super Administrators can manage permission overrides.']);
                 exit();
             }
             
-            $_SESSION['error'] = 'You do not have permission to access this resource.';
-            header('Location: /dashboard');
+            $_SESSION['flash_error'] = 'You do not have permission to access this resource.';
+            $baseUrl = defined('BASE_URL') ? BASE_URL : '';
+            $redirectUrl = $baseUrl . '/?route=admin/permission-overrides';
+            error_log("PERMISSION DEBUG: Redirecting to: " . $redirectUrl);
+            header('Location: ' . $redirectUrl);
             exit();
         }
     }

@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Core\Controller;
 use App\Helpers\AuthorizationService;
+use App\Helpers\RBAC;
 use App\Models\UserPagePermission;
 use App\Models\User;
 
@@ -67,13 +68,13 @@ class PermissionOverridesController extends Controller
         }
 
         if ($department !== '') {
-            $whereConditions[] = "e.department = ?";
+            $whereConditions[] = "d.name = ?";
             $params[] = $department;
             $types .= 's';
         }
 
         if ($section !== '') {
-            $whereConditions[] = "e.section = ?";
+            $whereConditions[] = "s.name = ?";
             $params[] = $section;
             $types .= 's';
         }
@@ -119,8 +120,8 @@ class PermissionOverridesController extends Controller
                 e.first_name,
                 e.last_name,
                 e.surname,
-                e.department,
-                e.section,
+                d.name as department,
+                s.name as section,
                 e.employee_status,
                 e.gender,
                 e.employment_type,
@@ -128,6 +129,8 @@ class PermissionOverridesController extends Controller
                 COUNT(DISTINCT upp.id) as override_count
             FROM users u
             LEFT JOIN employees e ON u.email = e.email
+            LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN sections s ON e.section_id = s.id
             LEFT JOIN user_page_permissions upp ON u.id = upp.user_id AND upp.active = 1
             WHERE {$whereClause}
             GROUP BY u.id, e.employee_id
@@ -146,9 +149,9 @@ class PermissionOverridesController extends Controller
         $stmt->close();
 
         // Get filter options
-        $departments = $conn->query("SELECT DISTINCT department FROM employees WHERE department IS NOT NULL AND department != '' ORDER BY department")->fetch_all(MYSQLI_ASSOC);
-        $sections = $conn->query("SELECT DISTINCT section FROM employees WHERE section IS NOT NULL AND section != '' ORDER BY section")->fetch_all(MYSQLI_ASSOC);
-        $roles = $this->authService->getRoles();
+        $departments = $conn->query("SELECT name as department FROM departments ORDER BY name")->fetch_all(MYSQLI_ASSOC);
+        $sections = $conn->query("SELECT s.name as section FROM sections s ORDER BY s.name")->fetch_all(MYSQLI_ASSOC);
+        $roles = RBAC::getInstance()->getRoles();
 
         // Get statistics
         $stats = [
@@ -195,12 +198,14 @@ class PermissionOverridesController extends Controller
                 e.first_name,
                 e.last_name,
                 e.surname,
-                e.department,
-                e.section,
+                d.name as department,
+                s.name as section,
                 e.employee_status,
                 CONCAT(e.first_name, ' ', e.last_name, IF(e.surname != '' AND e.surname IS NOT NULL, CONCAT(' ', e.surname), '')) as full_name
             FROM users u
             LEFT JOIN employees e ON u.email = e.email
+            LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN sections s ON e.section_id = s.id
             WHERE u.id = ?
             LIMIT 1
         ");
@@ -381,11 +386,13 @@ class PermissionOverridesController extends Controller
                 u.id as user_id,
                 e.employee_id,
                 CONCAT(e.first_name, ' ', e.last_name, IF(e.surname != '' AND e.surname IS NOT NULL, CONCAT(' ', e.surname), '')) as full_name,
-                e.department,
-                e.section,
+                d.name as department,
+                s.name as section,
                 u.role
             FROM users u
             LEFT JOIN employees e ON u.email = e.email
+            LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN sections s ON e.section_id = s.id
             WHERE (e.employee_id LIKE ? OR e.first_name LIKE ? OR e.last_name LIKE ? OR e.surname LIKE ?)
             AND e.employee_status = 'active'
             ORDER BY e.first_name, e.last_name
