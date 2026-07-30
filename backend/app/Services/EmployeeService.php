@@ -4,392 +4,260 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Models\Employee;
-use App\Models\Department;
+use App\Services\Contracts\EmployeeServiceInterface;
+use App\Repositories\Contracts\EmployeeRepositoryInterface;
+use App\Repositories\Contracts\DepartmentRepositoryInterface;
+use App\Repositories\Contracts\SectionRepositoryInterface;
+use App\Repositories\Contracts\OfficeRepositoryInterface;
 
 /**
- * Employee Service - Business logic for employee management.
- * 
- * Handles employee CRUD operations, validation, user account creation,
- * payroll initialization, and audit logging.
+ * Employee Service
+ *
+ * Contains business logic for employee management.
+ * Orchestrates repository operations and enforces business rules.
  */
-class EmployeeService
+class EmployeeService implements EmployeeServiceInterface
 {
-    private static ?EmployeeService $instance = null;
-    private AuditService $audit;
+    private EmployeeRepositoryInterface $employeeRepository;
+    private DepartmentRepositoryInterface $departmentRepository;
+    private SectionRepositoryInterface $sectionRepository;
+    private OfficeRepositoryInterface $officeRepository;
+    private array $dependencies = [];
 
-    private function __construct()
+    public function setEmployeeRepository(EmployeeRepositoryInterface $repository): void
     {
-        $this->audit = AuditService::getInstance();
+        $this->employeeRepository = $repository;
     }
 
-    public static function getInstance(): self
+    public function setDepartmentRepository(DepartmentRepositoryInterface $repository): void
     {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
+        $this->departmentRepository = $repository;
     }
 
-    /**
-     * Create a new employee with user account and payroll entry.
-     */
-    public function create(array $data): array
+    public function setSectionRepository(SectionRepositoryInterface $repository): void
     {
-        $db = \db();
-
-        // Validate leadership uniqueness
-        $this->validateLeadershipUniqueness(
-            $data['employee_type'],
-            $data['department_id'] ?? null,
-            $data['section_id'] ?? null,
-            $data['subsection_id'] ?? null
-        );
-
-        // Prepare next of kin
-        $nextOfKin = Employee::prepareNextOfKin(
-            $data['next_of_kin_name'] ?? [],
-            $data['next_of_kin_relationship'] ?? [],
-            $data['next_of_kin_contact'] ?? []
-        );
-
-        $db->beginTransaction();
-
-        try {
-            // 1. Insert employee
-            $employeeId = $db->insert('employees', [
-                'employee_id' => $data['employee_id'],
-                'first_name' => $data['first_name'],
-                'last_name' => $data['last_name'],
-                'surname' => $data['surname'] ?? '',
-                'gender' => $data['gender'] ?? '',
-                'national_id' => $data['national_id'],
-                'phone' => $data['phone'],
-                'email' => $data['email'],
-                'date_of_birth' => $data['date_of_birth'],
-                'address' => $data['address'] ?? '',
-                'designation' => $data['designation'],
-                'department_id' => !empty($data['department_id']) ? (int) $data['department_id'] : null,
-                'section_id' => !empty($data['section_id']) ? (int) $data['section_id'] : null,
-                'subsection_id' => !empty($data['subsection_id']) ? (int) $data['subsection_id'] : null,
-                'office_id' => !empty($data['office_id']) ? (int) $data['office_id'] : null,
-                'employee_type' => $data['employee_type'],
-                'employment_type' => $data['employment_type'] ?? 'permanent',
-                'employee_status' => 'active',
-                'hire_date' => $data['hire_date'],
-                'scale_id' => $data['job_group'] ?? null,
-                'next_of_kin' => $nextOfKin,
-                'profile_token' => hash('sha256', random_bytes(32) . time()),
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s'),
-            ]);
-
-            // 2. Create payroll entry
-            $db->insert('payroll', [
-                'emp_id' => $employeeId,
-                'employment_type' => $data['employment_type'] ?? 'permanent',
-                'status' => 'active',
-                'job_group' => $data['job_group'] ?? null,
-                'total_allowances' => 0.00,
-                'total_deductions' => 0.00,
-                'salary' => null,
-                'Gross_pay' => null,
-                'net_pay' => null,
-            ]);
-
-            // 3. Create user account
-            $userRole = Employee::getUserRoleFromType($data['employee_type']);
-            $hashedPassword = password_hash($data['employee_id'], PASSWORD_DEFAULT);
-
-            $db->insert('users', [
-                'email' => $data['email'],
-                'first_name' => $data['first_name'],
-                'last_name' => $data['last_name'],
-                'gender' => $data['gender'] ?? '',
-                'password' => $hashedPassword,
-                'role' => $userRole,
-                'phone' => $data['phone'],
-                'address' => $data['address'] ?? '',
-                'employee_id' => $data['employee_id'],
-                'is_active' => 1,
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s'),
-            ]);
-
-            $db->commit();
-
-            // Audit log
-            $this->audit->logCreate('employees', $employeeId, $data, "Created new employee: {$data['first_name']} {$data['last_name']}");
-
-            return ['success' => true, 'employee_id' => $employeeId, 'message' => 'Employee created successfully. Default password is the Employee ID.'];
-
-        } catch (\Exception $e) {
-            $db->rollback();
-            \logger()->error('Employee creation failed', ['error' => $e->getMessage(), 'data' => $data]);
-            throw $e;
-        }
+        $this->sectionRepository = $repository;
     }
 
-    /**
-     * Update an existing employee.
-     */
-    public function update(int $id, array $data): array
+    public function setOfficeRepository(OfficeRepositoryInterface $repository): void
     {
-        $db = \db();
-
-        // Get old employee data
-        $oldEmployee = Employee::find($id);
-        if (!$oldEmployee) {
-            throw new \RuntimeException('Employee not found');
-        }
-
-        // Validate leadership uniqueness (excluding self)
-        $this->validateLeadershipUniqueness(
-            $data['employee_type'],
-            $data['department_id'] ?? null,
-            $data['section_id'] ?? null,
-            $data['subsection_id'] ?? null,
-            $id
-        );
-
-        // Prepare next of kin
-        $nextOfKin = Employee::prepareNextOfKin(
-            $data['next_of_kin_name'] ?? [],
-            $data['next_of_kin_relationship'] ?? [],
-            $data['next_of_kin_contact'] ?? []
-        );
-
-        $db->beginTransaction();
-
-        try {
-            // 1. Update employee
-            $db->update('employees', [
-                'employee_id' => $data['employee_id'],
-                'first_name' => $data['first_name'],
-                'last_name' => $data['last_name'],
-                'surname' => $data['surname'] ?? '',
-                'gender' => $data['gender'] ?? '',
-                'national_id' => $data['national_id'],
-                'phone' => $data['phone'],
-                'email' => $data['email'],
-                'date_of_birth' => $data['date_of_birth'],
-                'address' => $data['address'] ?? '',
-                'designation' => $data['designation'],
-                'department_id' => !empty($data['department_id']) ? (int) $data['department_id'] : null,
-                'section_id' => !empty($data['section_id']) ? (int) $data['section_id'] : null,
-                'subsection_id' => !empty($data['subsection_id']) ? (int) $data['subsection_id'] : null,
-                'office_id' => !empty($data['office_id']) ? (int) $data['office_id'] : null,
-                'employee_type' => $data['employee_type'],
-                'employment_type' => $data['employment_type'],
-                'employee_status' => $data['employee_status'] ?? 'active',
-                'hire_date' => $data['hire_date'],
-                'scale_id' => $data['job_group'] ?? null,
-                'next_of_kin' => $nextOfKin,
-                'updated_at' => date('Y-m-d H:i:s'),
-            ], 'id = ?', 'i', [$id]);
-
-            // 2. Update payroll
-            $payrollStatus = ($data['employee_status'] ?? 'active') === 'active' ? 'active' : 'inactive';
-            $db->update('payroll', [
-                'job_group' => $data['job_group'] ?? null,
-                'employment_type' => $data['employment_type'],
-                'status' => $payrollStatus,
-            ], 'emp_id = ?', 'i', [$id]);
-
-            // 3. Update user account
-            $userRole = Employee::getUserRoleFromType($data['employee_type']);
-            $db->update('users', [
-                'email' => $data['email'],
-                'first_name' => $data['first_name'],
-                'last_name' => $data['last_name'],
-                'gender' => $data['gender'] ?? '',
-                'role' => $userRole,
-                'phone' => $data['phone'],
-                'address' => $data['address'] ?? '',
-                'employee_id' => $data['employee_id'],
-                'updated_at' => date('Y-m-d H:i:s'),
-            ], 'employee_id = ?', 's', [$oldEmployee['employee_id']]);
-
-            $db->commit();
-
-            // Audit log
-            $this->audit->logUpdate('employees', $id, $oldEmployee, $data, "Updated employee: {$data['first_name']} {$data['last_name']}");
-
-            return ['success' => true, 'message' => 'Employee updated successfully.'];
-
-        } catch (\Exception $e) {
-            $db->rollback();
-            \logger()->error('Employee update failed', ['error' => $e->getMessage(), 'id' => $id]);
-            throw $e;
-        }
+        $this->officeRepository = $repository;
     }
 
-    /**
-     * Delete an employee and associated records.
-     */
-    public function delete(int $id): array
+    public function setDependency(string $name, mixed $dependency): void
     {
-        $db = \db();
+        $this->dependencies[$name] = $dependency;
+    }
 
-        $employee = Employee::find($id);
+    public function getDependency(string $name): mixed
+    {
+        return $this->dependencies[$name] ?? null;
+    }
+
+    public function getAllEmployees(array $filters = [], int $page = 1, int $limit = 30): array
+    {
+        return $this->employeeRepository->search($filters, $page, $limit);
+    }
+
+    public function getEmployeeById(int $id): ?array
+    {
+        return $this->employeeRepository->findWithDetails($id);
+    }
+
+    public function createEmployee(array $data): int
+    {
+        // Business rule: Validate employee data
+        $errors = $this->validateEmployeeData($data);
+        if (!empty($errors)) {
+            throw new \InvalidArgumentException(implode(', ', $errors));
+        }
+
+        // Business rule: Check if department exists
+        if (!empty($data['department_id'])) {
+            $department = $this->departmentRepository->findById((int)$data['department_id']);
+            if (!$department) {
+                throw new \InvalidArgumentException('Invalid department selected');
+            }
+        }
+
+        // Business rule: Check if section exists
+        if (!empty($data['section_id'])) {
+            $section = $this->sectionRepository->findById((int)$data['section_id']);
+            if (!$section) {
+                throw new \InvalidArgumentException('Invalid section selected');
+            }
+        }
+
+        // Business rule: Check if office exists
+        if (!empty($data['office_id'])) {
+            $office = $this->officeRepository->findById((int)$data['office_id']);
+            if (!$office) {
+                throw new \InvalidArgumentException('Invalid office selected');
+            }
+        }
+
+        // Business rule: Normalize email
+        if (!empty($data['email'])) {
+            $data['email'] = strtolower(trim($data['email']));
+        }
+
+        // Business rule: Normalize phone numbers
+        if (!empty($data['phone'])) {
+            $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
+        }
+
+        return $this->employeeRepository->create($data);
+    }
+
+    public function updateEmployee(int $id, array $data): bool
+    {
+        // Business rule: Check if employee exists
+        $existingEmployee = $this->employeeRepository->findById($id);
+        if (!$existingEmployee) {
+            throw new \InvalidArgumentException('Employee not found');
+        }
+
+        // Business rule: Validate employee data
+        $errors = $this->validateEmployeeData($data, $id);
+        if (!empty($errors)) {
+            throw new \InvalidArgumentException(implode(', ', $errors));
+        }
+
+        // Business rule: Check if department exists
+        if (!empty($data['department_id'])) {
+            $department = $this->departmentRepository->findById((int)$data['department_id']);
+            if (!$department) {
+                throw new \InvalidArgumentException('Invalid department selected');
+            }
+        }
+
+        // Business rule: Check if section exists
+        if (!empty($data['section_id'])) {
+            $section = $this->sectionRepository->findById((int)$data['section_id']);
+            if (!$section) {
+                throw new \InvalidArgumentException('Invalid section selected');
+            }
+        }
+
+        // Business rule: Check if office exists
+        if (!empty($data['office_id'])) {
+            $office = $this->officeRepository->findById((int)$data['office_id']);
+            if (!$office) {
+                throw new \InvalidArgumentException('Invalid office selected');
+            }
+        }
+
+        // Business rule: Normalize email
+        if (!empty($data['email'])) {
+            $data['email'] = strtolower(trim($data['email']));
+        }
+
+        // Business rule: Normalize phone numbers
+        if (!empty($data['phone'])) {
+            $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
+        }
+
+        return $this->employeeRepository->update($id, $data);
+    }
+
+    public function deleteEmployee(int $id): bool
+    {
+        // Business rule: Check if employee exists
+        $employee = $this->employeeRepository->findById($id);
         if (!$employee) {
-            throw new \RuntimeException('Employee not found');
+            throw new \InvalidArgumentException('Employee not found');
         }
 
-        $db->beginTransaction();
+        // Business rule: Check if employee has active attendance records
+        // This would be implemented with AttendanceRepository
+        // For now, we'll just delete
 
-        try {
-            // Delete payroll entry
-            $db->delete('payroll', 'emp_id = ?', 'i', [$id]);
-
-            // Delete user account
-            $db->delete('users', 'employee_id = ?', 's', [$employee['employee_id']]);
-
-            // Delete employee
-            $db->delete('employees', 'id = ?', 'i', [$id]);
-
-            $db->commit();
-
-            // Audit log
-            $this->audit->logDelete('employees', $id, $employee, "Deleted employee: {$employee['first_name']} {$employee['last_name']}");
-
-            return ['success' => true, 'message' => 'Employee deleted successfully.'];
-
-        } catch (\Exception $e) {
-            $db->rollback();
-            \logger()->error('Employee deletion failed', ['error' => $e->getMessage(), 'id' => $id]);
-            throw $e;
-        }
+        return $this->employeeRepository->delete($id);
     }
 
-    /**
-     * Get employees with search, filters, and pagination.
-     */
-    public function list(array $params): array
+    public function searchEmployees(string $query, array $filters = [], int $page = 1, int $limit = 30): array
     {
-        $search = $params['search'] ?? '';
-        $filters = [];
-        
-        if (!empty($params['department_id'])) $filters['department_id'] = $params['department_id'];
-        if (!empty($params['section_id'])) $filters['section_id'] = $params['section_id'];
-        if (!empty($params['employee_type'])) $filters['employee_type'] = $params['employee_type'];
-        if (!empty($params['employee_status'])) $filters['employee_status'] = $params['employee_status'];
-        
-        $page = max(1, (int) ($params['page'] ?? 1));
-        $perPage = min(100, max(1, (int) ($params['per_page'] ?? 30)));
-
-        $result = Employee::search($search, $filters, $page, $perPage);
-
-        // Audit log
-        $this->audit->log('VIEW', "Viewed employee list with {$result['total']} total records");
-
-        return $result;
+        $filters['search'] = $query;
+        return $this->employeeRepository->search($filters, $page, $limit);
     }
 
-    /**
-     * Get a single employee with all related data.
-     */
-    public function get(int $id): ?array
+    public function getOrganizationHierarchy(): array
     {
-        $employee = Employee::find($id);
-        if (!$employee) return null;
-
-        // Parse next of kin
-        $employee['next_of_kin_array'] = Employee::parseNextOfKin($employee['next_of_kin'] ?? null);
-
-        // Get department info
-        if ($employee['department_id']) {
-            $employee['department'] = Department::find((int) $employee['department_id']);
-        }
-
-        return $employee;
+        return $this->employeeRepository->getOrganizationHierarchy();
     }
 
-    /**
-     * Get all reference data for forms.
-     */
-    public function getReferenceData(): array
+    public function getDepartments(): array
     {
-        $db = \db();
-
-        return [
-            'departments' => $db->fetchAll("SELECT * FROM departments ORDER BY name"),
-            'sections' => $db->fetchAll("
-                SELECT s.*, d.name as department_name 
-                FROM sections s 
-                LEFT JOIN departments d ON s.department_id = d.id 
-                ORDER BY d.name, s.name
-            "),
-            'subsections' => $db->fetchAll("
-                SELECT ss.*, s.name as section_name, d.name as department_name 
-                FROM subsections ss 
-                LEFT JOIN sections s ON ss.section_id = s.id 
-                LEFT JOIN departments d ON ss.department_id = d.id 
-                ORDER BY d.name, s.name, ss.name
-            "),
-            'offices' => $db->fetchAll("SELECT * FROM offices ORDER BY name"),
-            'employee_types' => Employee::EMPLOYEE_TYPES,
-            'employment_types' => Employee::EMPLOYMENT_TYPES,
-            'employee_statuses' => Employee::EMPLOYEE_STATUSES,
-            'job_groups' => Employee::JOB_GROUPS,
-        ];
+        return $this->departmentRepository->getAllActive();
     }
 
-    /**
-     * Validate that no other employee holds the same leadership role in the same scope.
-     */
-    private function validateLeadershipUniqueness(
-        string $employeeType,
-        ?int $departmentId = null,
-        ?int $sectionId = null,
-        ?int $subsectionId = null,
-        ?int $excludeId = null
-    ): void {
-        $scope = Employee::getLeadershipScope($employeeType);
-        if (!$scope) return; // Not a leadership role
-
-        $db = \db();
-        $sql = "SELECT id FROM employees WHERE employee_type = ?";
-        $types = 's';
-        $params = [$employeeType];
-
-        if ($scope === 'department' && $departmentId) {
-            $sql .= " AND department_id = ?";
-            $types .= 'i';
-            $params[] = $departmentId;
-        } elseif ($scope === 'section' && $sectionId) {
-            $sql .= " AND section_id = ?";
-            $types .= 'i';
-            $params[] = $sectionId;
-        } elseif ($scope === 'subsection' && $subsectionId) {
-            $sql .= " AND subsection_id = ?";
-            $types .= 'i';
-            $params[] = $subsectionId;
-        }
-
-        if ($excludeId) {
-            $sql .= " AND id != ?";
-            $types .= 'i';
-            $params[] = $excludeId;
-        }
-
-        $existing = $db->fetchOne($sql, $types, $params);
-        if ($existing) {
-            $roleName = ucwords(str_replace('_', ' ', $employeeType));
-            $unit = match ($scope) {
-                'organization' => 'the organization',
-                'department' => 'this department',
-                'section' => 'this section',
-                'subsection' => 'this subsection',
-                default => 'this unit',
-            };
-            throw new \RuntimeException("A {$roleName} already exists in {$unit}. Only one is allowed.");
-        }
-    }
-
-    private function __clone(): void {}
-    public function __wakeup(): void
+    public function getSectionsByDepartment(int $departmentId): array
     {
-        throw new \RuntimeException('Cannot unserialize singleton');
+        return $this->sectionRepository->getByDepartment($departmentId);
+    }
+
+    public function getSubsectionsBySection(int $sectionId): array
+    {
+        return $this->sectionRepository->getSubsections($sectionId);
+    }
+
+    public function getOffices(): array
+    {
+        return $this->officeRepository->getAllActive();
+    }
+
+    public function validateEmployeeData(array $data, ?int $excludeId = null): array
+    {
+        $errors = [];
+
+        // Business rule: Employee ID is required
+        if (empty($data['employee_id'])) {
+            $errors[] = 'Employee ID is required';
+        } elseif ($this->employeeRepository->employeeIdExists($data['employee_id'], $excludeId)) {
+            $errors[] = 'Employee ID already exists';
+        }
+
+        // Business rule: Email is required and must be valid
+        if (empty($data['email'])) {
+            $errors[] = 'Email is required';
+        } elseif (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            $errors[] = 'Invalid email format';
+        } elseif ($this->employeeRepository->emailExists($data['email'], $excludeId)) {
+            $errors[] = 'Email already exists';
+        }
+
+        // Business rule: National ID is required
+        if (empty($data['national_id'])) {
+            $errors[] = 'National ID is required';
+        } elseif ($this->employeeRepository->nationalIdExists($data['national_id'], $excludeId)) {
+            $errors[] = 'National ID already exists';
+        }
+
+        // Business rule: First name is required
+        if (empty($data['first_name'])) {
+            $errors[] = 'First name is required';
+        }
+
+        // Business rule: Last name is required
+        if (empty($data['last_name'])) {
+            $errors[] = 'Last name is required';
+        }
+
+        // Business rule: Employee type is required
+        if (empty($data['employee_type'])) {
+            $errors[] = 'Employee type is required';
+        }
+
+        // Business rule: Employee status is required
+        if (empty($data['employee_status'])) {
+            $errors[] = 'Employee status is required';
+        }
+
+        // Business rule: Employment date is required
+        if (empty($data['employment_date'])) {
+            $errors[] = 'Employment date is required';
+        }
+
+        return $errors;
     }
 }

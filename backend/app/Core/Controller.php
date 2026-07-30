@@ -297,10 +297,7 @@ abstract class Controller
                 return 'Your account is not active. Please contact HR.';
         }
     }
-
-    // ──────────────────────────────────────────────────────────────────────────
-    //  Security logging
-    // ──────────────────────────────────────────────────────────────────────────
+cd
 
     protected function logSecurityEvent(string $eventType, int $userId = 0, mixed $extra = []): void
     {

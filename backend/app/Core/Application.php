@@ -47,25 +47,9 @@ class Application
      */
     public function route(string $uri, string $method): void
     {
-        // Remove query string
-        $uri = parse_url($uri, PHP_URL_PATH);
-        
-        // Remove trailing slash
-        $uri = rtrim($uri, '/');
-        
-        // Detect and remove subdirectory prefix (e.g., /hrdemo)
+        // Normalize via the shared helper (strips query string, subdir prefix, leading slash).
+        $uri = Request::normalizeUri();
         $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
-        $scriptDir = rtrim(dirname($scriptName), '/');
-        
-        if ($scriptDir !== '/' && $scriptDir !== '' && strpos($uri, $scriptDir) === 0) {
-            $uri = substr($uri, strlen($scriptDir));
-        }
-        
-        // Remove leading slash to match route keys
-        $uri = ltrim($uri, '/');
-        
-        // Debug logging
-        error_log("Routing URI: {$uri}, ScriptName: {$scriptName}, ScriptDir: {$scriptDir}");
 
         // Route mapping
         $routes = [

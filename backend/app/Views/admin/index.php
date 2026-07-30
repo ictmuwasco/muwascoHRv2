@@ -12,7 +12,7 @@ if (!function_exists('hasPermission')) {
 }
 
 $pageTitle = 'Admin Panel - HR Management System';
-?>
+?>e 
 
 <!DOCTYPE html>
 <html lang="en" data-theme="<?= $_SESSION['theme'] ?? 'light' ?>">

@@ -5,19 +5,28 @@ declare(strict_types=1);
 namespace App\Controllers\Leave;
 
 use App\Core\Controller;
+use App\Services\Contracts\LeaveServiceInterface;
+use App\Services\LeaveService;
 use App\Services\AuditService;
 use App\Services\DelegateService;
 use App\Services\LeaveAttachmentService;
+use App\Repositories\EmployeeRepository;
+use App\Repositories\LeaveRepository;
 
 class ApplyLeaveController extends Controller
 {
+    private LeaveServiceInterface $leaveService;
     private AuditService $audit;
     private ?DelegateService $delegateService = null;
     private ?LeaveAttachmentService $attachmentService = null;
 
     public function __construct()
     {
-        parent::__construct();
+        // Dependency injection
+        $this->leaveService = new LeaveService();
+        $this->leaveService->setLeaveRepository(new LeaveRepository());
+        $this->leaveService->setEmployeeRepository(new EmployeeRepository());
+        
         $this->audit = AuditService::getInstance();
     }
 
@@ -53,13 +62,11 @@ class ApplyLeaveController extends Controller
             $eligibleDelegates = $delegateService->getEligibleDelegates((int)$userEmployee['id']);
         }
 
-        // Get leave types for the dropdown
+        // Get leave types for the dropdown using service
         $leaveTypes = [];
-        $result = $conn->query("SELECT id, name FROM leave_types ORDER BY name");
-        if ($result) {
-            while ($row = $result->fetch_assoc()) {
-                $leaveTypes[(int)$row['id']] = $row['name'];
-            }
+        $leaveTypesData = $this->leaveService->getLeaveTypes();
+        foreach ($leaveTypesData as $leaveType) {
+            $leaveTypes[(int)$leaveType['id']] = $leaveType['name'];
         }
 
         // Determine Study Leave and Sick Leave IDs by matching names
@@ -126,28 +133,16 @@ class ApplyLeaveController extends Controller
         }
 
         try {
-            $conn->begin_transaction();
-
-            // Insert leave application with delegate
-            $stmt = $conn->prepare("
-                INSERT INTO leave_applications 
-                (employee_id, leave_type_id, start_date, end_date, days_requested, reason, status, 
-                 applied_at, delegated_to, applied_by_user_id)
-                VALUES (?, ?, ?, ?, ?, ?, 'pending', NOW(), ?, ?)
-            ");
-
-            $days = $this->calculateDays($startDate, $endDate);
-            $delegateValue = $delegateId > 0 ? $delegateId : null;
             $userId = (int)($_SESSION['user_id'] ?? 0);
+            $delegateValue = $delegateId > 0 ? $delegateId : null;
 
-            $stmt->bind_param('iissssii', $employeeId, $leaveTypeId, $startDate, $endDate, 
-                            $days, $reason, $delegateValue, $userId);
-
-            if (!$stmt->execute()) {
-                throw new \Exception('Failed to create leave application.');
-            }
-
-            $applicationId = $stmt->insert_id;
+            // Apply leave using service
+            $applicationId = $this->leaveService->applyLeave($employeeId, [
+                'leave_type_id' => $leaveTypeId,
+                'start_date' => $startDate,
+                'end_date' => $endDate,
+                'reason' => $reason,
+            ]);
 
             // Handle conditional file uploads based on leave type
             $this->processFileUploads($applicationId, $leaveTypeId, $userId, $attachmentService, $conn);
@@ -158,19 +153,18 @@ class ApplyLeaveController extends Controller
                 'leave_type_id' => $leaveTypeId,
                 'start_date' => $startDate,
                 'end_date' => $endDate,
-                'days' => $days,
+                'days' => $this->calculateDays($startDate, $endDate),
                 'delegated_to' => $delegateValue,
             ];
             $this->audit->logCreate('leave_applications', $applicationId, $auditData, 
                 "Leave application #{$applicationId} created" . ($delegateValue ? " with delegate" : ""));
 
-            $conn->commit();
-
             $_SESSION['flash_message'] = 'Leave application submitted successfully!';
             $_SESSION['flash_type'] = 'success';
 
+        } catch (\InvalidArgumentException $e) {
+            $_SESSION['flash_error'] = $e->getMessage();
         } catch (\Exception $e) {
-            $conn->rollback();
             $_SESSION['flash_error'] = 'Error: ' . $e->getMessage();
         }
 
