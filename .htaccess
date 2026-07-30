@@ -8,8 +8,8 @@
     # RewriteCond %{HTTPS} off
     # RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
     
-    # API Routes
-    RewriteRule ^api/(.*)$ api.php [QSA,L,E=API_ROUTE:1]
+    # API Routes (handle subdirectory installation)
+    RewriteRule ^(hrdemo/)?api/(.*)$ api.php [QSA,L,E=API_ROUTE:1]
     
     # Frontend SPA - Serve index.php for all non-file routes
     RewriteCond %{REQUEST_FILENAME} !-f

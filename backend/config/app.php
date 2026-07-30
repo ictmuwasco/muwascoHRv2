@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 /**
  * Application Configuration
+ *
+ * NOTE: The previous `providers` and `aliases` keys were dead config — the
+ * referenced `App\Providers\*` and `App\Events\*` namespaces were never
+ * created. They have been removed; add them back only when those subsystems
+ * are actually implemented.
  */
 return [
     'name' => env('APP_NAME', 'MUWASCO HR System'),
@@ -13,16 +18,4 @@ return [
     'timezone' => 'Africa/Nairobi',
     'locale' => 'en',
     'charset' => 'utf8mb4',
-
-    'providers' => [
-        \App\Providers\AuthServiceProvider::class,
-        \App\Providers\EventServiceProvider::class,
-        \App\Providers\RouteServiceProvider::class,
-    ],
-
-    'aliases' => [
-        'Auth' => \App\Helpers\Auth::class,
-        'Hash' => \App\Helpers\Hash::class,
-        'Session' => \App\Helpers\Session::class,
-    ],
 ];

@@ -356,9 +356,8 @@ class AuthorizationService
     public function requirePermissionManager(): void
     {
         if (!$this->isPermissionManager()) {
-            error_log("PERMISSION DEBUG: User role in session: " . ($_SESSION['user_role'] ?? 'NOT SET'));
-            error_log("PERMISSION DEBUG: User ID in session: " . ($_SESSION['user_id'] ?? 'NOT SET'));
-            error_log("PERMISSION DEBUG: Request URI: " . ($_SERVER['REQUEST_URI'] ?? 'NOT SET'));
+            // DEBUG: Log the redirect attempt
+            error_log("PERMISSION DEBUG: User role='" . ($_SESSION['user_role'] ?? 'none') . "' denied access to permission-overrides/manage");
             
             if ($this->isApiRequest()) {
                 http_response_code(403);
@@ -367,11 +366,18 @@ class AuthorizationService
             }
             
             $_SESSION['flash_error'] = 'You do not have permission to access this resource.';
+            // Build redirect URL with BASE_URL prefix
             $baseUrl = defined('BASE_URL') ? BASE_URL : '';
             $redirectUrl = $baseUrl . '/?route=admin/permission-overrides';
-            error_log("PERMISSION DEBUG: Redirecting to: " . $redirectUrl);
+            
+            // DEBUG: Log the redirect destination
+            error_log("PERMISSION DEBUG: Redirecting to: {$redirectUrl}");
+            
             header('Location: ' . $redirectUrl);
             exit();
+        } else {
+            // DEBUG: Log successful access
+            error_log("PERMISSION DEBUG: User role='" . ($_SESSION['user_role'] ?? 'none') . "' GRANTED access to permission-overrides/manage");
         }
     }
 

@@ -2,14 +2,17 @@
 
 declare(strict_types=1);
 
-// Load bootstrap
+/**
+ * API Entry Point
+ *
+ * The .htaccess rewrite routes any /api/* request to this file. It loads
+ * the shared bootstrap and dispatches via the JSON router.
+ */
+
 require_once __DIR__ . '/backend/bootstrap.php';
 
-// Load the router class explicitly because it lives outside the main app namespace tree
+// API router is in App\Router (separate from the SPA Application class).
 require_once __DIR__ . '/backend/routes/Router.php';
 
-// Load the router
 $router = new App\Router();
-
-// Dispatch the request
 $router->dispatch();

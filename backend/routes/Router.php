@@ -21,7 +21,7 @@ class Router
     public function dispatch(): void
     {
         $method = $_SERVER['REQUEST_METHOD'];
-        $uri = $this->getUri();
+        $uri = \App\Core\Request::normalizeUri();
         
         // Handle CORS preflight
         if ($method === 'OPTIONS') {
@@ -141,33 +141,6 @@ class Router
         
         // Return only named parameters
         return array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);
-    }
-
-    /**
-     * Get the normalized request URI.
-     */
-    private function getUri(): string
-    {
-        $uri = $_SERVER['REQUEST_URI'] ?? '/';
-        $uri = parse_url($uri, PHP_URL_PATH);
-        $uri = rtrim($uri, '/');
-        
-        // Get script name (e.g., /hrdemo/api.php or /hrdemo/index.php)
-        $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
-        $scriptDir = rtrim(dirname($scriptName), '/');
-        
-        // Remove base directory path (e.g., /hrdemo)
-        if ($scriptDir !== '/' && $scriptDir !== '' && str_starts_with($uri, $scriptDir)) {
-            $uri = substr($uri, strlen($scriptDir));
-        }
-        
-        // Remove leading slash to match route patterns
-        $uri = ltrim($uri, '/');
-        
-        // Log for debugging
-        error_log("Router URI: {$uri}, ScriptName: {$scriptName}, ScriptDir: {$scriptDir}");
-        
-        return $uri ?: '/';
     }
 
     /**

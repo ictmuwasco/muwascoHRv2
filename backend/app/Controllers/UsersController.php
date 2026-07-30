@@ -4,23 +4,31 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
-use App\Core\Controller;
+use App\Services\Contracts\UserServiceInterface;
+use App\Services\UserService;
+use App\Repositories\UserRepository;
 use App\Services\AuditService;
 
 /**
  * UsersController
  *
  * Handles user management including CRUD operations and password resets.
+ * Thin controller that delegates business logic to UserService.
  *
  * Place: backend/app/Controllers/UsersController.php
  */
 class UsersController extends Controller
 {
+    private UserServiceInterface $userService;
     private AuditService $audit;
 
     public function __construct()
     {
-        parent::__construct();
+        // Dependency injection
+        $this->userService = new UserService();
+        $this->userService->setUserRepository(new UserRepository());
+        $this->userService->setEmployeeRepository(new \App\Repositories\EmployeeRepository());
+        
         $this->audit = AuditService::getInstance();
     }
 
@@ -43,23 +51,24 @@ class UsersController extends Controller
             return;
         }
 
-        $conn = $this->getDbConnection();
+        try {
+            // Fetch all users using service
+            $result = $this->userService->getAllUsers();
+            $allUsers = $result['data'] ?? $result;
 
-        // Fetch all users
-        $allUsers = $conn->query("SELECT * FROM users ORDER BY first_name, last_name")
-            ->fetch_all(MYSQLI_ASSOC);
-
-        // Get valid roles from database ENUM
-        $valid_roles = [];
-        $enumRow = $conn->query("SHOW COLUMNS FROM users WHERE Field = 'role'")->fetch_assoc();
-        if ($enumRow && preg_match("/^enum\('(.*)'\)$/", $enumRow['Type'], $m)) {
-            $valid_roles = explode("','", $m[1]);
-        }
-        if (empty($valid_roles)) {
+            // Get valid roles (hardcoded for now, could be moved to config)
             $valid_roles = [
                 'super_admin', 'hr_manager', 'dept_head', 'section_head',
                 'manager', 'managing_director', 'officer', 'bod_chairman', 'sub_section_head',
             ];
+
+        } catch (\Exception $e) {
+            $allUsers = [];
+            $valid_roles = [
+                'super_admin', 'hr_manager', 'dept_head', 'section_head',
+                'manager', 'managing_director', 'officer', 'bod_chairman', 'sub_section_head',
+            ];
+            $_SESSION['flash_error'] = 'Error fetching users: ' . $e->getMessage();
         }
 
         $this->view('users/index', [
@@ -133,39 +142,32 @@ class UsersController extends Controller
             return;
         }
 
-        $conn = $this->getDbConnection();
-
         // Get valid roles
-        $valid_roles = [];
-        $enumRow = $conn->query("SHOW COLUMNS FROM users WHERE Field = 'role'")->fetch_assoc();
-        if ($enumRow && preg_match("/^enum\('(.*)'\)$/", $enumRow['Type'], $m)) {
-            $valid_roles = explode("','", $m[1]);
-        }
-        if (empty($valid_roles)) {
-            $valid_roles = [
-                'super_admin', 'hr_manager', 'dept_head', 'section_head',
-                'manager', 'managing_director', 'officer', 'bod_chairman', 'sub_section_head',
-            ];
-        }
+        $valid_roles = [
+            'super_admin', 'hr_manager', 'dept_head', 'section_head',
+            'manager', 'managing_director', 'officer', 'bod_chairman', 'sub_section_head',
+        ];
 
         try {
             if ($action === 'add_user') {
-                $this->addUser($conn, $valid_roles);
+                $this->addUser($valid_roles);
             } elseif ($action === 'edit_user') {
-                $this->editUser($conn, $valid_roles);
+                $this->editUser($valid_roles);
             } elseif ($action === 'delete_user') {
-                $this->deleteUser($conn);
+                $this->deleteUser();
             } elseif ($action === 'reset_password') {
-                $this->resetPassword($conn);
+                $this->resetPassword();
             }
-        } catch (Exception $e) {
+        } catch (\InvalidArgumentException $e) {
+            $_SESSION['flash_error'] = $e->getMessage();
+        } catch (\Exception $e) {
             $_SESSION['flash_error'] = 'Error: ' . $e->getMessage();
         }
 
         $this->redirect('users');
     }
 
-    private function addUser(\mysqli $conn, array $valid_roles): void
+    private function addUser(array $valid_roles): void
     {
         $first_name = trim($_POST['first_name'] ?? '');
         $last_name = trim($_POST['last_name'] ?? '');
@@ -179,45 +181,26 @@ class UsersController extends Controller
         $gender = trim($_POST['gender'] ?? '');
         $designation = trim($_POST['designation'] ?? '');
 
-        if (!in_array($role, $valid_roles, true)) {
-            throw new Exception('Invalid role selected.');
-        }
+        // Create user using service
+        $userId = $this->userService->createUser([
+            'first_name' => $first_name,
+            'last_name' => $last_name,
+            'surname' => $surname,
+            'email' => $email,
+            'password' => $password,
+            'role' => $role,
+            'phone' => $phone,
+            'address' => $address,
+            'employee_id' => $employee_id,
+            'gender' => $gender,
+            'designation' => $designation,
+        ]);
 
-        if (strlen($password) < 6) {
-            throw new Exception('Password must be at least 6 characters.');
-        }
-
-        // Check if email exists
-        $chk = $conn->prepare("SELECT id FROM users WHERE email = ?");
-        $chk->bind_param('s', $email);
-        $chk->execute();
-        if ($chk->get_result()->fetch_assoc()) {
-            throw new Exception('Email already exists in the system.');
-        }
-
-        $uid = 'USR-' . time() . rand(1000, 9999);
-        $hash = password_hash($password, PASSWORD_DEFAULT);
-        $st = $conn->prepare(
-            "INSERT INTO users
-             (id, first_name, last_name, surname, email, password,
-              role, designation, phone, address, gender, employee_id,
-              created_at, updated_at, is_active)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)"
-        );
-        $st->bind_param('ssssssssssss',
-            $uid, $first_name, $last_name, $surname, $email, $hash,
-            $role, $designation, $phone, $address, $gender, $employee_id
-        );
-
-        if ($st->execute()) {
-            $_SESSION['flash_message'] = 'User created successfully!';
-            $_SESSION['flash_type'] = 'success';
-        } else {
-            throw new Exception('Error creating user: ' . $conn->error);
-        }
+        $_SESSION['flash_message'] = 'User created successfully!';
+        $_SESSION['flash_type'] = 'success';
     }
 
-    private function editUser(\mysqli $conn, array $valid_roles): void
+    private function editUser(array $valid_roles): void
     {
         $id = trim($_POST['id'] ?? '');
         $first_name = trim($_POST['first_name'] ?? '');
@@ -233,124 +216,91 @@ class UsersController extends Controller
         $designation = trim($_POST['designation'] ?? '');
         $is_active = isset($_POST['is_active']) ? 1 : 0;
 
-        if (!in_array($role, $valid_roles, true)) {
-            throw new Exception('Invalid role selected.');
-        }
-
-        if (!empty($password) && strlen($password) < 6) {
-            throw new Exception('New password must be at least 6 characters.');
-        }
-
         // Get old user data for audit
-        $oldUser = $conn->query("SELECT * FROM users WHERE id = '{$id}'")->fetch_assoc();
+        $oldUser = $this->userService->getUserById((int)$id);
 
-        // Check if email exists for another user
-        $chk = $conn->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
-        $chk->bind_param('ss', $email, $id);
-        $chk->execute();
-        if ($chk->get_result()->fetch_assoc()) {
-            throw new Exception('Email already in use by another account.');
-        }
+        // Update user using service
+        $updateData = [
+            'first_name' => $first_name,
+            'last_name' => $last_name,
+            'surname' => $surname,
+            'email' => $email,
+            'role' => $role,
+            'phone' => $phone,
+            'address' => $address,
+            'employee_id' => $employee_id,
+            'gender' => $gender,
+            'designation' => $designation,
+            'is_active' => $is_active,
+        ];
 
+        // Only include password if provided
         if (!empty($password)) {
-            $hash = password_hash($password, PASSWORD_DEFAULT);
-            $st = $conn->prepare(
-                "UPDATE users SET first_name=?, last_name=?, surname=?, email=?, password=?,
-                 role=?, designation=?, phone=?, address=?, gender=?, employee_id=?, is_active=?, updated_at=NOW()
-                 WHERE id=?"
-            );
-            $st->bind_param('sssssssssssss',
-                $first_name, $last_name, $surname, $email, $hash,
-                $role, $designation, $phone, $address, $gender, $employee_id, $is_active, $id
-            );
-        } else {
-            $st = $conn->prepare(
-                "UPDATE users SET first_name=?, last_name=?, surname=?, email=?,
-                 role=?, designation=?, phone=?, address=?, gender=?, employee_id=?, is_active=?, updated_at=NOW()
-                 WHERE id=?"
-            );
-            $st->bind_param('sssssssssss',
-                $first_name, $last_name, $surname, $email,
-                $role, $designation, $phone, $address, $gender, $employee_id, $is_active, $id
-            );
+            $updateData['password'] = $password;
         }
 
-        if ($st->execute()) {
-            $_SESSION['flash_message'] = 'User updated successfully!';
-            $_SESSION['flash_type'] = 'success';
-            
-            // Audit log
+        $this->userService->updateUser((int)$id, $updateData);
+
+        $_SESSION['flash_message'] = 'User updated successfully!';
+        $_SESSION['flash_type'] = 'success';
+        
+        // Audit log
+        if ($oldUser) {
             $this->audit->logUpdate(
                 'users',
                 (int)$id,
                 $oldUser,
-                array_merge($oldUser, [
-                    'first_name' => $first_name,
-                    'last_name' => $last_name,
-                    'email' => $email,
-                    'role' => $role,
-                    'designation' => $designation,
-                    'is_active' => $is_active,
-                ]),
+                array_merge($oldUser, $updateData),
                 "Updated user: {$first_name} {$last_name}"
             );
-        } else {
-            throw new Exception('Error updating user: ' . $conn->error);
         }
     }
 
-    private function deleteUser(\mysqli $conn): void
+    private function deleteUser(): void
     {
         $id = trim($_POST['id'] ?? '');
         $current_user_id = $_SESSION['user_id'];
 
         if ($id === $current_user_id) {
-            throw new Exception('You cannot delete your own account.');
+            throw new \InvalidArgumentException('You cannot delete your own account.');
         }
 
         // Get user data before deletion for audit
-        $oldUser = $conn->query("SELECT * FROM users WHERE id = '{$id}'")->fetch_assoc();
+        $oldUser = $this->userService->getUserById((int)$id);
 
-        $st = $conn->prepare("DELETE FROM users WHERE id = ?");
-        $st->bind_param('s', $id);
+        // Delete user using service
+        $this->userService->deleteUser((int)$id);
 
-        if ($st->execute() && $st->affected_rows > 0) {
-            $_SESSION['flash_message'] = 'User deleted successfully!';
-            $_SESSION['flash_type'] = 'success';
-            
-            // Audit log
+        $_SESSION['flash_message'] = 'User deleted successfully!';
+        $_SESSION['flash_type'] = 'success';
+        
+        // Audit log
+        if ($oldUser) {
             $this->audit->logDelete(
                 'users',
                 (int)$id,
                 $oldUser,
                 "Deleted user: " . ($oldUser['first_name'] ?? '') . " " . ($oldUser['last_name'] ?? '')
             );
-        } else {
-            throw new Exception('Error deleting user: ' . $conn->error);
         }
     }
 
-    private function resetPassword(\mysqli $conn): void
+    private function resetPassword(): void
     {
         $id = trim($_POST['id'] ?? '');
         $password = trim($_POST['password'] ?? '');
 
-        if (strlen($password) < 6) {
-            throw new Exception('Password must be at least 6 characters.');
-        }
-
         // Get user data for audit
-        $user = $conn->query("SELECT * FROM users WHERE id = '{$id}'")->fetch_assoc();
+        $user = $this->userService->getUserById((int)$id);
 
-        $hash = password_hash($password, PASSWORD_DEFAULT);
-        $st = $conn->prepare("UPDATE users SET password=?, updated_at=NOW() WHERE id=?");
-        $st->bind_param('ss', $hash, $id);
+        // Reset password using service
+        $this->userService->updatePassword((int)$id, $password);
 
-        if ($st->execute()) {
-            $_SESSION['flash_message'] = 'Password reset successfully!';
-            $_SESSION['flash_type'] = 'success';
-            
-            // Audit log
+        $_SESSION['flash_message'] = 'Password reset successfully!';
+        $_SESSION['flash_type'] = 'success';
+        
+        // Audit log
+        if ($user) {
             $this->audit->log(
                 'PASSWORD_RESET',
                 "Reset password for user: " . ($user['first_name'] ?? '') . " " . ($user['last_name'] ?? ''),
@@ -359,8 +309,6 @@ class UsersController extends Controller
                     'record_id' => (int)$id,
                 ]
             );
-        } else {
-            throw new Exception('Error resetting password: ' . $conn->error);
         }
     }
 }

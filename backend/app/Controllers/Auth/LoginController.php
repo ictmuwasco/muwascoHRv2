@@ -5,18 +5,24 @@ declare(strict_types=1);
 namespace App\Controllers\Auth;
 
 use App\Core\Controller;
-use App\Models\User;
+use App\Services\Contracts\AuthServiceInterface;
+use App\Services\AuthService;
+use App\Repositories\UserRepository;
+use App\Repositories\EmployeeRepository;
 use App\Models\Consent;
 
 class LoginController extends Controller
 {
-    private User $userModel;
+    private AuthServiceInterface $authService;
     private Consent $consentModel;
 
     public function __construct()
     {
-        parent::__construct();
-        $this->userModel    = new User();
+        // Dependency injection
+        $this->authService = new AuthService();
+        $this->authService->setUserRepository(new UserRepository());
+        $this->authService->setEmployeeRepository(new EmployeeRepository());
+        
         $this->consentModel = new Consent();
     }
 
@@ -80,37 +86,35 @@ class LoginController extends Controller
             return;
         }
 
-        // ── Authenticate ──────────────────────────────────────────────────────
-        $user = $this->userModel->findByEmail($email);
+        // ── Authenticate using service ─────────────────────────────────────────
+        try {
+            $user = $this->authService->getUserByEmail($email);
+            
+            if (!$user || !$this->authService->validateCredentials($email, $password)) {
+                $_SESSION['flash_error'] = 'The email or password you entered is incorrect.';
+                $this->trackFailedLogin($email);
+                $this->redirect('login');
+                return;
+            }
 
-        if (!$user || !password_verify($password, $user['password'])) {
+            // ── Account active? ───────────────────────────────────────────────────
+            if (!$this->authService->isUserActive((int)$user['id'])) {
+                $_SESSION['flash_error'] = 'Your account is inactive. Contact HR.';
+                $this->logSecurityEvent('login_attempt_inactive_account', (int)$user['id'], $email);
+                $this->redirect('login');
+                return;
+            }
+
+            // ── Upgrade legacy plain-text password ────────────────────────────────
+            if ($password === $user['password']) {
+                $this->authService->updatePassword((int)$user['id'], $password);
+                $this->logSecurityEvent('password_upgraded', (int)$user['id'], $email);
+            }
+        } catch (\InvalidArgumentException $e) {
             $_SESSION['flash_error'] = 'The email or password you entered is incorrect.';
             $this->trackFailedLogin($email);
             $this->redirect('login');
             return;
-        }
-
-        // ── Account active? ───────────────────────────────────────────────────
-        if (!$user['is_active']) {
-            $_SESSION['flash_error'] = 'Your account is inactive. Contact HR.';
-            $this->logSecurityEvent('login_attempt_inactive_account', (int)$user['id'], $email);
-            $this->redirect('login');
-            return;
-        }
-
-        // ── Employee status ───────────────────────────────────────────────────
-        if (!empty($user['employee_status']) && $user['employee_status'] !== 'active') {
-            $_SESSION['flash_error'] = $this->getEmployeeStatusMessage($user['employee_status']);
-            $this->logSecurityEvent('login_attempt_inactive_employee', (int)$user['id'], $email);
-            $this->redirect('login');
-            return;
-        }
-
-        // ── Upgrade legacy plain-text password ────────────────────────────────
-        if ($password === $user['password']) {
-            $newHash = password_hash($password, PASSWORD_DEFAULT);
-            $this->userModel->updatePassword((int)$user['id'], $newHash);
-            $this->logSecurityEvent('password_upgraded', (int)$user['id'], $email);
         }
 
         $this->clearLoginAttempts($email);
@@ -143,9 +147,9 @@ class LoginController extends Controller
         // Resolve employee name
         $employeeName = trim($user['first_name'] . ' ' . $user['last_name']);
         if ($employeeName === '') {
-            $emp = $this->userModel->getEmployeeName($user['email'], $user['employee_id'] ?? null);
-            if ($emp) {
-                $employeeName = trim($emp['first_name'] . ' ' . $emp['last_name']);
+            $emp = $this->authService->getUserByEmail($user['email']);
+            if ($emp && !empty($emp['employee'])) {
+                $employeeName = trim($emp['employee']['first_name'] . ' ' . $emp['employee']['last_name']);
             }
         }
 
