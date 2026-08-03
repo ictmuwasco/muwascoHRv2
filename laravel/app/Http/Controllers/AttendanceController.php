@@ -1,30 +1,39 @@
-﻿<?php
+<?php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
-use App\Services\Contracts\AttendanceServiceInterface;
+use App\Models\Employee;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AttendanceController extends Controller
 {
-    public function __construct(private AttendanceServiceInterface $service)
-    {
-    }
-
     public function index(Request $request): JsonResponse
     {
-        $filters = $request->only(['employee_id', 'date', 'from_date', 'to_date']);
-        $attendances = $this->service->list($filters);
+        $query = Attendance::query();
+        
+        if ($request->has('employee_id')) {
+            $query->where('employee_id', $request->employee_id);
+        }
+
+        if ($request->has('date')) {
+            $query->where('attendance_date', $request->date);
+        }
+
+        if ($request->has('from_date') && $request->has('to_date')) {
+            $query->whereBetween('attendance_date', [$request->from_date, $request->to_date]);
+        }
+
+        $attendances = $query->with(['employee'])->orderBy('attendance_date', 'desc')->paginate(15);
 
         return response()->json($attendances);
     }
 
     public function show(Attendance $attendance): JsonResponse
     {
-        $attendance = $this->service->get($attendance->id);
+        $attendance->load('employee');
         return response()->json($attendance);
     }
 
@@ -38,9 +47,18 @@ class AttendanceController extends Controller
             'remarks' => 'nullable|string',
         ]);
 
-        $attendance = $this->service->create($validated);
+        // Check if attendance already exists for this employee on this date
+        $existing = Attendance::where('employee_id', $validated['employee_id'])
+            ->where('attendance_date', $validated['attendance_date'])
+            ->first();
 
-        return response()->json($attendance, 201);
+        if ($existing) {
+            return response()->json(['error' => 'Attendance already recorded for this date'], 422);
+        }
+
+        $attendance = Attendance::create($validated);
+
+        return response()->json($attendance->load('employee'), 201);
     }
 
     public function update(Request $request, Attendance $attendance): JsonResponse
@@ -51,15 +69,51 @@ class AttendanceController extends Controller
             'remarks' => 'nullable|string',
         ]);
 
-        $attendance = $this->service->update($attendance, $validated);
+        $attendance->update($validated);
 
         return response()->json($attendance);
     }
 
     public function destroy(Attendance $attendance): JsonResponse
     {
-        $this->service->delete($attendance);
+        $attendance->delete();
 
         return response()->json(null, 204);
+    }
+
+    public function today(): JsonResponse
+    {
+        $attendances = Attendance::where('attendance_date', now()->toDateString())
+            ->with('employee')
+            ->get();
+
+        return response()->json($attendances);
+    }
+
+    public function byEmployee(int $employeeId): JsonResponse
+    {
+        $attendances = Attendance::where('employee_id', $employeeId)
+            ->orderBy('attendance_date', 'desc')
+            ->get();
+
+        return response()->json($attendances);
+    }
+
+    public function dashboard(): JsonResponse
+    {
+        $today = now()->toDateString();
+        $totalEmployees = Employee::where('employee_status', 'active')->count();
+
+        $present = Attendance::where('attendance_date', $today)->count();
+        $late = Attendance::where('attendance_date', $today)
+            ->where('clock_in', '>', '08:30')
+            ->count();
+
+        return response()->json([
+            'present' => $present,
+            'absent' => max(0, $totalEmployees - $present),
+            'late' => $late,
+            'total' => $totalEmployees,
+        ]);
     }
 }
