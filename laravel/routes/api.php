@@ -61,6 +61,10 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/users/{user}/change-password', [UserController::class, 'changePassword']);
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
+    Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+    Route::get('/dashboard/charts/attendance', [DashboardController::class, 'chartsAttendance']);
+    Route::get('/dashboard/charts/departments', [DashboardController::class, 'chartsDepartments']);
+    Route::get('/dashboard/charts/leave', [DashboardController::class, 'chartsLeave']);
 
     Route::get('/reports/employees', [ReportController::class, 'employees']);
     Route::get('/reports/leave', [ReportController::class, 'leave']);
