@@ -9,19 +9,15 @@ return new class extends Migration
     /**
      * Run the migrations.
      *
+     * The users table is created by the custom migration
+     * 2024_01_01_000001_create_users_table.php with HRMS-specific columns.
+     * This migration is kept as a no-op to avoid duplicate table creation.
+     *
      * @return void
      */
     public function up()
     {
-        Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->rememberToken();
-            $table->timestamps();
-        });
+        // No-op: users table is created by 2024_01_01_000001_create_users_table.php
     }
 
     /**
@@ -31,6 +27,6 @@ return new class extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('users');
+        // No-op: users table is dropped by 2024_01_01_000001_create_users_table.php
     }
 };

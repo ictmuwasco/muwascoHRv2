@@ -6,12 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
     public function index(): JsonResponse
     {
-        $users = User::all();
+        $users = User::with(['employee', 'department'])->get();
         return response()->json($users);
     }
 
@@ -35,5 +36,17 @@ class UserController extends Controller
         $user->update($validated);
 
         return response()->json($user);
+    }
+
+    public function changePassword(Request $request, User $user): JsonResponse
+    {
+        $validated = $request->validate([
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $user->password = Hash::make($validated['password']);
+        $user->save();
+
+        return response()->json(['message' => 'Password changed successfully']);
     }
 }
