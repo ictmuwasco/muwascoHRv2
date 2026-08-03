@@ -44,6 +44,20 @@ class EmployeeController extends Controller
         return response()->json($employees);
     }
 
+    public function search(Request $request): JsonResponse
+    {
+        $query = $request->get('q', '');
+
+        $employees = Employee::where(function ($q) use ($query) {
+            $q->where('first_name', 'like', "%{$query}%")
+              ->orWhere('last_name', 'like', "%{$query}%")
+              ->orWhere('employee_id', 'like', "%{$query}%")
+              ->orWhere('email', 'like', "%{$query}%");
+        })->with(['department', 'section'])->get();
+
+        return response()->json($employees);
+    }
+
     public function show(Employee $employee): JsonResponse
     {
         $employee->load(['department', 'section', 'user', 'leaveApplications', 'attendances']);

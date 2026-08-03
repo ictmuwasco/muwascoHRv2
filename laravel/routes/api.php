@@ -27,14 +27,26 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/auth/user', [AuthController::class, 'user']);
     Route::get('/auth/profile', [AuthController::class, 'user']);
 
+    // Employee routes - search must be before apiResource
+    Route::get('employees/search', [EmployeeController::class, 'search']);
     Route::apiResource('employees', EmployeeController::class);
+
     Route::apiResource('departments', DepartmentController::class);
-    Route::apiResource('leave', LeaveController::class);
-    Route::post('/leave/{leaveApplication}/approve', [LeaveController::class, 'approve']);
-    Route::post('/leave/{leaveApplication}/reject', [LeaveController::class, 'reject']);
-    Route::apiResource('attendance', AttendanceController::class);
-    Route::apiResource('users', UserController::class);
     Route::apiResource('sections', SectionController::class);
+    Route::apiResource('users', UserController::class);
+    Route::apiResource('attendance', AttendanceController::class);
+
+    // Leave routes - apply/types/pending/holidays must be before apiResource's {leaveApplication}
+    Route::get('/leave/types', [LeaveController::class, 'types']);
+    Route::get('/leave/holidays', [LeaveController::class, 'holidays']);
+    Route::get('/leave/pending', [LeaveController::class, 'pending']);
+    Route::get('/leave/balance/{employeeId}', [LeaveController::class, 'balance']);
+    Route::get('/leave/employee/{employeeId}', [LeaveController::class, 'byEmployee']);
+    Route::post('/leave/apply', [LeaveController::class, 'apply']);
+    Route::apiResource('leave', LeaveController::class);
+    Route::put('/leave/{leaveApplication}/approve', [LeaveController::class, 'approve']);
+    Route::put('/leave/{leaveApplication}/reject', [LeaveController::class, 'reject']);
+    Route::put('/leave/{leaveApplication}/cancel', [LeaveController::class, 'cancel']);
 
     Route::post('/users/{user}/change-password', [UserController::class, 'changePassword']);
 
