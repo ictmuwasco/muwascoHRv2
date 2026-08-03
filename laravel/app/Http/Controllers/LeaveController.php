@@ -1,44 +1,32 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\LeaveApplication;
-use App\Models\LeaveType;
-use App\Models\Employee;
 use App\Models\LeaveHistory;
+use App\Services\Contracts\LeaveServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class LeaveController extends Controller
 {
+    public function __construct(private LeaveServiceInterface $service)
+    {
+    }
+
     public function index(Request $request): JsonResponse
     {
-        $query = LeaveApplication::query();
-        
-        if ($request->has('employee_id')) {
-            $query->where('employee_id', $request->employee_id);
-        }
-
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->has('leave_type_id')) {
-            $query->where('leave_type_id', $request->leave_type_id);
-        }
-
-        $leaveApplications = $query->with(['employee', 'leaveType', 'appliedBy'])
-            ->orderBy('applied_at', 'desc')
-            ->paginate(15);
+        $filters = $request->only(['employee_id', 'status', 'leave_type_id']);
+        $leaveApplications = $this->service->list($filters);
 
         return response()->json($leaveApplications);
     }
 
     public function show(LeaveApplication $leaveApplication): JsonResponse
     {
-        $leaveApplication->load(['employee', 'leaveType', 'appliedBy', 'approver', 'sectionHead', 'deptHead']);
-        
+        $leaveApplication = $this->service->get($leaveApplication->id);
+
         return response()->json($leaveApplication);
     }
 
@@ -61,9 +49,8 @@ class LeaveController extends Controller
         $validated['status'] = 'pending';
         $validated['applied_at'] = now();
 
-        $leaveApplication = LeaveApplication::create($validated);
+        $leaveApplication = $this->service->create($validated);
 
-        // Create history record
         LeaveHistory::create([
             'leave_application_id' => $leaveApplication->id,
             'action' => 'applied',
@@ -72,7 +59,7 @@ class LeaveController extends Controller
             'performed_at' => now(),
         ]);
 
-        return response()->json($leaveApplication->load(['employee', 'leaveType']), 201);
+        return response()->json($leaveApplication, 201);
     }
 
     public function update(Request $request, LeaveApplication $leaveApplication): JsonResponse
@@ -85,14 +72,14 @@ class LeaveController extends Controller
             'status' => 'in:pending,approved,rejected,cancelled',
         ]);
 
-        $leaveApplication->update($validated);
+        $leaveApplication = $this->service->update($leaveApplication, $validated);
 
         return response()->json($leaveApplication);
     }
 
     public function destroy(LeaveApplication $leaveApplication): JsonResponse
     {
-        $leaveApplication->delete();
+        $this->service->delete($leaveApplication);
 
         return response()->json(null, 204);
     }
@@ -103,11 +90,11 @@ class LeaveController extends Controller
             'comments' => 'nullable|string',
         ]);
 
-        $leaveApplication->update([
+        $leaveApplication = $this->service->update($leaveApplication, [
             'status' => 'approved',
             'hr_approved_by' => auth()->id(),
             'hr_approved_at' => now(),
-            'hr_comments' => $validated['comments'],
+            'hr_comments' => $validated['comments'] ?? null,
         ]);
 
         LeaveHistory::create([
@@ -127,7 +114,7 @@ class LeaveController extends Controller
             'rejection_reason' => 'required|string',
         ]);
 
-        $leaveApplication->update([
+        $leaveApplication = $this->service->update($leaveApplication, [
             'status' => 'rejected',
             'rejection_reason' => $validated['rejection_reason'],
             'hr_processed_by' => auth()->id(),
