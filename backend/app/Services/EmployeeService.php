@@ -18,11 +18,23 @@ use App\Repositories\Contracts\OfficeRepositoryInterface;
  */
 class EmployeeService implements EmployeeServiceInterface
 {
-    private EmployeeRepositoryInterface $employeeRepository;
-    private DepartmentRepositoryInterface $departmentRepository;
-    private SectionRepositoryInterface $sectionRepository;
-    private OfficeRepositoryInterface $officeRepository;
+    private ?EmployeeRepositoryInterface $employeeRepository = null;
+    private ?DepartmentRepositoryInterface $departmentRepository = null;
+    private ?SectionRepositoryInterface $sectionRepository = null;
+    private ?OfficeRepositoryInterface $officeRepository = null;
     private array $dependencies = [];
+
+    public function __construct(
+        EmployeeRepositoryInterface $employeeRepository = null,
+        mixed $departmentRepository = null,
+        mixed $sectionRepository = null,
+        mixed $officeRepository = null
+    ) {
+        $this->employeeRepository = $employeeRepository;
+        $this->departmentRepository = $departmentRepository instanceof DepartmentRepositoryInterface ? $departmentRepository : null;
+        $this->sectionRepository = $sectionRepository instanceof SectionRepositoryInterface ? $sectionRepository : null;
+        $this->officeRepository = $officeRepository instanceof OfficeRepositoryInterface ? $officeRepository : null;
+    }
 
     public function setEmployeeRepository(EmployeeRepositoryInterface $repository): void
     {
@@ -52,6 +64,27 @@ class EmployeeService implements EmployeeServiceInterface
     public function getDependency(string $name): mixed
     {
         return $this->dependencies[$name] ?? null;
+    }
+
+    // Alias methods for test compatibility
+    public function getAll(array $filters = [], int $page = 1, int $limit = 30): array
+    {
+        return $this->getAllEmployees($filters, $page, $limit);
+    }
+
+    public function create(array $data): int
+    {
+        return $this->createEmployee($data);
+    }
+
+    public function update(int $id, array $data): bool
+    {
+        return $this->updateEmployee($id, $data);
+    }
+
+    public function delete(int $id): bool
+    {
+        return $this->deleteEmployee($id);
     }
 
     public function getAllEmployees(array $filters = [], int $page = 1, int $limit = 30): array

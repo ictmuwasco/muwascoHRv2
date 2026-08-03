@@ -1,0 +1,82 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Attendance;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class AttendanceController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        $query = Attendance::query();
+        
+        if ($request->has('employee_id')) {
+            $query->where('employee_id', $request->employee_id);
+        }
+
+        if ($request->has('date')) {
+            $query->where('attendance_date', $request->date);
+        }
+
+        if ($request->has('from_date') && $request->has('to_date')) {
+            $query->whereBetween('attendance_date', [$request->from_date, $request->to_date]);
+        }
+
+        $attendances = $query->with(['employee'])->orderBy('attendance_date', 'desc')->paginate(15);
+
+        return response()->json($attendances);
+    }
+
+    public function show(Attendance $attendance): JsonResponse
+    {
+        $attendance->load('employee');
+        return response()->json($attendance);
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'employee_id' => 'required|exists:employees,id',
+            'attendance_date' => 'required|date',
+            'clock_in' => 'nullable|date_format:H:i',
+            'clock_out' => 'nullable|date_format:H:i',
+            'remarks' => 'nullable|string',
+        ]);
+
+        // Check if attendance already exists for this employee on this date
+        $existing = Attendance::where('employee_id', $validated['employee_id'])
+            ->where('attendance_date', $validated['attendance_date'])
+            ->first();
+
+        if ($existing) {
+            return response()->json(['error' => 'Attendance already recorded for this date'], 422);
+        }
+
+        $attendance = Attendance::create($validated);
+
+        return response()->json($attendance->load('employee'), 201);
+    }
+
+    public function update(Request $request, Attendance $attendance): JsonResponse
+    {
+        $validated = $request->validate([
+            'clock_in' => 'nullable|date_format:H:i',
+            'clock_out' => 'nullable|date_format:H:i',
+            'remarks' => 'nullable|string',
+        ]);
+
+        $attendance->update($validated);
+
+        return response()->json($attendance);
+    }
+
+    public function destroy(Attendance $attendance): JsonResponse
+    {
+        $attendance->delete();
+
+        return response()->json(null, 204);
+    }
+}
