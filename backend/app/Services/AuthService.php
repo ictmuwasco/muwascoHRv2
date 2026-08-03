@@ -18,9 +18,21 @@ use App\Helpers\Session;
  */
 class AuthService implements AuthServiceInterface
 {
-    private UserRepositoryInterface $userRepository;
-    private EmployeeRepositoryInterface $employeeRepository;
+    private ?UserRepositoryInterface $userRepository = null;
+    private ?EmployeeRepositoryInterface $employeeRepository = null;
     private array $dependencies = [];
+
+    public function __construct(
+        UserRepositoryInterface $userRepository = null,
+        Hash $hash = null,
+        Session $session = null,
+        EmployeeRepositoryInterface $employeeRepository = null
+    ) {
+        $this->userRepository = $userRepository;
+        $this->employeeRepository = $employeeRepository;
+        $this->hash = $hash ?? Hash::getInstance();
+        $this->session = $session ?? Session::getInstance();
+    }
 
     public function setUserRepository(UserRepositoryInterface $repository): void
     {
@@ -64,7 +76,7 @@ class AuthService implements AuthServiceInterface
         }
 
         // Business rule: Validate password
-        if (!Hash::check($password, $user['password'])) {
+        if (!$this->hash->verify($password, $user['password'])) {
             throw new \InvalidArgumentException('Invalid credentials');
         }
 
@@ -78,14 +90,14 @@ class AuthService implements AuthServiceInterface
         $this->updateLastLogin($user['id']);
 
         // Business rule: Create session
-        Session::set('user_id', $user['id']);
-        Session::set('user_email', $user['email']);
-        Session::set('user_role', $user['role']);
-        Session::set('user_name', trim($user['first_name'] . ' ' . $user['last_name']));
+        $this->session->set('user_id', $user['id']);
+        $this->session->set('user_email', $user['email']);
+        $this->session->set('user_role', $user['role']);
+        $this->session->set('user_name', trim($user['first_name'] . ' ' . $user['last_name']));
 
         if ($employee) {
-            Session::set('employee_id', $employee['id']);
-            Session::set('employee_name', trim($employee['first_name'] . ' ' . $employee['last_name']));
+            $this->session->set('employee_id', $employee['id']);
+            $this->session->set('employee_name', trim($employee['first_name'] . ' ' . $employee['last_name']));
         }
 
         // Business rule: Set remember me cookie if requested
@@ -107,16 +119,18 @@ class AuthService implements AuthServiceInterface
         ];
     }
 
-    public function logout(int $userId): bool
+    public function logout(int $userId = 0): bool
     {
-        // Business rule: Check if user exists
-        $user = $this->userRepository->findById($userId);
-        if (!$user) {
-            throw new \InvalidArgumentException('User not found');
+        // Business rule: Check if user exists (only if userId provided)
+        if ($userId > 0) {
+            $user = $this->userRepository->findById($userId);
+            if (!$user) {
+                throw new \InvalidArgumentException('User not found');
+            }
         }
 
         // Business rule: Clear session
-        Session::destroy();
+        $this->session->destroy();
 
         // Business rule: Clear remember me cookie
         $this->clearRememberMeCookie();
@@ -158,7 +172,7 @@ class AuthService implements AuthServiceInterface
         }
 
         // Business rule: Validate password
-        return Hash::check($password, $user['password']);
+        return $this->hash->verify($password, $user['password']);
     }
 
     public function getUserByEmail(string $email): ?array
@@ -183,7 +197,7 @@ class AuthService implements AuthServiceInterface
         }
 
         // Business rule: Hash password
-        $passwordHash = Hash::make($newPassword);
+        $passwordHash = $this->hash->make($newPassword);
 
         // Business rule: Update password
         return $this->userRepository->updatePassword($userId, $passwordHash);
@@ -206,7 +220,7 @@ class AuthService implements AuthServiceInterface
         }
 
         // Business rule: Hash password
-        $passwordHash = Hash::make($newPassword);
+        $passwordHash = $this->hash->make($newPassword);
 
         // Business rule: Update password
         return $this->userRepository->updatePassword($user['id'], $passwordHash);

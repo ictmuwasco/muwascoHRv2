@@ -147,7 +147,7 @@ class EmployeeController extends BaseController
             $page = (int)($filters['page'] ?? 1);
             $limit = (int)($filters['limit'] ?? 30);
             
-            unset($filters['page'], $filters['limit'], 'q', 'query');
+            unset($filters['page'], $filters['limit'], $filters['q'], $filters['query']);
             
             $result = $this->employeeService->searchEmployees($query, $filters, $page, $limit);
             $this->success($result);
