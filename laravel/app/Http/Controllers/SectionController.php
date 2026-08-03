@@ -1,23 +1,31 @@
-<?php
+﻿<?php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Section;
+use App\Services\Contracts\SectionServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SectionController extends Controller
 {
-    public function index(): JsonResponse
+    public function __construct(private SectionServiceInterface $service)
     {
-        $sections = Section::with(['department', 'head'])->get();
+    }
+
+    public function index(Request $request): JsonResponse
+    {
+        $filters = $request->only(['department_id', 'is_active']);
+        $sections = $this->service->list($filters);
+
         return response()->json($sections);
     }
 
     public function show(Section $section): JsonResponse
     {
-        $section->load(['department', 'head', 'employees']);
+        $section = $this->service->get($section->id);
+
         return response()->json($section);
     }
 
@@ -31,7 +39,7 @@ class SectionController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $section = Section::create($validated);
+        $section = $this->service->create($validated);
 
         return response()->json($section, 201);
     }
@@ -46,14 +54,14 @@ class SectionController extends Controller
             'is_active' => 'boolean',
         ]);
 
-        $section->update($validated);
+        $section = $this->service->update($section, $validated);
 
         return response()->json($section);
     }
 
     public function destroy(Section $section): JsonResponse
     {
-        $section->delete();
+        $this->service->delete($section);
 
         return response()->json(null, 204);
     }
