@@ -58,6 +58,7 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::put('/leave/{leaveApplication}/reject', [LeaveController::class, 'reject']);
     Route::put('/leave/{leaveApplication}/cancel', [LeaveController::class, 'cancel']);
 
+    Route::put('/users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
     Route::post('/users/{user}/change-password', [UserController::class, 'changePassword']);
 
     Route::get('/dashboard', [DashboardController::class, 'index']);
@@ -71,6 +72,7 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/reports/attendance', [ReportController::class, 'attendance']);
     Route::get('/reports/appraisal', [ReportController::class, 'appraisal']);
     Route::get('/reports/documentation', [ReportController::class, 'documentation']);
+    Route::get('/reports/{type}/export/{format}', [ReportController::class, 'export']);
 
     Route::get('/payroll/periods', [PayrollController::class, 'periods']);
     Route::post('/payroll/periods', [PayrollController::class, 'storePeriod']);
@@ -87,10 +89,19 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/admin/financial-years', [FinancialYearController::class, 'index']);
     Route::post('/admin/financial-year/add', [FinancialYearController::class, 'store']);
 
-    Route::get('/appraisals', [AppraisalController::class, 'index']);
-    Route::post('/appraisals', [AppraisalController::class, 'store']);
-    Route::put('/appraisals/{appraisal}', [AppraisalController::class, 'update']);
+    // Appraisal routes - submit/approve/pending/employee must be before apiResource's {appraisal}
+    Route::get('/appraisals/pending', [AppraisalController::class, 'pending']);
+    Route::get('/appraisals/employee/{employeeId}', [AppraisalController::class, 'byEmployee']);
+    Route::put('/appraisals/{appraisal}/submit', [AppraisalController::class, 'submit']);
+    Route::put('/appraisals/{appraisal}/approve', [AppraisalController::class, 'approve']);
+    Route::apiResource('appraisals', AppraisalController::class);
 
+    // Strategic plan nested routes - workplans and KPIs
+    Route::get('/strategic-plans/{plan}/workplans', [WorkplanController::class, 'index']);
+    Route::post('/strategic-plans/{plan}/workplans', [WorkplanController::class, 'store']);
+    Route::get('/workplans/{workplan}/kpis', [KPIController::class, 'index']);
+    Route::post('/workplans/{workplan}/kpis', [KPIController::class, 'store']);
+    Route::put('/kpis/{kpi}', [KPIController::class, 'update']);
     Route::get('/strategic-plans', [StrategicPlanController::class, 'index']);
     Route::post('/strategic-plans', [StrategicPlanController::class, 'store']);
     Route::put('/strategic-plans/{plan}', [StrategicPlanController::class, 'update']);
