@@ -28,21 +28,10 @@ if (!file_exists($autoloadPath)) {
 }
 require_once $autoloadPath;
 
-// Load .env file manually (no Dotenv dependency needed)
+// Load .env via vlucas/phpdotenv (handles quoted values, comments, etc.)
 $envFile = BASE_PATH . '/.env';
 if (file_exists($envFile)) {
-    $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    foreach ($lines as $line) {
-        if (strpos(trim($line), '#') === 0) continue;
-        if (strpos($line, '=') !== false) {
-            list($key, $value) = explode('=', $line, 2);
-            $key = trim($key);
-            $value = trim($value);
-            if (!isset($_ENV[$key])) {
-                $_ENV[$key] = $value;
-            }
-        }
-    }
+    \Dotenv\Dotenv::createImmutable(BASE_PATH)->safeLoad();
 }
 
 error_reporting(E_ALL);
@@ -61,6 +50,17 @@ ini_set('display_errors', '0');
 ini_set('display_startup_errors', '0');
 ini_set('log_errors', '1');
 ini_set('error_log', STORAGE_PATH . '/logs/error.log');
+
+/**
+ * Get an environment variable value.
+ * Global function - no namespace
+ */
+if (!function_exists('env')) {
+    function env(string $key, mixed $default = null): mixed
+    {
+        return $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key) ?: $default;
+    }
+}
 
 // Log errors but never display them
 if (env('APP_DEBUG', false)) {
@@ -137,76 +137,86 @@ if (session_status() === PHP_SESSION_NONE) {
  * Get an environment variable value.
  * Global function - no namespace
  */
-function env(string $key, mixed $default = null): mixed
-{
-    return $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key) ?: $default;
+if (!function_exists('env')) {
+    function env(string $key, mixed $default = null): mixed
+    {
+        return $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key) ?: $default;
+    }
 }
 
 /**
  * Get application configuration.
  */
-function config(string $key, mixed $default = null): mixed
-{
-    static $config = [];
+if (!function_exists('config')) {
+    function config(string $key, mixed $default = null): mixed
+    {
+        static $config = [];
 
-    $segments = explode('.', $key);
-    $file = array_shift($segments);
-    $configPath = CONFIG_PATH . "/{$file}.php";
+        $segments = explode('.', $key);
+        $file = array_shift($segments);
+        $configPath = CONFIG_PATH . "/{$file}.php";
 
-    if (!isset($config[$file])) {
-        if (file_exists($configPath)) {
-            $config[$file] = require $configPath;
-        } else {
-            return $default;
+        if (!isset($config[$file])) {
+            if (file_exists($configPath)) {
+                $config[$file] = require $configPath;
+            } else {
+                return $default;
+            }
         }
-    }
 
-    $value = $config[$file];
-    foreach ($segments as $segment) {
-        if (!is_array($value) || !array_key_exists($segment, $value)) {
-            return $default;
+        $value = $config[$file];
+        foreach ($segments as $segment) {
+            if (!is_array($value) || !array_key_exists($segment, $value)) {
+                return $default;
+            }
+            $value = $value[$segment];
         }
-        $value = $value[$segment];
-    }
 
-    return $value;
+        return $value;
+    }
 }
 
 /**
  * Dump and die (debug helper).
  */
-function dd(mixed ...$vars): void
-{
-    foreach ($vars as $var) {
-        echo "<pre>";
-        var_dump($var);
-        echo "</pre>";
+if (!function_exists('dd')) {
+    function dd(mixed ...$vars): void
+    {
+        foreach ($vars as $var) {
+            echo "<pre>";
+            var_dump($var);
+            echo "</pre>";
+        }
+        die();
     }
-    die();
 }
 
 /**
  * Get the database connection instance.
  */
-function db(): \App\Helpers\Database
-{
-    static $db = null;
-    if ($db === null) {
-        $db = \App\Helpers\Database::getInstance();
+if (!function_exists('db')) {
+    function db(): \App\Helpers\Database
+    {
+        static $db = null;
+        if ($db === null) {
+            $db = \App\Helpers\Database::getInstance();
+        }
+        return $db;
     }
-    return $db;
 }
 
 /**
  * Get the logger instance.
  */
-function logger(): \App\Helpers\Logger
-{
-    static $logger = null;
-    if ($logger === null) {
-        $logger = new \App\Helpers\Logger();
+if (!function_exists('logger')) {
+    function logger(): \App\Helpers\Logger
+    {
+        static $logger = null;
+        if ($logger === null) {
+            $logger = new \App\Helpers\Logger();
+        }
+        return $logger;
     }
-    return $logger;
 }
 
 // Load Auth helper for permission functions

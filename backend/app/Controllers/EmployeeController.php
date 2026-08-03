@@ -4,21 +4,29 @@ declare(strict_types=1);
 
 namespace App\Controllers;
 
+use App\Services\Contracts\EmployeeServiceInterface;
 use App\Services\EmployeeService;
 
 /**
  * Employee Controller - REST API for employee management.
  * 
- * Handles all employee CRUD operations with proper validation,
- * authorization, and audit logging.
+ * Thin controller that handles HTTP request/response only.
+ * All business logic is delegated to EmployeeService.
  */
 class EmployeeController extends BaseController
 {
-    private EmployeeService $employeeService;
+    private EmployeeServiceInterface $employeeService;
 
     public function __construct()
     {
-        $this->employeeService = EmployeeService::getInstance();
+        // Dependency injection - services are injected via setter methods
+        $this->employeeService = new EmployeeService();
+        
+        // Set repository dependencies
+        $this->employeeService->setEmployeeRepository(new \App\Repositories\EmployeeRepository());
+        $this->employeeService->setDepartmentRepository(new \App\Repositories\DepartmentRepository());
+        $this->employeeService->setSectionRepository(new \App\Repositories\SectionRepository());
+        $this->employeeService->setOfficeRepository(new \App\Repositories\OfficeRepository());
     }
 
     /**
@@ -29,32 +37,43 @@ class EmployeeController extends BaseController
         $this->requirePermission('employees', 'view');
 
         try {
-            $params = array_merge($_GET, $this->getFilters());
-            $result = $this->employeeService->list($params);
+            $filters = $this->getFilters();
+            $page = (int)($filters['page'] ?? 1);
+            $limit = (int)($filters['limit'] ?? 30);
+            
+            // Remove pagination params from filters
+            unset($filters['page'], $filters['limit']);
+            
+            $result = $this->employeeService->getAllEmployees($filters, $page, $limit);
             $this->success($result);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
         } catch (\Exception $e) {
-            $this->error($e->getMessage());
+            \logger()->error('Employee listing error', ['error' => $e->getMessage()]);
+            $this->error('Failed to retrieve employees. Please try again.', 500);
         }
     }
 
     /**
      * GET /api/employees/{id} - Get a single employee.
      */
-    public function showAction(array $params = []): void
+    public function showAction(int $id): void
     {
         $this->requirePermission('employees', 'view');
 
-        $id = (int) ($params['id'] ?? 0);
-        if (!$id) {
-            $this->error('Employee ID is required', 400);
-        }
+        try {
+            $employee = $this->employeeService->getEmployeeById($id);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+            }
 
-        $employee = $this->employeeService->get($id);
-        if (!$employee) {
-            $this->notFound('Employee not found');
+            $this->success($employee);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Employee retrieval error', ['error' => $e->getMessage(), 'id' => $id]);
+            $this->error('Failed to retrieve employee. Please try again.', 500);
         }
-
-        $this->success($employee);
     }
 
     /**
@@ -65,22 +84,14 @@ class EmployeeController extends BaseController
         $this->requirePermission('employees', 'create');
 
         $data = $this->getJsonBody();
-        
-        // Validate required fields
-        $required = ['employee_id', 'first_name', 'last_name', 'national_id', 'email', 'designation', 'employee_type', 'hire_date'];
-        $missing = $this->validateRequired($data, $required);
-        
-        if ($missing) {
-            $this->error('Missing required fields: ' . implode(', ', $missing), 400);
-        }
 
         try {
-            $result = $this->employeeService->create($data);
-            $this->success($result, 'Employee created successfully', 201);
-        } catch (\RuntimeException $e) {
+            $employeeId = $this->employeeService->createEmployee($data);
+            $this->success(['id' => $employeeId], 'Employee created successfully', 201);
+        } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
         } catch (\Exception $e) {
-            \logger()->error('Employee creation error', ['error' => $e->getMessage()]);
+            \logger()->error('Employee creation error', ['error' => $e->getMessage(), 'data' => $data]);
             $this->error('Failed to create employee. Please try again.', 500);
         }
     }
@@ -88,21 +99,16 @@ class EmployeeController extends BaseController
     /**
      * PUT /api/employees/{id} - Update an existing employee.
      */
-    public function updateAction(array $params = []): void
+    public function updateAction(int $id): void
     {
         $this->requirePermission('employees', 'edit');
-
-        $id = (int) ($params['id'] ?? 0);
-        if (!$id) {
-            $this->error('Employee ID is required', 400);
-        }
 
         $data = $this->getJsonBody();
 
         try {
-            $result = $this->employeeService->update($id, $data);
+            $result = $this->employeeService->updateEmployee($id, $data);
             $this->success($result, 'Employee updated successfully');
-        } catch (\RuntimeException $e) {
+        } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
         } catch (\Exception $e) {
             \logger()->error('Employee update error', ['error' => $e->getMessage(), 'id' => $id]);
@@ -113,19 +119,14 @@ class EmployeeController extends BaseController
     /**
      * DELETE /api/employees/{id} - Delete an employee.
      */
-    public function destroyAction(array $params = []): void
+    public function destroyAction(int $id): void
     {
         $this->requirePermission('employees', 'delete');
 
-        $id = (int) ($params['id'] ?? 0);
-        if (!$id) {
-            $this->error('Employee ID is required', 400);
-        }
-
         try {
-            $result = $this->employeeService->delete($id);
+            $result = $this->employeeService->deleteEmployee($id);
             $this->success($result, 'Employee deleted successfully');
-        } catch (\RuntimeException $e) {
+        } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
         } catch (\Exception $e) {
             \logger()->error('Employee deletion error', ['error' => $e->getMessage(), 'id' => $id]);
@@ -140,9 +141,22 @@ class EmployeeController extends BaseController
     {
         $this->requirePermission('employees', 'view');
 
-        $params = array_merge($_GET, $this->getFilters());
-        $result = $this->employeeService->list($params);
-        $this->success($result);
+        try {
+            $query = $_GET['q'] ?? $_GET['query'] ?? '';
+            $filters = $this->getFilters();
+            $page = (int)($filters['page'] ?? 1);
+            $limit = (int)($filters['limit'] ?? 30);
+            
+            unset($filters['page'], $filters['limit'], $filters['q'], $filters['query']);
+            
+            $result = $this->employeeService->searchEmployees($query, $filters, $page, $limit);
+            $this->success($result);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Employee search error', ['error' => $e->getMessage()]);
+            $this->error('Failed to search employees. Please try again.', 500);
+        }
     }
 
     /**
@@ -152,7 +166,18 @@ class EmployeeController extends BaseController
     {
         $this->requirePermission('employees', 'view');
 
-        $data = $this->employeeService->getReferenceData();
-        $this->success($data);
+        try {
+            $data = [
+                'departments' => $this->employeeService->getDepartments(),
+                'sections' => [],
+                'subsections' => [],
+                'offices' => $this->employeeService->getOffices(),
+                'hierarchy' => $this->employeeService->getOrganizationHierarchy(),
+            ];
+            $this->success($data);
+        } catch (\Exception $e) {
+            \logger()->error('Employee reference data error', ['error' => $e->getMessage()]);
+            $this->error('Failed to load reference data. Please try again.', 500);
+        }
     }
 }

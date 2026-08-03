@@ -91,7 +91,8 @@ class AuthorizationService
 
         // Check cache first
         if (isset($this->cachedPermissions[$pageId])) {
-            return $this->cachedPermissions[$pageId] === 'allow';
+            // 'allow' (user grant) or 'role' (role permission) both mean access granted
+            return $this->cachedPermissions[$pageId] === 'allow' || $this->cachedPermissions[$pageId] === 'role';
         }
 
         // If not in cache, default to deny
@@ -334,7 +335,7 @@ class AuthorizationService
 
     /**
      * Check if the current user is authorized to manage permission overrides.
-     * Only Super Administrators can manage permission overrides.
+     * Only Super Administrators and HR Managers can manage permission overrides.
      * 
      * @return bool
      */
@@ -344,7 +345,9 @@ class AuthorizationService
             return false;
         }
 
-        return $_SESSION['user_role'] === 'super_admin';
+        // Only super_admin and hr_manager have permission_overrides permissions
+        $allowedRoles = ['super_admin', 'hr_manager'];
+        return in_array($_SESSION['user_role'], $allowedRoles);
     }
 
     /**
@@ -353,15 +356,28 @@ class AuthorizationService
     public function requirePermissionManager(): void
     {
         if (!$this->isPermissionManager()) {
+            // DEBUG: Log the redirect attempt
+            error_log("PERMISSION DEBUG: User role='" . ($_SESSION['user_role'] ?? 'none') . "' denied access to permission-overrides/manage");
+            
             if ($this->isApiRequest()) {
                 http_response_code(403);
                 echo json_encode(['error' => 'Forbidden: Only Super Administrators can manage permission overrides.']);
                 exit();
             }
             
-            $_SESSION['error'] = 'You do not have permission to access this resource.';
-            header('Location: /dashboard');
+            $_SESSION['flash_error'] = 'You do not have permission to access this resource.';
+            // Build redirect URL with BASE_URL prefix
+            $baseUrl = defined('BASE_URL') ? BASE_URL : '';
+            $redirectUrl = $baseUrl . '/?route=admin/permission-overrides';
+            
+            // DEBUG: Log the redirect destination
+            error_log("PERMISSION DEBUG: Redirecting to: {$redirectUrl}");
+            
+            header('Location: ' . $redirectUrl);
             exit();
+        } else {
+            // DEBUG: Log successful access
+            error_log("PERMISSION DEBUG: User role='" . ($_SESSION['user_role'] ?? 'none') . "' GRANTED access to permission-overrides/manage");
         }
     }
 
@@ -402,17 +418,17 @@ class AuthorizationService
         return [
             'dashboard',
             'employees',
+            'departments',
             'attendance',
             'leave',
-            'payroll',
-            'complaints',
             'reports',
-            'appraisal',
             'users',
-            'roles',
-            'settings',
+            'admin',
             'audit',
-            'notifications'
+            'profile',
+            'performance',
+            'consent',
+            'permission_overrides'
         ];
     }
 
@@ -426,17 +442,17 @@ class AuthorizationService
         return [
             'dashboard' => 'Dashboard',
             'employees' => 'Employees',
+            'departments' => 'Departments',
             'attendance' => 'Attendance',
             'leave' => 'Leave Management',
-            'payroll' => 'Payroll',
-            'complaints' => 'Complaints',
             'reports' => 'Reports',
-            'appraisal' => 'Performance Appraisal',
             'users' => 'User Management',
-            'roles' => 'Roles & Permissions',
-            'settings' => 'Settings',
+            'admin' => 'Admin',
             'audit' => 'Audit Trail',
-            'notifications' => 'Notifications'
+            'profile' => 'Profile',
+            'performance' => 'Performance',
+            'consent' => 'Consent',
+            'permission_overrides' => 'Permission Overrides'
         ];
     }
 
