@@ -11,6 +11,8 @@ use App\Http\Controllers\Api\SectionController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\ConsentController;
+use App\Http\Controllers\Api\FinancialYearController;
 use App\Http\Controllers\Api\ComplaintController;
 use App\Http\Controllers\Api\AppraisalController;
 use App\Http\Controllers\Api\StrategicPlanController;
@@ -24,8 +26,11 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
     Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
+    Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
     Route::get('/auth/user', [AuthController::class, 'user']);
     Route::get('/auth/profile', [AuthController::class, 'user']);
+    Route::get('/profile', [AuthController::class, 'profile']);
 
     // Employee routes - search must be before apiResource
     Route::get('employees/search', [EmployeeController::class, 'search']);
@@ -34,6 +39,11 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::apiResource('departments', DepartmentController::class);
     Route::apiResource('sections', SectionController::class);
     Route::apiResource('users', UserController::class);
+
+    // Attendance routes - today/employee/dashboard must be before apiResource's {attendance}
+    Route::get('/attendance/today', [AttendanceController::class, 'today']);
+    Route::get('/attendance/dashboard', [AttendanceController::class, 'dashboard']);
+    Route::get('/attendance/employee/{employeeId}', [AttendanceController::class, 'byEmployee']);
     Route::apiResource('attendance', AttendanceController::class);
 
     // Leave routes - apply/types/pending/holidays must be before apiResource's {leaveApplication}
@@ -55,6 +65,8 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/reports/employees', [ReportController::class, 'employees']);
     Route::get('/reports/leave', [ReportController::class, 'leave']);
     Route::get('/reports/attendance', [ReportController::class, 'attendance']);
+    Route::get('/reports/appraisal', [ReportController::class, 'appraisal']);
+    Route::get('/reports/documentation', [ReportController::class, 'documentation']);
 
     Route::get('/payroll/periods', [PayrollController::class, 'periods']);
     Route::post('/payroll/periods', [PayrollController::class, 'storePeriod']);
@@ -64,6 +76,12 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/complaints', [ComplaintController::class, 'index']);
     Route::post('/complaints', [ComplaintController::class, 'store']);
     Route::put('/complaints/{complaint}', [ComplaintController::class, 'update']);
+
+    Route::get('/consents', [ConsentController::class, 'index']);
+    Route::put('/consents/{consent}', [ConsentController::class, 'update']);
+
+    Route::get('/admin/financial-years', [FinancialYearController::class, 'index']);
+    Route::post('/admin/financial-year/add', [FinancialYearController::class, 'store']);
 
     Route::get('/appraisals', [AppraisalController::class, 'index']);
     Route::post('/appraisals', [AppraisalController::class, 'store']);

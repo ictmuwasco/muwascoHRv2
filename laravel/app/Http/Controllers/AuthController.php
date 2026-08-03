@@ -113,6 +113,95 @@ class AuthController extends Controller
         ]);
     }
 
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        $user = User::where('email', $validated['email'])->first();
+
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'User not found', 'data' => null], 404);
+        }
+
+        $token = Str::random(64);
+
+        \DB::table('password_resets')->updateOrInsert(
+            ['email' => $user->email],
+            ['token' => $token, 'created_at' => now()]
+        );
+
+        return response()->json(['success' => true, 'message' => 'Password reset token generated', 'data' => ['token' => $token]]);
+    }
+
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'token' => 'required|string',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $reset = \DB::table('password_resets')->where('token', $validated['token'])->first();
+
+        if (!$reset) {
+            return response()->json(['success' => false, 'message' => 'Invalid or expired token', 'data' => null], 400);
+        }
+
+        $user = User::where('email', $reset->email)->first();
+
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'User not found', 'data' => null], 404);
+        }
+
+        $user->password = Hash::make($validated['password']);
+        $user->save();
+
+        \DB::table('password_resets')->where('email', $user->email)->delete();
+
+        return response()->json(['success' => true, 'message' => 'Password reset successfully', 'data' => null]);
+    }
+
+    public function profile(): JsonResponse
+    {
+        $user = auth()->user();
+        $employee = $user->employee()->with(['department', 'section', 'office'])->first();
+        $nextOfKin = $employee?->next_of_kin ? json_decode($employee->next_of_kin, true) : [];
+
+        $profile = [
+            'personal' => [
+                'first_name' => $employee->first_name ?? $user->name,
+                'last_name' => $employee->last_name ?? '',
+                'surname' => $employee->surname ?? '',
+                'email' => $user->email,
+                'phone' => $employee->phone ?? $user->phone,
+                'national_id' => $employee->national_id ?? null,
+                'gender' => $employee->gender ?? null,
+                'marital_status' => $employee->marital_status ?? null,
+                'address' => $employee->address ?? $user->address,
+            ],
+            'employment' => [
+                'department' => $employee?->department?->name ?? null,
+                'section' => $employee?->section?->name ?? null,
+                'office' => $employee?->office?->name ?? null,
+                'designation' => $employee->designation ?? null,
+                'employee_type' => $employee->employee_type ?? null,
+                'employee_status' => $employee->employee_status ?? null,
+                'employment_date' => optional($employee->hire_date)->toDateString(),
+            ],
+            'next_of_kin' => [
+                'name' => $nextOfKin['name'] ?? '',
+                'relationship' => $nextOfKin['relationship'] ?? '',
+                'phone' => $nextOfKin['phone'] ?? '',
+                'email' => $nextOfKin['email'] ?? '',
+                'address' => $nextOfKin['address'] ?? '',
+            ],
+            'documents' => [],
+        ];
+
+        return response()->json(['success' => true, 'message' => 'Profile loaded', 'data' => $profile]);
+    }
+
     public function changePassword(Request $request): JsonResponse
     {
         $user = auth()->user();
