@@ -21,25 +21,30 @@ class DashboardController extends Controller
     public function stats(): JsonResponse
     {
         $stats = $this->getStats();
-        return response()->json($stats);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Dashboard stats loaded',
+            'data' => $stats,
+        ]);
     }
 
     private function getStats(): array
     {
         $totalEmployees = Employee::where('employee_status', 'active')->count();
-        $totalDepartments = Department::count();
         $todayAttendance = Attendance::where('attendance_date', now()->toDateString())->count();
-        $pendingLeaves = LeaveApplication::where('status', 'pending')->count();
+        $onLeave = LeaveApplication::where('status', 'approved')->count();
+        $pendingApprovals = LeaveApplication::where('status', 'pending')->count();
         $lateToday = Attendance::where('attendance_date', now()->toDateString())
             ->where('clock_in', '>', '08:30')
             ->count();
 
         return [
-            'total_employees' => $totalEmployees,
-            'total_departments' => $totalDepartments,
-            'today_attendance' => $todayAttendance,
-            'pending_leaves' => $pendingLeaves,
-            'late_today' => $lateToday,
+            'totalEmployees' => $totalEmployees,
+            'presentToday' => $todayAttendance,
+            'onLeave' => $onLeave,
+            'pendingApprovals' => $pendingApprovals,
+            'lateToday' => $lateToday,
         ];
     }
 
