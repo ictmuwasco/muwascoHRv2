@@ -8,6 +8,7 @@ use App\Models\LeaveType;
 use App\Models\Employee;
 use App\Models\LeaveHistory;
 use App\Models\EmployeeLeaveBalance;
+use App\Models\Holiday;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
