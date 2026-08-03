@@ -4,202 +4,261 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Models\LeaveRequest;
-use App\Models\Employee;
+use App\Services\Contracts\LeaveServiceInterface;
+use App\Repositories\Contracts\LeaveRepositoryInterface;
+use App\Repositories\Contracts\EmployeeRepositoryInterface;
 
 /**
- * Leave Service - Business logic for leave management.
- * 
- * Handles leave requests, approvals, rejections, and balance tracking.
+ * Leave Service
+ *
+ * Contains business logic for leave management.
+ * Orchestrates repository operations and enforces business rules.
  */
-class LeaveService
+class LeaveService implements LeaveServiceInterface
 {
-    private static ?LeaveService $instance = null;
-    private AuditService $audit;
-    private NotificationService $notifier;
+    private LeaveRepositoryInterface $leaveRepository;
+    private EmployeeRepositoryInterface $employeeRepository;
+    private array $dependencies = [];
 
-    private function __construct()
+    public function setLeaveRepository(LeaveRepositoryInterface $repository): void
     {
-        $this->audit = AuditService::getInstance();
-        $this->notifier = NotificationService::getInstance();
+        $this->leaveRepository = $repository;
     }
 
-    public static function getInstance(): self
+    public function setEmployeeRepository(EmployeeRepositoryInterface $repository): void
     {
-        if (self::$instance === null) {
-            self::$instance = new self();
-        }
-        return self::$instance;
+        $this->employeeRepository = $repository;
     }
 
-    /**
-     * Submit a new leave request.
-     */
-    public function create(array $data): array
+    public function setDependency(string $name, mixed $dependency): void
     {
-        $db = \db();
+        $this->dependencies[$name] = $dependency;
+    }
 
-        // Validate overlapping leaves
-        $overlap = $db->fetchOne(
-            "SELECT id FROM leave_requests 
-             WHERE employee_id = ? 
-             AND status IN ('pending', 'approved')
-             AND ((start_date BETWEEN ? AND ?) OR (end_date BETWEEN ? AND ?) OR (? BETWEEN start_date AND end_date))
-             AND id != ?",
-            'isssssi',
-            [
-                (int) $data['employee_id'],
-                $data['start_date'], $data['end_date'],
-                $data['start_date'], $data['end_date'],
-                $data['start_date'], 0
-            ]
-        );
+    public function getDependency(string $name): mixed
+    {
+        return $this->dependencies[$name] ?? null;
+    }
 
-        if ($overlap) {
-            throw new \RuntimeException('An overlapping leave request already exists for this period.');
+    public function applyLeave(int $employeeId, array $data): int
+    {
+        // Business rule: Check if employee exists
+        $employee = $this->employeeRepository->findById($employeeId);
+        if (!$employee) {
+            throw new \InvalidArgumentException('Employee not found');
         }
 
-        $leaveId = $db->insert('leave_requests', [
-            'employee_id' => (int) $data['employee_id'],
-            'leave_type_id' => (int) $data['leave_type_id'],
+        // Business rule: Validate leave data
+        $errors = $this->validateLeaveApplication($data);
+        if (!empty($errors)) {
+            throw new \InvalidArgumentException(implode(', ', $errors));
+        }
+
+        // Business rule: Check for leave conflicts
+        if ($this->leaveRepository->hasConflict($employeeId, $data['start_date'], $data['end_date'])) {
+            throw new \InvalidArgumentException('Leave dates conflict with existing leave application');
+        }
+
+        // Business rule: Validate leave type exists
+        $leaveTypes = $this->leaveRepository->getLeaveTypes();
+        $leaveTypeExists = false;
+        foreach ($leaveTypes as $leaveType) {
+            if ($leaveType['id'] == $data['leave_type_id']) {
+                $leaveTypeExists = true;
+                break;
+            }
+        }
+        if (!$leaveTypeExists) {
+            throw new \InvalidArgumentException('Invalid leave type selected');
+        }
+
+        // Business rule: Calculate days requested
+        $startDate = new \DateTime($data['start_date']);
+        $endDate = new \DateTime($data['end_date']);
+        $daysRequested = (int)$startDate->diff($endDate)->format('%a') + 1;
+
+        // Business rule: Check leave balance
+        $balance = $this->leaveRepository->getLeaveBalance($employeeId, (int)$data['leave_type_id']);
+        if ($balance && $daysRequested > $balance['remaining_days']) {
+            throw new \InvalidArgumentException('Insufficient leave balance');
+        }
+
+        // Business rule: Normalize data
+        $leaveData = [
+            'employee_id' => $employeeId,
+            'leave_type_id' => (int)$data['leave_type_id'],
             'start_date' => $data['start_date'],
             'end_date' => $data['end_date'],
-            'reason' => $data['reason'] ?? '',
+            'days_requested' => $daysRequested,
+            'reason' => trim($data['reason'] ?? ''),
             'status' => 'pending',
-            'created_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ]);
+            'applied_at' => date('Y-m-d H:i:s'),
+        ];
 
-        // Notify HR managers
-        $employee = Employee::find((int) $data['employee_id']);
-        if ($employee) {
-            $this->notifier->notifyLeaveRequest(
-                (int) $data['employee_id'],
-                $employee['first_name'] . ' ' . $employee['last_name'],
-                $data['leave_type_id'],
-                $data['start_date'],
-                $data['end_date']
-            );
-        }
-
-        $this->audit->logCreate('leave_requests', $leaveId, $data, "New leave request submitted");
-
-        return ['success' => true, 'id' => $leaveId, 'message' => 'Leave request submitted successfully.'];
+        return $this->leaveRepository->create($leaveData);
     }
 
-    /**
-     * Approve a leave request.
-     */
-    public function approve(int $leaveId, int $approvedBy, ?string $comment = null): array
+    public function getLeaveById(int $id): ?array
     {
-        $db = \db();
-        $leave = LeaveRequest::find($leaveId);
-        if (!$leave) throw new \RuntimeException('Leave request not found');
-
-        $db->update('leave_requests', [
-            'status' => 'approved',
-            'approved_by' => $approvedBy,
-            'approved_at' => date('Y-m-d H:i:s'),
-            'rejection_reason' => $comment,
-            'updated_at' => date('Y-m-d H:i:s'),
-        ], 'id = ?', 'i', [$leaveId]);
-
-        $this->audit->logApproval('leave_requests', $leaveId, 'approved', $comment ?? '');
-        
-        $employee = Employee::find((int) $leave['employee_id']);
-        if ($employee) {
-            $this->notifier->notifyLeaveApproval((int) $leave['employee_id'], $employee['first_name'], 'approved');
-        }
-
-        return ['success' => true, 'message' => 'Leave request approved.'];
+        return $this->leaveRepository->findById($id);
     }
 
-    /**
-     * Reject a leave request.
-     */
-    public function reject(int $leaveId, string $reason): array
+    public function getLeavesByEmployee(int $employeeId, int $year = 0): array
     {
-        $db = \db();
-        $leave = LeaveRequest::find($leaveId);
-        if (!$leave) throw new \RuntimeException('Leave request not found');
+        // Business rule: Validate employee exists
+        $employee = $this->employeeRepository->findById($employeeId);
+        if (!$employee) {
+            throw new \InvalidArgumentException('Employee not found');
+        }
 
-        $db->update('leave_requests', [
+        return $this->leaveRepository->getByEmployee($employeeId, $year);
+    }
+
+    public function searchLeaves(array $filters = [], int $page = 1, int $limit = 30): array
+    {
+        return $this->leaveRepository->search($filters, $page, $limit);
+    }
+
+    public function getPendingApprovals(int $managerId): array
+    {
+        // Business rule: Validate manager exists
+        $manager = $this->employeeRepository->findById($managerId);
+        if (!$manager) {
+            throw new \InvalidArgumentException('Manager not found');
+        }
+
+        return $this->leaveRepository->getPendingApprovals($managerId);
+    }
+
+    public function approveLeave(int $leaveId, int $approvedBy): bool
+    {
+        // Business rule: Check if leave exists
+        $leave = $this->leaveRepository->findById($leaveId);
+        if (!$leave) {
+            throw new \InvalidArgumentException('Leave application not found');
+        }
+
+        // Business rule: Check if leave is pending
+        if ($leave['status'] !== 'pending') {
+            throw new \InvalidArgumentException('Only pending leave applications can be approved');
+        }
+
+        // Business rule: Update leave balance
+        // This would be implemented with a leave balance repository
+        // For now, we'll just update the status
+
+        return $this->leaveRepository->updateStatus($leaveId, 'approved', $approvedBy);
+    }
+
+    public function rejectLeave(int $leaveId, int $rejectedBy, ?string $reason = null): bool
+    {
+        // Business rule: Check if leave exists
+        $leave = $this->leaveRepository->findById($leaveId);
+        if (!$leave) {
+            throw new \InvalidArgumentException('Leave application not found');
+        }
+
+        // Business rule: Check if leave is pending
+        if ($leave['status'] !== 'pending') {
+            throw new \InvalidArgumentException('Only pending leave applications can be rejected');
+        }
+
+        // Business rule: Reason is required for rejection
+        if (empty($reason)) {
+            throw new \InvalidArgumentException('Rejection reason is required');
+        }
+
+        // Update leave with rejection reason
+        $updateData = [
             'status' => 'rejected',
             'rejection_reason' => $reason,
-            'updated_at' => date('Y-m-d H:i:s'),
-        ], 'id = ?', 'i', [$leaveId]);
+        ];
 
-        $this->audit->logApproval('leave_requests', $leaveId, 'rejected', $reason);
-
-        $employee = Employee::find((int) $leave['employee_id']);
-        if ($employee) {
-            $this->notifier->notifyLeaveApproval((int) $leave['employee_id'], $employee['first_name'], 'rejected');
-        }
-
-        return ['success' => true, 'message' => 'Leave request rejected.'];
+        $this->leaveRepository->update($leaveId, $updateData);
+        return $this->leaveRepository->updateStatus($leaveId, 'rejected', $rejectedBy);
     }
 
-    /**
-     * Get leave types.
-     */
+    public function cancelLeave(int $leaveId): bool
+    {
+        // Business rule: Check if leave exists
+        $leave = $this->leaveRepository->findById($leaveId);
+        if (!$leave) {
+            throw new \InvalidArgumentException('Leave application not found');
+        }
+
+        // Business rule: Check if leave is pending
+        if ($leave['status'] !== 'pending') {
+            throw new \InvalidArgumentException('Only pending leave applications can be cancelled');
+        }
+
+        return $this->leaveRepository->updateStatus($leaveId, 'cancelled');
+    }
+
     public function getLeaveTypes(): array
     {
-        $db = \db();
-        return $db->fetchAll("SELECT * FROM leave_types ORDER BY name");
+        return $this->leaveRepository->getLeaveTypes();
     }
 
-    /**
-     * Get leave balances for an employee.
-     */
-    public function getBalances(int $employeeId): array
+    public function getLeaveBalance(int $employeeId, int $leaveTypeId): ?array
     {
-        $db = \db();
-        $leaveTypes = $this->getLeaveTypes();
-        $balances = [];
-
-        foreach ($leaveTypes as $type) {
-            // Calculate used days
-            $used = (int) $db->fetchValue(
-                "SELECT COALESCE(SUM(DATEDIFF(end_date, start_date) + 1), 0)
-                 FROM leave_requests 
-                 WHERE employee_id = ? AND leave_type_id = ? AND status = 'approved'
-                 AND YEAR(created_at) = YEAR(CURDATE())",
-                'ii',
-                [$employeeId, (int) $type['id']]
-            );
-
-            $balances[] = [
-                'type_id' => $type['id'],
-                'type_name' => $type['name'],
-                'days_allowed' => (int) $type['days_allowed'],
-                'days_used' => $used,
-                'days_remaining' => max(0, (int) $type['days_allowed'] - $used),
-            ];
+        // Business rule: Validate employee exists
+        $employee = $this->employeeRepository->findById($employeeId);
+        if (!$employee) {
+            throw new \InvalidArgumentException('Employee not found');
         }
 
-        return $balances;
+        return $this->leaveRepository->getLeaveBalance($employeeId, $leaveTypeId);
     }
 
-    /**
-     * List leave requests with filters and pagination.
-     */
-    public function list(array $params): array
+    public function getLeaveStatistics(int $year, int $month = 0): array
     {
-        $filters = [];
-        if (!empty($params['status'])) $filters['status'] = $params['status'];
-        if (!empty($params['employee_id'])) $filters['employee_id'] = $params['employee_id'];
-        if (!empty($params['date_from'])) $filters['date_from'] = $params['date_from'];
-        if (!empty($params['date_to'])) $filters['date_to'] = $params['date_to'];
+        // Business rule: Validate year
+        if ($year < 2000 || $year > (int)date('Y') + 1) {
+            throw new \InvalidArgumentException('Invalid year');
+        }
 
-        $page = max(1, (int) ($params['page'] ?? 1));
-        $perPage = min(100, max(1, (int) ($params['per_page'] ?? 20)));
+        // Business rule: Validate month if provided
+        if ($month > 0 && ($month < 1 || $month > 12)) {
+            throw new \InvalidArgumentException('Invalid month');
+        }
 
-        return LeaveRequest::getAllWithDetails($filters, $page, $perPage);
+        return $this->leaveRepository->getStatistics($year, $month);
     }
 
-    private function __clone(): void {}
-    public function __wakeup(): void
+    public function validateLeaveApplication(array $data, ?int $excludeId = null): array
     {
-        throw new \RuntimeException('Cannot unserialize singleton');
+        $errors = [];
+
+        // Business rule: Leave type is required
+        if (empty($data['leave_type_id'])) {
+            $errors[] = 'Leave type is required';
+        }
+
+        // Business rule: Start date is required
+        if (empty($data['start_date'])) {
+            $errors[] = 'Start date is required';
+        }
+
+        // Business rule: End date is required
+        if (empty($data['end_date'])) {
+            $errors[] = 'End date is required';
+        }
+
+        // Business rule: Start date must be before or equal to end date
+        if (!empty($data['start_date']) && !empty($data['end_date']) && $data['start_date'] > $data['end_date']) {
+            $errors[] = 'Start date cannot be after end date';
+        }
+
+        // Business rule: Reason is required
+        if (empty($data['reason'])) {
+            $errors[] = 'Reason for leave is required';
+        }
+
+        // Business rule: Reason must be at least 10 characters
+        if (!empty($data['reason']) && strlen($data['reason']) < 10) {
+            $errors[] = 'Reason must be at least 10 characters';
+        }
+
+        return $errors;
     }
 }
