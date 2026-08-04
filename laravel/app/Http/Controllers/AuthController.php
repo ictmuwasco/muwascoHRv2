@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
@@ -37,7 +37,7 @@ class AuthController extends Controller
             'iss' => url('/'),
             'sub' => $user->id,
             'email' => $user->email,
-            'role' => $user->role_id ?? null,
+            'role' => $user->role ?? null,
             'iat' => $now,
             'exp' => $now + ($this->jwtTtl() * 60),
             'jti' => (string) Str::uuid(),
@@ -82,25 +82,41 @@ class AuthController extends Controller
         $token = $request->bearerToken();
 
         if (!$token) {
-            return response()->json(['error' => 'Authorization token not provided'], 401);
+            return response()->json([
+                'success' => false,
+                'message' => 'Authorization token not provided',
+                'data' => null,
+            ], 401);
         }
 
         try {
             $payload = JWT::decode($token, new Key($this->jwtSecret(), $this->jwtAlgo()));
         } catch (\Throwable $e) {
-            return response()->json(['error' => 'Invalid token'], 401);
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid token',
+                'data' => null,
+            ], 401);
         }
 
         if (isset($payload->jti)) {
             cache()->put('jwt_blacklist:' . $payload->jti, true, now()->addSeconds($this->jwtTtl() * 60));
         }
 
-        return response()->json(['message' => 'Logged out successfully']);
+        return response()->json([
+            'success' => true,
+            'message' => 'Logged out successfully',
+            'data' => null,
+        ]);
     }
 
     public function user(): JsonResponse
     {
-        return response()->json(auth()->user());
+        return response()->json([
+            'success' => true,
+            'message' => 'Authenticated user loaded',
+            'data' => auth()->user(),
+        ]);
     }
 
     public function refresh(Request $request): JsonResponse
@@ -108,12 +124,20 @@ class AuthController extends Controller
         $user = auth()->user();
 
         if (!$user) {
-            return response()->json(['error' => 'Unauthenticated'], 401);
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthenticated',
+                'data' => null,
+            ], 401);
         }
 
         return response()->json([
-            'user' => $user,
-            'token' => $this->createToken($user),
+            'success' => true,
+            'message' => 'Token refreshed',
+            'data' => [
+                'user' => $user,
+                'token' => $this->createToken($user),
+            ],
         ]);
     }
 
@@ -229,3 +253,4 @@ class AuthController extends Controller
         return response()->json(['message' => 'Password changed successfully']);
     }
 }
+

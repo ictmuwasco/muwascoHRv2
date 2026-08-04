@@ -1,6 +1,6 @@
-﻿<?php
+<?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
@@ -20,13 +20,21 @@ class UserController extends Controller
         $filters = $request->only(['email', 'role_id']);
         $users = $this->service->list($filters);
 
-        return response()->json($users);
+        return response()->json([
+            'success' => true,
+            'message' => 'Users loaded',
+            'data' => $users,
+        ]);
     }
 
     public function show(User $user): JsonResponse
     {
         $user = $this->service->get($user->id);
-        return response()->json($user);
+        return response()->json([
+            'success' => true,
+            'message' => 'User loaded',
+            'data' => $user,
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -64,7 +72,23 @@ class UserController extends Controller
 
         $user = $this->service->update($user, $validated);
 
-        return response()->json($user);
+        return response()->json([
+            'success' => true,
+            'message' => 'User updated successfully',
+            'data' => $user,
+        ]);
+    }
+
+    public function toggleStatus(User $user): JsonResponse
+    {
+        $user->status = $user->status === 'active' ? 'inactive' : 'active';
+        $user->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'User status updated',
+            'data' => $user,
+        ]);
     }
 
     public function changePassword(Request $request, User $user): JsonResponse
@@ -80,3 +104,4 @@ class UserController extends Controller
         return response()->json(['message' => 'Password changed successfully']);
     }
 }
+
