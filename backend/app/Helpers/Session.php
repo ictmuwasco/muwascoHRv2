@@ -43,6 +43,16 @@ class Session
     }
 
     /**
+     * Set a session value.
+     *
+     * Alias of put() for callers that prefer the set() name.
+     */
+    public function set(string $key, mixed $value): void
+    {
+        $this->put($key, $value);
+    }
+
+    /**
      * Check if a session key exists.
      */
     public function has(string $key): bool

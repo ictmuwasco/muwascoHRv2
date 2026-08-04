@@ -57,7 +57,21 @@ class Hash
 
     /**
      * Verify a password against a hash
-     * 
+     *
+     * Alias of check() for callers that prefer the verify() name.
+     *
+     * @param string $password The plain text password
+     * @param string $hash The stored hash
+     * @return bool True if password matches hash
+     */
+    public function verify(string $password, string $hash): bool
+    {
+        return $this->check($password, $hash);
+    }
+
+    /**
+     * Verify a password against a hash
+     *
      * @param string $password The plain text password
      * @param string $hash The stored hash
      * @return bool True if password matches hash
@@ -67,7 +81,7 @@ class Hash
         if (empty($hash) || strlen($hash) < 60) {
             return false;
         }
-        
+
         return password_verify($password, $hash);
     }
 

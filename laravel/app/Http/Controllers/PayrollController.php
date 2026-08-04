@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\PayrollPeriod;
@@ -60,3 +60,4 @@ class PayrollController extends Controller
         return response()->json($record, 201);
     }
 }
+

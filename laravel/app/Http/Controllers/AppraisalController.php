@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Appraisal;
@@ -95,3 +95,4 @@ class AppraisalController extends Controller
         return response()->json($appraisals);
     }
 }
+

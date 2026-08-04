@@ -5,11 +5,10 @@ echo ========================================
 echo.
 
 echo [1/3] Checking MySQL...
-tasklist | findstr /I "mysqld.exe" >nul
+tasklist /FI "IMAGENAME eq mysqld.exe" 2>NUL | find /I "mysqld.exe" >NUL
 if %errorlevel% neq 0 (
     echo MySQL is NOT running. Please start MySQL from XAMPP Control Panel.
-    pause
-    exit /b 1
+    goto :end
 ) else (
     echo MySQL is running.
 )
@@ -17,14 +16,12 @@ if %errorlevel% neq 0 (
 echo.
 echo [2/3] Starting Laravel Backend...
 cd /d c:\xampp\htdocs\hrdemo\laravel
-start "Laravel Backend" cmd /k "php artisan serve --host=127.0.0.1 --port=8000"
-
-timeout /t 3 /nobreak >nul
+start "Laravel Backend" cmd /c "php artisan serve --host=127.0.0.1 --port=8000"
 
 echo.
 echo [3/3] Starting React Frontend...
 cd /d c:\xampp\htdocs\hrdemo\frontend
-start "React Frontend" cmd /k "npm run dev"
+start "React Frontend" cmd /c "npm run dev"
 
 echo.
 echo ========================================
@@ -35,4 +32,5 @@ echo React Frontend: http://localhost:5173
 echo.
 echo Login: admin@muwasco.co.ke / Admin@123
 echo.
-pause
+
+:end

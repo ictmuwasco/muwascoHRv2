@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\LeaveApplication;
@@ -183,7 +183,13 @@ class LeaveController extends Controller
 
     public function holidays(): JsonResponse
     {
-        return response()->json([]);
+        $holidays = Holiday::orderBy('date', 'asc')->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Holidays loaded',
+            'data' => $holidays,
+        ]);
     }
 
     public function pending(): JsonResponse
@@ -206,3 +212,4 @@ class LeaveController extends Controller
         return response()->json($leaves);
     }
 }
+
