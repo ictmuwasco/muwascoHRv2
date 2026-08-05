@@ -64,19 +64,31 @@ class AuthService implements AuthServiceInterface
         // Business rule: Normalize email
         $email = strtolower(trim($email));
 
+        // DEBUG: Log login attempt
+        error_log("Login attempt for email: {$email}");
+        
         // Business rule: Get user by email
         $user = $this->userRepository->findByEmail($email);
+        
+        // DEBUG: Log if user was found
         if (!$user) {
+            error_log("User not found for email: {$email}");
             throw new \InvalidArgumentException('Invalid credentials');
         }
+        
+        error_log("User found: " . print_r($user['email'], true));
 
         // Business rule: Check if user is active
         if (!$this->isUserActive($user['id'])) {
+            error_log("User account is inactive: {$email}");
             throw new \InvalidArgumentException('User account is inactive');
         }
 
         // Business rule: Validate password
-        if (!$this->hash->verify($password, $user['password'])) {
+        $passwordValid = $this->hash->verify($password, $user['password']);
+        error_log("Password verification for {$email}: " . ($passwordValid ? 'SUCCESS' : 'FAILED'));
+        
+        if (!$passwordValid) {
             throw new \InvalidArgumentException('Invalid credentials');
         }
 
@@ -327,7 +339,7 @@ class AuthService implements AuthServiceInterface
     private function updateLastLogin(int $userId): void
     {
         $this->userRepository->update($userId, [
-            'last_login' => date('Y-m-d H:i:s'),
+            'last_activity' => date('Y-m-d H:i:s'),
         ]);
     }
 

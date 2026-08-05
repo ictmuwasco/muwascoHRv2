@@ -53,7 +53,7 @@ try {
             $controller->changePasswordAction();
         } else {
             http_response_code(404);
-            echo json_encode(['error' => 'Not found']);
+            echo json_encode(['success' => false, 'message' => 'Not found']);
         }
     } 
     // Employee routes
@@ -67,7 +67,7 @@ try {
             $controller->storeAction();
         } else {
             http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
         }
     }
     elseif (preg_match('#^/employees/(\d+)$#', $endpoint, $matches)) {
@@ -83,18 +83,58 @@ try {
             $controller->destroyAction($id);
         } else {
             http_response_code(405);
-            echo json_encode(['error' => 'Method not allowed']);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
+    // Dashboard routes
+    elseif (strpos($endpoint, '/dashboard') === 0) {
+        require_once __DIR__ . '/backend/app/Controllers/DashboardController.php';
+        $controller = new \App\Controllers\DashboardController();
+
+        if ($endpoint === '/dashboard/stats' && $requestMethod === 'GET') {
+            $controller->statsAction();
+        } elseif ($endpoint === '/dashboard/charts/attendance' && $requestMethod === 'GET') {
+            $controller->attendanceTodayAction();
+        } elseif ($endpoint === '/dashboard/charts/departments' && $requestMethod === 'GET') {
+            $controller->employeeCountAction();
+        } elseif ($endpoint === '/dashboard/charts/leave' && $requestMethod === 'GET') {
+            $controller->pendingLeavesAction();
+        } else {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Not found']);
         }
     }
     else {
         http_response_code(404);
-        echo json_encode(['error' => 'Not found']);
+        echo json_encode(['success' => false, 'message' => 'Not found']);
     }
 } catch (\Throwable $e) {
+    // Log the error
+    error_log('API Error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+    
     http_response_code(500);
+    
+    // Check if it's a database connection error
+    $message = 'Internal server error';
+    $errorCode = 'INTERNAL_ERROR';
+    
+    if (str_contains($e->getMessage(), 'SQLSTATE[HY000]') || 
+        str_contains($e->getMessage(), 'No connection could be made') ||
+        str_contains($e->getMessage(), 'Connection refused')) {
+        $message = 'Database connection failed. Please try again later.';
+        $errorCode = 'DATABASE_ERROR';
+    } elseif (env('APP_DEBUG', false)) {
+        $message = $e->getMessage();
+    }
+    
     echo json_encode([
-        'error' => env('APP_DEBUG', false) ? $e->getMessage() : 'Internal server error',
-        'file' => env('APP_DEBUG', false) ? $e->getFile() : null,
-        'line' => env('APP_DEBUG', false) ? $e->getLine() : null,
+        'success' => false,
+        'message' => $message,
+        'error' => $errorCode,
+        'debug' => env('APP_DEBUG', false) ? [
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString()
+        ] : null
     ]);
 }
