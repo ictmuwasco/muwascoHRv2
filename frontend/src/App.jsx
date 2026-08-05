@@ -2,11 +2,13 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
+import ConnectionStatus from './components/ConnectionStatus'
 
 // Pages
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Employees from './pages/Employees'
+import EmployeeProfile from './pages/EmployeeProfile'
 import Departments from './pages/Departments'
 import Attendance from './pages/Attendance'
 import Leave from './pages/Leave'
@@ -23,6 +25,7 @@ import StrategicPlan from './pages/StrategicPlan'
 function App() {
   return (
     <AuthProvider>
+      <ConnectionStatus />
       <Routes>
         <Route path="/login" element={<Login />} />
         
@@ -34,6 +37,7 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="employees" element={<Employees />} />
+          <Route path="employees/:id/profile" element={<EmployeeProfile />} />
           <Route path="departments" element={<Departments />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="leave" element={<Leave />} />
