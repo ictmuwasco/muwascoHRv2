@@ -61,9 +61,23 @@ const EmployeeProfile = () => {
     { id: 'dependants', name: 'Dependants', icon: <Heart className="h-4 w-4" /> },
   ]
 
-  const nextOfKin = typeof employee.next_of_kin === 'string' ? JSON.parse(employee.next_of_kin || '[]') : (employee.next_of_kin || [])
-  const dependants = typeof employee.dependants === 'string' ? JSON.parse(employee.dependants || '[]') : (employee.dependants || [])
-  const documents = typeof employee.documents === 'string' ? JSON.parse(employee.documents || '[]') : (employee.documents || [])
+  const safeParse = (value) => {
+    if (Array.isArray(value)) return value
+    if (typeof value === 'object' && value !== null) return [value]
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value)
+        return Array.isArray(parsed) ? parsed : (parsed ? [parsed] : [])
+      } catch {
+        return []
+      }
+    }
+    return []
+  }
+
+  const nextOfKin = safeParse(employee.next_of_kin)
+  const dependants = safeParse(employee.dependants)
+  const documents = safeParse(employee.documents)
 
   return (
     <div className="space-y-6">
