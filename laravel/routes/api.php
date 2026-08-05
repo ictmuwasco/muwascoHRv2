@@ -1,24 +1,26 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\EmployeeController;
-use App\Http\Controllers\Api\DepartmentController;
-use App\Http\Controllers\Api\LeaveController;
-use App\Http\Controllers\Api\AttendanceController;
-use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\SectionController;
-use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\ReportController;
-use App\Http\Controllers\Api\PayrollController;
-use App\Http\Controllers\Api\ConsentController;
-use App\Http\Controllers\Api\FinancialYearController;
-use App\Http\Controllers\Api\ComplaintController;
-use App\Http\Controllers\Api\AppraisalController;
-use App\Http\Controllers\Api\StrategicPlanController;
-use App\Http\Controllers\Api\NotificationController;
-use App\Http\Controllers\Api\AuditLogController;
-use App\Http\Controllers\Api\SettingController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\EmployeeController;
+use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\LeaveController;
+use App\Http\Controllers\AttendanceController;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\SectionController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\ConsentController;
+use App\Http\Controllers\FinancialYearController;
+use App\Http\Controllers\ComplaintController;
+use App\Http\Controllers\AppraisalController;
+use App\Http\Controllers\StrategicPlanController;
+use App\Http\Controllers\WorkplanController;
+use App\Http\Controllers\KPIController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\SettingController;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 
@@ -26,11 +28,7 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
     Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
-    Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
-    Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
     Route::get('/auth/user', [AuthController::class, 'user']);
-    Route::get('/auth/profile', [AuthController::class, 'user']);
-    Route::get('/profile', [AuthController::class, 'profile']);
 
     // Employee routes - search must be before apiResource
     Route::get('employees/search', [EmployeeController::class, 'search']);

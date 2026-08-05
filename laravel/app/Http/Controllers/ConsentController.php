@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Consent;
@@ -11,18 +11,47 @@ class ConsentController extends Controller
 {
     public function index(): JsonResponse
     {
-        return response()->json(Consent::all());
+        $consents = Consent::all()->map(function (Consent $consent) {
+            return [
+                'id' => $consent->id,
+                'user_id' => $consent->user_id,
+                'type' => $consent->type ?? 'Data Protection',
+                'status' => (bool) $consent->consent_given,
+                'agreed_at' => $consent->consent_date?->toDateTimeString(),
+                'ip_address' => $consent->ip_address,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Consents loaded',
+            'data' => $consents,
+        ]);
     }
 
     public function update(Request $request, Consent $consent): JsonResponse
     {
         $validated = $request->validate([
-            'is_accepted' => 'required|boolean',
-            'accepted_at' => 'nullable|date',
+            'status' => 'required|boolean',
         ]);
 
-        $consent->update($validated);
+        $consent->update([
+            'consent_given' => $validated['status'],
+            'consent_date' => now(),
+        ]);
 
-        return response()->json($consent);
+        return response()->json([
+            'success' => true,
+            'message' => 'Consent updated',
+            'data' => [
+                'id' => $consent->id,
+                'user_id' => $consent->user_id,
+                'type' => $consent->type ?? 'Data Protection',
+                'status' => (bool) $consent->consent_given,
+                'agreed_at' => $consent->consent_date?->toDateTimeString(),
+                'ip_address' => $consent->ip_address,
+            ],
+        ]);
     }
 }
+
