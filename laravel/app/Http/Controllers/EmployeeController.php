@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employee;
@@ -140,3 +140,4 @@ class EmployeeController extends Controller
         return response()->json(null, 204);
     }
 }
+

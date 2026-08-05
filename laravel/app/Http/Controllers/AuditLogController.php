@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\AuditLog;
@@ -24,3 +24,4 @@ class AuditLogController extends Controller
         return response()->json($query->orderBy('created_at', 'desc')->paginate(15));
     }
 }
+

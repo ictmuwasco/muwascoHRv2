@@ -19,15 +19,26 @@ class DashboardController extends BaseController
         $this->requirePermission('dashboard', 'view');
         
         $db = \db();
+        
+        try {
+            $totalEmployees = $this->getEmployeeCount();
+            $attendanceToday = $this->getTodayAttendance();
+            $onLeave = $this->getOnLeaveCount();
+            $pendingApprovals = $this->getPendingApprovalsCount();
+        } catch (\Throwable $e) {
+            \logger()->error('Dashboard stats error', ['error' => $e->getMessage()]);
+            $totalEmployees = 0;
+            $attendanceToday = ['total' => 0, 'clocked_in' => 0, 'clocked_out' => 0];
+            $onLeave = 0;
+            $pendingApprovals = 0;
+        }
+
         $data = [
-            'employee_count' => $this->getEmployeeCount(),
-            'attendance_today' => $this->getTodayAttendance(),
-            'pending_leaves' => $this->getPendingLeavesCount(),
-            'open_complaints' => $this->getOpenComplaintsCount(),
-            'pending_appraisals' => $this->getPendingAppraisalsCount(),
-            'active_users' => $this->getActiveUsersCount(),
-            'department_stats' => $this->getDepartmentStats(),
-            'attendance_rate' => $this->getAttendanceRate(),
+            'totalEmployees' => $totalEmployees,
+            'presentToday' => $attendanceToday['total'] ?? 0,
+            'onLeave' => $onLeave,
+            'pendingApprovals' => $pendingApprovals,
+            'lateToday' => 0,
         ];
 
         $this->success($data);
@@ -179,13 +190,28 @@ class DashboardController extends BaseController
     }
 
     /**
-     * Get pending leaves count.
+     * Get employees currently on approved leave.
      */
-    private function getPendingLeavesCount(): int
+    private function getOnLeaveCount(): int
+    {
+        $db = \db();
+        $today = date('Y-m-d');
+        return (int) $db->fetchValue(
+            "SELECT COUNT(DISTINCT employee_id) FROM leave_applications 
+             WHERE status = 'approved' AND start_date <= ? AND end_date >= ?",
+            'ss',
+            [$today, $today]
+        );
+    }
+
+    /**
+     * Get pending approvals count.
+     */
+    private function getPendingApprovalsCount(): int
     {
         $db = \db();
         return (int) $db->fetchValue(
-            "SELECT COUNT(*) FROM leave_requests WHERE status = 'pending'"
+            "SELECT COUNT(*) FROM leave_applications WHERE status = 'pending'"
         );
     }
 

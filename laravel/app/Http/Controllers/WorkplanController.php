@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\StrategicPlan;
@@ -32,3 +32,4 @@ class WorkplanController extends Controller
         return response()->json($workplan, 201);
     }
 }
+

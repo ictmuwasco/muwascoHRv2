@@ -1,6 +1,6 @@
-﻿<?php
+<?php
 
-namespace App\Http\Controllers\Api;
+namespace App\\Http\\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Section;
@@ -66,3 +66,4 @@ class SectionController extends Controller
         return response()->json(null, 204);
     }
 }
+
