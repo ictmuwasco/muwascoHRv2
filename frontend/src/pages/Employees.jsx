@@ -18,7 +18,10 @@ const Employees = () => {
   const fetchEmployees = async () => {
     try {
       const response = await api.get('/employees')
-      setEmployees(response.data.data || [])
+      const data = response.data?.data
+      // Handle both paginated {data: [...], total, page} and plain array formats
+      const employeeList = Array.isArray(data) ? data : (data?.data || [])
+      setEmployees(employeeList)
     } catch (error) {
       console.error('Failed to fetch employees:', error)
     } finally {
