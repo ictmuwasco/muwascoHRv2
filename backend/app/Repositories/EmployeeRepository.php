@@ -30,12 +30,10 @@ class EmployeeRepository implements EmployeeRepositoryInterface
                    COALESCE(e.last_name, '') as last_name,
                    d.name as department_name,
                    s.name as section_name,
-                   ss.name as subsection_name,
                    o.name as office_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN sections s ON e.section_id = s.id
-            LEFT JOIN subsections ss ON e.subsection_id = ss.id
             LEFT JOIN offices o ON e.office_id = o.id
             WHERE e.id = ?
             LIMIT 1
@@ -276,12 +274,10 @@ class EmployeeRepository implements EmployeeRepositoryInterface
                    COALESCE(e.last_name, '') as last_name,
                    d.name as department_name,
                    s.name as section_name,
-                   ss.name as subsection_name,
                    o.name as office_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN sections s ON e.section_id = s.id
-            LEFT JOIN subsections ss ON e.subsection_id = ss.id
             LEFT JOIN offices o ON e.office_id = o.id
             WHERE {$whereClause}
             ORDER BY e.created_at DESC
@@ -359,15 +355,13 @@ class EmployeeRepository implements EmployeeRepositoryInterface
                    COALESCE(e.last_name, '') as last_name,
                    d.name as department_name,
                    s.name as section_name,
-                   ss.name as subsection_name,
                    o.name as office_name,
-                   u.email as user_email,
-                   u.role as user_role,
-                   u.is_active as user_is_active
+                    u.email as user_email,
+                    u.role as user_role,
+                    u.is_active as user_is_active
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN sections s ON e.section_id = s.id
-            LEFT JOIN subsections ss ON e.subsection_id = ss.id
             LEFT JOIN offices o ON e.office_id = o.id
             LEFT JOIN users u ON u.email = e.email
             WHERE e.id = ?
@@ -447,29 +441,43 @@ class EmployeeRepository implements EmployeeRepositoryInterface
 
     public function getOrganizationHierarchy(): array
     {
-        $departments = $this->conn->query("
-            SELECT id, name FROM departments 
-            WHERE status = 'active' 
-            ORDER BY name
-        ")->fetch_all(MYSQLI_ASSOC);
+        $departments = [];
+        $sections = [];
+        $subsections = [];
+        $offices = [];
 
-        $sections = $this->conn->query("
-            SELECT id, name, department_id FROM sections 
-            WHERE status = 'active' 
-            ORDER BY name
-        ")->fetch_all(MYSQLI_ASSOC);
+        try {
+            $result = $this->conn->query("
+                SELECT id, name FROM departments 
+                WHERE status = 'active' 
+                ORDER BY name
+            ");
+            $departments = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } catch (\Throwable $e) {
+            \logger()->error('Hierarchy departments error', ['error' => $e->getMessage()]);
+        }
 
-        $subsections = $this->conn->query("
-            SELECT id, name, section_id FROM subsections 
-            WHERE status = 'active' 
-            ORDER BY name
-        ")->fetch_all(MYSQLI_ASSOC);
+        try {
+            $result = $this->conn->query("
+                SELECT id, name, department_id FROM sections 
+                WHERE status = 'active' 
+                ORDER BY name
+            ");
+            $sections = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } catch (\Throwable $e) {
+            \logger()->error('Hierarchy sections error', ['error' => $e->getMessage()]);
+        }
 
-        $offices = $this->conn->query("
-            SELECT id, name FROM offices 
-            WHERE status = 'active' 
-            ORDER BY name
-        ")->fetch_all(MYSQLI_ASSOC);
+        try {
+            $result = $this->conn->query("
+                SELECT id, name FROM offices 
+                WHERE status = 'active' 
+                ORDER BY name
+            ");
+            $offices = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } catch (\Throwable $e) {
+            \logger()->error('Hierarchy offices error', ['error' => $e->getMessage()]);
+        }
 
         return [
             'departments' => $departments,

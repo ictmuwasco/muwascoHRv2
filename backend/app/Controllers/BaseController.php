@@ -38,15 +38,15 @@ abstract class BaseController
     /**
      * Send an error response.
      */
-    protected function error(string $message, int $statusCode = 400, mixed $errors = null): void
+    protected function error(string $message, int $statusCode = 400, mixed $error = null): void
     {
         $response = [
             'success' => false,
             'message' => $message,
         ];
         
-        if ($errors !== null) {
-            $response['errors'] = $errors;
+        if ($error !== null) {
+            $response['error'] = $error;
         }
         
         $this->json($response, $statusCode);
@@ -85,6 +85,14 @@ abstract class BaseController
     }
 
     /**
+     * Get the current authenticated user ID (alias for getUserId).
+     */
+    protected function getAuthUserId(): int
+    {
+        return $this->getUserId();
+    }
+
+    /**
      * Get the current user role.
      */
     protected function getUserRole(): string
@@ -94,11 +102,13 @@ abstract class BaseController
 
     /**
      * Check if the current user has permission.
+     * Uses hybrid authorization (RBAC + user page permissions).
      */
     protected function hasPermission(string $module, string $action): bool
     {
-        $rbac = \App\Helpers\RBAC::getInstance();
-        return $rbac->currentUserCan($module, $action);
+        // Use the Auth helper which implements hybrid authorization
+        $auth = \App\Helpers\Auth::getInstance();
+        return $auth->hasPermission($module, $action);
     }
 
     /**
@@ -162,7 +172,11 @@ abstract class BaseController
     protected function getFilters(): array
     {
         $filters = [];
-        $allowedParams = ['status', 'department', 'role', 'type', 'date_from', 'date_to'];
+        $allowedParams = [
+            'search', 'status', 'department', 'department_id', 'section_id',
+            'role', 'type', 'employee_type', 'employee_status',
+            'date_from', 'date_to'
+        ];
         
         foreach ($allowedParams as $param) {
             if (isset($_GET[$param]) && $_GET[$param] !== '') {

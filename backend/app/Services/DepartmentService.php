@@ -16,8 +16,8 @@ use App\Repositories\Contracts\SectionRepositoryInterface;
  */
 class DepartmentService implements DepartmentServiceInterface
 {
-    private DepartmentRepositoryInterface $departmentRepository;
-    private SectionRepositoryInterface $sectionRepository;
+    private ?DepartmentRepositoryInterface $departmentRepository = null;
+    private ?SectionRepositoryInterface $sectionRepository = null;
     private array $dependencies = [];
 
     public function setDepartmentRepository(DepartmentRepositoryInterface $repository): void

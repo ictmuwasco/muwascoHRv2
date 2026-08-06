@@ -160,13 +160,18 @@ class DepartmentRepository implements DepartmentRepositoryInterface
 
     public function getAllActive(): array
     {
-        $result = $this->conn->query("
-            SELECT * FROM departments 
-            WHERE status = 'active' 
-            ORDER BY name
-        ");
+        try {
+            $result = $this->conn->query("
+                SELECT * FROM departments 
+                WHERE status = 'active' 
+                ORDER BY name
+            ");
 
-        return $result->fetch_all(MYSQLI_ASSOC);
+            return $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } catch (\Throwable $e) {
+            \logger()->error('DepartmentRepository getAllActive error', ['error' => $e->getMessage()]);
+            return [];
+        }
     }
 
     public function getSections(int $departmentId): array

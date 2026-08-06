@@ -41,9 +41,69 @@ class Auth
      */
     public function check(): bool
     {
-        return isset($_SESSION['user_id']) 
+        // First check PHP session
+        if (isset($_SESSION['user_id']) 
             && isset($_SESSION['session_valid']) 
-            && $_SESSION['session_valid'] === true;
+            && $_SESSION['session_valid'] === true) {
+            return true;
+        }
+
+        // If session is not valid, try to authenticate via JWT token
+        return $this->authenticateFromToken();
+    }
+
+    /**
+     * Try to authenticate the user from a JWT token in the Authorization header.
+     * This allows the frontend to maintain authentication across page reloads
+     * even when the PHP session has expired.
+     */
+    private function authenticateFromToken(): bool
+    {
+        // Check both HTTP_AUTHORIZATION and REDIRECT_HTTP_AUTHORIZATION
+        // (Apache sometimes uses the REDIRECT_ prefix when rewriting)
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] 
+            ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] 
+            ?? '';
+        if (empty($authHeader)) {
+            return false;
+        }
+
+        // Extract Bearer token
+        if (strpos($authHeader, 'Bearer ') !== 0) {
+            return false;
+        }
+
+        $token = substr($authHeader, 7);
+        if (empty($token)) {
+            return false;
+        }
+
+        try {
+            // Decode the JWT payload (base64-encoded JSON)
+            $payload = json_decode(base64_decode($token), true);
+            if (!is_array($payload) || empty($payload['user_id'])) {
+                return false;
+            }
+
+            // Check token expiration
+            if (isset($payload['exp']) && $payload['exp'] < time()) {
+                return false;
+            }
+
+            // Restore session from token
+            $_SESSION['user_id'] = (int)$payload['user_id'];
+            $_SESSION['user_email'] = $payload['email'] ?? '';
+            $_SESSION['user_role'] = $payload['role'] ?? '';
+            $_SESSION['session_valid'] = true;
+            $_SESSION['last_activity'] = time();
+
+            // Clear authorization cache since the session was just restored
+            $this->authService->clearCache();
+
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**

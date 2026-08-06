@@ -105,13 +105,7 @@ const Employees = () => {
     },
   ]
 
-  const filteredEmployees = employees.filter((emp) =>
-    Object.values(emp).some((val) =>
-      String(val).toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  )
-
-  if (loading && page === 1 && !searchTerm) {
+  if (loading) {
     return (
       <div className="space-y-6">
         <EmployeeTabs />
@@ -163,12 +157,12 @@ const Employees = () => {
           </form>
         </div>
 
-        <Table columns={columns} data={filteredEmployees} />
+        <Table columns={columns} data={employees} />
 
         {/* Pagination */}
         <div className="flex items-center justify-between mt-4 px-2 py-3">
           <p className="text-sm text-gray-500">
-            Showing {filteredEmployees.length > 0 ? ((page - 1) * PER_PAGE) + 1 : 0} to{' '}
+            Showing {employees.length > 0 ? ((page - 1) * PER_PAGE) + 1 : 0} to{' '}
             {Math.min(page * PER_PAGE, total)} of {total} employees
           </p>
           <div className="flex items-center space-x-2">

@@ -32,6 +32,16 @@ interface EmployeeServiceInterface extends ServiceInterface
     public function getEmployeeById(int $id): ?array;
 
     /**
+     * Get employee by user ID.
+     */
+    public function getEmployeeByUserId(int $userId): ?array;
+
+    /**
+     * Update employee profile (partial update without full validation).
+     */
+    public function updateEmployeeProfile(int $id, array $data): bool;
+
+    /**
      * Create a new employee.
      */
     public function createEmployee(array $data): int;

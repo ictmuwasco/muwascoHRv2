@@ -1,7 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Eye, EyeOff, LogIn } from 'lucide-react'
+import {
+  Eye,
+  EyeOff,
+  LogIn,
+  Mail,
+  Lock,
+  ShieldCheck,
+  Users,
+  BarChart3,
+  Sparkles,
+  AlertCircle,
+  Droplets,
+} from 'lucide-react'
 
 const Login = () => {
   const navigate = useNavigate()
@@ -9,112 +21,279 @@ const Login = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [touched, setTouched] = useState({ email: false, password: false })
 
   // Redirect if already authenticated
-  if (isAuthenticated) {
-    navigate('/dashboard', { replace: true })
-    return null
-  }
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [isAuthenticated, navigate])
+
+  const emailError =
+    touched.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      ? 'Please enter a valid email address'
+      : ''
+  const passwordError =
+    touched.password && password.length < 6
+      ? 'Password must be at least 6 characters'
+      : ''
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setTouched({ email: true, password: true })
     setError('')
-    setLoading(true)
 
-    const result = await login(email, password)
-
-    if (result.success) {
-      navigate('/dashboard', { replace: true })
-    } else {
-      setError(result.message)
+    if (emailError || passwordError || !email || !password) {
+      return
     }
 
-    setLoading(false)
+    setLoading(true)
+
+    try {
+      const result = await login(email, password)
+
+      if (result.success) {
+        navigate('/dashboard', { replace: true })
+      } else {
+        setError(result.message)
+      }
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        {/* Header */}
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-primary-600">MUWASCO HR</h1>
-          <h2 className="mt-2 text-xl font-semibold text-gray-900">
-            Sign in to your account
-          </h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Murang'a Water and Sanitation Company
+    <div className="min-h-screen w-full flex bg-slate-50">
+      {/* Left brand panel */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-primary-700 via-primary-600 to-primary-800 text-white">
+        {/* Decorative shapes */}
+        <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute -bottom-40 -right-20 w-[28rem] h-[28rem] rounded-full bg-primary-400/30 blur-3xl" />
+        <div className="absolute inset-0 opacity-[0.07] bg-[radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:24px_24px]" />
+
+        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-white/15 backdrop-blur flex items-center justify-center ring-1 ring-white/20">
+              <Droplets className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-sm text-white/70">Welcome to</p>
+              <h1 className="text-lg font-semibold tracking-wide">MUWASCO HR</h1>
+            </div>
+          </div>
+
+          <div className="space-y-8 max-w-md">
+            <div>
+              <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 ring-1 ring-white/20 text-xs font-medium">
+                <Sparkles className="w-3.5 h-3.5" /> Murang'a Water &amp; Sanitation Co.
+              </span>
+              <h2 className="mt-4 text-4xl font-bold leading-tight">
+                Manage your team with confidence.
+              </h2>
+              <p className="mt-3 text-white/80 leading-relaxed">
+                A modern HR platform for employees, attendance, leave,
+                appraisals and reports — all in one secure place.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              <Feature
+                icon={<Users className="w-5 h-5" />}
+                title="Employee records"
+                desc="Centralised profiles, contracts and documents."
+              />
+              <Feature
+                icon={<ShieldCheck className="w-5 h-5" />}
+                title="Secure &amp; role-based"
+                desc="Granular permissions for every team member."
+              />
+              <Feature
+                icon={<BarChart3 className="w-5 h-5" />}
+                title="Insightful reports"
+                desc="Attendance, leave and performance at a glance."
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-white/60">
+            © {new Date().getFullYear()} MUWASCO. All rights reserved.
           </p>
         </div>
+      </div>
 
-        {/* Login Form */}
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="bg-white rounded-lg shadow-sm border p-8 space-y-6">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
-                {error}
-              </div>
-            )}
-
+      {/* Right form panel */}
+      <div className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-12 py-10">
+        <div className="w-full max-w-md">
+          {/* Mobile brand */}
+          <div className="lg:hidden mb-8 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary-600 text-white flex items-center justify-center">
+              <Droplets className="w-5 h-5" />
+            </div>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              <p className="text-xs text-slate-500">Welcome to</p>
+              <h1 className="text-base font-semibold text-slate-900">MUWASCO HR</h1>
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-3xl font-bold text-slate-900">Sign in</h2>
+            <p className="mt-2 text-sm text-slate-500">
+              Enter your credentials to access the HR portal.
+            </p>
+          </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="mt-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form className="mt-8 space-y-5" onSubmit={handleSubmit} noValidate>
+            <div>
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-slate-700 mb-1.5"
+              >
                 Email address
               </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                placeholder="Enter your email"
-              />
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, email: true }))}
+                  aria-invalid={!!emailError}
+                  aria-describedby={emailError ? 'email-error' : undefined}
+                  className={`w-full pl-10 pr-3 py-2.5 bg-white text-sm rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${
+                    emailError ? 'border-red-300' : 'border-slate-200'
+                  }`}
+                  placeholder="you@muwasco.co.ke"
+                />
+              </div>
+              {emailError && (
+                <p id="email-error" className="mt-1 text-xs text-red-600">
+                  {emailError}
+                </p>
+              )}
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-slate-700"
+                >
+                  Password
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    /* hook up forgot-password flow here */
+                  }}
+                  className="text-xs font-medium text-primary-600 hover:text-primary-700"
+                >
+                  Forgot password?
+                </button>
+              </div>
               <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 pr-10"
+                  onBlur={() => setTouched((t) => ({ ...t, password: true }))}
+                  aria-invalid={!!passwordError}
+                  aria-describedby={passwordError ? 'password-error' : undefined}
+                  className={`w-full pl-10 pr-10 py-2.5 bg-white text-sm rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${
+                    passwordError ? 'border-red-300' : 'border-slate-200'
+                  }`}
                   placeholder="Enter your password"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
                 >
-                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
                 </button>
               </div>
+              {passwordError && (
+                <p id="password-error" className="mt-1 text-xs text-red-600">
+                  {passwordError}
+                </p>
+              )}
             </div>
+
+            <label className="flex items-center gap-2 text-sm text-slate-600 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+              />
+              Keep me signed in on this device
+            </label>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg shadow-sm text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 active:bg-primary-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed transition"
             >
               {loading ? (
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                <>
+                  <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                  Signing in…
+                </>
               ) : (
                 <>
-                  <LogIn className="h-5 w-5 mr-2" />
+                  <LogIn className="h-4 w-4" />
                   Sign in
                 </>
               )}
             </button>
-          </div>
-        </form>
+          </form>
+
+          <p className="mt-8 text-center text-xs text-slate-500">
+            Need help signing in? Contact your HR administrator.
+          </p>
+        </div>
       </div>
     </div>
   )
 }
+
+const Feature = ({ icon, title, desc }) => (
+  <div className="flex items-start gap-3 rounded-lg bg-white/10 ring-1 ring-white/15 p-3 backdrop-blur-sm">
+    <div className="w-9 h-9 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
+      {icon}
+    </div>
+    <div>
+      <p className="text-sm font-semibold" dangerouslySetInnerHTML={{ __html: title }} />
+      <p className="text-xs text-white/75">{desc}</p>
+    </div>
+  </div>
+)
 
 export default Login

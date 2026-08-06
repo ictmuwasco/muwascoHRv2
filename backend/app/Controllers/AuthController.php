@@ -48,8 +48,16 @@ class AuthController extends BaseController
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 401);
         } catch (\Exception $e) {
-            \logger()->error('Login error', ['error' => $e->getMessage()]);
-            $this->error('Login failed. Please try again.', 500);
+            \logger()->error('Login error', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
+            
+            // Check if it's a database connection error
+            if (str_contains($e->getMessage(), 'SQLSTATE[HY000]') || 
+                str_contains($e->getMessage(), 'No connection could be made') ||
+                str_contains($e->getMessage(), 'Connection refused')) {
+                $this->error('Database connection failed. Please contact administrator.', 500, 'DATABASE_ERROR');
+            } else {
+                $this->error('Login failed. Please try again.', 500);
+            }
         }
     }
 

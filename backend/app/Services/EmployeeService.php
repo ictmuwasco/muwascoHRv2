@@ -97,6 +97,32 @@ class EmployeeService implements EmployeeServiceInterface
         return $this->employeeRepository->findWithDetails($id);
     }
 
+    public function getEmployeeByUserId(int $userId): ?array
+    {
+        return $this->employeeRepository->findByUserId($userId);
+    }
+
+    public function updateEmployeeProfile(int $id, array $data): bool
+    {
+        // Business rule: Check if employee exists
+        $existingEmployee = $this->employeeRepository->findById($id);
+        if (!$existingEmployee) {
+            throw new \InvalidArgumentException('Employee not found');
+        }
+
+        // Business rule: Normalize email if provided
+        if (!empty($data['email'])) {
+            $data['email'] = strtolower(trim($data['email']));
+        }
+
+        // Business rule: Normalize phone if provided
+        if (!empty($data['phone'])) {
+            $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
+        }
+
+        return $this->employeeRepository->update($id, $data);
+    }
+
     public function createEmployee(array $data): int
     {
         // Business rule: Validate employee data

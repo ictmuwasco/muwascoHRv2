@@ -106,6 +106,8 @@ class AuthService implements AuthServiceInterface
         $this->session->set('user_email', $user['email']);
         $this->session->set('user_role', $user['role']);
         $this->session->set('user_name', trim($user['first_name'] . ' ' . $user['last_name']));
+        $this->session->set('session_valid', true);
+        $this->session->set('last_activity', time());
 
         if ($employee) {
             $this->session->set('employee_id', $employee['id']);

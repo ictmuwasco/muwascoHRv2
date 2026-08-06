@@ -3,13 +3,39 @@ import apiClient from '../api/client';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
-import { User, Briefcase, Users, FileText, Key } from 'lucide-react';
+import { User, Briefcase, Users, FileText, Key, Save, Loader2 } from 'lucide-react';
 import type { EmployeeProfile } from '../types';
 
 const Profile = () => {
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('personal');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // Editable form state
+  const [personal, setPersonal] = useState({
+    first_name: '',
+    last_name: '',
+    surname: '',
+    email: '',
+    phone: '',
+    national_id: '',
+    gender: '',
+    marital_status: '',
+    address: '',
+  });
+
+  const [employment, setEmployment] = useState({
+    department: '',
+    section: '',
+    office: '',
+    designation: '',
+    employee_type: '',
+    employee_status: '',
+    employment_date: '',
+  });
 
   useEffect(() => {
     fetchProfile();
@@ -18,11 +44,76 @@ const Profile = () => {
   const fetchProfile = async () => {
     try {
       const response = await apiClient.get('/profile');
-      setProfile(response.data.data);
+      const data = response.data.data;
+      setProfile(data);
+      if (data) {
+        setPersonal({
+          first_name: data.personal?.first_name || '',
+          last_name: data.personal?.last_name || '',
+          surname: data.personal?.surname || '',
+          email: data.personal?.email || '',
+          phone: data.personal?.phone || '',
+          national_id: data.personal?.national_id || '',
+          gender: data.personal?.gender || '',
+          marital_status: data.personal?.marital_status || '',
+          address: data.personal?.address || '',
+        });
+        setEmployment({
+          department: data.employment?.department || '',
+          section: data.employment?.section || '',
+          office: data.employment?.office || '',
+          designation: data.employment?.designation || '',
+          employee_type: data.employment?.employee_type || '',
+          employee_status: data.employment?.employee_status || '',
+          employment_date: data.employment?.employment_date || '',
+        });
+      }
     } catch (error) {
       console.error('Failed to fetch profile:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePersonalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setPersonal((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleEmploymentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setEmployment((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSavePersonal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      await apiClient.put('/profile', { personal });
+      setSuccess('Personal information updated successfully');
+    } catch (err) {
+      setError('Failed to update personal information');
+      console.error('Failed to update personal info:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveEmployment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      await apiClient.put('/profile', { employment });
+      setSuccess('Employment information updated successfully');
+    } catch (err) {
+      setError('Failed to update employment information');
+      console.error('Failed to update employment info:', err);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -67,35 +158,164 @@ const Profile = () => {
         ))}
       </div>
 
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
+          {success}
+        </div>
+      )}
+
       {/* Personal Information */}
       {activeTab === 'personal' && profile && (
         <Card title="Personal Information">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input label="First Name" value={profile.personal.first_name} readOnly />
-            <Input label="Last Name" value={profile.personal.last_name} readOnly />
-            <Input label="Surname" value={profile.personal.surname} readOnly />
-            <Input label="Email" value={profile.personal.email} readOnly />
-            <Input label="Phone" value={profile.personal.phone} readOnly />
-            <Input label="National ID" value={profile.personal.national_id} readOnly />
-            <Input label="Gender" value={profile.personal.gender} readOnly />
-            <Input label="Marital Status" value={profile.personal.marital_status} readOnly />
-            <Input label="Address" value={profile.personal.address} readOnly className="md:col-span-2" />
-          </div>
+          <form onSubmit={handleSavePersonal}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="First Name"
+                name="first_name"
+                value={personal.first_name}
+                onChange={handlePersonalChange}
+              />
+              <Input
+                label="Last Name"
+                name="last_name"
+                value={personal.last_name}
+                onChange={handlePersonalChange}
+              />
+              <Input
+                label="Surname"
+                name="surname"
+                value={personal.surname}
+                onChange={handlePersonalChange}
+              />
+              <Input
+                label="Email"
+                name="email"
+                type="email"
+                value={personal.email}
+                onChange={handlePersonalChange}
+              />
+              <Input
+                label="Phone"
+                name="phone"
+                value={personal.phone}
+                onChange={handlePersonalChange}
+              />
+              <Input
+                label="National ID"
+                name="national_id"
+                value={personal.national_id}
+                onChange={handlePersonalChange}
+              />
+              <Input
+                label="Gender"
+                name="gender"
+                value={personal.gender}
+                onChange={handlePersonalChange}
+              />
+              <Input
+                label="Marital Status"
+                name="marital_status"
+                value={personal.marital_status}
+                onChange={handlePersonalChange}
+              />
+              <Input
+                label="Address"
+                name="address"
+                value={personal.address}
+                onChange={handlePersonalChange}
+                className="md:col-span-2"
+              />
+            </div>
+            <div className="flex justify-end mt-4">
+              <Button type="submit" disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
         </Card>
       )}
 
       {/* Employment Information */}
       {activeTab === 'employment' && profile && (
         <Card title="Employment Information">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input label="Department" value={profile.employment.department} readOnly />
-            <Input label="Section" value={profile.employment.section} readOnly />
-            <Input label="Office" value={profile.employment.office} readOnly />
-            <Input label="Designation" value={profile.employment.designation} readOnly />
-            <Input label="Employee Type" value={profile.employment.employee_type} readOnly />
-            <Input label="Status" value={profile.employment.employee_status} readOnly />
-            <Input label="Employment Date" value={profile.employment.employment_date} readOnly />
-          </div>
+          <form onSubmit={handleSaveEmployment}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Department"
+                name="department"
+                value={employment.department}
+                onChange={handleEmploymentChange}
+              />
+              <Input
+                label="Section"
+                name="section"
+                value={employment.section}
+                onChange={handleEmploymentChange}
+              />
+              <Input
+                label="Office"
+                name="office"
+                value={employment.office}
+                onChange={handleEmploymentChange}
+              />
+              <Input
+                label="Designation"
+                name="designation"
+                value={employment.designation}
+                onChange={handleEmploymentChange}
+              />
+              <Input
+                label="Employee Type"
+                name="employee_type"
+                value={employment.employee_type}
+                onChange={handleEmploymentChange}
+              />
+              <Input
+                label="Status"
+                name="employee_status"
+                value={employment.employee_status}
+                onChange={handleEmploymentChange}
+              />
+              <Input
+                label="Employment Date"
+                name="employment_date"
+                type="date"
+                value={employment.employment_date}
+                onChange={handleEmploymentChange}
+              />
+            </div>
+            <div className="flex justify-end mt-4">
+              <Button type="submit" disabled={saving}>
+                {saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
         </Card>
       )}
 
