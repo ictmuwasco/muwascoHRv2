@@ -71,6 +71,32 @@ The HR Management System follows a modern, enterprise-grade architecture with co
 
 ## Backend Architecture
 
+### Project Structure
+
+The backend is located in the `backend/app` directory. It follows a custom MVC-like architecture with the following structure:
+
+```
+backend/
+├── app/
+│   ├── Controllers/     # HTTP request handlers
+│   ├── Services/        # Business logic
+│   ├── Repositories/    # Data access layer
+│   ├── Models/          # Entity definitions
+│   ├── Middleware/      # Request/response filters
+│   ├── Validators/      # Input validation
+│   ├── Helpers/         # Utility classes
+│   ├── Responses/       # API response formatters
+│   ├── Policies/        # Authorization policies
+│   ├── Gates/           # Authorization gates
+│   └── Templates/       # Email/response templates
+├── config/              # Application configuration
+├── database/            # Migrations and seeders
+├── routes/              # API route definitions
+├── public/              # Public assets and entry point
+├── bootstrap.php        # Application bootstrap
+└── composer.json        # PHP dependencies
+```
+
 ### Layered Architecture
 
 ```
