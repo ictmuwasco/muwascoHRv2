@@ -165,8 +165,10 @@ class SectionRepository implements SectionRepositoryInterface
     public function getByDepartment(int $departmentId): array
     {
         $stmt = $this->conn->prepare("
-            SELECT s.* FROM sections s
-            WHERE s.department_id = ? AND s.status = 'active'
+            SELECT s.*, d.name as department_name
+            FROM sections s
+            LEFT JOIN departments d ON s.department_id = d.id
+            WHERE s.department_id = ?
             ORDER BY s.name
         ");
         $stmt->bind_param('i', $departmentId);
@@ -182,7 +184,7 @@ class SectionRepository implements SectionRepositoryInterface
     {
         $stmt = $this->conn->prepare("
             SELECT ss.* FROM subsections ss
-            WHERE ss.section_id = ? AND ss.status = 'active'
+            WHERE ss.section_id = ? AND ss.is_active = 1
             ORDER BY ss.name
         ");
         $stmt->bind_param('i', $sectionId);
@@ -213,5 +215,115 @@ class SectionRepository implements SectionRepositoryInterface
         $stmt->close();
 
         return (int)$result['count'] > 0;
+    }
+
+    public function getAllSubsections(): array
+    {
+        $result = $this->conn->query("
+            SELECT ss.*, s.name as section_name, d.name as department_name
+            FROM subsections ss
+            LEFT JOIN sections s ON ss.section_id = s.id
+            LEFT JOIN departments d ON s.department_id = d.id
+            ORDER BY d.name, s.name, ss.name
+        ");
+
+        return $result->fetch_all(MYSQLI_ASSOC);
+    }
+
+    public function findSubsectionById(int $id): ?array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT ss.*, s.name as section_name, d.name as department_name
+            FROM subsections ss
+            LEFT JOIN sections s ON ss.section_id = s.id
+            LEFT JOIN departments d ON s.department_id = d.id
+            WHERE ss.id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param('i', $id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $subsection = $result->fetch_assoc();
+        $stmt->close();
+
+        return $subsection ?: null;
+    }
+
+    public function createSubsection(array $data): int
+    {
+        $fields = array_keys($data);
+        $placeholders = array_fill(0, count($fields), '?');
+        $types = '';
+        $values = [];
+
+        foreach ($data as $value) {
+            if ($value === null) {
+                $types .= 's';
+                $values[] = null;
+            } elseif (is_int($value)) {
+                $types .= 'i';
+                $values[] = $value;
+            } elseif (is_float($value)) {
+                $types .= 'd';
+                $values[] = $value;
+            } else {
+                $types .= 's';
+                $values[] = $value;
+            }
+        }
+
+        $sql = "INSERT INTO subsections (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->bind_param($types, ...$values);
+        $stmt->execute();
+        $insertId = (int)$this->conn->insert_id;
+        $stmt->close();
+
+        return $insertId;
+    }
+
+    public function updateSubsection(int $id, array $data): bool
+    {
+        $fields = array_keys($data);
+        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $types = '';
+        $values = [];
+
+        foreach ($data as $value) {
+            if ($value === null) {
+                $types .= 's';
+                $values[] = null;
+            } elseif (is_int($value)) {
+                $types .= 'i';
+                $values[] = $value;
+            } elseif (is_float($value)) {
+                $types .= 'd';
+                $values[] = $value;
+            } else {
+                $types .= 's';
+                $values[] = $value;
+            }
+        }
+
+        $values[] = $id;
+        $types .= 'i';
+
+        $sql = "UPDATE subsections SET {$setClause} WHERE id = ?";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->bind_param($types, ...$values);
+        $result = $stmt->execute();
+        $stmt->close();
+
+        return $result;
+    }
+
+    public function deleteSubsection(int $id): bool
+    {
+        $stmt = $this->conn->prepare("DELETE FROM subsections WHERE id = ?");
+        $stmt->bind_param('i', $id);
+        $result = $stmt->execute();
+        $stmt->close();
+
+        return $result;
     }
 }
