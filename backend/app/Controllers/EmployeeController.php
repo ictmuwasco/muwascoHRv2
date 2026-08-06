@@ -167,17 +167,168 @@ class EmployeeController extends BaseController
         $this->requirePermission('employees', 'view');
 
         try {
+            $departments = [];
+            $sections = [];
+            $subsections = [];
+            $offices = [];
+            $hierarchy = [];
+
+            // Fetch each data source independently so one failure doesn't break all
+            try {
+                $departments = $this->employeeService->getDepartments() ?? [];
+            } catch (\Exception $e) {
+                \logger()->error('Reference departments error', ['error' => $e->getMessage()]);
+            }
+
+            try {
+                $offices = $this->employeeService->getOffices() ?? [];
+            } catch (\Exception $e) {
+                \logger()->error('Reference offices error', ['error' => $e->getMessage()]);
+            }
+
+            try {
+                $hierarchy = $this->employeeService->getOrganizationHierarchy() ?? [];
+                $sections = $hierarchy['sections'] ?? [];
+                $subsections = $hierarchy['subsections'] ?? [];
+            } catch (\Exception $e) {
+                \logger()->error('Reference hierarchy error', ['error' => $e->getMessage()]);
+            }
+
             $data = [
-                'departments' => $this->employeeService->getDepartments(),
-                'sections' => [],
-                'subsections' => [],
-                'offices' => $this->employeeService->getOffices(),
-                'hierarchy' => $this->employeeService->getOrganizationHierarchy(),
+                'departments' => $departments,
+                'sections' => $sections,
+                'subsections' => $subsections,
+                'offices' => $offices,
+                'hierarchy' => $hierarchy,
             ];
             $this->success($data);
         } catch (\Exception $e) {
-            \logger()->error('Employee reference data error', ['error' => $e->getMessage()]);
-            $this->error('Failed to load reference data. Please try again.', 500);
+            \logger()->error('Employee reference data error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            $this->error('Failed to load reference data: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * GET /api/profile - Get the current user's profile.
+     */
+    public function profileAction(): void
+    {
+        $this->requirePermission('profile', 'view');
+
+        try {
+            $userId = $this->getUserId();
+            if ($userId === 0) {
+                $this->unauthorized('Authentication required');
+            }
+
+            // Get the employee associated with the current user
+            $employee = $this->employeeService->getEmployeeByUserId($userId);
+            if (!$employee) {
+                $this->notFound('Employee profile not found');
+            }
+
+            // Build profile data structure expected by the frontend
+            $profile = [
+                'personal' => [
+                    'first_name' => $employee['first_name'] ?? '',
+                    'last_name' => $employee['last_name'] ?? '',
+                    'surname' => $employee['surname'] ?? '',
+                    'email' => $employee['email'] ?? '',
+                    'phone' => $employee['phone'] ?? '',
+                    'national_id' => $employee['national_id'] ?? '',
+                    'gender' => $employee['gender'] ?? '',
+                    'marital_status' => $employee['marital_status'] ?? '',
+                    'address' => $employee['address'] ?? '',
+                ],
+                'employment' => [
+                    'department' => $employee['department_name'] ?? '',
+                    'section' => $employee['section_name'] ?? '',
+                    'office' => $employee['office_name'] ?? '',
+                    'designation' => $employee['designation'] ?? '',
+                    'employee_type' => $employee['employee_type'] ?? '',
+                    'employee_status' => $employee['employee_status'] ?? '',
+                    'employment_date' => $employee['hire_date'] ?? $employee['employment_date'] ?? '',
+                ],
+                'next_of_kin' => [
+                    'name' => $employee['next_of_kin_name'] ?? '',
+                    'relationship' => $employee['next_of_kin_relationship'] ?? '',
+                    'phone' => $employee['next_of_kin_phone'] ?? '',
+                    'email' => $employee['next_of_kin_email'] ?? '',
+                    'address' => $employee['next_of_kin_address'] ?? '',
+                ],
+                'documents' => [],
+            ];
+
+            $this->success($profile);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Profile retrieval error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            $this->error('Failed to load profile. Please try again.', 500);
+        }
+    }
+
+    /**
+     * PUT /api/profile - Update the current user's profile.
+     */
+    public function updateProfileAction(): void
+    {
+        $this->requirePermission('profile', 'edit');
+
+        try {
+            $userId = $this->getUserId();
+            if ($userId === 0) {
+                $this->unauthorized('Authentication required');
+            }
+
+            // Get the employee associated with the current user
+            $employee = $this->employeeService->getEmployeeByUserId($userId);
+            if (!$employee) {
+                $this->notFound('Employee profile not found');
+            }
+
+            $data = $this->getJsonBody();
+            $updateData = [];
+
+            // Handle personal info updates
+            if (isset($data['personal']) && is_array($data['personal'])) {
+                $personal = $data['personal'];
+                $allowedPersonalFields = [
+                    'first_name', 'last_name', 'surname', 'email', 'phone',
+                    'national_id', 'gender', 'marital_status', 'address'
+                ];
+                foreach ($allowedPersonalFields as $field) {
+                    if (isset($personal[$field])) {
+                        $updateData[$field] = $personal[$field];
+                    }
+                }
+            }
+
+            // Handle employment info updates
+            if (isset($data['employment']) && is_array($data['employment'])) {
+                $employment = $data['employment'];
+                $allowedEmploymentFields = [
+                    'designation', 'employee_type', 'employee_status', 'employment_date'
+                ];
+                foreach ($allowedEmploymentFields as $field) {
+                    if (isset($employment[$field])) {
+                        $updateData[$field] = $employment[$field];
+                    }
+                }
+            }
+
+            if (empty($updateData)) {
+                $this->error('No valid fields to update', 400);
+            }
+
+            // Update the employee record (partial update, no full validation)
+            $result = $this->employeeService->updateEmployeeProfile((int)$employee['id'], $updateData);
+            $this->success($result, 'Profile updated successfully');
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Profile update error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            $this->error('Failed to update profile. Please try again.', 500);
         }
     }
 }

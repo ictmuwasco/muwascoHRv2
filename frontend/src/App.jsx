@@ -9,6 +9,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Employees from './pages/Employees'
 import EmployeeProfile from './pages/EmployeeProfile'
+import EmployeeForm from './pages/EmployeeForm'
 import Departments from './pages/Departments'
 import Attendance from './pages/Attendance'
 import Leave from './pages/Leave'
@@ -37,6 +38,8 @@ function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="employees" element={<Employees />} />
+          <Route path="employees/add" element={<EmployeeForm />} />
+          <Route path="employees/:id/edit" element={<EmployeeForm />} />
           <Route path="employees/:id/profile" element={<EmployeeProfile />} />
           <Route path="departments" element={<Departments />} />
           <Route path="attendance" element={<Attendance />} />

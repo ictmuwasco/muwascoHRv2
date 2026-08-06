@@ -70,6 +70,28 @@ try {
             echo json_encode(['success' => false, 'message' => 'Method not allowed']);
         }
     }
+    elseif ($endpoint === '/employees/reference' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
+        $controller = new \App\Controllers\EmployeeController();
+        $controller->referenceAction();
+    }
+    elseif ($endpoint === '/employees/search' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
+        $controller = new \App\Controllers\EmployeeController();
+        $controller->searchAction();
+    }
+    elseif (preg_match('#^/employees/(\d+)/profile$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
+        $controller = new \App\Controllers\EmployeeController();
+        $id = (int)$matches[1];
+        
+        if ($requestMethod === 'GET') {
+            $controller->showAction($id);
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
     elseif (preg_match('#^/employees/(\d+)$#', $endpoint, $matches)) {
         require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
         $controller = new \App\Controllers\EmployeeController();
@@ -85,6 +107,47 @@ try {
             http_response_code(405);
             echo json_encode(['success' => false, 'message' => 'Method not allowed']);
         }
+    }
+    // Department routes
+    elseif ($endpoint === '/departments' || $endpoint === '/departments/') {
+        require_once __DIR__ . '/backend/app/Controllers/DepartmentController.php';
+        $controller = new \App\Controllers\DepartmentController();
+        
+        if ($requestMethod === 'GET') {
+            $controller->indexAction();
+        } elseif ($requestMethod === 'POST') {
+            $controller->storeAction();
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
+    elseif (preg_match('#^/departments/(\d+)$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/DepartmentController.php';
+        $controller = new \App\Controllers\DepartmentController();
+        $id = (int)$matches[1];
+        
+        if ($requestMethod === 'GET') {
+            $controller->showAction($id);
+        } elseif ($requestMethod === 'PUT' || $requestMethod === 'POST') {
+            $controller->updateAction($id);
+        } elseif ($requestMethod === 'DELETE') {
+            $controller->destroyAction($id);
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
+    // Profile routes
+    elseif ($endpoint === '/profile' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
+        $controller = new \App\Controllers\EmployeeController();
+        $controller->profileAction();
+    }
+    elseif ($endpoint === '/profile' && $requestMethod === 'PUT') {
+        require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
+        $controller = new \App\Controllers\EmployeeController();
+        $controller->updateProfileAction();
     }
     // Dashboard routes
     elseif (strpos($endpoint, '/dashboard') === 0) {

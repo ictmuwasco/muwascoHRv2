@@ -16,8 +16,8 @@ use App\Repositories\Contracts\EmployeeRepositoryInterface;
  */
 class AttendanceService implements AttendanceServiceInterface
 {
-    private AttendanceRepositoryInterface $attendanceRepository;
-    private EmployeeRepositoryInterface $employeeRepository;
+    private ?AttendanceRepositoryInterface $attendanceRepository = null;
+    private ?EmployeeRepositoryInterface $employeeRepository = null;
     private array $dependencies = [];
 
     public function setAttendanceRepository(AttendanceRepositoryInterface $repository): void

@@ -16,8 +16,8 @@ use App\Repositories\Contracts\EmployeeRepositoryInterface;
  */
 class LeaveService implements LeaveServiceInterface
 {
-    private LeaveRepositoryInterface $leaveRepository;
-    private EmployeeRepositoryInterface $employeeRepository;
+    private ?LeaveRepositoryInterface $leaveRepository = null;
+    private ?EmployeeRepositoryInterface $employeeRepository = null;
     private array $dependencies = [];
 
     public function setLeaveRepository(LeaveRepositoryInterface $repository): void
