@@ -1,26 +1,27 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\AuthController;
-use App\Http\Controllers\EmployeeController;
-use App\Http\Controllers\DepartmentController;
-use App\Http\Controllers\LeaveController;
-use App\Http\Controllers\AttendanceController;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\SectionController;
-use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\ReportController;
-use App\Http\Controllers\PayrollController;
-use App\Http\Controllers\ConsentController;
-use App\Http\Controllers\FinancialYearController;
-use App\Http\Controllers\ComplaintController;
-use App\Http\Controllers\AppraisalController;
-use App\Http\Controllers\StrategicPlanController;
-use App\Http\Controllers\WorkplanController;
-use App\Http\Controllers\KPIController;
-use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\AuditLogController;
-use App\Http\Controllers\SettingController;
+use App\Controllers\AuthController;
+use App\Controllers\EmployeeController;
+use App\Controllers\DepartmentController;
+use App\Controllers\LeaveController;
+use App\Controllers\AttendanceController;
+use App\Controllers\UserController;
+use App\Controllers\SectionController;
+use App\Controllers\SubsectionController;
+use App\Controllers\DashboardController;
+use App\Controllers\ReportController;
+use App\Controllers\PayrollController;
+use App\Controllers\ConsentController;
+use App\Controllers\FinancialYearController;
+use App\Controllers\ComplaintController;
+use App\Controllers\AppraisalController;
+use App\Controllers\StrategicPlanController;
+use App\Controllers\WorkplanController;
+use App\Controllers\KPIController;
+use App\Controllers\NotificationController;
+use App\Controllers\AuditLogController;
+use App\Controllers\SettingController;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 

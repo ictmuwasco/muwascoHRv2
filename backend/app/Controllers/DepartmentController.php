@@ -40,7 +40,7 @@ class DepartmentController extends BaseController
         }
 
         try {
-            $departments = $this->departmentService->getAllDepartments();
+            $departments = $this->departmentService->getDepartmentHierarchy();
             $this->success($departments);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
