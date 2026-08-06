@@ -138,6 +138,66 @@ try {
             echo json_encode(['success' => false, 'message' => 'Method not allowed']);
         }
     }
+    // Section routes
+    elseif ($endpoint === '/sections' || $endpoint === '/sections/') {
+        require_once __DIR__ . '/backend/app/Controllers/SectionController.php';
+        $controller = new \App\Controllers\SectionController();
+        
+        if ($requestMethod === 'GET') {
+            $controller->indexAction();
+        } elseif ($requestMethod === 'POST') {
+            $controller->storeAction();
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
+    elseif (preg_match('#^/sections/(\d+)$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/SectionController.php';
+        $controller = new \App\Controllers\SectionController();
+        $id = (int)$matches[1];
+        
+        if ($requestMethod === 'GET') {
+            $controller->showAction($id);
+        } elseif ($requestMethod === 'PUT' || $requestMethod === 'POST') {
+            $controller->updateAction($id);
+        } elseif ($requestMethod === 'DELETE') {
+            $controller->destroyAction($id);
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
+    // Subsection routes
+    elseif ($endpoint === '/subsections' || $endpoint === '/subsections/') {
+        require_once __DIR__ . '/backend/app/Controllers/SubsectionController.php';
+        $controller = new \App\Controllers\SubsectionController();
+        
+        if ($requestMethod === 'GET') {
+            $controller->indexAction();
+        } elseif ($requestMethod === 'POST') {
+            $controller->storeAction();
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
+    elseif (preg_match('#^/subsections/(\d+)$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/SubsectionController.php';
+        $controller = new \App\Controllers\SubsectionController();
+        $id = (int)$matches[1];
+        
+        if ($requestMethod === 'GET') {
+            $controller->showAction($id);
+        } elseif ($requestMethod === 'PUT' || $requestMethod === 'POST') {
+            $controller->updateAction($id);
+        } elseif ($requestMethod === 'DELETE') {
+            $controller->destroyAction($id);
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
     // Profile routes
     elseif ($endpoint === '/profile' && $requestMethod === 'GET') {
         require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';

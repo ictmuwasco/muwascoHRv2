@@ -163,7 +163,6 @@ class DepartmentRepository implements DepartmentRepositoryInterface
         try {
             $result = $this->conn->query("
                 SELECT * FROM departments 
-                WHERE status = 'active' 
                 ORDER BY name
             ");
 
@@ -178,7 +177,7 @@ class DepartmentRepository implements DepartmentRepositoryInterface
     {
         $stmt = $this->conn->prepare("
             SELECT s.* FROM sections s
-            WHERE s.department_id = ? AND s.status = 'active'
+            WHERE s.department_id = ?
             ORDER BY s.name
         ");
         $stmt->bind_param('i', $departmentId);
@@ -194,7 +193,7 @@ class DepartmentRepository implements DepartmentRepositoryInterface
     {
         $stmt = $this->conn->prepare("
             SELECT ss.* FROM subsections ss
-            WHERE ss.section_id = ? AND ss.status = 'active'
+            WHERE ss.section_id = ?
             ORDER BY ss.name
         ");
         $stmt->bind_param('i', $sectionId);
