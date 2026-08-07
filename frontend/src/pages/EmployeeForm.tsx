@@ -24,6 +24,7 @@ interface FormData {
   designation: string
   department_id: string
   section_id: string
+  subsection_id: string
   office_id: string
   position: string
   employment_type: string
@@ -35,9 +36,19 @@ interface FormData {
 
 interface ReferenceData {
   departments: Array<{ id: number; name: string }>
-  sections: Array<{ id: number; name: string }>
+  sections: Array<{ id: number; name: string; department_id: number }>
+  subsections: Array<{ id: number; name: string; section_id: number; department_id: number }>
   offices: Array<{ id: number; name: string }>
 }
+
+// Roles that don't need department/section/subsection
+const NO_ORG_ROLES = ['managing_director', 'bod_chairman', 'super_admin']
+// Roles that only need department (hr_manager is like dept_head but more powerful)
+const DEPT_ONLY_ROLES = ['dept_head', 'hr_manager']
+// Roles that need department + section
+const SECTION_ROLES = ['section_head']
+// Roles that need department + section + subsection
+const SUBSECTION_ROLES = ['sub_section_head']
 
 const EmployeeForm = () => {
   const { id } = useParams()
@@ -58,6 +69,7 @@ const EmployeeForm = () => {
     designation: '',
     department_id: '',
     section_id: '',
+    subsection_id: '',
     office_id: '',
     position: '',
     employment_type: 'permanent',
@@ -70,8 +82,11 @@ const EmployeeForm = () => {
   const [referenceData, setReferenceData] = useState<ReferenceData>({
     departments: [],
     sections: [],
+    subsections: [],
     offices: [],
   })
+  const [availableSections, setAvailableSections] = useState<Array<{ id: number; name: string }>>([])
+  const [availableSubsections, setAvailableSubsections] = useState<Array<{ id: number; name: string }>>([])
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -84,6 +99,68 @@ const EmployeeForm = () => {
     }
   }, [id])
 
+  // When department changes, filter sections
+  useEffect(() => {
+    if (formData.department_id) {
+      const filtered = referenceData.sections.filter(
+        (s) => String(s.department_id) === String(formData.department_id)
+      )
+      setAvailableSections(filtered)
+      // If current section is not in the filtered list, reset it
+      if (formData.section_id && !filtered.some((s) => String(s.id) === String(formData.section_id))) {
+        setFormData((prev) => ({ ...prev, section_id: '', subsection_id: '' }))
+      }
+    } else {
+      setAvailableSections([])
+      setFormData((prev) => ({ ...prev, section_id: '', subsection_id: '' }))
+    }
+  }, [formData.department_id, referenceData.sections])
+
+  // When section changes, filter subsections
+  useEffect(() => {
+    if (formData.section_id) {
+      const filtered = referenceData.subsections.filter(
+        (s) => String(s.section_id) === String(formData.section_id)
+      )
+      setAvailableSubsections(filtered)
+      // If current subsection is not in the filtered list, reset it
+      if (formData.subsection_id && !filtered.some((s) => String(s.id) === String(formData.subsection_id))) {
+        setFormData((prev) => ({ ...prev, subsection_id: '' }))
+      }
+    } else {
+      setAvailableSubsections([])
+      setFormData((prev) => ({ ...prev, subsection_id: '' }))
+    }
+  }, [formData.section_id, referenceData.subsections])
+
+  // When employee_type changes, apply role-based field visibility
+  useEffect(() => {
+    const type = formData.employee_type
+    if (NO_ORG_ROLES.includes(type)) {
+      // No department, section, or subsection needed
+      setFormData((prev) => ({
+        ...prev,
+        department_id: '',
+        section_id: '',
+        subsection_id: '',
+      }))
+    } else if (DEPT_ONLY_ROLES.includes(type)) {
+      // Only department needed
+      setFormData((prev) => ({
+        ...prev,
+        section_id: '',
+        subsection_id: '',
+      }))
+    } else if (SECTION_ROLES.includes(type)) {
+      // Department + section needed
+      setFormData((prev) => ({
+        ...prev,
+        subsection_id: '',
+      }))
+    }
+    // sub_section_head and officer need all levels
+  }, [formData.employee_type])
+
   const fetchReferenceData = async () => {
     try {
       const response = await api.get('/employees/reference')
@@ -91,6 +168,7 @@ const EmployeeForm = () => {
       setReferenceData({
         departments: data.departments || [],
         sections: data.sections || [],
+        subsections: data.subsections || [],
         offices: data.offices || [],
       })
     } catch (err) {
@@ -117,6 +195,7 @@ const EmployeeForm = () => {
           designation: employee.designation || '',
           department_id: employee.department_id || '',
           section_id: employee.section_id || '',
+          subsection_id: employee.subsection_id || '',
           office_id: employee.office_id || '',
           position: employee.position || '',
           employment_type: employee.employment_type || 'permanent',
@@ -150,6 +229,7 @@ const EmployeeForm = () => {
         ...formData,
         department_id: formData.department_id ? Number(formData.department_id) : null,
         section_id: formData.section_id ? Number(formData.section_id) : null,
+        subsection_id: formData.subsection_id ? Number(formData.subsection_id) : null,
         office_id: formData.office_id ? Number(formData.office_id) : null,
       }
 
@@ -173,6 +253,12 @@ const EmployeeForm = () => {
       setSaving(false)
     }
   }
+
+  // Determine which org fields to show based on employee_type
+  const employeeType = formData.employee_type
+  const showDepartment = !NO_ORG_ROLES.includes(employeeType)
+  const showSection = !NO_ORG_ROLES.includes(employeeType) && !DEPT_ONLY_ROLES.includes(employeeType)
+  const showSubsection = !NO_ORG_ROLES.includes(employeeType) && !DEPT_ONLY_ROLES.includes(employeeType) && !SECTION_ROLES.includes(employeeType)
 
   if (loading) {
     return (
@@ -301,19 +387,54 @@ const EmployeeForm = () => {
         <Card title="Employment Information" className="mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <Select
-              label="Department"
-              name="department_id"
-              value={formData.department_id}
+              label="Employee Type"
+              name="employee_type"
+              value={formData.employee_type}
               onChange={handleChange}
-              options={referenceData.departments.map((d) => ({ value: d.id, label: d.name }))}
+              options={[
+                { value: 'officer', label: 'Officer' },
+                { value: 'dept_head', label: 'Department Head' },
+                { value: 'section_head', label: 'Section Head' },
+                { value: 'sub_section_head', label: 'Sub Section Head' },
+                { value: 'managing_director', label: 'Managing Director' },
+                { value: 'bod_chairman', label: 'BOD Chairman' },
+                { value: 'super_admin', label: 'Super Admin' },
+                { value: 'hr_manager', label: 'HR Manager' },
+              ]}
             />
-            <Select
-              label="Section"
-              name="section_id"
-              value={formData.section_id}
-              onChange={handleChange}
-              options={referenceData.sections.map((s) => ({ value: s.id, label: s.name }))}
-            />
+
+            {showDepartment && (
+              <Select
+                label="Department"
+                name="department_id"
+                value={formData.department_id}
+                onChange={handleChange}
+                options={referenceData.departments.map((d) => ({ value: d.id, label: d.name }))}
+              />
+            )}
+
+            {showSection && (
+              <Select
+                label="Section"
+                name="section_id"
+                value={formData.section_id}
+                onChange={handleChange}
+                options={availableSections.map((s) => ({ value: s.id, label: s.name }))}
+                disabled={!formData.department_id}
+              />
+            )}
+
+            {showSubsection && (
+              <Select
+                label="Subsection"
+                name="subsection_id"
+                value={formData.subsection_id}
+                onChange={handleChange}
+                options={availableSubsections.map((s) => ({ value: s.id, label: s.name }))}
+                disabled={!formData.section_id}
+              />
+            )}
+
             <Select
               label="Office"
               name="office_id"
@@ -342,19 +463,6 @@ const EmployeeForm = () => {
                 { value: 'permanent', label: 'Permanent' },
                 { value: 'contract', label: 'Contract' },
                 { value: 'intern', label: 'Intern' },
-              ]}
-            />
-            <Select
-              label="Employee Type"
-              name="employee_type"
-              value={formData.employee_type}
-              onChange={handleChange}
-              options={[
-                { value: 'officer', label: 'Officer' },
-                { value: 'dept_head', label: 'Department Head' },
-                { value: 'section_head', label: 'Section Head' },
-                { value: 'sub_section_head', label: 'Sub Section Head' },
-                { value: 'managing_director', label: 'Managing Director' },
               ]}
             />
             <Select

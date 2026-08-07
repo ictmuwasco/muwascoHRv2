@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Services;
@@ -110,6 +109,14 @@ class EmployeeService implements EmployeeServiceInterface
             throw new \InvalidArgumentException('Employee not found');
         }
 
+        // Sanitize text fields to prevent XSS
+        $textFields = ['first_name', 'last_name', 'surname', 'address', 'designation', 'position', 'national_id'];
+        foreach ($textFields as $field) {
+            if (isset($data[$field]) && $data[$field] !== '') {
+                $data[$field] = trim(strip_tags((string)$data[$field]));
+            }
+        }
+
         // Business rule: Normalize email if provided
         if (!empty($data['email'])) {
             $data['email'] = strtolower(trim($data['email']));
@@ -118,6 +125,44 @@ class EmployeeService implements EmployeeServiceInterface
         // Business rule: Normalize phone if provided
         if (!empty($data['phone'])) {
             $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
+        }
+
+        // Handle next_of_kin - save to separate table
+        if (isset($data['next_of_kin'])) {
+            $nextOfKin = $data['next_of_kin'];
+            if (is_string($nextOfKin)) {
+                $decoded = json_decode($nextOfKin, true);
+                if (is_array($decoded)) {
+                    $nextOfKin = $decoded;
+                }
+            }
+            if (is_array($nextOfKin)) {
+                // Convert single object to array
+                if (isset($nextOfKin['name'])) {
+                    $nextOfKin = [$nextOfKin];
+                }
+                $this->employeeRepository->saveNextOfKin($id, $nextOfKin);
+                unset($data['next_of_kin']);
+            }
+        }
+        
+        // Handle dependants - save to separate table
+        if (isset($data['dependants'])) {
+            $dependants = $data['dependants'];
+            if (is_string($dependants)) {
+                $decoded = json_decode($dependants, true);
+                if (is_array($decoded)) {
+                    $dependants = $decoded;
+                }
+            }
+            if (is_array($dependants)) {
+                $this->employeeRepository->saveDependants($id, $dependants);
+                unset($data['dependants']);
+            }
+        }
+
+        if (empty($data)) {
+            return true;
         }
 
         return $this->employeeRepository->update($id, $data);
@@ -155,6 +200,14 @@ class EmployeeService implements EmployeeServiceInterface
             }
         }
 
+        // Sanitize text fields to prevent XSS
+        $textFields = ['first_name', 'last_name', 'surname', 'address', 'designation', 'position', 'national_id'];
+        foreach ($textFields as $field) {
+            if (isset($data[$field]) && $data[$field] !== '') {
+                $data[$field] = trim(strip_tags((string)$data[$field]));
+            }
+        }
+
         // Business rule: Normalize email
         if (!empty($data['email'])) {
             $data['email'] = strtolower(trim($data['email']));
@@ -176,10 +229,16 @@ class EmployeeService implements EmployeeServiceInterface
             throw new \InvalidArgumentException('Employee not found');
         }
 
-        // Business rule: Validate employee data
-        $errors = $this->validateEmployeeData($data, $id);
-        if (!empty($errors)) {
-            throw new \InvalidArgumentException(implode(', ', $errors));
+        // Check if this is a partial update (e.g., only next_of_kin or dependants)
+        $partialUpdateFields = ['next_of_kin', 'dependants', 'documents'];
+        $isPartialUpdate = !empty($data) && count(array_intersect(array_keys($data), $partialUpdateFields)) === count($data);
+
+        // Business rule: Validate employee data (skip full validation for partial updates)
+        if (!$isPartialUpdate) {
+            $errors = $this->validateEmployeeData($data, $id);
+            if (!empty($errors)) {
+                throw new \InvalidArgumentException(implode(', ', $errors));
+            }
         }
 
         // Business rule: Check if department exists
@@ -206,6 +265,14 @@ class EmployeeService implements EmployeeServiceInterface
             }
         }
 
+        // Sanitize text fields to prevent XSS
+        $textFields = ['first_name', 'last_name', 'surname', 'address', 'designation', 'position', 'national_id'];
+        foreach ($textFields as $field) {
+            if (isset($data[$field]) && $data[$field] !== '') {
+                $data[$field] = trim(strip_tags((string)$data[$field]));
+            }
+        }
+
         // Business rule: Normalize email
         if (!empty($data['email'])) {
             $data['email'] = strtolower(trim($data['email']));
@@ -214,6 +281,44 @@ class EmployeeService implements EmployeeServiceInterface
         // Business rule: Normalize phone numbers
         if (!empty($data['phone'])) {
             $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
+        }
+
+        // Handle next_of_kin - save to separate table
+        if (isset($data['next_of_kin'])) {
+            $nextOfKin = $data['next_of_kin'];
+            if (is_string($nextOfKin)) {
+                $decoded = json_decode($nextOfKin, true);
+                if (is_array($decoded)) {
+                    $nextOfKin = $decoded;
+                }
+            }
+            if (is_array($nextOfKin)) {
+                // Convert single object to array
+                if (isset($nextOfKin['name'])) {
+                    $nextOfKin = [$nextOfKin];
+                }
+                $this->employeeRepository->saveNextOfKin($id, $nextOfKin);
+                unset($data['next_of_kin']);
+            }
+        }
+        
+        // Handle dependants - save to separate table
+        if (isset($data['dependants'])) {
+            $dependants = $data['dependants'];
+            if (is_string($dependants)) {
+                $decoded = json_decode($dependants, true);
+                if (is_array($decoded)) {
+                    $dependants = $decoded;
+                }
+            }
+            if (is_array($dependants)) {
+                $this->employeeRepository->saveDependants($id, $dependants);
+                unset($data['dependants']);
+            }
+        }
+
+        if (empty($data)) {
+            return true;
         }
 
         return $this->employeeRepository->update($id, $data);
@@ -265,6 +370,61 @@ class EmployeeService implements EmployeeServiceInterface
         return $this->officeRepository->getAllActive();
     }
 
+    /**
+     * Add a document for an employee.
+     */
+    public function addDocument(array $documentData): int
+    {
+        $query = "INSERT INTO employee_documents 
+                  (employee_id, document_name, category, file_name, uploaded_at) 
+                  VALUES (?, ?, ?, ?, ?)";
+        
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare($query);
+        $stmt->bind_param(
+            'issss',
+            $documentData['employee_id'],
+            $documentData['document_name'],
+            $documentData['category'],
+            $documentData['file_name'],
+            $documentData['uploaded_at']
+        );
+        $stmt->execute();
+        $documentId = (int)$db->insert_id;
+        $stmt->close();
+        
+        return $documentId;
+    }
+
+    /**
+     * Get a document by ID.
+     */
+    public function getDocumentById(int $documentId): ?array
+    {
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT * FROM employee_documents WHERE id = ?");
+        $stmt->bind_param('i', $documentId);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        
+        return $result ?: null;
+    }
+
+    /**
+     * Delete a document.
+     */
+    public function deleteDocument(int $documentId): bool
+    {
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare("DELETE FROM employee_documents WHERE id = ?");
+        $stmt->bind_param('i', $documentId);
+        $result = $stmt->execute();
+        $stmt->close();
+        
+        return $result;
+    }
+
     public function validateEmployeeData(array $data, ?int $excludeId = null): array
     {
         $errors = [];
@@ -288,7 +448,7 @@ class EmployeeService implements EmployeeServiceInterface
         // Business rule: National ID is required
         if (empty($data['national_id'])) {
             $errors[] = 'National ID is required';
-        } elseif ($this->employeeRepository->nationalIdExists($data['national_id'], $excludeId)) {
+        } elseif ($this->employeeRepository->nationalIdExists((string)$data['national_id'], $excludeId)) {
             $errors[] = 'National ID already exists';
         }
 
@@ -312,9 +472,9 @@ class EmployeeService implements EmployeeServiceInterface
             $errors[] = 'Employee status is required';
         }
 
-        // Business rule: Employment date is required
-        if (empty($data['employment_date'])) {
-            $errors[] = 'Employment date is required';
+        // Business rule: Hire date is required
+        if (empty($data['hire_date'])) {
+            $errors[] = 'Hire date is required';
         }
 
         return $errors;

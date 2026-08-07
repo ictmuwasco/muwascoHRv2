@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import Card from '../components/ui/Card'
@@ -8,7 +8,7 @@ import Button from '../components/ui/Button'
 import EmployeeTabs from '../components/EmployeeTabs'
 import { Plus, Search, Eye, Pencil, ChevronLeft, ChevronRight } from 'lucide-react'
 
-const PER_PAGE = 10
+const PER_PAGE = 50
 
 const Employees = () => {
   const navigate = useNavigate()
@@ -19,33 +19,48 @@ const Employees = () => {
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
+  const requestIdRef = useRef(0)
 
   useEffect(() => {
+    const requestId = ++requestIdRef.current
+    
+    const fetchEmployees = async () => {
+      setLoading(true)
+      try {
+        const params = { 
+          page, 
+          limit: PER_PAGE
+        }
+        if (searchTerm) {
+          params.search = searchTerm
+        }
+        const response = await api.get('/employees', { params })
+        
+        // Ignore stale responses from previous page requests
+        if (requestId !== requestIdRef.current) return
+        
+        const data = response.data?.data
+        // Handle both paginated {data: [...], total, page} and plain array formats
+        const employeeList = Array.isArray(data) ? data : (data?.data || [])
+        const totalCount = Array.isArray(data) ? data.length : (data?.total || employeeList.length)
+        
+        setEmployees(employeeList)
+        setTotal(totalCount)
+        setTotalPages(Math.ceil(totalCount / PER_PAGE))
+      } catch (error) {
+        // Only log error if this is still the current request
+        if (requestId === requestIdRef.current) {
+          console.error('Failed to fetch employees:', error)
+        }
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setLoading(false)
+        }
+      }
+    }
+    
     fetchEmployees()
   }, [page, searchTerm])
-
-  const fetchEmployees = async () => {
-    setLoading(true)
-    try {
-      const params = { page, limit: PER_PAGE }
-      if (searchTerm) {
-        params.search = searchTerm
-      }
-      const response = await api.get('/employees', { params })
-      const data = response.data?.data
-      // Handle both paginated {data: [...], total, page} and plain array formats
-      const employeeList = Array.isArray(data) ? data : (data?.data || [])
-      const totalCount = Array.isArray(data) ? data.length : (data?.total || employeeList.length)
-      
-      setEmployees(employeeList)
-      setTotal(totalCount)
-      setTotalPages(Math.ceil(totalCount / PER_PAGE))
-    } catch (error) {
-      console.error('Failed to fetch employees:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const handleSearch = (e) => {
     e.preventDefault()
