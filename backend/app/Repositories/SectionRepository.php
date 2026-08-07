@@ -184,7 +184,7 @@ class SectionRepository implements SectionRepositoryInterface
     {
         $stmt = $this->conn->prepare("
             SELECT ss.* FROM subsections ss
-            WHERE ss.section_id = ? AND ss.is_active = 1
+            WHERE ss.section_id = ?
             ORDER BY ss.name
         ");
         $stmt->bind_param('i', $sectionId);

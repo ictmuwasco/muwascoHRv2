@@ -113,4 +113,10 @@ Route::middleware(['jwt.auth'])->group(function () {
 
     Route::get('/settings', [SettingController::class, 'index']);
     Route::put('/settings', [SettingController::class, 'update']);
+
+    // Profile routes
+    Route::get('/profile', [EmployeeController::class, 'profileAction']);
+    Route::put('/profile', [EmployeeController::class, 'updateProfileAction']);
+    Route::post('/profile/documents', [EmployeeController::class, 'uploadProfileDocumentAction']);
+    Route::delete('/profile/documents/{documentId}', [EmployeeController::class, 'deleteProfileDocumentAction']);
 });

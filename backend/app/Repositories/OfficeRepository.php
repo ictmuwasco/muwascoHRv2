@@ -149,7 +149,6 @@ class OfficeRepository implements OfficeRepositoryInterface
     {
         $result = $this->conn->query("
             SELECT * FROM offices 
-            WHERE status = 'active' 
             ORDER BY name
         ");
 

@@ -12,6 +12,7 @@ import {
   User,
   X
 } from 'lucide-react'
+import Logo from './Logo'
 
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const { user, logout } = useAuth()
@@ -45,6 +46,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       >
         {/* Logo */}
         <div className="flex items-center justify-between h-16 border-b px-4">
+          <Logo className="h-10 w-10" />
           <h1 className="text-xl font-bold text-primary-600">MUWASCO HR</h1>
           {/* Close button for mobile */}
           <button

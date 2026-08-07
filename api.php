@@ -92,6 +92,23 @@ try {
             echo json_encode(['success' => false, 'message' => 'Method not allowed']);
         }
     }
+    elseif ($endpoint === '/employees/documents' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
+        $controller = new \App\Controllers\EmployeeController();
+        $controller->uploadDocumentAction();
+    }
+    elseif (preg_match('#^/employees/documents/(\d+)$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
+        $controller = new \App\Controllers\EmployeeController();
+        $docId = (int)$matches[1];
+        
+        if ($requestMethod === 'DELETE') {
+            $controller->deleteDocumentAction($docId);
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
     elseif (preg_match('#^/employees/(\d+)$#', $endpoint, $matches)) {
         require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
         $controller = new \App\Controllers\EmployeeController();
@@ -208,6 +225,23 @@ try {
         require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
         $controller = new \App\Controllers\EmployeeController();
         $controller->updateProfileAction();
+    }
+    elseif ($endpoint === '/profile/documents' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
+        $controller = new \App\Controllers\EmployeeController();
+        $controller->uploadProfileDocumentAction();
+    }
+    elseif (preg_match('#^/profile/documents/(\d+)$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
+        $controller = new \App\Controllers\EmployeeController();
+        $documentId = (int)$matches[1];
+        
+        if ($requestMethod === 'DELETE') {
+            $controller->deleteProfileDocumentAction($documentId);
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
     }
     // Dashboard routes
     elseif (strpos($endpoint, '/dashboard') === 0) {
