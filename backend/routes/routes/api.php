@@ -39,10 +39,12 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::apiResource('sections', SectionController::class);
     Route::apiResource('users', UserController::class);
 
-    // Attendance routes - today/employee/dashboard must be before apiResource's {attendance}
+    // Attendance routes - today/employee/dashboard/clock-in/clock-out must be before apiResource's {attendance}
     Route::get('/attendance/today', [AttendanceController::class, 'today']);
     Route::get('/attendance/dashboard', [AttendanceController::class, 'dashboard']);
     Route::get('/attendance/employee/{employeeId}', [AttendanceController::class, 'byEmployee']);
+    Route::post('/attendance/clock-in', [AttendanceController::class, 'clockIn']);
+    Route::post('/attendance/clock-out', [AttendanceController::class, 'clockOut']);
     Route::apiResource('attendance', AttendanceController::class);
 
     // Leave routes - apply/types/pending/holidays must be before apiResource's {leaveApplication}
