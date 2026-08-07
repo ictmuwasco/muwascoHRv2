@@ -283,4 +283,87 @@ class DashboardController extends BaseController
 
         return round(($attended / $totalEmployees) * 100, 2);
     }
+
+    /**
+     * GET /api/dashboard/charts/attendance - Get attendance chart data.
+     */
+    public function chartsAttendanceAction(): void
+    {
+        $this->requirePermission('dashboard', 'view');
+        
+        $db = \db();
+        $today = date('Y-m-d');
+        
+        $present = (int) $db->fetchValue(
+            "SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE DATE(clock_in) = ? AND status IN ('clocked_in', 'clocked_out')",
+            's',
+            [$today]
+        );
+        
+        $late = (int) $db->fetchValue(
+            "SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE DATE(clock_in) = ? AND is_late = 1",
+            's',
+            [$today]
+        );
+        
+        $absent = (int) $db->fetchValue(
+            "SELECT COUNT(*) FROM employees WHERE employee_status = 'active' OR employee_status IS NULL"
+        ) - $present;
+
+        $this->success([
+            'present' => $present,
+            'late' => $late,
+            'absent' => max(0, $absent),
+            'total' => $present + $late,
+        ]);
+    }
+
+    /**
+     * GET /api/dashboard/charts/departments - Get department chart data.
+     */
+    public function chartsDepartmentsAction(): void
+    {
+        $this->requirePermission('dashboard', 'view');
+        
+        $db = \db();
+        $departments = $db->fetchAll(
+            "SELECT department, COUNT(*) as count 
+             FROM employees 
+             WHERE (employee_status = 'active' OR employee_status IS NULL)
+             GROUP BY department 
+             ORDER BY count DESC"
+        );
+
+        $this->success([
+            'total_departments' => count($departments),
+            'departments' => $departments,
+        ]);
+    }
+
+    /**
+     * GET /api/dashboard/charts/leave - Get leave chart data.
+     */
+    public function chartsLeaveAction(): void
+    {
+        $this->requirePermission('dashboard', 'view');
+        
+        $db = \db();
+        $today = date('Y-m-d');
+        
+        $onLeave = (int) $db->fetchValue(
+            "SELECT COUNT(DISTINCT employee_id) FROM leave_applications 
+             WHERE status = 'approved' AND start_date <= ? AND end_date >= ?",
+            'ss',
+            [$today, $today]
+        );
+        
+        $pending = (int) $db->fetchValue(
+            "SELECT COUNT(*) FROM leave_applications WHERE status = 'pending'"
+        );
+
+        $this->success([
+            'on_leave' => $onLeave,
+            'pending' => $pending,
+        ]);
+    }
 }
