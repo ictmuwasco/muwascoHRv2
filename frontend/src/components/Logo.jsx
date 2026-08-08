@@ -1,6 +1,6 @@
 import React from 'react'
 
-const Logo = ({ className = 'h-20 w-20' }) => {
+const Logo = ({ className = 'h-30 w-30' }) => {
   return (
     <img
       src="/assets/muwascologo.png"

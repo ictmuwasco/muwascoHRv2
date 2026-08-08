@@ -1,13 +1,64 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
+import { getCurrentPosition, isGeolocationSupported } from '../utils/geolocation'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
 import { Users, CalendarCheck, Calendar, TrendingUp, Clock, FileText, Star, Bell } from 'lucide-react'
 
+interface Stats {
+  totalEmployees: number
+  presentToday: number
+  onLeave: number
+  pendingApprovals: number
+}
+
+interface Office {
+  id: number
+  name: string
+  latitude: number
+  longitude: number
+  geo_fence_radius: number
+}
+
+interface CurrentSession {
+  id: number
+  clock_in: string
+  clock_out: string | null
+  office_name: string
+  office_id: number
+  is_late: number
+  lat: number
+  lng: number
+  accuracy: number
+  status: string
+}
+
+interface AttendanceData {
+  is_clocked_in: boolean
+  has_clocked_in_today: boolean
+  current_session: CurrentSession | null
+  today_record: Record<string, any> | null
+  offices: Office[]
+}
+
+interface Notification {
+  id: number
+  is_read: number
+  title: string
+  message: string
+  created_at: string
+}
+
+interface Analytics {
+  attendance: Record<string, any> | null
+  departments: Record<string, any> | null
+  leave: Record<string, any> | null
+}
+
 const Dashboard = () => {
   const navigate = useNavigate()
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<Stats>({
     totalEmployees: 0,
     presentToday: 0,
     onLeave: 0,
@@ -15,7 +66,7 @@ const Dashboard = () => {
   })
   
   // Attendance state
-  const [attendanceData, setAttendanceData] = useState({
+  const [attendanceData, setAttendanceData] = useState<AttendanceData>({
     is_clocked_in: false,
     has_clocked_in_today: false,
     current_session: null,
@@ -27,12 +78,16 @@ const Dashboard = () => {
   const [locationError, setLocationError] = useState('')
   const [selectedOffice, setSelectedOffice] = useState('')
   
+  // Refs to prevent duplicate requests (state updates are async)
+  const clockInInFlight = useRef(false)
+  const clockOutInFlight = useRef(false)
+  
   // Notifications state
-  const [notifications, setNotifications] = useState([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   
   // Analytics state
-  const [analytics, setAnalytics] = useState({
+  const [analytics, setAnalytics] = useState<Analytics>({
     attendance: null,
     departments: null,
     leave: null
@@ -93,40 +148,45 @@ const Dashboard = () => {
     }
   }
 
-  const getLocation = () => {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('Geolocation not supported'))
-        return
-      }
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          resolve({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            accuracy: position.coords.accuracy
-          })
-        },
-        (error) => reject(error),
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      )
-    })
+  /**
+   * Extract a user-friendly error message from an API error.
+   */
+  const getErrorMessage = (error: any): string => {
+    if (error.response?.data?.message) {
+      return error.response.data.message
+    }
+    if (error.code === 'ECONNABORTED') {
+      return 'Request timed out. Please check your connection and try again.'
+    }
+    if (error.message) {
+      return error.message
+    }
+    return 'An unexpected error occurred. Please try again.'
   }
 
   const handleClockIn = async () => {
+    // Prevent duplicate requests
+    if (clockInInFlight.current || clockingIn) return
+    clockInInFlight.current = true
     setClockingIn(true)
     setLocationError('')
     
     try {
-      const location = await getLocation()
-      const office = attendanceData.offices.find(o => o.id.toString() === selectedOffice)
+      // Step 1: Get employee location
+      if (!isGeolocationSupported()) {
+        setLocationError('Geolocation is not supported by this browser')
+        return
+      }
+      const location = await getCurrentPosition()
       
+      // Step 2: Determine office
+      const office = attendanceData.offices.find(o => o.id.toString() === selectedOffice)
       if (!office) {
         setLocationError('Please select an office')
-        setClockingIn(false)
         return
       }
 
+      // Step 3-5: Send to backend for distance calc, radius validation, and insert
       const response = await api.post('/attendance/clock-in', {
         office_id: parseInt(selectedOffice),
         latitude: location.lat,
@@ -139,19 +199,29 @@ const Dashboard = () => {
         fetchStats()
       }
     } catch (error) {
-      setLocationError(error.message || 'Failed to clock in')
+      setLocationError(getErrorMessage(error))
     } finally {
       setClockingIn(false)
+      clockInInFlight.current = false
     }
   }
 
   const handleClockOut = async () => {
+    // Prevent duplicate requests
+    if (clockOutInFlight.current || clockingOut) return
+    clockOutInFlight.current = true
     setClockingOut(true)
     setLocationError('')
     
     try {
-      const location = await getLocation()
+      // Step 1: Get employee location
+      if (!isGeolocationSupported()) {
+        setLocationError('Geolocation is not supported by this browser')
+        return
+      }
+      const location = await getCurrentPosition()
       
+      // Step 2-5: Send to backend for distance calc, radius validation, and update
       const response = await api.post('/attendance/clock-out', {
         office_id: parseInt(selectedOffice),
         latitude: location.lat,
@@ -164,9 +234,10 @@ const Dashboard = () => {
         fetchStats()
       }
     } catch (error) {
-      setLocationError(error.message || 'Failed to clock out')
+      setLocationError(getErrorMessage(error))
     } finally {
       setClockingOut(false)
+      clockOutInFlight.current = false
     }
   }
 
@@ -284,7 +355,6 @@ const Dashboard = () => {
                 value={selectedOffice}
                 onChange={(e) => setSelectedOffice(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                disabled={attendanceData.is_clocked_in}
               >
                 {attendanceData.offices.map((office) => (
                   <option key={office.id} value={office.id}>

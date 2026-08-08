@@ -12,6 +12,110 @@ namespace App\Controllers;
 class DashboardController extends BaseController
 {
     /**
+     * GET /api/dashboard - Get dashboard data with embedded auto clock-out.
+     * This endpoint also auto-clocks out employees from previous days.
+     */
+    public function indexAction(): void
+    {
+        $this->requirePermission('dashboard', 'view');
+        
+        // Auto clock-out any open sessions from previous days
+        // This runs every time the dashboard is loaded, ensuring forgotten clock-outs are handled
+        $this->autoClockOutPreviousDays();
+        
+        $db = \db();
+        $userId = $this->getUserId();
+        $employee = $this->employeeRepository->findByUserId($userId);
+        
+        if (!$employee) {
+            $this->success([
+                'stats' => [
+                    'total_employees' => 0,
+                    'present_today' => 0,
+                    'on_leave' => 0,
+                    'pending_approvals' => 0,
+                ],
+                'attendance' => null,
+                'departments' => null,
+                'leave' => null,
+            ]);
+            return;
+        }
+
+        $employeeDbId = (int)$employee['id'];
+        $today = date('Y-m-d');
+        $currentMonth = date('Y-m');
+        
+        // Get dashboard statistics
+        try {
+            $totalEmployees = $this->getEmployeeCount();
+            $attendanceToday = $this->getTodayAttendance();
+            $onLeave = $this->getOnLeaveCount();
+            $pendingApprovals = $this->getPendingApprovalsCount();
+        } catch (\Throwable $e) {
+            \logger()->error('Dashboard stats error', ['error' => $e->getMessage()]);
+            $totalEmployees = 0;
+            $attendanceToday = ['total' => 0, 'clocked_in' => 0, 'clocked_out' => 0];
+            $onLeave = 0;
+            $pendingApprovals = 0;
+        }
+
+        $data = [
+            'stats' => [
+                'totalEmployees' => $totalEmployees,
+                'presentToday' => $attendanceToday['total'] ?? 0,
+                'onLeave' => $onLeave,
+                'pendingApprovals' => $pendingApprovals,
+                'lateToday' => 0,
+            ],
+            'attendance' => null,
+            'departments' => null,
+            'leave' => null,
+        ];
+
+        $this->success($data);
+    }
+
+    /**
+     * Auto clock-out employees who forgot to clock out from previous days.
+     * This is called automatically when the dashboard loads.
+     */
+    private function autoClockOutPreviousDays(): void
+    {
+        try {
+            $db = \db();
+            $today = date('Y-m-d');
+            $now = date('Y-m-d H:i:s');
+            
+            // Find all open sessions from previous days
+            $openSessions = $db->fetchAll(
+                "SELECT id, employee_id, clock_in 
+                FROM attendance 
+                WHERE clock_out IS NULL AND DATE(clock_in) < ?",
+                's',
+                [$today]
+            );
+            
+            if (!empty($openSessions)) {
+                foreach ($openSessions as $session) {
+                    $db->update('attendance', [
+                        'clock_out' => $now,
+                        'status' => 'auto_clocked_out',
+                        'updated_at' => $now,
+                    ], 'id = ?', 'i', [(int)$session['id']]);
+                }
+                
+                \logger()->info('Auto clock-out completed', [
+                    'count' => count($openSessions),
+                    'employee_ids' => array_column($openSessions, 'employee_id')
+                ]);
+            }
+        } catch (\Throwable $e) {
+            \logger()->error('Auto clock-out failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Get all dashboard statistics.
      */
     public function statsAction(): void
@@ -55,9 +159,10 @@ class DashboardController extends BaseController
         $today = date('Y-m-d');
         
         $records = $db->fetchAll(
-            "SELECT a.*, e.first_name, e.last_name, e.department, o.name as office_name
+            "SELECT a.*, e.first_name, e.last_name, d.name as department_name, o.name as office_name
              FROM attendance a
-             JOIN employees e ON a.employee_id = e.employee_id
+             JOIN employees e ON a.employee_id = e.id
+             LEFT JOIN departments d ON e.department_id = d.id
              LEFT JOIN offices o ON a.office_id = o.id
              WHERE DATE(a.clock_in) = ?
              ORDER BY a.clock_in DESC
@@ -88,12 +193,13 @@ class DashboardController extends BaseController
         
         $db = \db();
         $leaves = $db->fetchAll(
-            "SELECT l.*, e.first_name, e.last_name, e.department, lt.name as leave_type_name
-             FROM leave_requests l
+            "SELECT l.*, e.first_name, e.last_name, d.name as department_name, lt.name as leave_type_name
+             FROM leave_applications l
              JOIN employees e ON l.employee_id = e.id
+             LEFT JOIN departments d ON e.department_id = d.id
              JOIN leave_types lt ON l.leave_type_id = lt.id
              WHERE l.status = 'pending'
-             ORDER BY l.created_at DESC
+             ORDER BY l.applied_at DESC
              LIMIT 20"
         );
 
@@ -109,9 +215,10 @@ class DashboardController extends BaseController
         
         $db = \db();
         $complaints = $db->fetchAll(
-            "SELECT c.*, e.first_name, e.last_name, e.department, cc.name as category_name
+            "SELECT c.*, e.first_name, e.last_name, d.name as department_name, cc.name as category_name
              FROM complaints c
              JOIN employees e ON c.employee_id = e.id
+             LEFT JOIN departments d ON e.department_id = d.id
              LEFT JOIN complaint_categories cc ON c.category_id = cc.id
              ORDER BY c.created_at DESC
              LIMIT 10"
@@ -255,10 +362,11 @@ class DashboardController extends BaseController
     {
         $db = \db();
         return $db->fetchAll(
-            "SELECT department, COUNT(*) as count 
-             FROM employees 
-             WHERE (employee_status = 'active' OR employee_status IS NULL)
-             GROUP BY department 
+            "SELECT d.name as department, COUNT(e.id) as count 
+             FROM employees e
+             LEFT JOIN departments d ON e.department_id = d.id
+             WHERE (e.employee_status = 'active' OR e.employee_status IS NULL)
+             GROUP BY d.name 
              ORDER BY count DESC"
         );
     }
@@ -327,10 +435,11 @@ class DashboardController extends BaseController
         
         $db = \db();
         $departments = $db->fetchAll(
-            "SELECT department, COUNT(*) as count 
-             FROM employees 
-             WHERE (employee_status = 'active' OR employee_status IS NULL)
-             GROUP BY department 
+            "SELECT d.name as department, COUNT(e.id) as count 
+             FROM employees e
+             LEFT JOIN departments d ON e.department_id = d.id
+             WHERE (e.employee_status = 'active' OR e.employee_status IS NULL)
+             GROUP BY d.name 
              ORDER BY count DESC"
         );
 

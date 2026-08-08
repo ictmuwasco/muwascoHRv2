@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -10,22 +11,37 @@ import {
   Settings,
   LogOut,
   User,
-  X
+  Star,
+  X,
+  ChevronDown,
+  ChevronRight,
+  DollarSign,
+  ClipboardList
 } from 'lucide-react'
 import Logo from './Logo'
 
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const { user, logout } = useAuth()
+  const [isHRAdminExpanded, setIsHRAdminExpanded] = useState(false)
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Employees', href: '/employees', icon: Users },
+    { name: 'Profile', href: '/profile', icon: User },
     { name: 'Departments', href: '/departments', icon: Building2 },
+    { 
+      name: 'HR Admin', 
+      icon: UserCog,
+      submenu: [
+        { name: 'Financial Year', href: '/financial_year', icon: DollarSign },
+        { name: 'Consent Management', href: '/consent_management', icon: ClipboardList },
+      ]
+    },
     { name: 'Attendance', href: '/attendance', icon: CalendarCheck },
     { name: 'Leave', href: '/leave', icon: Calendar },
+    { name: 'Appraisal', href: '/appraisal', icon: Star },
     { name: 'Users', href: '/users', icon: UserCog },
     { name: 'Settings', href: '/settings', icon: Settings },
-    { name: 'Profile', href: '/profile', icon: User },
   ]
 
   return (
@@ -59,23 +75,64 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
 
         {/* Navigation */}
         <nav className="p-4 space-y-1">
-          {navigation.map((item) => (
-            <NavLink
-              key={item.name}
-              to={item.href}
-              onClick={onClose}
-              className={({ isActive }) =>
-                `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive
-                    ? 'bg-primary-50 text-primary-700'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`
-              }
-            >
-              <item.icon className="h-5 w-5" />
-              <span className="font-medium">{item.name}</span>
-            </NavLink>
-          ))}
+          {navigation.map((item) => {
+            if (item.submenu) {
+              return (
+                <div key={item.name}>
+                  <button
+                    onClick={() => setIsHRAdminExpanded(!isHRAdminExpanded)}
+                    className="flex items-center w-full space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span className="font-medium flex-1 text-left">{item.name}</span>
+                    {isHRAdminExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </button>
+                  {isHRAdminExpanded && (
+                    <div className="ml-6 mt-1 space-y-1">
+                      {item.submenu.map((subItem) => (
+                        <NavLink
+                          key={subItem.name}
+                          to={subItem.href}
+                          onClick={onClose}
+                          className={({ isActive }) =>
+                            `flex items-center space-x-3 px-4 py-2 rounded-lg transition-colors ${
+                              isActive
+                                ? 'bg-primary-50 text-primary-700'
+                                : 'text-gray-600 hover:bg-gray-50'
+                            }`
+                          }
+                        >
+                          <subItem.icon className="h-4 w-4" />
+                          <span className="text-sm font-medium">{subItem.name}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            }
+            return (
+              <NavLink
+                key={item.name}
+                to={item.href}
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
+                    isActive
+                      ? 'bg-primary-50 text-primary-700'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`
+                }
+              >
+                <item.icon className="h-5 w-5" />
+                <span className="font-medium">{item.name}</span>
+              </NavLink>
+            )
+          })}
         </nav>
 
         {/* User info at bottom */}

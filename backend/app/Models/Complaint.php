@@ -67,12 +67,13 @@ class Complaint extends BaseModel
         );
 
         $data = $db->fetchAll(
-            "SELECT c.*, e.first_name, e.last_name, e.department,
+            "SELECT c.*, e.first_name, e.last_name, d.name as department_name,
                     cc.name as category_name,
                     assigned.first_name as assigned_first_name,
                     assigned.last_name as assigned_last_name
              FROM complaints c
              JOIN employees e ON c.employee_id = e.id
+             LEFT JOIN departments d ON e.department_id = d.id
              LEFT JOIN complaint_categories cc ON c.category_id = cc.id
              LEFT JOIN employees assigned ON c.assigned_to = assigned.id
              {$whereClause}

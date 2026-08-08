@@ -200,12 +200,14 @@ class UserPagePermission
                 u.last_name as user_last_name,
                 u.role as user_role,
                 e.employee_id,
-                e.department,
-                e.section,
+                d.name as department,
+                s.name as section,
                 CONCAT(g.first_name, ' ', g.last_name) as granted_by_name
             FROM user_page_permissions upp
             JOIN users u ON upp.user_id = u.id
             LEFT JOIN employees e ON u.email = e.email
+            LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN sections s ON e.section_id = s.id
             JOIN users g ON upp.granted_by = g.id
             WHERE upp.active = 1
         ";

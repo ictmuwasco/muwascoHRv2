@@ -256,19 +256,20 @@ const Profile = () => {
       </div>
 
       {/* Profile Tabs */}
-      <div className="flex space-x-2 border-b overflow-x-auto">
+      <div className="flex space-x-1 border-b overflow-x-auto scrollbar-thin">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+            className={`flex items-center px-3 py-2 sm:px-4 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === tab.id
                 ? 'border-primary-600 text-primary-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            <tab.icon className="h-4 w-4 mr-2" />
-            {tab.label}
+            <tab.icon className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+            <span className="hidden xs:inline">{tab.label}</span>
+            <span className="xs:hidden">{tab.label.split(' ')[0]}</span>
           </button>
         ))}
       </div>
