@@ -1,10 +1,48 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { getConsentStatus } from '../api/services/consentService'
+import { useState, useEffect } from 'react'
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth()
+  const { isAuthenticated, loading: authLoading } = useAuth()
+  const [consentChecked, setConsentChecked] = useState(false)
+  const [consented, setConsented] = useState(false)
+  const [checkingConsent, setCheckingConsent] = useState(true)
 
-  if (loading) {
+  useEffect(() => {
+    if (!isAuthenticated || authLoading) return
+
+    let cancelled = false
+
+    const checkConsent = async () => {
+      try {
+        const response = await getConsentStatus()
+        if (!cancelled) {
+          setConsented(response.consented)
+          setConsentChecked(true)
+        }
+      } catch (err) {
+        console.error('Consent check failed:', err)
+        if (!cancelled) {
+          // On API failure, allow access rather than blocking the user
+          setConsented(true)
+          setConsentChecked(true)
+        }
+      } finally {
+        if (!cancelled) {
+          setCheckingConsent(false)
+        }
+      }
+    }
+
+    checkConsent()
+
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, authLoading])
+
+  if (authLoading || checkingConsent) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -14,6 +52,11 @@ const ProtectedRoute = ({ children }) => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />
+  }
+
+  // Authenticated but has not accepted current consent version
+  if (isAuthenticated && !consented) {
+    return <Navigate to="/data-protection-consent" replace />
   }
 
   return children

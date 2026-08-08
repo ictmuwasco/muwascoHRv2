@@ -252,6 +252,22 @@ try {
         $controller = new \App\Controllers\AttendanceController();
         $controller->myRecordsAction();
     }
+    // Consent routes
+    elseif ($endpoint === '/consent/status' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/ConsentController.php';
+        $controller = new \App\Controllers\ConsentController();
+        $controller->statusAction();
+    }
+    elseif ($endpoint === '/consent/verify-employee' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/ConsentController.php';
+        $controller = new \App\Controllers\ConsentController();
+        $controller->verifyEmployeeIdAction();
+    }
+    elseif ($endpoint === '/consent' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/ConsentController.php';
+        $controller = new \App\Controllers\ConsentController();
+        $controller->storeConsentAction();
+    }
     // Notification routes
     elseif ($endpoint === '/notifications' && $requestMethod === 'GET') {
         require_once __DIR__ . '/backend/app/Controllers/NotificationController.php';

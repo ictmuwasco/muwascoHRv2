@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { getConsentStatus } from '../api/services/consentService'
 import {
   Eye,
   EyeOff,
@@ -57,7 +58,19 @@ const Login = () => {
       const result = await login(email, password)
 
       if (result.success) {
-        navigate('/dashboard', { replace: true })
+        // Check consent status after successful authentication
+        try {
+          const consent = await getConsentStatus()
+          if (consent.consented) {
+            navigate('/dashboard', { replace: true })
+          } else {
+            navigate('/data-protection-consent', { replace: true })
+          }
+        } catch (consentErr) {
+          // If consent API fails, default to dashboard to avoid blocking login
+          console.error('Consent check failed:', consentErr)
+          navigate('/dashboard', { replace: true })
+        }
       } else {
         setError(result.message)
       }
