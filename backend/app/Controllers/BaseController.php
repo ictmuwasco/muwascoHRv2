@@ -37,8 +37,13 @@ abstract class BaseController
 
     /**
      * Send an error response.
+     *
+     * @param string $message Error message
+     * @param int $statusCode HTTP status code
+     * @param mixed $error Detailed error for logs (optional)
+     * @param array $meta Additional metadata (e.g., distance, code)
      */
-    protected function error(string $message, int $statusCode = 400, mixed $error = null): void
+    protected function error(string $message, int $statusCode = 400, mixed $error = null, array $meta = []): void
     {
         $response = [
             'success' => false,
@@ -47,6 +52,10 @@ abstract class BaseController
         
         if ($error !== null) {
             $response['error'] = $error;
+        }
+        
+        if (!empty($meta)) {
+            $response['meta'] = $meta;
         }
         
         $this->json($response, $statusCode);

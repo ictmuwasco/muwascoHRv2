@@ -67,12 +67,29 @@ class AuthController extends BaseController
     public function logoutAction(): void
     {
         try {
+            // Get user ID from session, if available
             $userId = $this->getAuthUserId();
-            $this->authService->logout($userId);
+            
+            // Only attempt logout if user is authenticated
+            if ($userId > 0) {
+                $this->authService->logout($userId);
+            }
+            
+            // Always return success, even if session was already cleared
             $this->success(null, 'Logout successful');
         } catch (\Exception $e) {
-            \logger()->error('Logout error', ['error' => $e->getMessage()]);
-            $this->error('Logout failed. Please try again.', 500);
+            \logger()->error('Logout error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            
+            // Even on error, clear the session and return success
+            try {
+                if (session_status() === PHP_SESSION_ACTIVE) {
+                    session_destroy();
+                }
+            } catch (\Exception $cleanupError) {
+                // Ignore cleanup errors
+            }
+            
+            $this->success(null, 'Logout successful');
         }
     }
 

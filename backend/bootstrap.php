@@ -132,6 +132,16 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// CRITICAL FIX: Release the session write lock for API requests.
+// PHP file-based sessions hold an exclusive lock on the session file
+// until the script ends or session_write_close() is called.
+// The Dashboard fires 4+ concurrent AJAX requests (stats, attendance,
+// notifications, analytics). Without this, each request blocks on the
+// session lock held by the previous request, causing cascading timeouts.
+if ($isApiRequest) {
+    session_write_close();
+}
+
 
 /**
  * Get an environment variable value.

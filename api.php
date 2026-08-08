@@ -215,6 +215,60 @@ try {
             echo json_encode(['success' => false, 'message' => 'Method not allowed']);
         }
     }
+    // Attendance routes
+    elseif ($endpoint === '/attendance' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AttendanceController.php';
+        $controller = new \App\Controllers\AttendanceController();
+        $controller->indexAction();
+    }
+    elseif ($endpoint === '/attendance/dashboard' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AttendanceController.php';
+        $controller = new \App\Controllers\AttendanceController();
+        $controller->dashboardAction();
+    }
+    elseif ($endpoint === '/attendance/today' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AttendanceController.php';
+        $controller = new \App\Controllers\AttendanceController();
+        $controller->todayAction();
+    }
+    elseif ($endpoint === '/attendance/clock-in' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/AttendanceController.php';
+        $controller = new \App\Controllers\AttendanceController();
+        $controller->clockInAction();
+    }
+    elseif ($endpoint === '/attendance/clock-out' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/AttendanceController.php';
+        $controller = new \App\Controllers\AttendanceController();
+        $controller->clockOutAction();
+    }
+    elseif (preg_match('#^/attendance/employee/(\d+)$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/AttendanceController.php';
+        $controller = new \App\Controllers\AttendanceController();
+        $employeeId = (int)$matches[1];
+        $controller->byEmployeeAction($employeeId);
+    }
+    elseif ($endpoint === '/attendance/my-records' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AttendanceController.php';
+        $controller = new \App\Controllers\AttendanceController();
+        $controller->myRecordsAction();
+    }
+    // Notification routes
+    elseif ($endpoint === '/notifications' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/NotificationController.php';
+        $controller = new \App\Controllers\NotificationController();
+        $controller->indexAction();
+    }
+    elseif (preg_match('#^/notifications/(\d+)/read$#', $endpoint, $matches) && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/NotificationController.php';
+        $controller = new \App\Controllers\NotificationController();
+        $id = (int)$matches[1];
+        $controller->markAsReadAction($id);
+    }
+    elseif ($endpoint === '/notifications/read-all' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/NotificationController.php';
+        $controller = new \App\Controllers\NotificationController();
+        $controller->markAllReadAction();
+    }
     // Profile routes
     elseif ($endpoint === '/profile' && $requestMethod === 'GET') {
         require_once __DIR__ . '/backend/app/Controllers/EmployeeController.php';
@@ -243,6 +297,37 @@ try {
             echo json_encode(['success' => false, 'message' => 'Method not allowed']);
         }
     }
+    // Financial Year routes
+    elseif ($endpoint === '/admin/financial-years' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/FinancialYearController.php';
+        $controller = new \App\Controllers\FinancialYearController();
+        $controller->indexAction();
+    }
+    elseif ($endpoint === '/admin/financial-years/status' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/FinancialYearController.php';
+        $controller = new \App\Controllers\FinancialYearController();
+        $controller->statusAction();
+    }
+    elseif ($endpoint === '/admin/financial-year/add' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/FinancialYearController.php';
+        $controller = new \App\Controllers\FinancialYearController();
+        $controller->storeAction();
+    }
+    elseif ($endpoint === '/admin/financial-year/allocate' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/FinancialYearController.php';
+        $controller = new \App\Controllers\FinancialYearController();
+        $controller->allocateLeaveAction();
+    }
+    elseif ($endpoint === '/admin/financial-years/leave-types' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/FinancialYearController.php';
+        $controller = new \App\Controllers\FinancialYearController();
+        $controller->leaveTypesAction();
+    }
+    elseif ($endpoint === '/admin/financial-years/employees' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/FinancialYearController.php';
+        $controller = new \App\Controllers\FinancialYearController();
+        $controller->employeesAction();
+    }
     // Dashboard routes
     elseif (strpos($endpoint, '/dashboard') === 0) {
         require_once __DIR__ . '/backend/app/Controllers/DashboardController.php';
@@ -251,11 +336,11 @@ try {
         if ($endpoint === '/dashboard/stats' && $requestMethod === 'GET') {
             $controller->statsAction();
         } elseif ($endpoint === '/dashboard/charts/attendance' && $requestMethod === 'GET') {
-            $controller->attendanceTodayAction();
+            $controller->chartsAttendanceAction();
         } elseif ($endpoint === '/dashboard/charts/departments' && $requestMethod === 'GET') {
-            $controller->employeeCountAction();
+            $controller->chartsDepartmentsAction();
         } elseif ($endpoint === '/dashboard/charts/leave' && $requestMethod === 'GET') {
-            $controller->pendingLeavesAction();
+            $controller->chartsLeaveAction();
         } else {
             http_response_code(404);
             echo json_encode(['success' => false, 'message' => 'Not found']);

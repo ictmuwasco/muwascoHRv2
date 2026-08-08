@@ -132,15 +132,15 @@ class NotificationService
     /**
      * Mark a notification as read.
      */
-    public function markAsRead(int $notificationId): void
+    public function markAsRead(int $notificationId, int $userId): void
     {
         $db = \db();
         $db->update(
             'notifications',
             ['is_read' => 1, 'read_at' => date('Y-m-d H:i:s')],
-            'id = ?',
-            'i',
-            [$notificationId]
+            'id = ? AND user_id = ?',
+            'ii',
+            [$notificationId, $userId]
         );
     }
 

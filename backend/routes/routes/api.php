@@ -42,9 +42,11 @@ Route::middleware(['jwt.auth'])->group(function () {
     // Attendance routes - today/employee/dashboard/clock-in/clock-out must be before apiResource's {attendance}
     Route::get('/attendance/today', [AttendanceController::class, 'today']);
     Route::get('/attendance/dashboard', [AttendanceController::class, 'dashboard']);
+    Route::get('/attendance/my-records', [AttendanceController::class, 'myRecords']);
     Route::get('/attendance/employee/{employeeId}', [AttendanceController::class, 'byEmployee']);
     Route::post('/attendance/clock-in', [AttendanceController::class, 'clockIn']);
     Route::post('/attendance/clock-out', [AttendanceController::class, 'clockOut']);
+    Route::post('/attendance/auto-clockout', [AttendanceController::class, 'autoClockOut']);
     Route::apiResource('attendance', AttendanceController::class);
 
     // Leave routes - apply/types/pending/holidays must be before apiResource's {leaveApplication}
@@ -87,8 +89,13 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/consents', [ConsentController::class, 'index']);
     Route::put('/consents/{consent}', [ConsentController::class, 'update']);
 
+    // Financial Year routes
     Route::get('/admin/financial-years', [FinancialYearController::class, 'index']);
-    Route::post('/admin/financial-year/add', [FinancialYearController::class, 'store']);
+    Route::get('/admin/financial-years/status', [FinancialYearController::class, 'status']);
+    Route::post('/admin/financial-year/add', [FinancialYearController::class, 'storeAction']);
+    Route::post('/admin/financial-year/allocate', [FinancialYearController::class, 'allocateLeaveAction']);
+    Route::get('/admin/financial-years/leave-types', [FinancialYearController::class, 'leaveTypes']);
+    Route::get('/admin/financial-years/employees', [FinancialYearController::class, 'employees']);
 
     // Appraisal routes - submit/approve/pending/employee must be before apiResource's {appraisal}
     Route::get('/appraisals/pending', [AppraisalController::class, 'pending']);
