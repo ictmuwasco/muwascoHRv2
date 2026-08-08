@@ -409,7 +409,11 @@ const EmployeeForm = () => {
                 name="department_id"
                 value={formData.department_id}
                 onChange={handleChange}
-                options={referenceData.departments.map((d) => ({ value: d.id, label: d.name }))}
+                options={[
+                  ...referenceData.departments.map((d) => ({ value: d.id, label: d.name })),
+                  { value: 'hr', label: 'HR' },
+                  { value: 'admin', label: 'Admin' },
+                ]}
               />
             )}
 

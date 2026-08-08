@@ -304,20 +304,21 @@ const EmployeeProfile = () => {
       )}
 
       {/* Detail tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8" aria-label="Employee details">
+      <div className="border-b border-gray-200 overflow-x-auto scrollbar-thin">
+        <nav className="-mb-px flex space-x-1 sm:space-x-8" aria-label="Employee details">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center space-x-2 py-4 px-1 border-b-2 text-sm font-medium transition-colors ${
+              className={`flex items-center space-x-1 sm:space-x-2 py-3 px-2 sm:px-1 border-b-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab.id
                   ? 'border-primary-600 text-primary-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               {tab.icon}
-              <span>{tab.name}</span>
+              <span className="hidden xs:inline">{tab.name}</span>
+              <span className="xs:hidden">{tab.name.split(' ')[0]}</span>
             </button>
           ))}
         </nav>
