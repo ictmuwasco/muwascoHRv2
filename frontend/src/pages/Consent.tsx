@@ -1,35 +1,35 @@
 import { useState, useEffect } from 'react';
-import apiClient from '../api/client';
+import { useNavigate } from 'react-router-dom';
+import { getConsentStatus } from '../api/services/consentService';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import { CheckCircle, XCircle } from 'lucide-react';
-import type { Consent } from '../types';
+import { ShieldCheck, CheckCircle, XCircle, FileText, History } from 'lucide-react';
 
 const Consent = () => {
-  const [consents, setConsents] = useState<Consent[]>([]);
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<{
+    consented: boolean;
+    consent_version: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchConsents();
+    fetchStatus();
   }, []);
 
-  const fetchConsents = async () => {
+  const fetchStatus = async () => {
     try {
-      const response = await apiClient.get('/consents');
-      setConsents(response.data.data || []);
-    } catch (error) {
-      console.error('Failed to fetch consents:', error);
+      const response = await getConsentStatus();
+      setStatus({
+        consented: response.consented,
+        consent_version: response.consent_version,
+      });
+    } catch (err) {
+      console.error('Failed to fetch consent status:', err);
+      setError('Failed to load consent status');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleToggle = async (id: number, currentStatus: boolean) => {
-    try {
-      await apiClient.put(`/consents/${id}`, { status: !currentStatus });
-      fetchConsents();
-    } catch (error) {
-      console.error('Failed to update consent:', error);
     }
   };
 
@@ -44,37 +44,62 @@ const Consent = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Consent Management</h1>
-        <p className="text-gray-500">Manage user consent and agreements</p>
+        <h1 className="text-2xl font-bold text-gray-900">Data Protection & Consent</h1>
+        <p className="text-gray-500">Your data protection consent status</p>
       </div>
 
-      <Card title="User Consents">
-        <div className="space-y-4">
-          {consents.map((consent) => (
-            <div key={consent.id} className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium text-gray-900">{consent.type}</p>
-                <p className="text-sm text-gray-500">
-                  Status: {consent.status ? 'Agreed' : 'Not Agreed'} | 
-                  IP: {consent.ip_address} | 
-                  Date: {consent.agreed_at}
-                </p>
-              </div>
-              <Button
-                variant={consent.status ? 'success' : 'secondary'}
-                onClick={() => handleToggle(consent.id, consent.status)}
-              >
-                {consent.status ? (
-                  <><CheckCircle className="h-4 w-4 mr-2" /> Agreed</>
-                ) : (
-                  <><XCircle className="h-4 w-4 mr-2" /> Pending</>
-                )}
-              </Button>
-            </div>
-          ))}
-          {consents.length === 0 && (
-            <p className="text-gray-500 text-center py-4">No consents found</p>
-          )}
+      {error && (
+        <div className="bg-red-50 border border-red-400 rounded-lg p-4">
+          <p className="text-sm text-red-800">{error}</p>
+        </div>
+      )}
+
+      {/* Status card */}
+      <Card title="Consent Status">
+        <div className="flex items-center gap-4 p-4">
+          <div
+            className={`w-14 h-14 rounded-full flex items-center justify-center ${
+              status?.consented ? 'bg-green-100' : 'bg-yellow-100'
+            }`}
+          >
+            {status?.consented ? (
+              <CheckCircle className="w-7 h-7 text-green-600" />
+            ) : (
+              <XCircle className="w-7 h-7 text-yellow-600" />
+            )}
+          </div>
+          <div>
+            <p className="text-lg font-semibold text-gray-900">
+              {status?.consented ? 'Consent Provided' : 'Consent Not Provided'}
+            </p>
+            <p className="text-sm text-gray-500">
+              Consent Version: {status?.consent_version || 'N/A'}
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Actions */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <Button onClick={() => navigate('/data-protection-consent')}>
+          <FileText className="w-4 h-4 mr-2" />
+          View Data Protection Notice
+        </Button>
+        {!status?.consented && (
+          <Button variant="success" onClick={() => navigate('/data-protection-consent')}>
+            <ShieldCheck className="w-4 h-4 mr-2" />
+            Provide Consent
+          </Button>
+        )}
+      </div>
+
+      {/* Consent history placeholder */}
+      <Card title="Consent History">
+        <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+          <History className="w-4 h-4" />
+          {status?.consented
+            ? `You have accepted consent version ${status.consent_version}.`
+            : 'No consent records found for the current version.'}
         </div>
       </Card>
     </div>

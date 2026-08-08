@@ -20,6 +20,7 @@ import Appraisal from './pages/Appraisal.tsx'
 import Audit from './pages/Audit'
 import Consent from './pages/Consent'
 import ConsentManagement from './pages/Consent'
+import DataProtectionConsent from './pages/DataProtectionConsent'
 import FinancialYear from './pages/FinancialYear'
 import Reports from './pages/Reports'
 import Profile from './pages/Profile'
@@ -54,6 +55,7 @@ function App() {
           <Route path="appraisal" element={<Appraisal />} />
           <Route path="audit" element={<Audit />} />
           <Route path="consent" element={<Consent />} />
+          <Route path="data-protection-consent" element={<DataProtectionConsent />} />
           <Route path="reports" element={<Reports />} />
           <Route path="profile" element={<Profile />} />
           <Route path="strategic-plan" element={<StrategicPlan />} />
