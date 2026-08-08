@@ -1,11 +1,20 @@
 import axios from 'axios'
 
 // Create axios instance
+// Use direct URL to bypass Vite proxy issues
+const isProduction = import.meta.env.PROD
+const baseURL = isProduction 
+  ? '/hrdemo/api' 
+  : 'http://localhost/hrdemo/api'
+
 export const api = axios.create({
-  baseURL: '/api',
+  baseURL: baseURL,
   headers: {
     'Content-Type': 'application/json',
   },
+  // Prevent infinite waiting. Clock In/Out should respond quickly.
+  // 15s is generous for GPS + backend processing.
+  timeout: 15000,
 })
 
 // Request interceptor to add auth token

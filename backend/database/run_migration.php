@@ -85,7 +85,56 @@ try {
         exit(1);
     }
     
+    // Run migration 007 - Financial years
+    $sql = file_get_contents(__DIR__ . '/migrations/007_financial_years.sql');
+    
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        
+        echo "Migration 007_financial_years.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 007: " . $conn->error . "\n";
+        exit(1);
+    }
+    
+    // Verify tables were created
+    $result = $conn->query("SHOW TABLES LIKE 'financial_years'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ financial_years table created successfully\n";
+    } else {
+        echo "✗ financial_years table not found\n";
+        exit(1);
+    }
+    
+    $result = $conn->query("SHOW TABLES LIKE 'employee_leave_balances'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ employee_leave_balances table created successfully\n";
+    } else {
+        echo "✗ employee_leave_balances table not found\n";
+        exit(1);
+    }
+    
     echo "\n✓ All migrations completed successfully!\n";
+    
+    // Re-run role permissions migration to ensure new permissions are added
+    echo "\nUpdating role permissions...\n";
+    $sql = file_get_contents(__DIR__ . '/migrations/004_role_permissions.sql');
+    
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        
+        echo "✓ Role permissions updated successfully\n";
+    } else {
+        echo "Warning: Error updating role permissions: " . $conn->error . "\n";
+    }
     
 } catch (Exception $e) {
     echo "Error: " . $e->getMessage() . "\n";

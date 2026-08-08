@@ -19,6 +19,8 @@ import Admin from './pages/Admin'
 import Appraisal from './pages/Appraisal.tsx'
 import Audit from './pages/Audit'
 import Consent from './pages/Consent'
+import ConsentManagement from './pages/Consent'
+import FinancialYear from './pages/FinancialYear'
 import Reports from './pages/Reports'
 import Profile from './pages/Profile'
 import StrategicPlan from './pages/StrategicPlan'
@@ -42,6 +44,8 @@ function App() {
           <Route path="employees/:id/edit" element={<EmployeeForm />} />
           <Route path="employees/:id/profile" element={<EmployeeProfile />} />
           <Route path="departments" element={<Departments />} />
+          <Route path="financial_year" element={<FinancialYear />} />
+          <Route path="consent_management" element={<ConsentManagement />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="leave" element={<Leave />} />
           <Route path="users" element={<Users />} />
