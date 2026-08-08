@@ -17,7 +17,7 @@ class NotificationController extends BaseController
     public function indexAction(): void
     {
         $userId = $this->getUserId();
-        $notificationService = new NotificationService();
+        $notificationService = NotificationService::getInstance();
         
         $notifications = $notificationService->getUnreadNotifications($userId, 10);
         $unreadCount = $notificationService->getUnreadCount($userId);
@@ -34,7 +34,7 @@ class NotificationController extends BaseController
     public function markAsReadAction(int $id): void
     {
         $userId = $this->getUserId();
-        $notificationService = new NotificationService();
+        $notificationService = NotificationService::getInstance();
         
         $notificationService->markAsRead($id, $userId);
         
@@ -52,7 +52,7 @@ class NotificationController extends BaseController
     public function markAllReadAction(): void
     {
         $userId = $this->getUserId();
-        $notificationService = new NotificationService();
+        $notificationService = NotificationService::getInstance();
         
         $notificationService->markAllAsRead($userId);
         
