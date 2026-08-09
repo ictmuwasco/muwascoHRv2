@@ -4,203 +4,101 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Helpers\Database;
+
 /**
  * DelegateService
  *
- * Handles task delegation logic for leave management.
- * Determines eligible delegates based on organizational hierarchy.
+ * Handles delegate assignment and temporary role/permission delegation
+ * for leave applications.
  */
 class DelegateService
 {
-    private \mysqli $conn;
-    private AuditService $audit;
+    private \mysqli $db;
 
-    public function __construct(\mysqli $conn)
+    public function __construct()
     {
-        $this->conn = $conn;
-        $this->audit = AuditService::getInstance();
+        $this->db = Database::getInstance()->getConnection();
     }
 
     /**
-     * Get eligible delegates for a given employee based on role hierarchy.
+     * Assign a delegate for a leave application.
      */
-    public function getEligibleDelegates(int $employeeId): array
+    public function assignDelegate(int $applicationId, int $delegateEmpId, string $delegatedRole): void
     {
-        $employee = $this->getEmployee($employeeId);
-        if (!$employee) return [];
+        $stmt = $this->db->prepare("
+            UPDATE leave_applications
+            SET delegate_emp_id = ?, delegate_role = ?
+            WHERE id = ?
+        ");
+        $stmt->bind_param('isi', $delegateEmpId, $delegatedRole, $applicationId);
+        $stmt->execute();
+    }
 
-        $role = $employee['employee_type'] ?? 'officer';
-        $deptId = (int)($employee['department_id'] ?? 0);
-        $sectionId = (int)($employee['section_id'] ?? 0);
-        $subsectionId = (int)($employee['subsection_id'] ?? 0);
-
-        $sql = "SELECT e.id, e.employee_id, e.first_name, e.last_name, e.designation,
-                       d.name AS dept_name, s.name AS sec_name, ss.name AS sub_name
-                FROM employees e
-                LEFT JOIN departments d ON e.department_id = d.id
-                LEFT JOIN sections s ON e.section_id = s.id
-                LEFT JOIN subsections ss ON e.subsection_id = ss.id
-                WHERE e.id != ? AND e.employee_status = 'active'";
-
-        $types = 'i';
-        $params = [$employeeId];
-
-        switch ($role) {
-            case 'dept_head':
-                $sql .= " AND e.department_id = ? AND e.id != ?";
-                $types .= 'ii';
-                $params[] = $deptId;
-                $params[] = $employeeId;
-                break;
-
-            case 'section_head':
-                $sql .= " AND e.section_id = ? AND e.id != ?";
-                $types .= 'ii';
-                $params[] = $sectionId;
-                $params[] = $employeeId;
-                break;
-
-            case 'sub_section_head':
-                $sql .= " AND e.subsection_id = ? AND e.id != ?";
-                $types .= 'ii';
-                $params[] = $subsectionId;
-                $params[] = $employeeId;
-                break;
-
-            default: // officer / regular
-                if ($subsectionId > 0) {
-                    $sql .= " AND e.subsection_id = ?";
-                    $params[] = $subsectionId;
-                    $types .= 'i';
-                } elseif ($sectionId > 0) {
-                    $sql .= " AND e.section_id = ?";
-                    $params[] = $sectionId;
-                    $types .= 'i';
-                } else {
-                    $sql .= " AND e.department_id = ?";
-                    $params[] = $deptId;
-                    $types .= 'i';
-                }
-                $sql .= " AND e.id != ?";
-                $params[] = $employeeId;
-                $types .= 'i';
-        }
-
-        $sql .= " ORDER BY e.first_name, e.last_name";
-
-        $stmt = $this->conn->prepare($sql);
-        if (!$stmt) return [];
-
-        $stmt->bind_param($types, ...$params);
+    /**
+     * Get delegate notification user IDs.
+     */
+    public function getDelegateUserIds(int $delegateEmpId): array
+    {
+        $stmt = $this->db->prepare("
+            SELECT u.id FROM users u
+            JOIN employees e ON e.employee_id = u.employee_id
+            WHERE e.id = ?
+        ");
+        $stmt->bind_param('i', $delegateEmpId);
         $stmt->execute();
         $result = $stmt->get_result();
-
-        $delegates = [];
+        $userIds = [];
         while ($row = $result->fetch_assoc()) {
-            $delegates[] = [
-                'id' => (int)$row['id'],
-                'employee_id' => $row['employee_id'],
-                'name' => trim($row['first_name'] . ' ' . $row['last_name']),
-                'designation' => $row['designation'] ?? '',
-                'department' => $row['dept_name'] ?? '',
-                'section' => $row['sec_name'] ?? '',
-                'subsection' => $row['sub_name'] ?? '',
-            ];
+            $userIds[] = (int) $row['id'];
         }
-
-        return $delegates;
+        return $userIds;
     }
 
     /**
-     * Assign a delegate to a leave application.
+     * Notify the delegate about the assignment.
      */
-    public function assignDelegate(int $leaveApplicationId, int $delegateEmployeeId, int $applicantUserId): bool
+    public function notifyDelegate(int $applicationId, int $delegateEmpId, int $applicantUserId): void
     {
-        // Verify delegate is active
-        $stmt = $this->conn->prepare("SELECT id FROM employees WHERE id = ? AND employee_status = 'active'");
-        $stmt->bind_param('i', $delegateEmployeeId);
-        $stmt->execute();
-        if (!$stmt->get_result()->fetch_assoc()) {
-            return false;
+        $delegateUserIds = $this->getDelegateUserIds($delegateEmpId);
+        if (empty($delegateUserIds)) {
+            return;
         }
 
-        $stmt = $this->conn->prepare("UPDATE leave_applications SET delegated_to = ? WHERE id = ?");
-        $stmt->bind_param('ii', $delegateEmployeeId, $leaveApplicationId);
-        $success = $stmt->execute();
-
-        if ($success) {
-            // Get delegate info for audit
-            $delegate = $this->getEmployee($delegateEmployeeId);
-            $this->audit->logUpdate('leave_applications', $leaveApplicationId, 
-                ['delegated_to' => null],
-                ['delegated_to' => $delegateEmployeeId, 'delegate_name' => $delegate['first_name'] . ' ' . $delegate['last_name']],
-                "Delegate assigned to leave #{$leaveApplicationId}"
-            );
-        }
-
-        return $success;
-    }
-
-    /**
-     * Validate that a delegate is eligible for a given employee.
-     */
-    public function validateDelegate(int $employeeId, int $delegateEmployeeId): array
-    {
-        if ($employeeId === $delegateEmployeeId) {
-            return ['valid' => false, 'message' => 'Cannot delegate tasks to yourself.'];
-        }
-
-        $eligible = $this->getEligibleDelegates($employeeId);
-        $ids = array_column($eligible, 'id');
-
-        if (!in_array($delegateEmployeeId, $ids)) {
-            return ['valid' => false, 'message' => 'Selected delegate is not eligible based on organizational hierarchy.'];
-        }
-
-        // Check delegate is active
-        $emp = $this->getEmployee($delegateEmployeeId);
-        if (!$emp || $emp['employee_status'] !== 'active') {
-            return ['valid' => false, 'message' => 'Selected delegate is not active.'];
-        }
-
-        return ['valid' => true];
-    }
-
-    /**
-     * Get delegate information for a leave application.
-     */
-    public function getDelegateInfo(int $leaveApplicationId): ?array
-    {
-        $stmt = $this->conn->prepare("
-            SELECT e.id, e.employee_id, e.first_name, e.last_name, e.designation,
-                   d.name AS dept_name, s.name AS sec_name
+        // Get application info for the notification
+        $stmt = $this->db->prepare("
+            SELECT la.start_date, la.end_date, lt.name as leave_type_name,
+                   e.first_name as applicant_first, e.last_name as applicant_last
             FROM leave_applications la
-            JOIN employees e ON la.delegated_to = e.id
-            LEFT JOIN departments d ON e.department_id = d.id
-            LEFT JOIN sections s ON e.section_id = s.id
+            JOIN leave_types lt ON la.leave_type_id = lt.id
+            JOIN employees e ON la.employee_id = e.id
             WHERE la.id = ?
         ");
-        $stmt->bind_param('i', $leaveApplicationId);
+        $stmt->bind_param('i', $applicationId);
         $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        
-        if (!$row) return null;
+        $app = $stmt->get_result()->fetch_assoc();
 
-        return [
-            'id' => (int)$row['id'],
-            'employee_id' => $row['employee_id'],
-            'name' => trim($row['first_name'] . ' ' . $row['last_name']),
-            'designation' => $row['designation'] ?? '',
-            'department' => $row['dept_name'] ?? '',
-            'section' => $row['sec_name'] ?? '',
-        ];
-    }
+        if (!$app) {
+            return;
+        }
 
-    private function getEmployee(int $id): ?array
-    {
-        $stmt = $this->conn->prepare("SELECT * FROM employees WHERE id = ?");
-        $stmt->bind_param('i', $id);
-        $stmt->execute();
-        return $stmt->get_result()->fetch_assoc() ?: null;
+        $title = 'Leave Delegation Assignment';
+        $message = sprintf(
+            '%s %s has assigned you as their delegate for %s from %s to %s.',
+            $app['applicant_first'] ?? '',
+            $app['applicant_last'] ?? '',
+            $app['leave_type_name'] ?? 'Leave',
+            date('M d, Y', strtotime($app['start_date'])),
+            date('M d, Y', strtotime($app['end_date']))
+        );
+
+        foreach ($delegateUserIds as $userId) {
+            $stmt = $this->db->prepare("
+                INSERT INTO notifications (user_id, title, message, type, category, is_read, created_at)
+                VALUES (?, ?, ?, 'delegate_assignment', 'leave', 0, NOW())
+            ");
+            $stmt->bind_param('iss', $userId, $title, $message);
+            $stmt->execute();
+        }
     }
 }

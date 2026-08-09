@@ -9,21 +9,17 @@ const baseURL = isProduction
 
 export const api = axios.create({
   baseURL: baseURL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  // Prevent infinite waiting. Clock In/Out should respond quickly.
-  // 15s is generous for GPS + backend processing.
+  // Do NOT set Content-Type globally - axios will set it automatically
+  // to multipart/form-data when sending FormData, and application/json otherwise.
   timeout: 15000,
+  withCredentials: true,
 })
 
-// Request interceptor to add auth token
+// Request interceptor
+// The access token is now stored in an httpOnly cookie (set by the server),
+// so it is sent automatically with withCredentials. No manual header needed.
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`
-    }
     return config
   },
   (error) => {
@@ -36,10 +32,16 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Unauthorized - clear storage and redirect to login
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
+      // Don't clear auth for consent/status checks during login flow
+      // These can fail if session isn't fully established yet
+      const isConsentCheck = error.config?.url?.includes('/consent/status')
+      
+      if (!isConsentCheck) {
+        // Unauthorized - clear user data and redirect to login
+        // (the httpOnly cookie is cleared server-side on logout/expiry)
+        localStorage.removeItem('user')
+        window.location.href = '/login'
+      }
     }
     return Promise.reject(error)
   }
