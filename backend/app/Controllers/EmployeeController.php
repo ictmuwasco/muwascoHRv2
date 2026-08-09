@@ -27,6 +27,7 @@ class EmployeeController extends BaseController
         $this->employeeService->setDepartmentRepository(new \App\Repositories\DepartmentRepository());
         $this->employeeService->setSectionRepository(new \App\Repositories\SectionRepository());
         $this->employeeService->setOfficeRepository(new \App\Repositories\OfficeRepository());
+        $this->employeeService->setUserRepository(new \App\Repositories\UserRepository());
     }
 
     /**

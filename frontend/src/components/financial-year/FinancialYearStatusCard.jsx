@@ -11,7 +11,7 @@ const FinancialYearStatusCard = ({ status }) => {
   }[status.alert_class] || 'bg-gray-50 border-gray-400 text-gray-800';
 
   return (
-    <div className={`rounded-lg border p-4 mb-6 ${alertClass}`}>
+    <div className={`rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-4 mb-6 ${alertClass}`}>
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <h3 className="text-lg font-semibold mb-2">Financial Year Status</h3>

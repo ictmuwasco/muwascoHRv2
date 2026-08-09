@@ -6,7 +6,7 @@ const CreateFinancialYearCard = ({ canCreate, nextFY, onCreate, creating }) => {
 
   if (!canCreate || !nextFY) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
+      <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Add New Financial Year</h3>
         <div className="bg-yellow-50 border border-yellow-400 rounded-lg p-4">
           <p className="text-sm text-yellow-800">
@@ -24,7 +24,7 @@ const CreateFinancialYearCard = ({ canCreate, nextFY, onCreate, creating }) => {
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
+      <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Add New Financial Year</h3>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
