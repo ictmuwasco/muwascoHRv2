@@ -29,7 +29,7 @@ const FinancialYearTable = ({ financialYears }) => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
+    <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 overflow-hidden">
       <h3 className="text-lg font-semibold p-6 border-b">Existing Financial Years</h3>
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">

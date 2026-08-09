@@ -32,12 +32,14 @@ interface FormData {
   employee_status: string
   hire_date: string
   scale_id: string
+  contract_start_date: string
+  contract_end_date: string
 }
 
 interface ReferenceData {
   departments: Array<{ id: number; name: string }>
   sections: Array<{ id: number; name: string; department_id: number }>
-  subsections: Array<{ id: number; name: string; section_id: number; department_id: number }>
+  subsections: Array<{ id: number; name: string; section_id: number }>
   offices: Array<{ id: number; name: string }>
 }
 
@@ -77,6 +79,8 @@ const EmployeeForm = () => {
     employee_status: 'active',
     hire_date: '',
     scale_id: '',
+    contract_start_date: '',
+    contract_end_date: '',
   })
 
   const [referenceData, setReferenceData] = useState<ReferenceData>({
@@ -161,6 +165,9 @@ const EmployeeForm = () => {
     // sub_section_head and officer need all levels
   }, [formData.employee_type])
 
+  // Contract dates are only relevant for contract employment type
+  const isContract = formData.employment_type === 'contract'
+
   const fetchReferenceData = async () => {
     try {
       const response = await api.get('/employees/reference')
@@ -203,6 +210,8 @@ const EmployeeForm = () => {
           employee_status: employee.employee_status || 'active',
           hire_date: employee.hire_date || '',
           scale_id: employee.scale_id || '',
+          contract_start_date: employee.contract_start_date || '',
+          contract_end_date: employee.contract_end_date || '',
         })
       }
     } catch (err) {
@@ -225,12 +234,17 @@ const EmployeeForm = () => {
     setSuccess('')
 
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         ...formData,
         department_id: formData.department_id ? Number(formData.department_id) : null,
         section_id: formData.section_id ? Number(formData.section_id) : null,
         subsection_id: formData.subsection_id ? Number(formData.subsection_id) : null,
         office_id: formData.office_id ? Number(formData.office_id) : null,
+      }
+
+      if (isContract) {
+        payload.contract_start_date = formData.contract_start_date || null
+        payload.contract_end_date = formData.contract_end_date || null
       }
 
       if (isEdit) {
@@ -494,6 +508,27 @@ const EmployeeForm = () => {
               value={formData.scale_id}
               onChange={handleChange}
             />
+
+            {isContract && (
+              <>
+                <Input
+                  label="Contract Start Date *"
+                  name="contract_start_date"
+                  type="date"
+                  value={formData.contract_start_date}
+                  onChange={handleChange}
+                  required={isContract}
+                />
+                <Input
+                  label="Contract End Date *"
+                  name="contract_end_date"
+                  type="date"
+                  value={formData.contract_end_date}
+                  onChange={handleChange}
+                  required={isContract}
+                />
+              </>
+            )}
           </div>
         </Card>
 

@@ -8,6 +8,8 @@ use App\Repositories\Contracts\EmployeeRepositoryInterface;
 use App\Repositories\Contracts\DepartmentRepositoryInterface;
 use App\Repositories\Contracts\SectionRepositoryInterface;
 use App\Repositories\Contracts\OfficeRepositoryInterface;
+use App\Repositories\UserRepository;
+use InvalidArgumentException;
 
 /**
  * Employee Service
@@ -21,6 +23,7 @@ class EmployeeService implements EmployeeServiceInterface
     private ?DepartmentRepositoryInterface $departmentRepository = null;
     private ?SectionRepositoryInterface $sectionRepository = null;
     private ?OfficeRepositoryInterface $officeRepository = null;
+    private ?UserRepository $userRepository = null;
     private array $dependencies = [];
 
     public function __construct(
@@ -53,6 +56,11 @@ class EmployeeService implements EmployeeServiceInterface
     public function setOfficeRepository(OfficeRepositoryInterface $repository): void
     {
         $this->officeRepository = $repository;
+    }
+
+    public function setUserRepository(UserRepository $repository): void
+    {
+        $this->userRepository = $repository;
     }
 
     public function setDependency(string $name, mixed $dependency): void
@@ -218,7 +226,19 @@ class EmployeeService implements EmployeeServiceInterface
             $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
         }
 
-        return $this->employeeRepository->create($data);
+        // Only pass contract dates to the repository if this is actually a contract employee
+        // and the migration has been applied. This avoids DB errors when the columns are missing.
+        if (($data['employment_type'] ?? '') !== 'contract') {
+            unset($data['contract_start_date'], $data['contract_end_date']);
+        }
+
+        $employeeId = $this->employeeRepository->create($data);
+
+        // Auto-create the linked user account so the employee can log in
+        // immediately using their customized email and employee number as password.
+        $this->createUserForEmployee($data, $employeeId);
+
+        return $employeeId;
     }
 
     public function updateEmployee(int $id, array $data): bool
@@ -281,6 +301,12 @@ class EmployeeService implements EmployeeServiceInterface
         // Business rule: Normalize phone numbers
         if (!empty($data['phone'])) {
             $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
+        }
+
+        // Only pass contract dates to the repository if this is actually a contract employee.
+        // If the migration hasn't been run yet, omitting these avoids "Unknown column" 500s.
+        if (($data['employment_type'] ?? '') !== 'contract') {
+            unset($data['contract_start_date'], $data['contract_end_date']);
         }
 
         // Handle next_of_kin - save to separate table
@@ -477,6 +503,90 @@ class EmployeeService implements EmployeeServiceInterface
             $errors[] = 'Hire date is required';
         }
 
+        // Business rule: Contract dates validation for contract employees
+        if (($data['employment_type'] ?? '') === 'contract') {
+            // Normalize: treat null/missing as empty string for validation
+            $startDate = (string)($data['contract_start_date'] ?? '');
+            $endDate = (string)($data['contract_end_date'] ?? '');
+
+            // Only validate if at least one date field is being provided
+            if ($startDate !== '' || $endDate !== '') {
+                if ($startDate === '') {
+                    $errors[] = 'Contract start date is required for contract employees';
+                }
+                if ($endDate === '') {
+                    $errors[] = 'Contract end date is required for contract employees';
+                }
+                if ($startDate !== '' && $endDate !== '' && $endDate < $startDate) {
+                    $errors[] = 'Contract end date cannot be before start date';
+                }
+            }
+        }
+
         return $errors;
+    }
+
+    /**
+     * Create a linked user account for a newly created employee.
+     *
+     * Login credentials:
+     *  - email    => employee's customized email
+     *  - password => employee number (employee_id)
+     *
+     * Role is derived from employee_type so RBAC works out of the box.
+     */
+    private function createUserForEmployee(array $data, int $employeeId): void
+    {
+        if (!$this->userRepository) {
+            return;
+        }
+
+        $email = strtolower(trim((string)($data['email'] ?? '')));
+        if ($email === '') {
+            return;
+        }
+
+        // Skip if a user account already exists for this email
+        $existing = $this->userRepository->findByEmail($email);
+        if ($existing) {
+            return;
+        }
+
+        $role = $this->mapEmployeeTypeToRole((string)($data['employee_type'] ?? 'officer'));
+
+        $hash = \App\Helpers\Hash::getInstance();
+        $passwordHash = $hash->make((string)($data['employee_id'] ?? ''));
+
+        $userData = [
+            'email'      => $email,
+            'password'   => $passwordHash,
+            'role'       => $role,
+            'first_name' => (string)($data['first_name'] ?? ''),
+            'last_name'  => (string)($data['last_name'] ?? ''),
+            'designation'=> (string)($data['designation'] ?? ''),
+            'is_active'  => 1,
+            'employee_id'=> (string)($data['employee_id'] ?? ''),
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ];
+
+        $this->userRepository->createUser($userData);
+    }
+
+    /**
+     * Map frontend employee_type values to backend user roles used by RBAC.
+     */
+    private function mapEmployeeTypeToRole(string $employeeType): string
+    {
+        return match ($employeeType) {
+            'super_admin'      => 'super_admin',
+            'managing_director' => 'super_admin',
+            'bod_chairman'     => 'super_admin',
+            'hr_manager'       => 'hr',
+            'dept_head'        => 'hr',
+            'section_head'     => 'manager',
+            'sub_section_head' => 'manager',
+            default            => 'employee',
+        };
     }
 }

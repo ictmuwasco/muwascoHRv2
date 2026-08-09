@@ -89,7 +89,7 @@ const LeaveAllocationCard = ({ financialYears }) => {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
+      <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Allocate Leave to Employee</h3>
         <div className="flex items-center justify-center h-32">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -99,7 +99,7 @@ const LeaveAllocationCard = ({ financialYears }) => {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6 mb-6">
+    <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
       <h3 className="text-lg font-semibold mb-2">Allocate Leave to Employee</h3>
       <p className="text-sm text-gray-500 mb-4">
         Use this for newly hired employees or to fill missing leave records. Existing records are automatically skipped.
