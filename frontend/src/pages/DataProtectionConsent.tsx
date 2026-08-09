@@ -148,7 +148,7 @@ const DataProtectionConsent = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
   const [openSection, setOpenSection] = useState<string | null>('collect');
-  const [employeeId, setEmployeeId] = useState('');
+  const [nationalId, setNationalId] = useState('');
   const [verified, setVerified] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [agreed, setAgreed] = useState(false);
@@ -160,24 +160,24 @@ const DataProtectionConsent = () => {
   const handleVerify = async () => {
     setError('');
     setSuccess('');
-    if (!employeeId.trim()) {
-      setError('Please enter your Employee ID.');
+    if (!nationalId.trim()) {
+      setError('Please enter your National ID.');
       return;
     }
     setVerifying(true);
     try {
-      const result = await verifyEmployeeId(employeeId.trim());
+      const result = await verifyEmployeeId(nationalId.trim());
       if (result.success) {
         setVerified(true);
         setVerifiedName(result.data?.employee_name || '');
         setSuccess(`Employee verified: ${result.data?.employee_name || ''}`);
       } else {
         setVerified(false);
-        setError(result.message || 'Employee ID verification failed.');
+        setError(result.message || 'National ID verification failed.');
       }
-    } catch (err) {
+    } catch (err: any) {
       setVerified(false);
-      setError('Unable to verify Employee ID. Please try again.');
+      setError(err.message || 'Unable to verify National ID. Please try again.');
     } finally {
       setVerifying(false);
     }
@@ -187,7 +187,7 @@ const DataProtectionConsent = () => {
     setError('');
     setSuccess('');
     if (!verified) {
-      setError('Please verify your Employee ID first.');
+      setError('Please verify your National ID first.');
       return;
     }
     if (!agreed) {
@@ -196,7 +196,7 @@ const DataProtectionConsent = () => {
     }
     setSubmitting(true);
     try {
-      const result = await submitConsent(employeeId.trim());
+      const result = await submitConsent(nationalId.trim());
       if (result.success) {
         setSuccess('Consent recorded successfully. Redirecting to Dashboard...');
         setTimeout(() => navigate('/dashboard', { replace: true }), 1200);
@@ -243,7 +243,7 @@ const DataProtectionConsent = () => {
         </div>
 
         {/* Notice intro */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-3">Data Protection Notice</h2>
           <p className="text-sm text-slate-600 leading-relaxed">
             MUWASCO collects and processes employee information for legitimate HR and
@@ -257,7 +257,7 @@ const DataProtectionConsent = () => {
         {/* Expandable sections */}
         <div className="space-y-3 mb-6">
           {sections.map((section) => (
-            <div key={section.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div key={section.id} className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 overflow-hidden">
               <button
                 onClick={() => toggleSection(section.id)}
                 className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-50 transition"
@@ -276,27 +276,27 @@ const DataProtectionConsent = () => {
           ))}
         </div>
 
-        {/* Employee ID verification */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
-          <h3 className="font-semibold text-slate-900 mb-1">Verify Your Employee ID</h3>
+        {/* National ID verification */}
+        <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
+          <h3 className="font-semibold text-slate-900 mb-1">Verify Your National ID</h3>
           <p className="text-sm text-slate-500 mb-4">
-            Enter your Employee ID to verify your identity before providing consent.
+            Enter your National ID to verify your identity before providing consent.
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <input
               type="text"
-              value={employeeId}
+              value={nationalId}
               onChange={(e) => {
-                setEmployeeId(e.target.value);
+                setNationalId(e.target.value);
                 setVerified(false);
                 setSuccess('');
               }}
-              placeholder="Enter your Employee ID"
+              placeholder="Enter your National ID"
               className="flex-1 px-4 py-2.5 bg-white text-sm rounded-lg border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
             />
             <button
               onClick={handleVerify}
-              disabled={verifying || !employeeId.trim()}
+              disabled={verifying || !nationalId.trim()}
               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
               {verifying ? (
@@ -335,7 +335,7 @@ const DataProtectionConsent = () => {
         )}
 
         {/* Consent checkbox */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+        <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
           <label className="flex items-start gap-3 cursor-pointer select-none">
             <input
               type="checkbox"

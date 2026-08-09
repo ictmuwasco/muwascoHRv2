@@ -13,7 +13,7 @@ import EmployeeForm from './pages/EmployeeForm'
 import Departments from './pages/Departments'
 import Attendance from './pages/Attendance'
 import Leave from './pages/Leave'
-import Users from './pages/Users'
+import LeaveApplication from './pages/LeaveApplication'
 import Settings from './pages/Settings'
 import Admin from './pages/Admin'
 import Appraisal from './pages/Appraisal.tsx'
@@ -25,6 +25,7 @@ import FinancialYear from './pages/FinancialYear'
 import Reports from './pages/Reports'
 import Profile from './pages/Profile'
 import StrategicPlan from './pages/StrategicPlan'
+import Holidays from './pages/Holidays'
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
       <ConnectionStatus />
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/data-protection-consent" element={<DataProtectionConsent />} />
         
         <Route path="/" element={
           <ProtectedRoute>
@@ -49,16 +51,16 @@ function App() {
           <Route path="consent_management" element={<ConsentManagement />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="leave" element={<Leave />} />
-          <Route path="users" element={<Users />} />
+          <Route path="leave/apply" element={<LeaveApplication />} />
           <Route path="settings" element={<Settings />} />
           <Route path="admin" element={<Admin />} />
           <Route path="appraisal" element={<Appraisal />} />
           <Route path="audit" element={<Audit />} />
           <Route path="consent" element={<Consent />} />
-          <Route path="data-protection-consent" element={<DataProtectionConsent />} />
           <Route path="reports" element={<Reports />} />
           <Route path="profile" element={<Profile />} />
           <Route path="strategic-plan" element={<StrategicPlan />} />
+          <Route path="holidays" element={<Holidays />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
