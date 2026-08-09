@@ -16,7 +16,8 @@ import {
   ChevronDown,
   ChevronRight,
   DollarSign,
-  ClipboardList
+  ClipboardList,
+  PartyPopper
 } from 'lucide-react'
 import Logo from './Logo'
 
@@ -35,12 +36,12 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       submenu: [
         { name: 'Financial Year', href: '/financial_year', icon: DollarSign },
         { name: 'Consent Management', href: '/consent_management', icon: ClipboardList },
+        { name: 'Holidays', href: '/holidays', icon: PartyPopper },
       ]
     },
     { name: 'Attendance', href: '/attendance', icon: CalendarCheck },
     { name: 'Leave', href: '/leave', icon: Calendar },
     { name: 'Appraisal', href: '/appraisal', icon: Star },
-    { name: 'Users', href: '/users', icon: UserCog },
     { name: 'Settings', href: '/settings', icon: Settings },
   ]
 

@@ -64,36 +64,41 @@ class Auth
         $authHeader = $_SERVER['HTTP_AUTHORIZATION'] 
             ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] 
             ?? '';
-        if (empty($authHeader)) {
-            return false;
+        $token = '';
+
+        if (strpos($authHeader, 'Bearer ') === 0) {
+            $token = substr($authHeader, 7);
         }
 
-        // Extract Bearer token
-        if (strpos($authHeader, 'Bearer ') !== 0) {
-            return false;
+        // Fallback: read the httpOnly access_token cookie (F-05)
+        if ($token === '' && isset($_COOKIE['access_token'])) {
+            $token = $_COOKIE['access_token'];
         }
 
-        $token = substr($authHeader, 7);
-        if (empty($token)) {
+        if ($token === '') {
             return false;
         }
 
         try {
-            // Decode the JWT payload (base64-encoded JSON)
-            $payload = json_decode(base64_decode($token), true);
-            if (!is_array($payload) || empty($payload['user_id'])) {
+            // Verify the JWT signature and expiry (firebase/php-jwt, HS256)
+            $decoded = \App\Helpers\JWT::getInstance()->validateToken($token);
+            if ($decoded === null) {
                 return false;
             }
 
-            // Check token expiration
-            if (isset($payload['exp']) && $payload['exp'] < time()) {
+            // Must be an access token (refresh tokens must not authenticate)
+            if (!isset($decoded->type) || $decoded->type !== 'access') {
                 return false;
             }
 
-            // Restore session from token
-            $_SESSION['user_id'] = (int)$payload['user_id'];
-            $_SESSION['user_email'] = $payload['email'] ?? '';
-            $_SESSION['user_role'] = $payload['role'] ?? '';
+            if (empty($decoded->sub)) {
+                return false;
+            }
+
+            // Restore session from the verified token
+            $_SESSION['user_id'] = (int)$decoded->sub;
+            $_SESSION['user_email'] = $decoded->email ?? '';
+            $_SESSION['user_role'] = $decoded->role ?? '';
             $_SESSION['session_valid'] = true;
             $_SESSION['last_activity'] = time();
 

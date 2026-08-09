@@ -32,6 +32,9 @@ class AuthController extends BaseController
      */
     public function loginAction(): void
     {
+        // Security: Rate-limit login attempts (F-06)
+        \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('login');
+
         try {
             $data = $this->getJsonBody();
             
@@ -117,7 +120,7 @@ class AuthController extends BaseController
     {
         try {
             $userId = $this->getAuthUserId();
-            $user = $this->authService->getUserByEmail('');
+            $user = $this->authService->getUserById($userId);
             
             if (!$user) {
                 $this->notFound('User not found');
@@ -135,6 +138,9 @@ class AuthController extends BaseController
      */
     public function changePasswordAction(): void
     {
+        // Security: Rate-limit password change attempts (F-06)
+        \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('change_password');
+
         try {
             $userId = $this->getAuthUserId();
             $data = $this->getJsonBody();
@@ -147,7 +153,7 @@ class AuthController extends BaseController
             }
 
             // Verify current password
-            $user = $this->authService->getUserByEmail('');
+            $user = $this->authService->getUserById($userId);
             if (!$user || !password_verify($currentPassword, $user['password'])) {
                 $this->error('Current password is incorrect', 401);
             }

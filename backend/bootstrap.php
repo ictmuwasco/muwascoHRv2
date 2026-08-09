@@ -121,15 +121,38 @@ if (session_status() === PHP_SESSION_NONE) {
     $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || ($_SERVER['SERVER_PORT'] ?? 80) == 443;
 
+    $samesite = $isSecure ? 'None' : 'Lax';
     session_set_cookie_params([
         'lifetime' => (int) env('SESSION_LIFETIME', 120) * 60,
         'path' => '/',
         'domain' => '',
         'secure' => $isSecure,
         'httponly' => true,
-        'samesite' => env('SESSION_SAME_SITE', 'Lax'),
+        'samesite' => $samesite,
     ]);
     session_start();
+}
+
+// Handle CORS preflight OPTIONS requests
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    // CORS configuration - must be specific origin when using credentials
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    $allowedOrigins = [
+        'http://localhost:5173',  // Vite dev server
+        'http://localhost:3000',  // Alternative dev port
+        'http://localhost',       // Production
+    ];
+    
+    if (in_array($origin, $allowedOrigins)) {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Access-Control-Allow-Credentials: true');
+    }
+    
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization');
+    header('Content-Type: application/json');
+    http_response_code(200);
+    exit();
 }
 
 // CRITICAL FIX: Release the session write lock for API requests.
