@@ -86,11 +86,34 @@ abstract class BaseController
     }
 
     /**
-     * Get the current authenticated user ID.
+     * Get the current authenticated user ID from session or JWT.
      */
     protected function getUserId(): int
     {
-        return (int) ($_SESSION['user_id'] ?? 0);
+        // First check PHP session
+        if (isset($_SESSION['user_id']) && $_SESSION['user_id'] > 0) {
+            return (int) $_SESSION['user_id'];
+        }
+        
+        // Fallback to JWT token from Authorization header
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] 
+            ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] 
+            ?? '';
+        
+        if (strpos($authHeader, 'Bearer ') === 0) {
+            // Use Auth helper to authenticate from JWT token
+            // This will restore the session from the token
+            try {
+                $auth = \App\Helpers\Auth::getInstance();
+                if ($auth->check()) {
+                    return (int) ($_SESSION['user_id'] ?? 0);
+                }
+            } catch (\Throwable $authError) {
+                error_log('JWT auth error: ' . $authError->getMessage());
+            }
+        }
+        
+        return 0;
     }
 
     /**

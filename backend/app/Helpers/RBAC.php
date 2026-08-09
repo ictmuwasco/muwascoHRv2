@@ -132,14 +132,9 @@ class RBAC
             // Check if role_permissions table exists
             $tableResult = $conn->query("SHOW TABLES LIKE 'role_permissions'");
             if ($tableResult->num_rows === 0) {
-            // Table doesn't exist yet - in development, allow access
-            $env = env('APP_ENV', 'production');
-            if ($env === 'development') {
-                    $this->cache[$key] = true;
-                    return true;
-                }
-                $this->cache[$key] = null;
-                return null;
+                // Table doesn't exist — deny by default (never allow-all)
+                $this->cache[$key] = false;
+                return false;
             }
             $tableResult->free();
 
@@ -158,14 +153,9 @@ class RBAC
             $this->cache[$key] = $value;
             return $value;
         } catch (\Throwable $e) {
-            // Query failed - in development, allow access
-            $env = env('APP_ENV', 'production');
-            if ($env === 'development') {
-                $this->cache[$key] = true;
-                return true;
-            }
-            $this->cache[$key] = null;
-            return null;
+            // Query failed — deny by default (never allow-all)
+            $this->cache[$key] = false;
+            return false;
         }
     }
 
