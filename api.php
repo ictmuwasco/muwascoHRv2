@@ -7,11 +7,25 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/backend/bootstrap.php';
 
-// Set API headers
+// Apply security headers, session timeout, and proxy normalization
+\App\Middleware\SecurityMiddleware::run();
+
+// Handle CORS for credentialed requests
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+$allowedOrigins = [
+    'http://localhost:5173',  // Vite dev server
+    'http://localhost:3000',  // Alternative dev port
+    'http://localhost',       // Production
+];
+
+if (in_array($origin, $allowedOrigins)) {
+    header('Access-Control-Allow-Origin: ' . $origin);
+    header('Access-Control-Allow-Credentials: true');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+}
+
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
 
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -36,6 +50,18 @@ $endpoint = preg_replace('#^/api#', '', $requestPath);
 
 // Simple routing
 try {
+    // Public routes that do not require authentication
+    $isPublicRoute = str_starts_with($endpoint, '/auth')
+        || str_starts_with($endpoint, '/holidays')
+        || $endpoint === '/consent/verify-employee';
+
+    // Enforce authentication for all non-public routes (F-04)
+    if (!$isPublicRoute && !\App\Helpers\Auth::getInstance()->check()) {
+        http_response_code(401);
+        echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+        exit;
+    }
+
     // Auth routes
     if (strpos($endpoint, '/auth') === 0) {
         require_once __DIR__ . '/backend/app/Controllers/AuthController.php';
@@ -268,6 +294,16 @@ try {
         $controller = new \App\Controllers\ConsentController();
         $controller->storeConsentAction();
     }
+    elseif ($endpoint === '/consent/dashboard' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/ConsentController.php';
+        $controller = new \App\Controllers\ConsentController();
+        $controller->dashboardAction();
+    }
+    elseif ($endpoint === '/consent/employees' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/ConsentController.php';
+        $controller = new \App\Controllers\ConsentController();
+        $controller->employeesAction();
+    }
     // Notification routes
     elseif ($endpoint === '/notifications' && $requestMethod === 'GET') {
         require_once __DIR__ . '/backend/app/Controllers/NotificationController.php';
@@ -284,6 +320,80 @@ try {
         require_once __DIR__ . '/backend/app/Controllers/NotificationController.php';
         $controller = new \App\Controllers\NotificationController();
         $controller->markAllReadAction();
+    }
+    // Leave list
+    elseif ($endpoint === '/leave' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $controller->indexAction();
+    }
+    // Leave delegates
+    elseif ($endpoint === '/leave/delegates' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $controller->delegatesAction();
+    }
+    // Leave types with balances
+    elseif ($endpoint === '/leave/types' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $controller->typesAction();
+    }
+    // Leave application routes
+    elseif ($endpoint === '/leave/applications' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $controller->applyAction();
+    }
+    elseif ($endpoint === '/leave/calculate' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $controller->calculateAction();
+    }
+    elseif (preg_match('#^/leave/applications/(\d+)/documents$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $applicationId = (int)$matches[1];
+        $controller->listDocumentsAction($applicationId);
+    }
+    elseif (preg_match('#^/leave/applications/(\d+)/documents/(\d+)$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $applicationId = (int)$matches[1];
+        $documentId = (int)$matches[2];
+        $controller->viewDocumentAction($applicationId, $documentId);
+    }
+    // Holiday routes
+    elseif ($endpoint === '/holidays' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/HolidayController.php';
+        $controller = new \App\Controllers\HolidayController();
+        $controller->indexAction();
+    }
+    elseif ($endpoint === '/holidays/upcoming' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/HolidayController.php';
+        $controller = new \App\Controllers\HolidayController();
+        $controller->upcomingAction();
+    }
+    elseif (preg_match('#^/holidays/(\d+)$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/HolidayController.php';
+        $controller = new \App\Controllers\HolidayController();
+        $id = (int)$matches[1];
+
+        if ($requestMethod === 'GET') {
+            $controller->showAction($id);
+        } elseif ($requestMethod === 'PUT' || $requestMethod === 'POST') {
+            $controller->updateAction($id);
+        } elseif ($requestMethod === 'DELETE') {
+            $controller->destroyAction($id);
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
+    elseif ($endpoint === '/holidays' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/HolidayController.php';
+        $controller = new \App\Controllers\HolidayController();
+        $controller->storeAction();
     }
     // Profile routes
     elseif ($endpoint === '/profile' && $requestMethod === 'GET') {

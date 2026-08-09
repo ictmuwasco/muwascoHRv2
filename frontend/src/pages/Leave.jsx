@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
 import Card from '../components/ui/Card'
 import Table from '../components/ui/Table'
@@ -7,6 +8,7 @@ import Button from '../components/ui/Button'
 import { Plus } from 'lucide-react'
 
 const Leave = () => {
+  const navigate = useNavigate()
   const [leaveRequests, setLeaveRequests] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -31,6 +33,7 @@ const Leave = () => {
     { key: 'start_date', label: 'Start Date' },
     { key: 'end_date', label: 'End Date' },
     { key: 'days_requested', label: 'Days' },
+    { key: 'delegate_name', label: 'Delegate' },
     {
       key: 'status',
       label: 'Status',
@@ -52,16 +55,16 @@ const Leave = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Leave Management</h1>
-          <p className="text-gray-500">Manage leave applications</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Leave Management</h1>
+            <p className="text-gray-500">Manage leave applications</p>
+          </div>
+          <Button onClick={() => navigate('/leave/apply')}>
+            <Plus className="h-4 w-4 mr-2" />
+            Apply Leave
+          </Button>
         </div>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          Apply Leave
-        </Button>
-      </div>
 
       <Card>
         <Table columns={columns} data={leaveRequests} />
