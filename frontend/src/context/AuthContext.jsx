@@ -17,22 +17,21 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     // Check for existing session
-    const token = localStorage.getItem('token')
+    // The access token is now in an httpOnly cookie (set by the server),
+    // so we only need to restore the cached user profile from localStorage.
     const userData = localStorage.getItem('user')
 
-    if (token && userData) {
+    if (userData) {
       try {
         const parsed = JSON.parse(userData)
         if (parsed && typeof parsed === 'object') {
           setUser(parsed)
         } else {
           // Corrupt entry — clear it so we don't loop
-          localStorage.removeItem('token')
           localStorage.removeItem('user')
         }
       } catch {
         // Corrupt JSON — clear and continue
-        localStorage.removeItem('token')
         localStorage.removeItem('user')
       }
     }
@@ -50,10 +49,9 @@ export const AuthProvider = ({ children }) => {
    
       const payload = response?.data
       const data = payload?.data
-      const token = data?.token
       const userData = data?.user
 
-      if (!token || !userData) {
+      if (!userData) {
         return {
           success: false,
           message:
@@ -62,7 +60,8 @@ export const AuthProvider = ({ children }) => {
         }
       }
 
-      localStorage.setItem('token', token)
+      // The access token is set as an httpOnly cookie by the server.
+      // We only persist the user profile for fast UI restore.
       localStorage.setItem('user', JSON.stringify(userData))
 
       setUser(userData)
@@ -111,7 +110,6 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       // Ignore errors, still logout
     } finally {
-      localStorage.removeItem('token')
       localStorage.removeItem('user')
       setUser(null)
     }

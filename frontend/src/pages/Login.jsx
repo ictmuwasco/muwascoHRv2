@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { getConsentStatus } from '../api/services/consentService'
 import {
   Eye,
   EyeOff,
@@ -15,6 +14,8 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import Logo from '../components/Logo'
+
+// Note: Consent check is handled by ProtectedRoute component
 
 const Login = () => {
   const navigate = useNavigate()
@@ -39,8 +40,8 @@ const Login = () => {
       ? 'Please enter a valid email address'
       : ''
   const passwordError =
-    touched.password && password.length < 6
-      ? 'Password must be at least 6 characters'
+    touched.password && password.length < 3
+      ? 'Password must be at least 3 characters'
       : ''
 
   const handleSubmit = async (e) => {
@@ -58,19 +59,8 @@ const Login = () => {
       const result = await login(email, password)
 
       if (result.success) {
-        // Check consent status after successful authentication
-        try {
-          const consent = await getConsentStatus()
-          if (consent.consented) {
-            navigate('/dashboard', { replace: true })
-          } else {
-            navigate('/data-protection-consent', { replace: true })
-          }
-        } catch (consentErr) {
-          // If consent API fails, default to dashboard to avoid blocking login
-          console.error('Consent check failed:', consentErr)
-          navigate('/dashboard', { replace: true })
-        }
+        // Navigate to dashboard; ProtectedRoute will handle consent check
+        navigate('/dashboard', { replace: true })
       } else {
         setError(result.message)
       }
