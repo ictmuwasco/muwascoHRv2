@@ -14,9 +14,9 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [2/3] Starting Laravel Backend...
-cd /d c:\xampp\htdocs\hrdemo\laravel
-start "Laravel Backend" cmd /c "php artisan serve --host=127.0.0.1 --port=8000"
+echo [2/3] Starting PHP Backend Server...
+cd /d c:\xampp\htdocs\hrdemo
+start "PHP Backend" cmd /c "php -S localhost:8000 -t . router.php"
 
 echo.
 echo [3/3] Starting React Frontend...
@@ -27,7 +27,8 @@ echo.
 echo ========================================
 echo Servers Starting...
 echo ========================================
-echo Laravel API: http://127.0.0.1:8000/api
+echo PHP Backend: http://localhost:8000
+echo API: http://localhost:8000/api
 echo React Frontend: http://localhost:5173
 echo.
 echo Login: admin@muwasco.co.ke / Admin@123

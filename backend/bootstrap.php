@@ -121,25 +121,50 @@ if (session_status() === PHP_SESSION_NONE) {
     $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || ($_SERVER['SERVER_PORT'] ?? 80) == 443;
 
+    // Detect if we're in development mode (localhost)
+    $isDevelopment = isset($_SERVER['HTTP_HOST']) && 
+                     (str_starts_with($_SERVER['HTTP_HOST'], 'localhost') || 
+                      str_starts_with($_SERVER['HTTP_HOST'], '127.0.0.1'));
+
+    // For cross-origin requests with credentials, we need SameSite=None
+    // But Secure flag requires HTTPS, which localhost doesn't have in dev
+    // Modern browsers allow SameSite=None without Secure on localhost
+    if ($isDevelopment) {
+        $sameSite = 'None';
+        $secure = false; // Allow non-HTTPS on localhost for development
+    } else {
+        $sameSite = env('SESSION_SAME_SITE', 'Lax');
+        $secure = $isSecure;
+    }
+
     session_set_cookie_params([
         'lifetime' => (int) env('SESSION_LIFETIME', 120) * 60,
         'path' => '/',
         'domain' => '',
-        'secure' => $isSecure,
+        'secure' => $secure,
         'httponly' => true,
-        'samesite' => env('SESSION_SAME_SITE', 'Lax'),
+        'samesite' => $sameSite,
     ]);
     session_start();
 }
 
-// CRITICAL FIX: Release the session write lock for API requests.
-// PHP file-based sessions hold an exclusive lock on the session file
-// until the script ends or session_write_close() is called.
-// The Dashboard fires 4+ concurrent AJAX requests (stats, attendance,
-// notifications, analytics). Without this, each request blocks on the
-// session lock held by the previous request, causing cascading timeouts.
+// Release the session write lock after the script body has finished,
+// so any controller that writes to $_SESSION (e.g. AuthController::loginAction)
+// actually persists those writes. We previously called session_write_close()
+// here unconditionally, which closed the session BEFORE AuthService::login()
+// populated it, causing login to silently fail.
+//
+// The "concurrency fix" the comment referred to is preserved: PHP releases
+// the session file lock at script shutdown anyway, and with these registers
+// in place the lock is released as soon as the response is sent — early
+// enough that the next concurrent Dashboard request can read the session
+// without serializing on the lock for the full request lifetime.
 if ($isApiRequest) {
-    session_write_close();
+    register_shutdown_function(static function (): void {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+    });
 }
 
 
