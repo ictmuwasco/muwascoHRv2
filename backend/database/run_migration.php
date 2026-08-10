@@ -117,6 +117,56 @@ try {
         echo "✗ employee_leave_balances table not found\n";
         exit(1);
     }
+
+    // Run migration 011 - Leave application documents
+    $sql = file_get_contents(__DIR__ . '/migrations/011_leave_application_documents.sql');
+    
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        
+        echo "Migration 011_leave_application_documents.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 011: " . $conn->error . "\n";
+        exit(1);
+    }
+    
+    // Verify table was created
+    $result = $conn->query("SHOW TABLES LIKE 'leave_application_documents'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ leave_application_documents table created successfully\n";
+    } else {
+        echo "✗ leave_application_documents table not found\n";
+        exit(1);
+    }
+
+    // Run migration 012 - Delegate columns
+    $sql = file_get_contents(__DIR__ . '/migrations/012_add_delegate_to_leave_applications.sql');
+    
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        
+        echo "Migration 012_add_delegate_to_leave_applications.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 012: " . $conn->error . "\n";
+        exit(1);
+    }
+    
+    // Verify columns were added
+    $result = $conn->query("SHOW COLUMNS FROM leave_applications LIKE 'delegate_emp_id'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ delegate_emp_id column added successfully\n";
+    } else {
+        echo "✗ delegate_emp_id column not found\n";
+        exit(1);
+    }
     
     echo "\n✓ All migrations completed successfully!\n";
     

@@ -22,8 +22,14 @@ use App\Controllers\KPIController;
 use App\Controllers\NotificationController;
 use App\Controllers\AuditLogController;
 use App\Controllers\SettingController;
+use App\Controllers\HolidayController;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
+
+// Public holiday read routes
+Route::get('/holidays', [HolidayController::class, 'index']);
+Route::get('/holidays/upcoming', [HolidayController::class, 'upcoming']);
+Route::get('/holidays/{holiday}', [HolidayController::class, 'show']);
 
 Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
@@ -89,6 +95,15 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/consents', [ConsentController::class, 'index']);
     Route::put('/consents/{consent}', [ConsentController::class, 'update']);
 
+    // Consent routes - must be before other routes
+    Route::get('/consent/status', [ConsentController::class, 'statusAction']);
+    Route::post('/consent/verify-employee', [ConsentController::class, 'verifyEmployeeIdAction']);
+    Route::post('/consent', [ConsentController::class, 'storeConsentAction']);
+    
+    // HR Consent Management Dashboard routes
+    Route::get('/consent/dashboard', [ConsentController::class, 'dashboardAction']);
+    Route::get('/consent/employees', [ConsentController::class, 'employeesAction']);
+
     // Financial Year routes
     Route::get('/admin/financial-years', [FinancialYearController::class, 'index']);
     Route::get('/admin/financial-years/status', [FinancialYearController::class, 'status']);
@@ -122,6 +137,11 @@ Route::middleware(['jwt.auth'])->group(function () {
 
     Route::get('/settings', [SettingController::class, 'index']);
     Route::put('/settings', [SettingController::class, 'update']);
+
+    // Holiday write routes
+    Route::post('/holidays', [HolidayController::class, 'store']);
+    Route::put('/holidays/{holiday}', [HolidayController::class, 'update']);
+    Route::delete('/holidays/{holiday}', [HolidayController::class, 'destroy']);
 
     // Profile routes
     Route::get('/profile', [EmployeeController::class, 'profileAction']);
