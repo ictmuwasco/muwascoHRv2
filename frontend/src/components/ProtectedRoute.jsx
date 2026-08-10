@@ -5,9 +5,9 @@ import { useState, useEffect } from 'react'
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading: authLoading } = useAuth()
-  const [consentChecked, setConsentChecked] = useState(false)
   const [consented, setConsented] = useState(false)
   const [checkingConsent, setCheckingConsent] = useState(true)
+  const [consentError, setConsentError] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated || authLoading) return
@@ -18,15 +18,14 @@ const ProtectedRoute = ({ children }) => {
       try {
         const response = await getConsentStatus()
         if (!cancelled) {
-          setConsented(response.consented)
-          setConsentChecked(true)
+          setConsented(response.consented || false)
+          setConsentError(false)
         }
       } catch (err) {
-        console.error('Consent check failed:', err)
         if (!cancelled) {
           // On API failure, allow access rather than blocking the user
           setConsented(true)
-          setConsentChecked(true)
+          setConsentError(true)
         }
       } finally {
         if (!cancelled) {
@@ -54,11 +53,12 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />
   }
 
-  // Authenticated but has not accepted current consent version
-  if (isAuthenticated && !consented) {
+  // Not consented - redirect to consent page
+  if (!consented) {
     return <Navigate to="/data-protection-consent" replace />
   }
 
+  // Authenticated and consented - render protected content
   return children
 }
 
