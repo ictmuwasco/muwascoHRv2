@@ -33,11 +33,16 @@ apiClient.interceptors.request.use(
   (error: AxiosError) => Promise.reject(error)
 );
 
-// Response interceptor - handle 401
+// Response interceptor - handle 401.
+// Only bounce to /login for *authenticated* requests that 401.
+// A 401 on /auth/login is "bad credentials" — the caller wants to show
+// the message, not redirect.
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    const url: string = error.config?.url ?? '';
+    const isLoginAttempt: boolean = url.includes('/auth/login');
+    if (error.response?.status === 401 && !isLoginAttempt) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';

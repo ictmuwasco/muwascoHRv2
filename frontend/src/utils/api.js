@@ -15,6 +15,9 @@ export const api = axios.create({
   // Prevent infinite waiting. Clock In/Out should respond quickly.
   // 15s is generous for GPS + backend processing.
   timeout: 15000,
+  // CRITICAL: Send cookies/session cookies with every request
+  // The backend uses PHP sessions for auth, so cookies must be included
+  withCredentials: true,
 })
 
 // Request interceptor to add auth token

@@ -44,6 +44,14 @@ class AuthController extends BaseController
             }
 
             $result = $this->authService->login($email, $password, $rememberMe);
+
+            // Note: we deliberately do NOT call setcookie(...) here.
+            // PHP's session module emits the correct Set-Cookie header
+            // automatically at script shutdown, using the cookie params
+            // configured in bootstrap.php. Manually re-issuing the cookie
+            // before AuthService populated $_SESSION was emitting an
+            // empty-session cookie that clobbered the real one.
+
             $this->success($result, 'Login successful');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 401);
