@@ -411,3 +411,9 @@ export interface Delegate {
   is_active: boolean;
   created_at: string;
 }
+
+// NOTE: Intentionally avoiding broad module declarations for JS/JSX imports here,
+// because they can conflict with actual component typings/usages across the app.
+// The existing codebase mixes TS and JS modules; the minimal fix for the reported
+// consent-page imports is to keep these modules untyped rather than introduce
+// duplicate/widened component declarations.

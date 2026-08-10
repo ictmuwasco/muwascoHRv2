@@ -19,31 +19,26 @@ const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // The access token is now in an httpOnly cookie (set by the server),
+  // so it is sent automatically with credentials.
+  withCredentials: true,
 });
 
-// Request interceptor - add auth token
+// Request interceptor
+// No manual Authorization header needed — the httpOnly cookie is sent
+// automatically via withCredentials.
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
     return config;
   },
   (error: AxiosError) => Promise.reject(error)
 );
 
-// Response interceptor - handle 401.
-// Only bounce to /login for *authenticated* requests that 401.
-// A 401 on /auth/login is "bad credentials" — the caller wants to show
-// the message, not redirect.
+// Response interceptor - handle 401
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    const url: string = error.config?.url ?? '';
-    const isLoginAttempt: boolean = url.includes('/auth/login');
-    if (error.response?.status === 401 && !isLoginAttempt) {
-      localStorage.removeItem('token');
+    if (error.response?.status === 401) {
       localStorage.removeItem('user');
       window.location.href = '/login';
     }

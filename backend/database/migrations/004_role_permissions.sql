@@ -51,8 +51,12 @@ INSERT INTO role_permissions (role, module, action, is_granted) VALUES
 ('super_admin', 'performance', 'manage', 1),
 ('super_admin', 'consent', 'view', 1),
 ('super_admin', 'consent', 'manage', 1),
-('super_admin', 'permission_overrides', 'view', 1),
-('super_admin', 'permission_overrides', 'manage', 1)
+    ('super_admin', 'permission_overrides', 'view', 1),
+    ('super_admin', 'permission_overrides', 'manage', 1),
+    ('super_admin', 'holidays', 'view', 1),
+    ('super_admin', 'holidays', 'create', 1),
+    ('super_admin', 'holidays', 'edit', 1),
+    ('super_admin', 'holidays', 'delete', 1)
 ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted);
 
 -- HR Manager - Full HR access
@@ -84,8 +88,12 @@ INSERT INTO role_permissions (role, module, action, is_granted) VALUES
 ('hr_manager', 'performance', 'manage', 1),
 ('hr_manager', 'consent', 'view', 1),
 ('hr_manager', 'consent', 'manage', 1),
-('hr_manager', 'permission_overrides', 'view', 1),
-('hr_manager', 'permission_overrides', 'manage', 1)
+    ('hr_manager', 'permission_overrides', 'view', 1),
+    ('hr_manager', 'permission_overrides', 'manage', 1),
+    ('hr_manager', 'holidays', 'view', 1),
+    ('hr_manager', 'holidays', 'create', 1),
+    ('hr_manager', 'holidays', 'edit', 1),
+    ('hr_manager', 'holidays', 'delete', 1)
 ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted);
 
 -- Department Head - Department management + team oversight

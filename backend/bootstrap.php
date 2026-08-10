@@ -121,50 +121,48 @@ if (session_status() === PHP_SESSION_NONE) {
     $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || ($_SERVER['SERVER_PORT'] ?? 80) == 443;
 
-    // Detect if we're in development mode (localhost)
-    $isDevelopment = isset($_SERVER['HTTP_HOST']) && 
-                     (str_starts_with($_SERVER['HTTP_HOST'], 'localhost') || 
-                      str_starts_with($_SERVER['HTTP_HOST'], '127.0.0.1'));
-
-    // For cross-origin requests with credentials, we need SameSite=None
-    // But Secure flag requires HTTPS, which localhost doesn't have in dev
-    // Modern browsers allow SameSite=None without Secure on localhost
-    if ($isDevelopment) {
-        $sameSite = 'None';
-        $secure = false; // Allow non-HTTPS on localhost for development
-    } else {
-        $sameSite = env('SESSION_SAME_SITE', 'Lax');
-        $secure = $isSecure;
-    }
-
+    $samesite = $isSecure ? 'None' : 'Lax';
     session_set_cookie_params([
         'lifetime' => (int) env('SESSION_LIFETIME', 120) * 60,
         'path' => '/',
         'domain' => '',
-        'secure' => $secure,
+        'secure' => $isSecure,
         'httponly' => true,
-        'samesite' => $sameSite,
+        'samesite' => $samesite,
     ]);
     session_start();
 }
 
-// Release the session write lock after the script body has finished,
-// so any controller that writes to $_SESSION (e.g. AuthController::loginAction)
-// actually persists those writes. We previously called session_write_close()
-// here unconditionally, which closed the session BEFORE AuthService::login()
-// populated it, causing login to silently fail.
-//
-// The "concurrency fix" the comment referred to is preserved: PHP releases
-// the session file lock at script shutdown anyway, and with these registers
-// in place the lock is released as soon as the response is sent — early
-// enough that the next concurrent Dashboard request can read the session
-// without serializing on the lock for the full request lifetime.
+// Handle CORS preflight OPTIONS requests
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    // CORS configuration - must be specific origin when using credentials
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    $allowedOrigins = [
+        'http://localhost:5173',  // Vite dev server
+        'http://localhost:3000',  // Alternative dev port
+        'http://localhost',       // Production
+    ];
+    
+    if (in_array($origin, $allowedOrigins)) {
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Access-Control-Allow-Credentials: true');
+    }
+    
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization');
+    header('Content-Type: application/json');
+    http_response_code(200);
+    exit();
+}
+
+// CRITICAL FIX: Release the session write lock for API requests.
+// PHP file-based sessions hold an exclusive lock on the session file
+// until the script ends or session_write_close() is called.
+// The Dashboard fires 4+ concurrent AJAX requests (stats, attendance,
+// notifications, analytics). Without this, each request blocks on the
+// session lock held by the previous request, causing cascading timeouts.
 if ($isApiRequest) {
-    register_shutdown_function(static function (): void {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            session_write_close();
-        }
-    });
+    session_write_close();
 }
 
 
