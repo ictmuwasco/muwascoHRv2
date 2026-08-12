@@ -55,16 +55,16 @@ const Leave = () => {
 
   return (
     <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Leave Management</h1>
-            <p className="text-gray-500">Manage leave applications</p>
-          </div>
-          <Button onClick={() => navigate('/leave/apply')}>
-            <Plus className="h-4 w-4 mr-2" />
-            Apply Leave
-          </Button>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">My Leave Applications</h1>
+          <p className="text-gray-500">View your leave history</p>
         </div>
+        <Button onClick={() => navigate('/leave/apply')}>
+          <Plus className="h-4 w-4 mr-2" />
+          Apply Leave
+        </Button>
+      </div>
 
       <Card>
         <Table columns={columns} data={leaveRequests} />
