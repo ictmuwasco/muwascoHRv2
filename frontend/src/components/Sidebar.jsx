@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import {
   LayoutDashboard,
@@ -23,7 +23,19 @@ import Logo from './Logo'
 
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const { user, logout } = useAuth()
+  const location = useLocation()
   const [isHRAdminExpanded, setIsHRAdminExpanded] = useState(false)
+  const [isLeaveExpanded, setIsLeaveExpanded] = useState(false)
+
+  const MANAGER_ROLES = ['sub_section_head', 'section_head', 'dept_head', 'managing_director', 'hr_manager', 'super_admin']
+  const role = (user?.role || '').toLowerCase()
+  const canManageLeave = MANAGER_ROLES.includes(role)
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/leave/manage')) {
+      setIsLeaveExpanded(true)
+    }
+  }, [location.pathname])
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -40,7 +52,16 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       ]
     },
     { name: 'Attendance', href: '/attendance', icon: CalendarCheck },
-    { name: 'Leave', href: '/leave', icon: Calendar },
+    canManageLeave
+      ? {
+          name: 'Leave',
+          icon: Calendar,
+          submenu: [
+            { name: 'My Leaves', href: '/leave', icon: Calendar },
+            { name: 'Manage Leave', href: '/leave/manage', icon: ClipboardList },
+          ],
+        }
+      : { name: 'Leave', href: '/leave', icon: Calendar },
     { name: 'Appraisal', href: '/appraisal', icon: Star },
     { name: 'Settings', href: '/settings', icon: Settings },
   ]
@@ -78,26 +99,37 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
         <nav className="p-4 space-y-1">
           {navigation.map((item) => {
             if (item.submenu) {
+              const isExpanded = item.name === 'HR Admin'
+                ? isHRAdminExpanded
+                : item.name === 'Leave'
+                  ? isLeaveExpanded
+                  : false
+              const toggle = item.name === 'HR Admin'
+                ? () => setIsHRAdminExpanded(!isHRAdminExpanded)
+                : item.name === 'Leave'
+                  ? () => setIsLeaveExpanded(!isLeaveExpanded)
+                  : () => {}
               return (
                 <div key={item.name}>
                   <button
-                    onClick={() => setIsHRAdminExpanded(!isHRAdminExpanded)}
+                    onClick={toggle}
                     className="flex items-center w-full space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
                   >
                     <item.icon className="h-5 w-5" />
                     <span className="font-medium flex-1 text-left">{item.name}</span>
-                    {isHRAdminExpanded ? (
+                    {isExpanded ? (
                       <ChevronDown className="h-4 w-4" />
                     ) : (
                       <ChevronRight className="h-4 w-4" />
                     )}
                   </button>
-                  {isHRAdminExpanded && (
+                  {isExpanded && (
                     <div className="ml-6 mt-1 space-y-1">
                       {item.submenu.map((subItem) => (
                         <NavLink
                           key={subItem.name}
                           to={subItem.href}
+                          end
                           onClick={onClose}
                           className={({ isActive }) =>
                             `flex items-center space-x-3 px-4 py-2 rounded-lg transition-colors ${
@@ -116,14 +148,17 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
                 </div>
               )
             }
+            // For routes with children, mark active on the prefix so the parent item lights up.
+            const routeIsPrefix = location.pathname.startsWith(item.href)
             return (
               <NavLink
                 key={item.name}
                 to={item.href}
+                end={!item.href.startsWith('/settings')}
                 onClick={onClose}
                 className={({ isActive }) =>
                   `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive
+                    isActive || (item.href === '/settings' && routeIsPrefix)
                       ? 'bg-primary-50 text-primary-700'
                       : 'text-gray-700 hover:bg-gray-50'
                   }`
