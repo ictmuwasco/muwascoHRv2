@@ -54,6 +54,7 @@ class JWT
             'sub' => $user['id'],
             'email' => $user['email'] ?? '',
             'role' => $user['role'] ?? '',
+            'employee_id' => $user['employee_id'] ?? null,
             'type' => 'access',
         ];
 

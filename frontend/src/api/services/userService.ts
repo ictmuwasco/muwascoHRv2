@@ -31,4 +31,9 @@ export const userService = {
     const response = await apiClient.put<ApiResponse<User>>(`/users/${id}/toggle-status`);
     return response.data;
   },
+
+  changePassword: async (id: number, password: string): Promise<ApiResponse<null>> => {
+    const response = await apiClient.post<ApiResponse<null>>(`/users/${id}/change-password`, { password });
+    return response.data;
+  },
 };

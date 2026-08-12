@@ -99,6 +99,7 @@ class Auth
             $_SESSION['user_id'] = (int)$decoded->sub;
             $_SESSION['user_email'] = $decoded->email ?? '';
             $_SESSION['user_role'] = $decoded->role ?? '';
+            $_SESSION['employee_id'] = $decoded->employee_id ?? null;
             $_SESSION['session_valid'] = true;
             $_SESSION['last_activity'] = time();
 

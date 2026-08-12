@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controllers;
 
 use App\Services\LeaveApplicationService;
+use App\Services\LeaveApprovalService;
 use App\Services\LeaveCalculationService;
 use App\Services\LeaveDocumentService;
 use App\Services\LeaveWorkflowService;
@@ -19,6 +20,7 @@ use App\Helpers\Auth;
 class LeaveController
 {
     private LeaveApplicationService $applicationService;
+    private LeaveApprovalService $approvalService;
     private LeaveCalculationService $calculationService;
     private LeaveDocumentService $documentService;
     private LeaveWorkflowService $workflowService;
@@ -26,6 +28,7 @@ class LeaveController
     public function __construct()
     {
         $this->applicationService = new LeaveApplicationService();
+        $this->approvalService = new LeaveApprovalService();
         $this->calculationService = new LeaveCalculationService();
         $this->documentService = new LeaveDocumentService();
         $this->workflowService = new LeaveWorkflowService();
@@ -45,21 +48,46 @@ class LeaveController
             return;
         }
 
+        $currentUser = Auth::getInstance()->user();
+        $employeeId = $currentUser['employee_id'] ?? null;
+
         $db = \App\Helpers\Database::getInstance()->getConnection();
         
-        $query = "
-            SELECT la.*, 
-                   e.first_name, e.last_name, e.employee_id,
-                   lt.name as leave_type_name,
-                   de.first_name as delegate_first_name, de.last_name as delegate_last_name
-            FROM leave_applications la
-            LEFT JOIN employees e ON la.employee_id = e.id
-            LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
-            LEFT JOIN employees de ON la.delegate_emp_id = de.id
-            ORDER BY la.applied_at DESC
-        ";
-        $result = $db->query($query);
-        $leaves = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        // If user has an employee_id, filter to show only their leave applications
+        if ($employeeId) {
+            $query = "
+                SELECT la.*, 
+                       e.first_name, e.last_name, e.employee_id,
+                       lt.name as leave_type_name,
+                       de.first_name as delegate_first_name, de.last_name as delegate_last_name
+                FROM leave_applications la
+                LEFT JOIN employees e ON la.employee_id = e.id
+                LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
+                LEFT JOIN employees de ON la.delegate_emp_id = de.id
+                WHERE la.employee_id = ?
+                ORDER BY la.applied_at DESC
+            ";
+            $stmt = $db->prepare($query);
+            $stmt->bind_param('i', $employeeId);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $leaves = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } else {
+            // Fallback: show all if no employee_id (shouldn't happen for normal users)
+            $query = "
+                SELECT la.*, 
+                       e.first_name, e.last_name, e.employee_id,
+                       lt.name as leave_type_name,
+                       de.first_name as delegate_first_name, de.last_name as delegate_last_name
+                FROM leave_applications la
+                LEFT JOIN employees e ON la.employee_id = e.id
+                LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
+                LEFT JOIN employees de ON la.delegate_emp_id = de.id
+                ORDER BY la.applied_at DESC
+            ";
+            $result = $db->query($query);
+            $leaves = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        }
 
         // Map to frontend expected format
         $mapped = array_map(function ($row) {
@@ -300,6 +328,545 @@ class LeaveController
             'success' => true,
             'data' => $leaveTypes,
         ]);
+    }
+
+    /**
+     * GET /api/leave/eligible-employees
+     * Get employees eligible for selection based on logged-in user's role.
+     */
+    public function eligibleEmployeesAction(): void
+    {
+        try {
+            $userId = Auth::getInstance()->id();
+            
+            if (!$userId) {
+                http_response_code(401);
+                echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+                return;
+            }
+
+            $currentUser = Auth::getInstance()->user();
+            $employeeId = $currentUser['employee_id'] ?? null;
+
+            if (!$employeeId) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Employee record not found']);
+                return;
+            }
+
+            $db = \App\Helpers\Database::getInstance()->getConnection();
+            
+            // Get current user's employee record
+            $stmt = $db->prepare("
+                SELECT e.*, u.role as user_role 
+                FROM employees e 
+                JOIN users u ON u.employee_id = e.employee_id 
+                WHERE u.id = ? AND e.employee_status = 'active'
+            ");
+            $stmt->bind_param('i', $userId);
+            $stmt->execute();
+            $currentEmployee = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if (!$currentEmployee) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Access denied']);
+                return;
+            }
+
+            $role = $currentEmployee['user_role'] ?? 'officer';
+            $employees = [];
+
+            // Filter based on role
+            switch ($role) {
+                case 'officer':
+                    // Officer can only select themselves
+                    $employees[] = [
+                        'id' => (int) $currentEmployee['id'],
+                        'first_name' => $currentEmployee['first_name'],
+                        'last_name' => $currentEmployee['last_name'],
+                        'employee_id' => $currentEmployee['employee_id'],
+                    ];
+                    break;
+
+                case 'sub_section_head':
+                    // Sub-section head can select employees in their subsection (including self)
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id
+                        FROM employees e
+                        WHERE e.subsection_id = ? 
+                        AND e.employee_status = 'active'
+                        ORDER BY e.first_name, e.last_name
+                    ");
+                    $stmt->bind_param('i', $currentEmployee['subsection_id']);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $employees[] = $row;
+                    }
+                    $stmt->close();
+                    // Add self
+                    $employees[] = [
+                        'id' => (int) $currentEmployee['id'],
+                        'first_name' => $currentEmployee['first_name'],
+                        'last_name' => $currentEmployee['last_name'],
+                        'employee_id' => $currentEmployee['employee_id'],
+                    ];
+                    break;
+
+                case 'section_head':
+                    // Section head can select:
+                    //  - everyone in their section (incl. self) — sub_section_heads + officers
+                    //  - dept_head(s) in their department (so the section_head can apply
+                    //    on behalf of the dept_head when needed)
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id, u.role
+                        FROM employees e
+                        LEFT JOIN users u ON u.employee_id = e.employee_id
+                        WHERE (e.section_id = ? OR (u.role = 'dept_head' AND e.department_id = ?))
+                        AND e.employee_status = 'active'
+                        ORDER BY u.role DESC, e.first_name, e.last_name
+                    ");
+                    $stmt->bind_param('ii', $currentEmployee['section_id'], $currentEmployee['department_id']);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $employees[] = $row;
+                    }
+                    $stmt->close();
+                    break;
+
+                case 'dept_head':
+                    // Department head can select employees in their department (including self)
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id
+                        FROM employees e
+                        WHERE e.department_id = ? 
+                        AND e.employee_status = 'active'
+                        ORDER BY e.first_name, e.last_name
+                    ");
+                    $stmt->bind_param('i', $currentEmployee['department_id']);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $employees[] = $row;
+                    }
+                    $stmt->close();
+                    break;
+
+                case 'hr_manager':
+                case 'managing_director':
+                case 'super_admin':
+                    // These roles can see all active employees
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id
+                        FROM employees e
+                        WHERE e.employee_status = 'active'
+                        ORDER BY e.first_name, e.last_name
+                    ");
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $employees[] = $row;
+                    }
+                    $stmt->close();
+                    break;
+
+                default:
+                    // Default: only self
+                    $employees[] = [
+                        'id' => (int) $currentEmployee['id'],
+                        'first_name' => $currentEmployee['first_name'],
+                        'last_name' => $currentEmployee['last_name'],
+                        'employee_id' => $currentEmployee['employee_id'],
+                    ];
+            }
+
+            echo json_encode([
+                'success' => true,
+                'data' => $employees,
+            ]);
+        } catch (\Exception $e) {
+            error_log('Error in eligibleEmployeesAction: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Failed to load employees: ' . $e->getMessage(),
+                'data' => [],
+            ]);
+        }
+    }
+
+    /**
+     * GET /api/leave/eligible-delegates
+     * Get delegates eligible for selection based on logged-in user's role.
+     */
+    public function eligibleDelegatesAction(): void
+    {
+        try {
+            $userId = Auth::getInstance()->id();
+            
+            if (!$userId) {
+                http_response_code(401);
+                echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+                return;
+            }
+
+            $currentUser = Auth::getInstance()->user();
+            $employeeId = $currentUser['employee_id'] ?? null;
+
+            if (!$employeeId) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Employee record not found']);
+                return;
+            }
+
+            $db = \App\Helpers\Database::getInstance()->getConnection();
+            
+            // Get current user's employee record
+            $stmt = $db->prepare("
+                SELECT e.*, u.role as user_role 
+                FROM employees e 
+                JOIN users u ON u.employee_id = e.employee_id 
+                WHERE u.id = ? AND e.employee_status = 'active'
+            ");
+            $stmt->bind_param('i', $userId);
+            $stmt->execute();
+            $currentEmployee = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if (!$currentEmployee) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Access denied']);
+                return;
+            }
+
+            $role = $currentEmployee['user_role'] ?? 'officer';
+            $delegates = [];
+
+            // Filter based on the logged-in user's organizational scope.
+            // A delegate is anyone in the user's scope who can cover their duties
+            // while on leave — all active employees in that scope, excluding self.
+            switch ($role) {
+                case 'officer':
+                case 'sub_section_head':
+                    // Sub-section scope: all active employees in their subsection.
+                    // If the user has no subsection assigned, fall back to their section.
+                    $subId = $currentEmployee['subsection_id'] ?? 0;
+                    $scopeCol = !empty($subId) ? 'e.subsection_id' : 'e.section_id';
+                    $scopeVal = !empty($subId) ? $subId : ($currentEmployee['section_id'] ?? 0);
+                    if (!empty($scopeVal)) {
+                        $stmt = $db->prepare("
+                            SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role
+                            FROM employees e
+                            LEFT JOIN users u ON u.employee_id = e.employee_id
+                            WHERE {$scopeCol} = ?
+                            AND e.employee_status = 'active'
+                            AND e.id != ?
+                            ORDER BY e.first_name, e.last_name
+                        ");
+                        $stmt->bind_param('ii', $scopeVal, $currentEmployee['id']);
+                        $stmt->execute();
+                        $result = $stmt->get_result();
+                        while ($row = $result->fetch_assoc()) {
+                            $delegates[] = $row;
+                        }
+                        $stmt->close();
+                    }
+                    break;
+
+                case 'section_head':
+                    // Section scope: all active employees in their section.
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role
+                        FROM employees e
+                        LEFT JOIN users u ON u.employee_id = e.employee_id
+                        WHERE e.section_id = ?
+                        AND e.employee_status = 'active'
+                        AND e.id != ?
+                        ORDER BY e.first_name, e.last_name
+                    ");
+                    $stmt->bind_param('ii', $currentEmployee['section_id'], $currentEmployee['id']);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $delegates[] = $row;
+                    }
+                    $stmt->close();
+                    break;
+
+                case 'dept_head':
+                    // Department scope: all active employees in their department.
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role
+                        FROM employees e
+                        LEFT JOIN users u ON u.employee_id = e.employee_id
+                        WHERE e.department_id = ?
+                        AND e.employee_status = 'active'
+                        AND e.id != ?
+                        ORDER BY e.first_name, e.last_name
+                    ");
+                    $stmt->bind_param('ii', $currentEmployee['department_id'], $currentEmployee['id']);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $delegates[] = $row;
+                    }
+                    $stmt->close();
+                    break;
+
+                case 'hr_manager':
+                    // HR scope: all active employees in HR or Admin departments.
+                    // Always include the HR manager's own department since it is
+                    // the HR department, even if its name does not contain
+                    // "hr"/"human resource"/"admin".
+                    // Use LEFT JOIN so employees whose department_id has no row
+                    // in the departments table (e.g. the "Human Resources" dept)
+                    // are still included via the e.department_id = ? condition.
+                    $hrDeptId = (int) ($currentEmployee['department_id'] ?? 0);
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role, COALESCE(d.name, '') as department_name
+                        FROM employees e
+                        LEFT JOIN users u ON u.employee_id = e.employee_id
+                        LEFT JOIN departments d ON d.id = e.department_id
+                        WHERE e.employee_status = 'active'
+                        AND (d.name LIKE '%hr%' OR d.name LIKE '%human resource%' OR d.name LIKE '%admin%'
+                             OR e.department_id = ?)
+                        ORDER BY d.name, e.first_name, e.last_name
+                    ");
+                    $stmt->bind_param('i', $hrDeptId);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $delegates[] = $row;
+                    }
+                    $stmt->close();
+                    break;
+
+                case 'managing_director':
+                    // Can select all department heads.
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id, u.role, d.name as department_name
+                        FROM employees e
+                        JOIN users u ON u.employee_id = e.employee_id
+                        JOIN departments d ON d.id = e.department_id
+                        WHERE u.role = 'dept_head'
+                        AND e.employee_status = 'active'
+                        ORDER BY d.name, e.first_name, e.last_name
+                    ");
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $delegates[] = $row;
+                    }
+                    $stmt->close();
+                    break;
+
+                case 'super_admin':
+                    // Super admin: all active employees.
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role
+                        FROM employees e
+                        LEFT JOIN users u ON u.employee_id = e.employee_id
+                        WHERE e.employee_status = 'active'
+                        AND e.id != ?
+                        ORDER BY e.first_name, e.last_name
+                    ");
+                    $stmt->bind_param('i', $currentEmployee['id']);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $delegates[] = $row;
+                    }
+                    $stmt->close();
+                    break;
+
+                default:
+                    // Unknown roles: fall back to all active employees except self.
+                    $stmt = $db->prepare("
+                        SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role
+                        FROM employees e
+                        LEFT JOIN users u ON u.employee_id = e.employee_id
+                        WHERE e.employee_status = 'active'
+                        AND e.id != ?
+                        ORDER BY e.first_name, e.last_name
+                    ");
+                    $stmt->bind_param('i', $currentEmployee['id']);
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    while ($row = $result->fetch_assoc()) {
+                        $delegates[] = $row;
+                    }
+                    $stmt->close();
+                    break;
+            }
+
+            echo json_encode([
+                'success' => true,
+                'data' => $delegates,
+            ]);
+        } catch (\Exception $e) {
+            error_log('Error in eligibleDelegatesAction: ' . $e->getMessage());
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Failed to load delegates: ' . $e->getMessage(),
+                'data' => [],
+            ]);
+        }
+    }
+
+    /**
+     * GET /api/leave/manage
+     * List pending / approved / rejected leaves for the current approver.
+     */
+    public function manageAction(): void
+    {
+        $userId = Auth::getInstance()->id();
+
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        $pagination = [
+            'limit'           => (int) ($_GET['limit'] ?? 15),
+            'pending_offset'  => (int) ($_GET['pending_offset']  ?? 0),
+            'approved_offset' => (int) ($_GET['approved_offset'] ?? 0),
+            'rejected_offset' => (int) ($_GET['rejected_offset'] ?? 0),
+        ];
+
+        $result = $this->approvalService->listForApprover($userId, $pagination);
+
+        $httpCode = ($result['success'] ?? false) ? 200 : 400;
+        http_response_code($httpCode);
+        echo json_encode($result);
+    }
+
+    /**
+     * PUT /api/leave/applications/{id}/approve
+     * Approve the current pending stage of a leave application.
+     */
+    public function approveAction(int $applicationId): void
+    {
+        $userId = Auth::getInstance()->id();
+
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        $result = $this->approvalService->approve($userId, $applicationId);
+
+        $httpCode = ($result['success'] ?? false) ? 200 : 400;
+        http_response_code($httpCode);
+        echo json_encode($result);
+    }
+
+    /**
+     * PUT /api/leave/applications/{id}/reject
+     * Reject a leave application. Requires reason in JSON body or POST.
+     */
+    public function rejectAction(int $applicationId): void
+    {
+        $userId = Auth::getInstance()->id();
+
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        $reason = $this->readReasonFromBody();
+        if ($reason === '') {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'A reason is required to reject leave.']);
+            return;
+        }
+
+        $result = $this->approvalService->reject($userId, $applicationId, $reason);
+
+        $httpCode = ($result['success'] ?? false) ? 200 : 400;
+        http_response_code($httpCode);
+        echo json_encode($result);
+    }
+
+    /**
+     * PUT /api/leave/applications/{id}/invalidate
+     * Invalidate a leave application. Requires reason in JSON body or POST.
+     */
+    public function invalidateAction(int $applicationId): void
+    {
+        $userId = Auth::getInstance()->id();
+
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        $reason = $this->readReasonFromBody();
+        if ($reason === '') {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'A reason is required to invalidate leave.']);
+            return;
+        }
+
+        $result = $this->approvalService->invalidate($userId, $applicationId, $reason);
+
+        $httpCode = ($result['success'] ?? false) ? 200 : 400;
+        http_response_code($httpCode);
+        echo json_encode($result);
+    }
+
+    /**
+     * PUT /api/leave/applications/{id}/cancel
+     * Cancel a still-pending leave application. Only the applicant may cancel.
+     */
+    public function cancelAction(int $applicationId): void
+    {
+        $userId = Auth::getInstance()->id();
+
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        $result = $this->approvalService->cancel($userId, $applicationId);
+
+        $httpCode = ($result['success'] ?? false) ? 200 : 400;
+        http_response_code($httpCode);
+        echo json_encode($result);
+    }
+
+    /**
+     * Accept a reason from either JSON body or form-encoded POST.
+     * (PUT bodies may arrive as either depending on the client.)
+     */
+    private function readReasonFromBody(): string
+    {
+        $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+        $raw = file_get_contents('php://input') ?: '';
+        if (stripos($contentType, 'application/json') !== false && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            if (is_array($decoded) && isset($decoded['reason'])) {
+                return trim((string) $decoded['reason']);
+            }
+        }
+        if (isset($_POST['reason'])) {
+            return trim((string) $_POST['reason']);
+        }
+        if ($raw !== '') {
+            $kv = [];
+            parse_str($raw, $kv);
+            if (isset($kv['reason'])) {
+                return trim((string) $kv['reason']);
+            }
+        }
+        return '';
     }
 
     /**

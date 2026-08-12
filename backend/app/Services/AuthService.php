@@ -94,6 +94,11 @@ class AuthService implements AuthServiceInterface
         // Business rule: Get employee details
         $employee = $this->employeeRepository->findByEmail($email);
 
+        // Include employee_id in user data for JWT token
+        if ($employee && isset($employee['id'])) {
+            $user['employee_id'] = $employee['id'];
+        }
+
         // Business rule: Generate token (JWT or session)
         $token = $this->generateToken($user);
 
