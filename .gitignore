@@ -21,6 +21,7 @@ yarn-error.log*
 
 # ── Build & Cache ───────────────────────────────────────────────────────────
 /dist
+frontend/dist/
 /build
 .cache
 *.cache
