@@ -51,12 +51,14 @@ php run_migration.php
 
 ### 4. Start Backend Server
 
+The root `index.php` serves the React SPA (from `frontend/dist/`) and routes `/api/*` requests to `api.php`. The PHP built-in server ignores `.htaccess`, so a `router.php` script is used to replicate the routing.
+
 ```bash
-cd backend
-php -S localhost:8000 -t public
+# From the project root (c:\xampp\htdocs\hrdemo)
+php -S localhost:8000 -t . router.php
 ```
 
-The API will be available at `http://localhost:8000/api`
+The application will be available at `http://localhost:8000` and the API at `http://localhost:8000/api`
 
 ## Frontend Setup
 
@@ -81,7 +83,9 @@ VITE_API_URL=http://localhost:8000/api
 npm run dev
 ```
 
-The application will be available at `http://localhost:5173`
+The application will be available at `http://localhost:5173` (in development) or `http://localhost:8000` (built via `npm run build` and served by the PHP backend).
+
+> **Note**: To serve the production build through the PHP server, first run `npm run build`, then start the PHP server with `php -S localhost:8000 -t . router.php`.
 
 ## Running Tests
 

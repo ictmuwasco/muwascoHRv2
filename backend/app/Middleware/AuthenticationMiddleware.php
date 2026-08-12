@@ -28,25 +28,14 @@ class AuthenticationMiddleware extends BaseMiddleware
      */
     public function handle(callable $next): mixed
     {
-        // Check if user is authenticated
-        if (!$this->session->has('user_id') || !$this->session->get('session_valid')) {
+        // Check if user is authenticated (session or JWT token)
+        if (!$this->auth->check()) {
             // For API requests, return JSON
             if ($this->isApiRequest()) {
                 return $this->json(['error' => 'Unauthenticated'], 401);
             }
 
             // For web requests, redirect to login
-            $this->redirect('login');
-        }
-
-        // Verify session is still valid
-        if (!$this->auth->validateSession()) {
-            $this->session->destroy();
-            
-            if ($this->isApiRequest()) {
-                return $this->json(['error' => 'Session expired'], 401);
-            }
-
             $this->redirect('login');
         }
 

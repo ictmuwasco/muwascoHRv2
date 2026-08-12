@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { Menu, Bell, User, LogOut } from 'lucide-react'
 
-const Header = () => {
+const Header = ({ onToggleSidebar = () => {} }) => {
   const { user, logout } = useAuth()
   const [showDropdown, setShowDropdown] = useState(false)
 
@@ -14,7 +14,10 @@ const Header = () => {
     <header className="bg-white shadow-sm border-b">
       <div className="flex items-center justify-between px-6 py-4">
         {/* Mobile menu button */}
-        <button className="lg:hidden text-gray-600 hover:text-gray-900">
+        <button
+          onClick={onToggleSidebar}
+          className="lg:hidden text-gray-600 hover:text-gray-900"
+        >
           <Menu className="h-6 w-6" />
         </button>
 

@@ -32,6 +32,9 @@ class AuthController extends BaseController
      */
     public function loginAction(): void
     {
+        // Security: Rate-limit login attempts (F-06)
+        \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('login');
+
         try {
             $data = $this->getJsonBody();
             
@@ -44,12 +47,28 @@ class AuthController extends BaseController
             }
 
             $result = $this->authService->login($email, $password, $rememberMe);
+
+            // Note: we deliberately do NOT call setcookie(...) here.
+            // PHP's session module emits the correct Set-Cookie header
+            // automatically at script shutdown, using the cookie params
+            // configured in bootstrap.php. Manually re-issuing the cookie
+            // before AuthService populated $_SESSION was emitting an
+            // empty-session cookie that clobbered the real one.
+
             $this->success($result, 'Login successful');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 401);
         } catch (\Exception $e) {
-            \logger()->error('Login error', ['error' => $e->getMessage()]);
-            $this->error('Login failed. Please try again.', 500);
+            \logger()->error('Login error', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
+            
+            // Check if it's a database connection error
+            if (str_contains($e->getMessage(), 'SQLSTATE[HY000]') || 
+                str_contains($e->getMessage(), 'No connection could be made') ||
+                str_contains($e->getMessage(), 'Connection refused')) {
+                $this->error('Database connection failed. Please contact administrator.', 500, 'DATABASE_ERROR');
+            } else {
+                $this->error('Login failed. Please try again.', 500);
+            }
         }
     }
 
@@ -59,12 +78,29 @@ class AuthController extends BaseController
     public function logoutAction(): void
     {
         try {
+            // Get user ID from session, if available
             $userId = $this->getAuthUserId();
-            $this->authService->logout($userId);
+            
+            // Only attempt logout if user is authenticated
+            if ($userId > 0) {
+                $this->authService->logout($userId);
+            }
+            
+            // Always return success, even if session was already cleared
             $this->success(null, 'Logout successful');
         } catch (\Exception $e) {
-            \logger()->error('Logout error', ['error' => $e->getMessage()]);
-            $this->error('Logout failed. Please try again.', 500);
+            \logger()->error('Logout error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            
+            // Even on error, clear the session and return success
+            try {
+                if (session_status() === PHP_SESSION_ACTIVE) {
+                    session_destroy();
+                }
+            } catch (\Exception $cleanupError) {
+                // Ignore cleanup errors
+            }
+            
+            $this->success(null, 'Logout successful');
         }
     }
 
@@ -92,7 +128,7 @@ class AuthController extends BaseController
     {
         try {
             $userId = $this->getAuthUserId();
-            $user = $this->authService->getUserByEmail('');
+            $user = $this->authService->getUserById($userId);
             
             if (!$user) {
                 $this->notFound('User not found');
@@ -110,6 +146,9 @@ class AuthController extends BaseController
      */
     public function changePasswordAction(): void
     {
+        // Security: Rate-limit password change attempts (F-06)
+        \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('change_password');
+
         try {
             $userId = $this->getAuthUserId();
             $data = $this->getJsonBody();
@@ -122,7 +161,7 @@ class AuthController extends BaseController
             }
 
             // Verify current password
-            $user = $this->authService->getUserByEmail('');
+            $user = $this->authService->getUserById($userId);
             if (!$user || !password_verify($currentPassword, $user['password'])) {
                 $this->error('Current password is incorrect', 401);
             }

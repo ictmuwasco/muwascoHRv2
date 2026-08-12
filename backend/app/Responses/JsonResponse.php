@@ -16,7 +16,7 @@ class JsonResponse
      */
     public static function success(array $data, string $message = '', int $statusCode = 200): void
     {
-        $this->send([
+        self::send([
             'success' => true,
             'message' => $message,
             'data' => $data,
@@ -28,7 +28,7 @@ class JsonResponse
      */
     public static function error(string $message, int $statusCode = 400, array $errors = []): void
     {
-        $this->send([
+        self::send([
             'success' => false,
             'message' => $message,
             'errors' => $errors,
@@ -40,7 +40,7 @@ class JsonResponse
      */
     public static function validationError(array $errors, string $message = 'Validation failed'): void
     {
-        $this->send([
+        self::send([
             'success' => false,
             'message' => $message,
             'errors' => $errors,
@@ -52,7 +52,7 @@ class JsonResponse
      */
     public static function notFound(string $message = 'Resource not found'): void
     {
-        $this->send([
+        self::send([
             'success' => false,
             'message' => $message,
         ], 404);
@@ -63,7 +63,7 @@ class JsonResponse
      */
     public static function unauthorized(string $message = 'Unauthorized'): void
     {
-        $this->send([
+        self::send([
             'success' => false,
             'message' => $message,
         ], 401);
@@ -74,7 +74,7 @@ class JsonResponse
      */
     public static function forbidden(string $message = 'Forbidden'): void
     {
-        $this->send([
+        self::send([
             'success' => false,
             'message' => $message,
         ], 403);
@@ -85,7 +85,7 @@ class JsonResponse
      */
     public static function serverError(string $message = 'Internal server error'): void
     {
-        $this->send([
+        self::send([
             'success' => false,
             'message' => $message,
         ], 500);
@@ -98,7 +98,7 @@ class JsonResponse
     {
         $lastPage = (int)ceil($total / $perPage);
 
-        $this->send([
+        self::send([
             'success' => true,
             'message' => $message,
             'data' => $data,
@@ -120,7 +120,20 @@ class JsonResponse
     {
         http_response_code($statusCode);
         header('Content-Type: application/json');
-        header('Access-Control-Allow-Origin: *');
+        
+        // CORS configuration - must be specific origin when using credentials
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+        $allowedOrigins = [
+            'http://localhost:5173',  // Vite dev server
+            'http://localhost:3000',  // Alternative dev port
+            'http://localhost',       // Production
+        ];
+        
+        if (in_array($origin, $allowedOrigins)) {
+            header('Access-Control-Allow-Origin: ' . $origin);
+            header('Access-Control-Allow-Credentials: true');
+        }
+        
         header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
         header('Access-Control-Allow-Headers: Content-Type, Authorization');
         

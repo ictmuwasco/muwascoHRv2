@@ -49,6 +49,12 @@ class Database
 
         // Use mysqli_init + real_connect to properly handle empty passwords
         $this->mysqli = \mysqli_init();
+
+        // Set connection and read timeouts to prevent hanging requests
+        $connectTimeout = (int)($this->config['connect_timeout'] ?? 5);
+        $readTimeout = (int)($this->config['read_timeout'] ?? 10);
+        $this->mysqli->options(\MYSQLI_OPT_CONNECT_TIMEOUT, $connectTimeout);
+        $this->mysqli->options(\MYSQLI_OPT_READ_TIMEOUT, $readTimeout);
         
         if ($password === '') {
             // Don't pass password at all for users with no password

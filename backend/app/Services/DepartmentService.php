@@ -16,8 +16,8 @@ use App\Repositories\Contracts\SectionRepositoryInterface;
  */
 class DepartmentService implements DepartmentServiceInterface
 {
-    private DepartmentRepositoryInterface $departmentRepository;
-    private SectionRepositoryInterface $sectionRepository;
+    private ?DepartmentRepositoryInterface $departmentRepository = null;
+    private ?SectionRepositoryInterface $sectionRepository = null;
     private array $dependencies = [];
 
     public function setDepartmentRepository(DepartmentRepositoryInterface $repository): void
@@ -63,10 +63,8 @@ class DepartmentService implements DepartmentServiceInterface
             $data['name'] = trim($data['name']);
         }
 
-        // Business rule: Set default status if not provided
-        if (empty($data['status'])) {
-            $data['status'] = 'active';
-        }
+        // Remove status field if present (departments table doesn't have status column)
+        unset($data['status']);
 
         return $this->departmentRepository->create($data);
     }
@@ -89,6 +87,9 @@ class DepartmentService implements DepartmentServiceInterface
         if (!empty($data['name'])) {
             $data['name'] = trim($data['name']);
         }
+
+        // Remove status field if present (departments table doesn't have status column)
+        unset($data['status']);
 
         return $this->departmentRepository->update($id, $data);
     }
@@ -135,6 +136,134 @@ class DepartmentService implements DepartmentServiceInterface
         return $this->sectionRepository->getSubsections($sectionId);
     }
 
+    public function getAllSections(): array
+    {
+        return $this->sectionRepository->findAll();
+    }
+
+    public function getSectionById(int $id): ?array
+    {
+        return $this->sectionRepository->findWithSubsections($id);
+    }
+
+    public function createSection(array $data): int
+    {
+        // Business rule: Validate section data
+        $errors = $this->validateSectionData($data);
+        if (!empty($errors)) {
+            throw new \InvalidArgumentException(implode(', ', $errors));
+        }
+
+        // Business rule: Normalize name
+        if (!empty($data['name'])) {
+            $data['name'] = trim($data['name']);
+        }
+
+        // Remove status field if present (sections table doesn't have status column)
+        unset($data['status']);
+
+        return $this->sectionRepository->create($data);
+    }
+
+    public function updateSection(int $id, array $data): bool
+    {
+        // Business rule: Check if section exists
+        $existingSection = $this->sectionRepository->findById($id);
+        if (!$existingSection) {
+            throw new \InvalidArgumentException('Section not found');
+        }
+
+        // Business rule: Validate section data
+        $errors = $this->validateSectionData($data, $id);
+        if (!empty($errors)) {
+            throw new \InvalidArgumentException(implode(', ', $errors));
+        }
+
+        // Business rule: Normalize name
+        if (!empty($data['name'])) {
+            $data['name'] = trim($data['name']);
+        }
+
+        // Remove status field if present (sections table doesn't have status column)
+        unset($data['status']);
+
+        return $this->sectionRepository->update($id, $data);
+    }
+
+    public function deleteSection(int $id): bool
+    {
+        // Business rule: Check if section exists
+        $section = $this->sectionRepository->findById($id);
+        if (!$section) {
+            throw new \InvalidArgumentException('Section not found');
+        }
+
+        return $this->sectionRepository->delete($id);
+    }
+
+    public function getAllSubsections(): array
+    {
+        $result = $this->sectionRepository->getAllSubsections();
+        return $result;
+    }
+
+    public function getSubsectionById(int $id): ?array
+    {
+        return $this->sectionRepository->findSubsectionById($id);
+    }
+
+    public function createSubsection(array $data): int
+    {
+        // Business rule: Validate subsection data
+        $errors = $this->validateSubsectionData($data);
+        if (!empty($errors)) {
+            throw new \InvalidArgumentException(implode(', ', $errors));
+        }
+
+        // Business rule: Normalize name
+        if (!empty($data['name'])) {
+            $data['name'] = trim($data['name']);
+        }
+
+        // Remove status field if present (subsections table doesn't have status column)
+        unset($data['status']);
+
+        return $this->sectionRepository->createSubsection($data);
+    }
+
+    public function updateSubsection(int $id, array $data): bool
+    {
+        // Business rule: Check if subsection exists
+        $existingSubsection = $this->sectionRepository->findSubsectionById($id);
+        if (!$existingSubsection) {
+            throw new \InvalidArgumentException('Subsection not found');
+        }
+
+        // Business rule: Validate subsection data
+        $errors = $this->validateSubsectionData($data, $id);
+        if (!empty($errors)) {
+            throw new \InvalidArgumentException(implode(', ', $errors));
+        }
+
+        // Business rule: Normalize name
+        if (!empty($data['name'])) {
+            $data['name'] = trim($data['name']);
+        }
+
+        return $this->sectionRepository->updateSubsection($id, $data);
+    }
+
+    public function deleteSubsection(int $id): bool
+    {
+        // Business rule: Check if subsection exists
+        $subsection = $this->sectionRepository->findSubsectionById($id);
+        if (!$subsection) {
+            throw new \InvalidArgumentException('Subsection not found');
+        }
+
+        return $this->sectionRepository->deleteSubsection($id);
+    }
+
     public function validateDepartmentData(array $data, ?int $excludeId = null): array
     {
         $errors = [];
@@ -146,10 +275,52 @@ class DepartmentService implements DepartmentServiceInterface
             $errors[] = 'Department name already exists';
         }
 
-        // Business rule: Status must be valid if provided
-        if (!empty($data['status']) && !in_array($data['status'], ['active', 'inactive'])) {
-            $errors[] = 'Invalid department status';
+        return $errors;
+    }
+
+    private function validateSectionData(array $data, ?int $excludeId = null): array
+    {
+        $errors = [];
+
+        // Business rule: Section name is required
+        if (empty($data['name'])) {
+            $errors[] = 'Section name is required';
+        } elseif (!empty($data['department_id'])) {
+            // Ensure department_id is an integer for the repository method
+            $departmentId = is_int($data['department_id']) ? $data['department_id'] : (int)$data['department_id'];
+            if ($this->sectionRepository->nameExists($data['name'], $departmentId, $excludeId)) {
+                $errors[] = 'Section name already exists in this department';
+            }
         }
+
+        // Business rule: Department ID is optional (nullable in database)
+        // Only validate if provided
+        if (!empty($data['department_id']) && !is_numeric($data['department_id'])) {
+            $errors[] = 'Department must be a valid number';
+        }
+
+        // Remove status field if present (sections table may not have status column)
+        unset($data['status']);
+
+        return $errors;
+    }
+
+    private function validateSubsectionData(array $data, ?int $excludeId = null): array
+    {
+        $errors = [];
+
+        // Business rule: Subsection name is required
+        if (empty($data['name'])) {
+            $errors[] = 'Subsection name is required';
+        }
+
+        // Business rule: Section ID is required
+        if (empty($data['section_id'])) {
+            $errors[] = 'Section is required';
+        }
+
+        // Remove status field if present (subsections table may not have status column)
+        unset($data['status']);
 
         return $errors;
     }
