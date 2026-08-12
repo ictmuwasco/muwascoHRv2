@@ -135,6 +135,14 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
+    // Audit trail endpoints. The `/audit/statistics`, `/audit/filters`, and
+    // `/audit/export` routes must be declared BEFORE the `/audit/{id}` wildcard.
+    Route::get('/audit', [AuditLogController::class, 'index']);
+    Route::get('/audit/statistics', [AuditLogController::class, 'statistics']);
+    Route::get('/audit/filters', [AuditLogController::class, 'filters']);
+    Route::get('/audit/export', [AuditLogController::class, 'export']);
+    Route::get('/audit/{id}', [AuditLogController::class, 'show']);
+    // Backwards-compatible alias
     Route::get('/audit-logs', [AuditLogController::class, 'index']);
 
     Route::get('/settings', [SettingController::class, 'index']);
