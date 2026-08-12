@@ -74,7 +74,7 @@ class UserService implements UserServiceInterface
 
         // Business rule: Hash password if provided
         if (!empty($data['password'])) {
-            $data['password'] = Hash::make($data['password']);
+            $data['password'] = Hash::getInstance()->make($data['password']);
         }
 
         // Business rule: Set default role if not provided
@@ -123,7 +123,7 @@ class UserService implements UserServiceInterface
 
         // Business rule: Hash password if provided
         if (!empty($data['password'])) {
-            $data['password'] = Hash::make($data['password']);
+            $data['password'] = Hash::getInstance()->make($data['password']);
         } else {
             // Don't update password if not provided
             unset($data['password']);
@@ -165,7 +165,7 @@ class UserService implements UserServiceInterface
         }
 
         // Business rule: Hash password
-        $passwordHash = Hash::make($newPassword);
+        $passwordHash = Hash::getInstance()->make($newPassword);
 
         return $this->userRepository->updatePassword($userId, $passwordHash);
     }

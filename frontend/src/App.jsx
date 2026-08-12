@@ -14,7 +14,17 @@ import Departments from './pages/Departments'
 import Attendance from './pages/Attendance'
 import Leave from './pages/Leave'
 import LeaveApplication from './pages/LeaveApplication'
-import Settings from './pages/Settings'
+import ManageLeaveLayout from './pages/ManageLeaveLayout'
+import ManageLeavePendingTab from './pages/ManageLeavePendingTab'
+import ManageLeaveApprovedTab from './pages/ManageLeaveApprovedTab'
+import ManageLeaveRejectedTab from './pages/ManageLeaveRejectedTab'
+import SettingsLayout from './pages/SettingsLayout'
+import SettingsProfileTab from './pages/SettingsProfileTab'
+import SettingsNotificationsTab from './pages/SettingsNotificationsTab'
+import SettingsSecurityTab from './pages/SettingsSecurityTab'
+import SettingsAuditTab from './pages/SettingsAuditTab'
+import SettingsUsersTab from './pages/SettingsUsersTab'
+import SettingsPermissionsTab from './pages/SettingsPermissionsTab'
 import Admin from './pages/Admin'
 import Appraisal from './pages/Appraisal.tsx'
 import Audit from './pages/Audit'
@@ -52,7 +62,21 @@ function App() {
           <Route path="attendance" element={<Attendance />} />
           <Route path="leave" element={<Leave />} />
           <Route path="leave/apply" element={<LeaveApplication />} />
-          <Route path="settings" element={<Settings />} />
+          <Route path="leave/manage" element={<ManageLeaveLayout />}>
+            <Route index element={<Navigate to="pending" replace />} />
+            <Route path="pending" element={<ManageLeavePendingTab />} />
+            <Route path="approved" element={<ManageLeaveApprovedTab />} />
+            <Route path="rejected" element={<ManageLeaveRejectedTab />} />
+          </Route>
+          <Route path="settings" element={<SettingsLayout />}>
+            <Route index element={<Navigate to="profile" replace />} />
+            <Route path="profile" element={<SettingsProfileTab />} />
+            <Route path="notifications" element={<SettingsNotificationsTab />} />
+            <Route path="security" element={<SettingsSecurityTab />} />
+            <Route path="audit" element={<SettingsAuditTab />} />
+            <Route path="users" element={<SettingsUsersTab />} />
+            <Route path="permissions" element={<SettingsPermissionsTab />} />
+          </Route>
           <Route path="admin" element={<Admin />} />
           <Route path="appraisal" element={<Appraisal />} />
           <Route path="audit" element={<Audit />} />
