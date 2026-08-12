@@ -26,6 +26,7 @@ const Departments = () => {
   const [subsectionSectionId, setSubsectionSectionId] = useState('')
   const [subsectionDepartmentId, setSubsectionDepartmentId] = useState('')
   const [availableSections, setAvailableSections] = useState([])
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     fetchAllData()
@@ -55,6 +56,7 @@ const Departments = () => {
 
   const handleAddDepartment = async (e) => {
     e.preventDefault()
+    setSaving(true)
     try {
       if (editingDept) {
         await api.put(`/departments/${editingDept.id}`, {
@@ -72,11 +74,14 @@ const Departments = () => {
       fetchAllData()
     } catch (error) {
       console.error('Failed to save department:', error)
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleAddSection = async (e) => {
     e.preventDefault()
+    setSaving(true)
     try {
       const sectionData = {
         name: sectionName,
@@ -97,11 +102,14 @@ const Departments = () => {
       console.error('Failed to save section:', error)
       console.error('Error response:', error.response?.data)
       alert('Failed to save section: ' + (error.response?.data?.message || error.message))
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleAddSubsection = async (e) => {
     e.preventDefault()
+    setSaving(true)
     try {
       const subsectionData = {
         name: subsectionName,
@@ -119,6 +127,8 @@ const Departments = () => {
       fetchAllData()
     } catch (error) {
       console.error('Failed to save subsection:', error)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -443,8 +453,8 @@ const Departments = () => {
                 >
                   Cancel
                 </Button>
-                <Button type="submit">
-                  {editingDept ? 'Update' : 'Create'}
+                <Button type="submit" loading={saving} disabled={saving}>
+                  {saving ? 'Saving...' : (editingDept ? 'Update' : 'Create')}
                 </Button>
               </div>
             </form>
@@ -500,8 +510,8 @@ const Departments = () => {
                 >
                   Cancel
                 </Button>
-                <Button type="submit">
-                  {editingSection ? 'Update' : 'Create'}
+                <Button type="submit" loading={saving} disabled={saving}>
+                  {saving ? 'Saving...' : (editingSection ? 'Update' : 'Create')}
                 </Button>
               </div>
             </form>
@@ -582,8 +592,8 @@ const Departments = () => {
                 >
                   Cancel
                 </Button>
-                <Button type="submit">
-                  {editingSubsection ? 'Update' : 'Create'}
+                <Button type="submit" loading={saving} disabled={saving}>
+                  {saving ? 'Saving...' : (editingSubsection ? 'Update' : 'Create')}
                 </Button>
               </div>
             </form>
