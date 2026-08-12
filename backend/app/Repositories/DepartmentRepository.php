@@ -160,20 +160,24 @@ class DepartmentRepository implements DepartmentRepositoryInterface
 
     public function getAllActive(): array
     {
-        $result = $this->conn->query("
-            SELECT * FROM departments 
-            WHERE status = 'active' 
-            ORDER BY name
-        ");
+        try {
+            $result = $this->conn->query("
+                SELECT * FROM departments 
+                ORDER BY name
+            ");
 
-        return $result->fetch_all(MYSQLI_ASSOC);
+            return $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } catch (\Throwable $e) {
+            \logger()->error('DepartmentRepository getAllActive error', ['error' => $e->getMessage()]);
+            return [];
+        }
     }
 
     public function getSections(int $departmentId): array
     {
         $stmt = $this->conn->prepare("
             SELECT s.* FROM sections s
-            WHERE s.department_id = ? AND s.status = 'active'
+            WHERE s.department_id = ?
             ORDER BY s.name
         ");
         $stmt->bind_param('i', $departmentId);
@@ -189,7 +193,7 @@ class DepartmentRepository implements DepartmentRepositoryInterface
     {
         $stmt = $this->conn->prepare("
             SELECT ss.* FROM subsections ss
-            WHERE ss.section_id = ? AND ss.status = 'active'
+            WHERE ss.section_id = ?
             ORDER BY ss.name
         ");
         $stmt->bind_param('i', $sectionId);

@@ -7,11 +7,11 @@ namespace App\Models;
 /**
  * Leave Request Model
  * 
- * Table: leave_requests
+ * Table: leave_applications
  */
 class LeaveRequest extends BaseModel
 {
-    protected static string $table = 'leave_requests';
+    protected static string $table = 'leave_applications';
     protected static array $fillable = [
         'employee_id', 'leave_type_id', 'start_date', 'end_date',
         'reason', 'status', 'approved_by', 'approved_at',
@@ -60,7 +60,7 @@ class LeaveRequest extends BaseModel
         $offset = ($page - 1) * $perPage;
 
         $total = (int) $db->fetchValue(
-            "SELECT COUNT(*) FROM leave_requests l {$whereClause}",
+            "SELECT COUNT(*) FROM leave_applications l {$whereClause}",
             $types, $params
         );
 
@@ -68,12 +68,12 @@ class LeaveRequest extends BaseModel
             "SELECT l.*, e.first_name, e.last_name, e.department_id,
                     lt.name as leave_type_name, lt.days_allowed,
                     d.name as department_name
-             FROM leave_requests l
+             FROM leave_applications l
              JOIN employees e ON l.employee_id = e.id
              JOIN leave_types lt ON l.leave_type_id = lt.id
              LEFT JOIN departments d ON e.department_id = d.id
              {$whereClause}
-             ORDER BY l.created_at DESC
+             ORDER BY l.applied_at DESC
              LIMIT ? OFFSET ?",
             $types . 'ii',
             array_merge($params, [$perPage, $offset])

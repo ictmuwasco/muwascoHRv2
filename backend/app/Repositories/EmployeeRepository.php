@@ -30,12 +30,10 @@ class EmployeeRepository implements EmployeeRepositoryInterface
                    COALESCE(e.last_name, '') as last_name,
                    d.name as department_name,
                    s.name as section_name,
-                   ss.name as subsection_name,
                    o.name as office_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN sections s ON e.section_id = s.id
-            LEFT JOIN subsections ss ON e.subsection_id = ss.id
             LEFT JOIN offices o ON e.office_id = o.id
             WHERE e.id = ?
             LIMIT 1
@@ -202,10 +200,13 @@ class EmployeeRepository implements EmployeeRepositoryInterface
     public function findByUserId(int $userId): ?array
     {
         $stmt = $this->conn->prepare("
-            SELECT e.*, d.name as department_name, s.name as section_name
+            SELECT e.*, d.name as department_name, s.name as section_name,
+                   ss.name as subsection_name, o.name as office_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN sections s ON e.section_id = s.id
+            LEFT JOIN subsections ss ON e.subsection_id = ss.id
+            LEFT JOIN offices o ON e.office_id = o.id
             JOIN users u ON u.employee_id = e.employee_id
             WHERE u.id = ?
             LIMIT 1
@@ -216,7 +217,20 @@ class EmployeeRepository implements EmployeeRepositoryInterface
         $employee = $result->fetch_assoc();
         $stmt->close();
 
-        return $employee ?: null;
+        if (!$employee) {
+            return null;
+        }
+
+        // Fetch next of kin from separate table
+        $employee['next_of_kin_data'] = $this->getNextOfKinForEmployee((int)$employee['id']);
+        
+        // Fetch dependants from separate table
+        $employee['dependants_data'] = $this->getDependantsForEmployee((int)$employee['id']);
+
+        // Fetch documents
+        $employee['documents'] = $this->getDocumentsForEmployee((int)$employee['id']);
+
+        return $employee;
     }
 
     public function search(array $filters, int $page = 1, int $limit = 30): array
@@ -227,9 +241,9 @@ class EmployeeRepository implements EmployeeRepositoryInterface
 
         if (!empty($filters['search'])) {
             $searchParam = "%{$filters['search']}%";
-            $whereConditions[] = "(e.first_name LIKE ? OR e.last_name LIKE ? OR e.surname LIKE ? OR d.name LIKE ? OR s.name LIKE ?)";
-            $params = array_merge($params, [$searchParam, $searchParam, $searchParam, $searchParam, $searchParam]);
-            $types .= 'sssss';
+            $whereConditions[] = "(e.first_name LIKE ? OR e.last_name LIKE ? OR e.surname LIKE ? OR e.employee_id LIKE ? OR e.email LIKE ? OR e.designation LIKE ? OR d.name LIKE ? OR s.name LIKE ?)";
+            $params = array_merge($params, [$searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam, $searchParam]);
+            $types .= 'ssssssss';
         }
 
         if (!empty($filters['department_id'])) {
@@ -259,8 +273,14 @@ class EmployeeRepository implements EmployeeRepositoryInterface
         $whereClause = implode(" AND ", $whereConditions);
         $offset = ($page - 1) * $limit;
 
-        // Count total
-        $countQuery = "SELECT COUNT(*) as total FROM employees e WHERE {$whereClause}";
+        // Count total - needs same JOINs for search conditions
+        $countQuery = "
+            SELECT COUNT(*) as total 
+            FROM employees e
+            LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN sections s ON e.section_id = s.id
+            WHERE {$whereClause}
+        ";
         $countStmt = $this->conn->prepare($countQuery);
         if (!empty($params)) {
             $countStmt->bind_param($types, ...$params);
@@ -276,12 +296,10 @@ class EmployeeRepository implements EmployeeRepositoryInterface
                    COALESCE(e.last_name, '') as last_name,
                    d.name as department_name,
                    s.name as section_name,
-                   ss.name as subsection_name,
                    o.name as office_name
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN sections s ON e.section_id = s.id
-            LEFT JOIN subsections ss ON e.subsection_id = ss.id
             LEFT JOIN offices o ON e.office_id = o.id
             WHERE {$whereClause}
             ORDER BY e.created_at DESC
@@ -309,7 +327,7 @@ class EmployeeRepository implements EmployeeRepositoryInterface
 
     public function getAllDepartments(): array
     {
-        $result = $this->conn->query("SELECT * FROM departments WHERE status = 'active' ORDER BY name");
+        $result = $this->conn->query("SELECT * FROM departments ORDER BY name");
         return $result->fetch_all(MYSQLI_ASSOC);
     }
 
@@ -317,7 +335,7 @@ class EmployeeRepository implements EmployeeRepositoryInterface
     {
         $stmt = $this->conn->prepare("
             SELECT id, name FROM sections 
-            WHERE department_id = ? AND status = 'active' 
+            WHERE department_id = ? 
             ORDER BY name
         ");
         $stmt->bind_param('i', $departmentId);
@@ -333,7 +351,7 @@ class EmployeeRepository implements EmployeeRepositoryInterface
     {
         $stmt = $this->conn->prepare("
             SELECT id, name FROM subsections 
-            WHERE section_id = ? AND status = 'active' 
+            WHERE section_id = ? 
             ORDER BY name
         ");
         $stmt->bind_param('i', $sectionId);
@@ -347,7 +365,7 @@ class EmployeeRepository implements EmployeeRepositoryInterface
 
     public function getAllOffices(): array
     {
-        $result = $this->conn->query("SELECT * FROM offices WHERE status = 'active' ORDER BY name");
+        $result = $this->conn->query("SELECT * FROM offices ORDER BY name");
         return $result->fetch_all(MYSQLI_ASSOC);
     }
 
@@ -361,9 +379,9 @@ class EmployeeRepository implements EmployeeRepositoryInterface
                    s.name as section_name,
                    ss.name as subsection_name,
                    o.name as office_name,
-                   u.email as user_email,
-                   u.role as user_role,
-                   u.is_active as user_is_active
+                    u.email as user_email,
+                    u.role as user_role,
+                    u.is_active as user_is_active
             FROM employees e
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN sections s ON e.section_id = s.id
@@ -379,7 +397,20 @@ class EmployeeRepository implements EmployeeRepositoryInterface
         $employee = $result->fetch_assoc();
         $stmt->close();
 
-        return $employee ?: null;
+        if (!$employee) {
+            return null;
+        }
+
+        // Fetch next of kin from separate table
+        $employee['next_of_kin_data'] = $this->getNextOfKinForEmployee($id);
+        
+        // Fetch dependants from separate table
+        $employee['dependants_data'] = $this->getDependantsForEmployee($id);
+        
+        // Fetch documents
+        $employee['documents'] = $this->getDocumentsForEmployee($id);
+
+        return $employee;
     }
 
     public function employeeIdExists(string $employeeId, ?int $excludeId = null): bool
@@ -445,31 +476,170 @@ class EmployeeRepository implements EmployeeRepositoryInterface
         return (int)$result['count'] > 0;
     }
 
+    /**
+     * Get next of kin records for an employee from the next_of_kin table.
+     */
+    private function getNextOfKinForEmployee(int $employeeId): array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT id, employee_id, name, relationship, contact, created_at, updated_at
+            FROM next_of_kin
+            WHERE employee_id = ?
+            ORDER BY created_at DESC
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $records = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        return $records;
+    }
+
+    /**
+     * Get dependants for an employee from the dependencies table.
+     */
+    private function getDependantsForEmployee(int $employeeId): array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT id, employee_id, name, relationship, date_of_birth, gender, id_no, contact, created_at
+            FROM dependencies
+            WHERE employee_id = ?
+            ORDER BY created_at DESC
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $records = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        return $records;
+    }
+
+    /**
+     * Save next of kin records for an employee (replaces all records).
+     */
+    public function saveNextOfKin(int $employeeId, array $records): bool
+    {
+        // Delete existing records
+        $stmt = $this->conn->prepare("DELETE FROM next_of_kin WHERE employee_id = ?");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $stmt->close();
+
+        // Insert new records
+        foreach ($records as $record) {
+            $name = $record['name'] ?? '';
+            $relationship = $record['relationship'] ?? '';
+            $contact = $record['contact'] ?? $record['phone'] ?? '';
+            $now = date('Y-m-d H:i:s');
+
+            $stmt = $this->conn->prepare("INSERT INTO next_of_kin (employee_id, name, relationship, contact, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param('isssss', $employeeId, $name, $relationship, $contact, $now, $now);
+            $stmt->execute();
+            $stmt->close();
+        }
+
+        return true;
+    }
+
+    /**
+     * Save dependants for an employee (replaces all records).
+     */
+    public function saveDependants(int $employeeId, array $records): bool
+    {
+        // Delete existing records
+        $stmt = $this->conn->prepare("DELETE FROM dependencies WHERE employee_id = ?");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $stmt->close();
+
+        // Insert new records
+        foreach ($records as $record) {
+            $name = $record['name'] ?? '';
+            $relationship = $record['relationship'] ?? '';
+            $dateOfBirth = $record['date_of_birth'] ?? null;
+            $gender = $record['gender'] ?? null;
+            $idNo = $record['id_no'] ?? null;
+            $contact = $record['contact'] ?? null;
+            $now = date('Y-m-d H:i:s');
+
+            $stmt = $this->conn->prepare("INSERT INTO dependencies (employee_id, name, relationship, date_of_birth, gender, id_no, contact, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param('isssssss', $employeeId, $name, $relationship, $dateOfBirth, $gender, $idNo, $contact, $now);
+            $stmt->execute();
+            $stmt->close();
+        }
+
+        return true;
+    }
+
+    /**
+     * Get documents for an employee.
+     */
+    private function getDocumentsForEmployee(int $employeeId): array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT id, employee_id, document_name as name, category as type, file_name, uploaded_at
+            FROM employee_documents
+            WHERE employee_id = ?
+            ORDER BY uploaded_at DESC
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $documents = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        return $documents;
+    }
+
     public function getOrganizationHierarchy(): array
     {
-        $departments = $this->conn->query("
-            SELECT id, name FROM departments 
-            WHERE status = 'active' 
-            ORDER BY name
-        ")->fetch_all(MYSQLI_ASSOC);
+        $departments = [];
+        $sections = [];
+        $subsections = [];
+        $offices = [];
 
-        $sections = $this->conn->query("
-            SELECT id, name, department_id FROM sections 
-            WHERE status = 'active' 
-            ORDER BY name
-        ")->fetch_all(MYSQLI_ASSOC);
+        try {
+            $result = $this->conn->query("
+                SELECT id, name FROM departments 
+                ORDER BY name
+            ");
+            $departments = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } catch (\Throwable $e) {
+            \logger()->error('Hierarchy departments error', ['error' => $e->getMessage()]);
+        }
 
-        $subsections = $this->conn->query("
-            SELECT id, name, section_id FROM subsections 
-            WHERE status = 'active' 
-            ORDER BY name
-        ")->fetch_all(MYSQLI_ASSOC);
+        try {
+            $result = $this->conn->query("
+                SELECT id, name, department_id FROM sections 
+                ORDER BY name
+            ");
+            $sections = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } catch (\Throwable $e) {
+            \logger()->error('Hierarchy sections error', ['error' => $e->getMessage()]);
+        }
 
-        $offices = $this->conn->query("
-            SELECT id, name FROM offices 
-            WHERE status = 'active' 
-            ORDER BY name
-        ")->fetch_all(MYSQLI_ASSOC);
+        try {
+            // Subsections table doesn't have a status column, so no status filter
+            $result = $this->conn->query("
+                SELECT id, name, section_id, department_id FROM subsections 
+                ORDER BY name
+            ");
+            $subsections = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } catch (\Throwable $e) {
+            \logger()->error('Hierarchy subsections error', ['error' => $e->getMessage()]);
+        }
+
+        try {
+            $result = $this->conn->query("
+                SELECT id, name FROM offices 
+                ORDER BY name
+            ");
+            $offices = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        } catch (\Throwable $e) {
+            \logger()->error('Hierarchy offices error', ['error' => $e->getMessage()]);
+        }
 
         return [
             'departments' => $departments,

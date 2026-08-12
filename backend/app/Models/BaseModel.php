@@ -47,6 +47,22 @@ abstract class BaseModel
     }
 
     /**
+     * Find a record by its primary key (alias for find).
+     */
+    public static function findById(int|string $id): ?array
+    {
+        return static::find($id);
+    }
+
+    /**
+     * Find records matching conditions.
+     */
+    public static function where(array $conditions, string $operator = 'AND'): array
+    {
+        return self::findWhere($conditions, $operator);
+    }
+
+    /**
      * Find records matching conditions.
      */
     public static function findWhere(array $conditions, string $operator = 'AND'): array

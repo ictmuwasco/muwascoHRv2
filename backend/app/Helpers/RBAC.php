@@ -94,12 +94,15 @@ class RBAC
     {
         $role = $this->normalizeRole($role);
 
-        $db = db();
-        $stmt = $db->prepare(
-            'SELECT module, action, is_granted FROM role_permissions WHERE role = :role'
+        $conn = db()->getConnection();
+        $stmt = $conn->prepare(
+            'SELECT module, action, is_granted FROM role_permissions WHERE role = ?'
         );
-        $stmt->execute([':role' => $role]);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt->bind_param('s', $role);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $rows = $result->fetch_all(\MYSQLI_ASSOC);
+        $stmt->close();
 
         $perms = [];
         foreach ($rows as $row) {
@@ -123,22 +126,37 @@ class RBAC
             return $this->cache[$key];
         }
 
-        $db = db();
-        $stmt = $db->prepare(
-            'SELECT is_granted FROM role_permissions
-             WHERE role = :role AND module = :module AND action = :action
-             LIMIT 1'
-        );
-        $stmt->execute([
-            ':role'   => $role,
-            ':module' => $module,
-            ':action' => $action,
-        ]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        try {
+            $conn = db()->getConnection();
 
-        $value = $row === false ? null : ((int) $row['is_granted'] === 1);
-        $this->cache[$key] = $value;
-        return $value;
+            // Check if role_permissions table exists
+            $tableResult = $conn->query("SHOW TABLES LIKE 'role_permissions'");
+            if ($tableResult->num_rows === 0) {
+                // Table doesn't exist — deny by default (never allow-all)
+                $this->cache[$key] = false;
+                return false;
+            }
+            $tableResult->free();
+
+            $stmt = $conn->prepare(
+                'SELECT is_granted FROM role_permissions
+                 WHERE role = ? AND module = ? AND action = ?
+                 LIMIT 1'
+            );
+            $stmt->bind_param('sss', $role, $module, $action);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $row = $result->fetch_assoc();
+            $stmt->close();
+
+            $value = $row === null ? null : ((int) $row['is_granted'] === 1);
+            $this->cache[$key] = $value;
+            return $value;
+        } catch (\Throwable $e) {
+            // Query failed — deny by default (never allow-all)
+            $this->cache[$key] = false;
+            return false;
+        }
     }
 
     /**

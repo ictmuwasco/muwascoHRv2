@@ -41,9 +41,74 @@ class Auth
      */
     public function check(): bool
     {
-        return isset($_SESSION['user_id']) 
+        // First check PHP session
+        if (isset($_SESSION['user_id']) 
             && isset($_SESSION['session_valid']) 
-            && $_SESSION['session_valid'] === true;
+            && $_SESSION['session_valid'] === true) {
+            return true;
+        }
+
+        // If session is not valid, try to authenticate via JWT token
+        return $this->authenticateFromToken();
+    }
+
+    /**
+     * Try to authenticate the user from a JWT token in the Authorization header.
+     * This allows the frontend to maintain authentication across page reloads
+     * even when the PHP session has expired.
+     */
+    private function authenticateFromToken(): bool
+    {
+        // Check both HTTP_AUTHORIZATION and REDIRECT_HTTP_AUTHORIZATION
+        // (Apache sometimes uses the REDIRECT_ prefix when rewriting)
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] 
+            ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] 
+            ?? '';
+        $token = '';
+
+        if (strpos($authHeader, 'Bearer ') === 0) {
+            $token = substr($authHeader, 7);
+        }
+
+        // Fallback: read the httpOnly access_token cookie (F-05)
+        if ($token === '' && isset($_COOKIE['access_token'])) {
+            $token = $_COOKIE['access_token'];
+        }
+
+        if ($token === '') {
+            return false;
+        }
+
+        try {
+            // Verify the JWT signature and expiry (firebase/php-jwt, HS256)
+            $decoded = \App\Helpers\JWT::getInstance()->validateToken($token);
+            if ($decoded === null) {
+                return false;
+            }
+
+            // Must be an access token (refresh tokens must not authenticate)
+            if (!isset($decoded->type) || $decoded->type !== 'access') {
+                return false;
+            }
+
+            if (empty($decoded->sub)) {
+                return false;
+            }
+
+            // Restore session from the verified token
+            $_SESSION['user_id'] = (int)$decoded->sub;
+            $_SESSION['user_email'] = $decoded->email ?? '';
+            $_SESSION['user_role'] = $decoded->role ?? '';
+            $_SESSION['session_valid'] = true;
+            $_SESSION['last_activity'] = time();
+
+            // Clear authorization cache since the session was just restored
+            $this->authService->clearCache();
+
+            return true;
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     /**

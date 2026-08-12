@@ -1,5 +1,4 @@
 <?php
-
 declare(strict_types=1);
 
 namespace App\Services;
@@ -9,6 +8,8 @@ use App\Repositories\Contracts\EmployeeRepositoryInterface;
 use App\Repositories\Contracts\DepartmentRepositoryInterface;
 use App\Repositories\Contracts\SectionRepositoryInterface;
 use App\Repositories\Contracts\OfficeRepositoryInterface;
+use App\Repositories\UserRepository;
+use InvalidArgumentException;
 
 /**
  * Employee Service
@@ -22,6 +23,7 @@ class EmployeeService implements EmployeeServiceInterface
     private ?DepartmentRepositoryInterface $departmentRepository = null;
     private ?SectionRepositoryInterface $sectionRepository = null;
     private ?OfficeRepositoryInterface $officeRepository = null;
+    private ?UserRepository $userRepository = null;
     private array $dependencies = [];
 
     public function __construct(
@@ -54,6 +56,11 @@ class EmployeeService implements EmployeeServiceInterface
     public function setOfficeRepository(OfficeRepositoryInterface $repository): void
     {
         $this->officeRepository = $repository;
+    }
+
+    public function setUserRepository(UserRepository $repository): void
+    {
+        $this->userRepository = $repository;
     }
 
     public function setDependency(string $name, mixed $dependency): void
@@ -97,6 +104,78 @@ class EmployeeService implements EmployeeServiceInterface
         return $this->employeeRepository->findWithDetails($id);
     }
 
+    public function getEmployeeByUserId(int $userId): ?array
+    {
+        return $this->employeeRepository->findByUserId($userId);
+    }
+
+    public function updateEmployeeProfile(int $id, array $data): bool
+    {
+        // Business rule: Check if employee exists
+        $existingEmployee = $this->employeeRepository->findById($id);
+        if (!$existingEmployee) {
+            throw new \InvalidArgumentException('Employee not found');
+        }
+
+        // Sanitize text fields to prevent XSS
+        $textFields = ['first_name', 'last_name', 'surname', 'address', 'designation', 'position', 'national_id'];
+        foreach ($textFields as $field) {
+            if (isset($data[$field]) && $data[$field] !== '') {
+                $data[$field] = trim(strip_tags((string)$data[$field]));
+            }
+        }
+
+        // Business rule: Normalize email if provided
+        if (!empty($data['email'])) {
+            $data['email'] = strtolower(trim($data['email']));
+        }
+
+        // Business rule: Normalize phone if provided
+        if (!empty($data['phone'])) {
+            $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
+        }
+
+        // Handle next_of_kin - save to separate table
+        if (isset($data['next_of_kin'])) {
+            $nextOfKin = $data['next_of_kin'];
+            if (is_string($nextOfKin)) {
+                $decoded = json_decode($nextOfKin, true);
+                if (is_array($decoded)) {
+                    $nextOfKin = $decoded;
+                }
+            }
+            if (is_array($nextOfKin)) {
+                // Convert single object to array
+                if (isset($nextOfKin['name'])) {
+                    $nextOfKin = [$nextOfKin];
+                }
+                $this->employeeRepository->saveNextOfKin($id, $nextOfKin);
+                unset($data['next_of_kin']);
+            }
+        }
+        
+        // Handle dependants - save to separate table
+        if (isset($data['dependants'])) {
+            $dependants = $data['dependants'];
+            if (is_string($dependants)) {
+                $decoded = json_decode($dependants, true);
+                if (is_array($decoded)) {
+                    $dependants = $decoded;
+                }
+            }
+            if (is_array($dependants)) {
+                $this->employeeRepository->saveDependants($id, $dependants);
+                unset($data['dependants']);
+            }
+        }
+
+        if (empty($data)) {
+            return true;
+        }
+
+        return $this->employeeRepository->update($id, $data);
+    }
+
     public function createEmployee(array $data): int
     {
         // Business rule: Validate employee data
@@ -129,6 +208,14 @@ class EmployeeService implements EmployeeServiceInterface
             }
         }
 
+        // Sanitize text fields to prevent XSS
+        $textFields = ['first_name', 'last_name', 'surname', 'address', 'designation', 'position', 'national_id'];
+        foreach ($textFields as $field) {
+            if (isset($data[$field]) && $data[$field] !== '') {
+                $data[$field] = trim(strip_tags((string)$data[$field]));
+            }
+        }
+
         // Business rule: Normalize email
         if (!empty($data['email'])) {
             $data['email'] = strtolower(trim($data['email']));
@@ -139,7 +226,19 @@ class EmployeeService implements EmployeeServiceInterface
             $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
         }
 
-        return $this->employeeRepository->create($data);
+        // Only pass contract dates to the repository if this is actually a contract employee
+        // and the migration has been applied. This avoids DB errors when the columns are missing.
+        if (($data['employment_type'] ?? '') !== 'contract') {
+            unset($data['contract_start_date'], $data['contract_end_date']);
+        }
+
+        $employeeId = $this->employeeRepository->create($data);
+
+        // Auto-create the linked user account so the employee can log in
+        // immediately using their customized email and employee number as password.
+        $this->createUserForEmployee($data, $employeeId);
+
+        return $employeeId;
     }
 
     public function updateEmployee(int $id, array $data): bool
@@ -150,10 +249,16 @@ class EmployeeService implements EmployeeServiceInterface
             throw new \InvalidArgumentException('Employee not found');
         }
 
-        // Business rule: Validate employee data
-        $errors = $this->validateEmployeeData($data, $id);
-        if (!empty($errors)) {
-            throw new \InvalidArgumentException(implode(', ', $errors));
+        // Check if this is a partial update (e.g., only next_of_kin or dependants)
+        $partialUpdateFields = ['next_of_kin', 'dependants', 'documents'];
+        $isPartialUpdate = !empty($data) && count(array_intersect(array_keys($data), $partialUpdateFields)) === count($data);
+
+        // Business rule: Validate employee data (skip full validation for partial updates)
+        if (!$isPartialUpdate) {
+            $errors = $this->validateEmployeeData($data, $id);
+            if (!empty($errors)) {
+                throw new \InvalidArgumentException(implode(', ', $errors));
+            }
         }
 
         // Business rule: Check if department exists
@@ -180,6 +285,14 @@ class EmployeeService implements EmployeeServiceInterface
             }
         }
 
+        // Sanitize text fields to prevent XSS
+        $textFields = ['first_name', 'last_name', 'surname', 'address', 'designation', 'position', 'national_id'];
+        foreach ($textFields as $field) {
+            if (isset($data[$field]) && $data[$field] !== '') {
+                $data[$field] = trim(strip_tags((string)$data[$field]));
+            }
+        }
+
         // Business rule: Normalize email
         if (!empty($data['email'])) {
             $data['email'] = strtolower(trim($data['email']));
@@ -188,6 +301,50 @@ class EmployeeService implements EmployeeServiceInterface
         // Business rule: Normalize phone numbers
         if (!empty($data['phone'])) {
             $data['phone'] = preg_replace('/[^0-9+]/', '', $data['phone']);
+        }
+
+        // Only pass contract dates to the repository if this is actually a contract employee.
+        // If the migration hasn't been run yet, omitting these avoids "Unknown column" 500s.
+        if (($data['employment_type'] ?? '') !== 'contract') {
+            unset($data['contract_start_date'], $data['contract_end_date']);
+        }
+
+        // Handle next_of_kin - save to separate table
+        if (isset($data['next_of_kin'])) {
+            $nextOfKin = $data['next_of_kin'];
+            if (is_string($nextOfKin)) {
+                $decoded = json_decode($nextOfKin, true);
+                if (is_array($decoded)) {
+                    $nextOfKin = $decoded;
+                }
+            }
+            if (is_array($nextOfKin)) {
+                // Convert single object to array
+                if (isset($nextOfKin['name'])) {
+                    $nextOfKin = [$nextOfKin];
+                }
+                $this->employeeRepository->saveNextOfKin($id, $nextOfKin);
+                unset($data['next_of_kin']);
+            }
+        }
+        
+        // Handle dependants - save to separate table
+        if (isset($data['dependants'])) {
+            $dependants = $data['dependants'];
+            if (is_string($dependants)) {
+                $decoded = json_decode($dependants, true);
+                if (is_array($decoded)) {
+                    $dependants = $decoded;
+                }
+            }
+            if (is_array($dependants)) {
+                $this->employeeRepository->saveDependants($id, $dependants);
+                unset($data['dependants']);
+            }
+        }
+
+        if (empty($data)) {
+            return true;
         }
 
         return $this->employeeRepository->update($id, $data);
@@ -239,6 +396,61 @@ class EmployeeService implements EmployeeServiceInterface
         return $this->officeRepository->getAllActive();
     }
 
+    /**
+     * Add a document for an employee.
+     */
+    public function addDocument(array $documentData): int
+    {
+        $query = "INSERT INTO employee_documents 
+                  (employee_id, document_name, category, file_name, uploaded_at) 
+                  VALUES (?, ?, ?, ?, ?)";
+        
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare($query);
+        $stmt->bind_param(
+            'issss',
+            $documentData['employee_id'],
+            $documentData['document_name'],
+            $documentData['category'],
+            $documentData['file_name'],
+            $documentData['uploaded_at']
+        );
+        $stmt->execute();
+        $documentId = (int)$db->insert_id;
+        $stmt->close();
+        
+        return $documentId;
+    }
+
+    /**
+     * Get a document by ID.
+     */
+    public function getDocumentById(int $documentId): ?array
+    {
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT * FROM employee_documents WHERE id = ?");
+        $stmt->bind_param('i', $documentId);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        
+        return $result ?: null;
+    }
+
+    /**
+     * Delete a document.
+     */
+    public function deleteDocument(int $documentId): bool
+    {
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare("DELETE FROM employee_documents WHERE id = ?");
+        $stmt->bind_param('i', $documentId);
+        $result = $stmt->execute();
+        $stmt->close();
+        
+        return $result;
+    }
+
     public function validateEmployeeData(array $data, ?int $excludeId = null): array
     {
         $errors = [];
@@ -262,7 +474,7 @@ class EmployeeService implements EmployeeServiceInterface
         // Business rule: National ID is required
         if (empty($data['national_id'])) {
             $errors[] = 'National ID is required';
-        } elseif ($this->employeeRepository->nationalIdExists($data['national_id'], $excludeId)) {
+        } elseif ($this->employeeRepository->nationalIdExists((string)$data['national_id'], $excludeId)) {
             $errors[] = 'National ID already exists';
         }
 
@@ -286,11 +498,95 @@ class EmployeeService implements EmployeeServiceInterface
             $errors[] = 'Employee status is required';
         }
 
-        // Business rule: Employment date is required
-        if (empty($data['employment_date'])) {
-            $errors[] = 'Employment date is required';
+        // Business rule: Hire date is required
+        if (empty($data['hire_date'])) {
+            $errors[] = 'Hire date is required';
+        }
+
+        // Business rule: Contract dates validation for contract employees
+        if (($data['employment_type'] ?? '') === 'contract') {
+            // Normalize: treat null/missing as empty string for validation
+            $startDate = (string)($data['contract_start_date'] ?? '');
+            $endDate = (string)($data['contract_end_date'] ?? '');
+
+            // Only validate if at least one date field is being provided
+            if ($startDate !== '' || $endDate !== '') {
+                if ($startDate === '') {
+                    $errors[] = 'Contract start date is required for contract employees';
+                }
+                if ($endDate === '') {
+                    $errors[] = 'Contract end date is required for contract employees';
+                }
+                if ($startDate !== '' && $endDate !== '' && $endDate < $startDate) {
+                    $errors[] = 'Contract end date cannot be before start date';
+                }
+            }
         }
 
         return $errors;
+    }
+
+    /**
+     * Create a linked user account for a newly created employee.
+     *
+     * Login credentials:
+     *  - email    => employee's customized email
+     *  - password => employee number (employee_id)
+     *
+     * Role is derived from employee_type so RBAC works out of the box.
+     */
+    private function createUserForEmployee(array $data, int $employeeId): void
+    {
+        if (!$this->userRepository) {
+            return;
+        }
+
+        $email = strtolower(trim((string)($data['email'] ?? '')));
+        if ($email === '') {
+            return;
+        }
+
+        // Skip if a user account already exists for this email
+        $existing = $this->userRepository->findByEmail($email);
+        if ($existing) {
+            return;
+        }
+
+        $role = $this->mapEmployeeTypeToRole((string)($data['employee_type'] ?? 'officer'));
+
+        $hash = \App\Helpers\Hash::getInstance();
+        $passwordHash = $hash->make((string)($data['employee_id'] ?? ''));
+
+        $userData = [
+            'email'      => $email,
+            'password'   => $passwordHash,
+            'role'       => $role,
+            'first_name' => (string)($data['first_name'] ?? ''),
+            'last_name'  => (string)($data['last_name'] ?? ''),
+            'designation'=> (string)($data['designation'] ?? ''),
+            'is_active'  => 1,
+            'employee_id'=> (string)($data['employee_id'] ?? ''),
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ];
+
+        $this->userRepository->createUser($userData);
+    }
+
+    /**
+     * Map frontend employee_type values to backend user roles used by RBAC.
+     */
+    private function mapEmployeeTypeToRole(string $employeeType): string
+    {
+        return match ($employeeType) {
+            'super_admin'      => 'super_admin',
+            'managing_director' => 'super_admin',
+            'bod_chairman'     => 'super_admin',
+            'hr_manager'       => 'hr',
+            'dept_head'        => 'hr',
+            'section_head'     => 'manager',
+            'sub_section_head' => 'manager',
+            default            => 'employee',
+        };
     }
 }

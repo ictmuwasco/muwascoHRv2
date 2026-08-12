@@ -17,8 +17,8 @@ use App\Helpers\Hash;
  */
 class UserService implements UserServiceInterface
 {
-    private UserRepositoryInterface $userRepository;
-    private EmployeeRepositoryInterface $employeeRepository;
+    private ?UserRepositoryInterface $userRepository = null;
+    private ?EmployeeRepositoryInterface $employeeRepository = null;
     private array $dependencies = [];
 
     public function setUserRepository(UserRepositoryInterface $repository): void

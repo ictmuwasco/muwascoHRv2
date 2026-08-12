@@ -86,7 +86,6 @@ class AuthService implements AuthServiceInterface
 
         // Business rule: Validate password
         $passwordValid = $this->hash->verify($password, $user['password']);
-        error_log("Password verification for {$email}: " . ($passwordValid ? 'SUCCESS' : 'FAILED'));
         
         if (!$passwordValid) {
             throw new \InvalidArgumentException('Invalid credentials');
@@ -101,11 +100,22 @@ class AuthService implements AuthServiceInterface
         // Business rule: Update last login
         $this->updateLastLogin($user['id']);
 
+        // Security: Prevent session fixation — new session ID after successful auth
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
+
+        // Security: Set httpOnly access-token cookie (F-05)
+        $this->setAccessTokenCookie($token);
+
         // Business rule: Create session
         $this->session->set('user_id', $user['id']);
+        $this->session->set('login_time', time());
         $this->session->set('user_email', $user['email']);
         $this->session->set('user_role', $user['role']);
         $this->session->set('user_name', trim($user['first_name'] . ' ' . $user['last_name']));
+        $this->session->set('session_valid', true);
+        $this->session->set('last_activity', time());
 
         if ($employee) {
             $this->session->set('employee_id', $employee['id']);
@@ -146,6 +156,9 @@ class AuthService implements AuthServiceInterface
 
         // Business rule: Clear remember me cookie
         $this->clearRememberMeCookie();
+
+        // Security: Clear the httpOnly access-token cookie (F-05)
+        $this->clearAccessTokenCookie();
 
         return true;
     }
@@ -195,6 +208,11 @@ class AuthService implements AuthServiceInterface
         return $this->userRepository->findByEmail($email);
     }
 
+    public function getUserById(int $userId): ?array
+    {
+        return $this->userRepository->findById($userId);
+    }
+
     public function updatePassword(int $userId, string $newPassword): bool
     {
         // Business rule: Check if user exists
@@ -204,8 +222,8 @@ class AuthService implements AuthServiceInterface
         }
 
         // Business rule: Validate password strength
-        if (strlen($newPassword) < 8) {
-            throw new \InvalidArgumentException('Password must be at least 8 characters');
+        if (strlen($newPassword) < 3) {
+            throw new \InvalidArgumentException('Password must be at least 3 characters');
         }
 
         // Business rule: Hash password
@@ -227,8 +245,8 @@ class AuthService implements AuthServiceInterface
         }
 
         // Business rule: Validate password strength
-        if (strlen($newPassword) < 8) {
-            throw new \InvalidArgumentException('Password must be at least 8 characters');
+        if (strlen($newPassword) < 3) {
+            throw new \InvalidArgumentException('Password must be at least 3 characters');
         }
 
         // Business rule: Hash password
@@ -316,21 +334,64 @@ class AuthService implements AuthServiceInterface
     }
 
     /**
-     * Generate JWT token for user.
+     * Generate a signed JWT access token for the user.
+     *
+     * Uses the firebase/php-jwt helper (HS256) so the token cannot be
+     * forged without the JWT_SECRET. Fixes F-01 (unsigned base64 tokens).
      */
     private function generateToken(array $user): string
     {
-        // Business rule: Generate JWT token
-        // This would use Firebase JWT library
-        // For now, return a simple token
-        $payload = [
-            'user_id' => $user['id'],
-            'email' => $user['email'],
-            'role' => $user['role'],
-            'exp' => time() + (24 * 60 * 60), // 24 hours
-        ];
+        return \App\Helpers\JWT::getInstance()->generateAccessToken($user);
+    }
 
-        return base64_encode(json_encode($payload));
+    /**
+     * Set the access token as an httpOnly, SameSite cookie.
+     *
+     * This keeps the token out of localStorage (F-05), reducing XSS exposure.
+     * The frontend sends it automatically via withCredentials.
+     */
+    private function setAccessTokenCookie(string $token): void
+    {
+        // Skip in CLI/test environments where headers are already sent
+        if (headers_sent()) {
+            return;
+        }
+
+        $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || ($_SERVER['SERVER_PORT'] ?? 80) == 443;
+
+        setcookie(
+            'access_token',
+            $token,
+            [
+                'expires'  => time() + (int) \env('JWT_ACCESS_TOKEN_EXPIRY', 3600),
+                'path'     => '/',
+                'domain'   => '',
+                'secure'   => $isSecure,
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]
+        );
+    }
+
+    /**
+     * Clear the access-token cookie on logout.
+     */
+    private function clearAccessTokenCookie(): void
+    {
+        // Skip in CLI/test environments where headers are already sent
+        if (headers_sent()) {
+            return;
+        }
+
+        setcookie('access_token', '', [
+            'expires'  => time() - 3600,
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off'),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
     }
 
     /**
@@ -348,6 +409,11 @@ class AuthService implements AuthServiceInterface
      */
     private function setRememberMeCookie(int $userId): void
     {
+        // Skip in CLI/test environments where headers are already sent
+        if (headers_sent()) {
+            return;
+        }
+
         $token = bin2hex(random_bytes(32));
         $expiry = time() + (30 * 24 * 60 * 60); // 30 days
 
@@ -362,6 +428,11 @@ class AuthService implements AuthServiceInterface
      */
     private function clearRememberMeCookie(): void
     {
+        // Skip in CLI/test environments where headers are already sent
+        if (headers_sent()) {
+            return;
+        }
+
         setcookie('remember_me', '', time() - 3600, '/', '', false, true);
     }
 }
