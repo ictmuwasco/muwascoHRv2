@@ -62,6 +62,8 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/leave/balance/{employeeId}', [LeaveController::class, 'balance']);
     Route::get('/leave/employee/{employeeId}', [LeaveController::class, 'byEmployee']);
     Route::post('/leave/apply', [LeaveController::class, 'apply']);
+    Route::get('/leave/eligible-employees', [LeaveController::class, 'eligibleEmployeesAction']);
+    Route::get('/leave/eligible-delegates', [LeaveController::class, 'eligibleDelegatesAction']);
     Route::apiResource('leave', LeaveController::class);
     Route::put('/leave/{leaveApplication}/approve', [LeaveController::class, 'approve']);
     Route::put('/leave/{leaveApplication}/reject', [LeaveController::class, 'reject']);

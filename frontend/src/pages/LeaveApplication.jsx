@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import api from '../utils/api'
 import Card from '../components/ui/Card'
 import Button from '../components/ui/Button'
-import { Plus, FileText, Users as UsersIcon, Shield } from 'lucide-react'
+import { Plus, FileText, Users as UsersIcon, Shield, Loader2 } from 'lucide-react'
 
 const LeaveApplication = () => {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [employeeId, setEmployeeId] = useState('')
   const [leaveTypeId, setLeaveTypeId] = useState('')
   const [startDate, setStartDate] = useState('')
@@ -29,10 +31,17 @@ const LeaveApplication = () => {
   const [delegateEmpId, setDelegateEmpId] = useState('')
   const [employees, setEmployees] = useState([])
 
+  // Load employees and delegates on mount
   useEffect(() => {
     loadEmployees()
-    loadDelegates()
   }, [])
+
+  useEffect(() => {
+    console.log('employeeId changed:', employeeId)
+    if (employeeId) {
+      loadDelegates()
+    }
+  }, [employeeId])
 
   useEffect(() => {
     if (employeeId) {
@@ -48,11 +57,32 @@ const LeaveApplication = () => {
 
   const loadEmployees = async () => {
     try {
-      // Request up to 100 employees so the dropdown isn't limited to 30
-      const response = await api.get('/employees?limit=100')
-      // The API returns { success, message, data: { data: [...], total, ... } }
-      const employeeData = response.data?.data?.data || response.data?.data || []
-      setEmployees(Array.isArray(employeeData) ? employeeData : [])
+      console.log('Loading employees...')
+      // Get eligible employees based on logged-in user's role
+      const response = await api.get('/leave/eligible-employees')
+      const empList = response.data.data || []
+      console.log('Employees loaded:', empList)
+      setEmployees(empList)
+      
+      // Pre-fill with current user if available
+      // Try multiple ways to find the current user
+      if (empList.length > 0) {
+        // First try: match by user.employee_id
+        if (user?.employee_id) {
+          const currentUserEmp = empList.find(emp => emp.employee_id === user.employee_id)
+          console.log('Found current user employee:', currentUserEmp)
+          if (currentUserEmp) {
+            setEmployeeId(currentUserEmp.id)
+            return
+          }
+        }
+        
+        // Second try: if only one employee, select it (likely the user themselves)
+        if (empList.length === 1) {
+          console.log('Auto-selecting single employee:', empList[0])
+          setEmployeeId(empList[0].id)
+        }
+      }
     } catch (err) {
       console.error('Failed to load employees:', err)
     }
@@ -60,10 +90,22 @@ const LeaveApplication = () => {
 
   const loadDelegates = async () => {
     try {
-      const response = await api.get('/leave/delegates')
-      setDelegates(response.data.data || [])
+      console.log('=== Loading delegates for employeeId:', employeeId, '===')
+      // Get eligible delegates based on logged-in user's role
+      const response = await api.get('/leave/eligible-delegates')
+      console.log('API Response:', response.data)
+      const delegateList = response.data.data || []
+      console.log('Delegates loaded:', delegateList)
+      setDelegates(delegateList)
+      
+      // Auto-select first delegate if only one available
+      if (delegateList.length === 1 && !delegateEmpId) {
+        setDelegateEmpId(delegateList[0].id)
+      }
     } catch (err) {
       console.error('Failed to load delegates:', err)
+      // Don't show error to user - empty delegate list is valid
+      setDelegates([])
     }
   }
 
@@ -114,6 +156,8 @@ const LeaveApplication = () => {
     setError('')
     setSuccess('')
 
+    console.log('Submitting form with:', { employeeId, leaveTypeId, startDate, endDate, delegateEmpId, reason })
+
     if (eligibleDays <= 0) {
       setError('No eligible leave days. Please select a valid date range.')
       setLoading(false)
@@ -133,10 +177,12 @@ const LeaveApplication = () => {
 
     try {
       const response = await api.post('/leave/applications', formData)
+      console.log('Submit response:', response.data)
       setSuccess('Leave application submitted successfully!')
       setSubmitted(true)
       setTimeout(() => navigate('/leave'), 1500)
     } catch (err) {
+      console.error('Submit error:', err)
       setError(err.response?.data?.message || 'Failed to submit application')
     } finally {
       setLoading(false)
@@ -188,7 +234,7 @@ const LeaveApplication = () => {
               >
                 <option value="">Select Employee</option>
                 {employees.map((employee, index) => (
-                  <option key={`${employee.id}-${employee.employee_id || index}`} value={employee.id}>
+                  <option key={`${employee.id}-${index}`} value={employee.id}>
                     {employee.first_name} {employee.last_name} ({employee.employee_id})
                   </option>
                 ))}
@@ -204,8 +250,8 @@ const LeaveApplication = () => {
                 required
               >
                 <option value="">Select Leave Type</option>
-                {leaveTypes.map((type) => (
-                  <option key={type.leave_type_id} value={type.leave_type_id}>
+                {leaveTypes.map((type, index) => (
+                  <option key={`${type.leave_type_id}-${index}`} value={type.leave_type_id}>
                     {type.leave_type_name} (Remaining: {type.remaining_days} days)
                   </option>
                 ))}
@@ -244,7 +290,7 @@ const LeaveApplication = () => {
               >
                 <option value="">Select Delegate</option>
                 {delegates.map((delegate, index) => (
-                  <option key={`${delegate.id}-${delegate.employee_id || index}`} value={delegate.id}>
+                  <option key={`${delegate.id}-${index}`} value={delegate.id}>
                     {delegate.first_name} {delegate.last_name} ({delegate.employee_id}) - {delegate.role}
                   </option>
                 ))}
@@ -334,6 +380,7 @@ const LeaveApplication = () => {
           <Button
             type="submit"
             disabled={loading || eligibleDays <= 0}
+            loading={loading}
             className={eligibleDays <= 0 ? 'opacity-50 cursor-not-allowed' : ''}
           >
             {loading ? 'Submitting...' : 'Submit Application'}
