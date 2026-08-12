@@ -83,6 +83,12 @@ class DepartmentController extends BaseController
 
         try {
             $departmentId = $this->departmentService->createDepartment($data);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_DEPARTMENTS,
+                \App\Services\AuditService::ACTION_CREATE,
+                'Created department',
+                ['target_type' => 'Department', 'target_id' => $departmentId, 'target_name' => $data['name'] ?? null, 'new_values' => $data]
+            );
             $this->success(['id' => $departmentId], 'Department created successfully', 201);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -102,7 +108,14 @@ class DepartmentController extends BaseController
         $data = $this->getJsonBody();
 
         try {
+            $oldDept = $this->departmentService->getDepartmentById($id);
             $result = $this->departmentService->updateDepartment($id, $data);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_DEPARTMENTS,
+                \App\Services\AuditService::ACTION_UPDATE,
+                'Updated department',
+                ['target_type' => 'Department', 'target_id' => $id, 'target_name' => $oldDept['name'] ?? null, 'old_values' => $oldDept, 'new_values' => $data]
+            );
             $this->success($result, 'Department updated successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -120,7 +133,14 @@ class DepartmentController extends BaseController
         $this->requirePermission('departments', 'delete');
 
         try {
+            $oldDept = $this->departmentService->getDepartmentById($id);
             $result = $this->departmentService->deleteDepartment($id);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_DEPARTMENTS,
+                \App\Services\AuditService::ACTION_DELETE,
+                'Deleted department',
+                ['target_type' => 'Department', 'target_id' => $id, 'target_name' => $oldDept['name'] ?? null, 'old_values' => $oldDept]
+            );
             $this->success($result, 'Department deleted successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
