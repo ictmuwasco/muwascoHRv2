@@ -48,6 +48,13 @@ class AuthController extends BaseController
 
             $result = $this->authService->login($email, $password, $rememberMe);
 
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_AUTH,
+                \App\Services\AuditService::ACTION_LOGIN,
+                'User logged in',
+                ['target_type' => 'User', 'target_id' => $result['user']['id'] ?? null, 'target_name' => ($result['user']['first_name'] ?? '') . ' ' . ($result['user']['last_name'] ?? '')]
+            );
+
             // Note: we deliberately do NOT call setcookie(...) here.
             // PHP's session module emits the correct Set-Cookie header
             // automatically at script shutdown, using the cookie params
@@ -57,6 +64,12 @@ class AuthController extends BaseController
 
             $this->success($result, 'Login successful');
         } catch (\InvalidArgumentException $e) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_AUTH,
+                \App\Services\AuditService::ACTION_LOGIN_FAILED,
+                'Login failed: ' . $e->getMessage(),
+                ['status' => \App\Services\AuditService::STATUS_FAILED, 'metadata' => ['email' => $email ?? '']]
+            );
             $this->error($e->getMessage(), 401);
         } catch (\Exception $e) {
             \logger()->error('Login error', ['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()]);
@@ -83,6 +96,12 @@ class AuthController extends BaseController
             
             // Only attempt logout if user is authenticated
             if ($userId > 0) {
+                \App\Services\AuditService::getInstance()->log(
+                    \App\Services\AuditService::MODULE_AUTH,
+                    \App\Services\AuditService::ACTION_LOGOUT,
+                    'User logged out',
+                    ['target_type' => 'User', 'target_id' => $userId]
+                );
                 $this->authService->logout($userId);
             }
             
