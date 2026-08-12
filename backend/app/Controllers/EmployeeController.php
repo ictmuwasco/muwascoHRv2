@@ -85,6 +85,12 @@ class EmployeeController extends BaseController
 
         try {
             $employeeId = $this->employeeService->createEmployee($data);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\AuditService::ACTION_CREATE,
+                'Created employee record',
+                ['target_type' => 'Employee', 'target_id' => $employeeId, 'target_name' => ($data['first_name'] ?? '') . ' ' . ($data['last_name'] ?? ''), 'new_values' => $data]
+            );
             $this->success(['id' => $employeeId], 'Employee created successfully', 201);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -104,7 +110,14 @@ class EmployeeController extends BaseController
         $data = $this->getJsonBody();
 
         try {
+            $oldEmployee = $this->employeeService->getEmployeeById($id);
             $result = $this->employeeService->updateEmployee($id, $data);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\AuditService::ACTION_UPDATE,
+                'Updated employee record',
+                ['target_type' => 'Employee', 'target_id' => $id, 'target_name' => ($oldEmployee['first_name'] ?? '') . ' ' . ($oldEmployee['last_name'] ?? ''), 'old_values' => $oldEmployee, 'new_values' => $data]
+            );
             $this->success($result, 'Employee updated successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -122,7 +135,14 @@ class EmployeeController extends BaseController
         $this->requirePermission('employees', 'delete');
 
         try {
+            $oldEmployee = $this->employeeService->getEmployeeById($id);
             $result = $this->employeeService->deleteEmployee($id);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\AuditService::ACTION_DELETE,
+                'Deleted employee record',
+                ['target_type' => 'Employee', 'target_id' => $id, 'target_name' => ($oldEmployee['first_name'] ?? '') . ' ' . ($oldEmployee['last_name'] ?? ''), 'old_values' => $oldEmployee]
+            );
             $this->success($result, 'Employee deleted successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
