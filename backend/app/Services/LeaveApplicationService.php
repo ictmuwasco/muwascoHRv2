@@ -48,13 +48,48 @@ class LeaveApplicationService
             return ['success' => false, 'message' => 'Missing required fields, including delegate.'];
         }
 
+        // Authorization check: verify user can submit leave for this employee
+        $authCheck = $this->verifyEmployeeAuthorization($userId, $employeeId);
+        if (!$authCheck['authorized']) {
+            return ['success' => false, 'message' => 'Access denied: You are not authorized to submit leave for this employee.'];
+        }
+
+        // Authorization check: verify user can select this delegate
+        $delegateAuthCheck = $this->verifyDelegateAuthorization($userId, $delegateEmpId);
+        if (!$delegateAuthCheck['authorized']) {
+            return ['success' => false, 'message' => 'Access denied: You are not authorized to select this delegate.'];
+        }
+
         $leaveType = $this->getLeaveType($leaveTypeId);
         if (!$leaveType) {
             return ['success' => false, 'message' => 'Invalid leave type.'];
         }
 
+        // Business rule: Claim a Day (id 9) must be for past or current dates only.
+        // It credits annual leave for a day actually worked, so a future date is nonsense.
+        $today = date('Y-m-d');
+        if ($leaveTypeId === 9) {
+            if ($startDate > $today || $endDate > $today) {
+                return [
+                    'success' => false,
+                    'message' => 'Claim a Day cannot be applied for future dates. Use it for past or current days you actually worked.',
+                ];
+            }
+        }
+
         // Calculate eligible days
         $eligibleDays = $this->calculationService->calculateEligibleDays($startDate, $endDate, $leaveType);
+
+        // Business rule: Annual Leave (id 1) requires a minimum of 15 days.
+        // Legacy behaviour: redirect the user to Short Leave instead.
+        if ($leaveTypeId === 1 && $eligibleDays > 0 && $eligibleDays < 15) {
+            return [
+                'success' => false,
+                'message' => "Annual leave requires at least 15 days ({$eligibleDays} requested). Please apply for Short Leave instead.",
+                'eligible_days' => $eligibleDays,
+                'suggested_leave_type_id' => 6,
+            ];
+        }
 
         // Zero-day validation
         if ($eligibleDays <= 0) {
@@ -166,6 +201,11 @@ class LeaveApplicationService
         $primaryDays = (int) $deductionPlan['primary_deduction'];
         $annualDays = (int) $deductionPlan['annual_deduction'];
 
+        // bind_param() requires variables (references), so assign first.
+        $subsectionHeadEmpId = $managers['subsection_head_emp_id'] ?? null;
+        $sectionHeadEmpId    = $managers['section_head_emp_id'] ?? null;
+        $deptHeadEmpId       = $managers['dept_head_emp_id'] ?? null;
+
         $stmt->bind_param(
             'iiiississiiiiiii',
             $nextId,
@@ -177,9 +217,9 @@ class LeaveApplicationService
             $eligibleDays,
             $reason,
             $status,
-            $managers['subsection_head_emp_id'] ?? null,
-            $managers['section_head_emp_id'] ?? null,
-            $managers['dept_head_emp_id'] ?? null,
+            $subsectionHeadEmpId,
+            $sectionHeadEmpId,
+            $deptHeadEmpId,
             $delegateEmpId,
             $primaryDays,
             $annualDays,
@@ -290,6 +330,189 @@ class LeaveApplicationService
             $overlaps[] = $row;
         }
         return $overlaps;
+    }
+
+    /**
+     * Verify if the user is authorized to submit leave for the given employee.
+     */
+    private function verifyEmployeeAuthorization(int $userId, int $targetEmployeeId): array
+    {
+        $db = $this->db;
+        
+        // Get current user's employee record and role
+        $stmt = $db->prepare("
+            SELECT e.*, u.role as user_role 
+            FROM employees e 
+            JOIN users u ON u.employee_id = e.employee_id 
+            WHERE u.id = ? AND e.employee_status = 'active'
+        ");
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $currentUser = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$currentUser) {
+            return ['authorized' => false];
+        }
+
+        $role = $currentUser['user_role'] ?? 'officer';
+
+        // Super admin and managing director can do anything
+        if ($role === 'super_admin' || $role === 'managing_director' || $role === 'hr_manager') {
+            return ['authorized' => true];
+        }
+
+        // Get target employee
+        $targetEmployee = $this->getEmployee($targetEmployeeId);
+        if (!$targetEmployee) {
+            return ['authorized' => false];
+        }
+
+        switch ($role) {
+            case 'officer':
+                // Officer can only submit for themselves
+                return ['authorized' => $currentUser['id'] == $targetEmployeeId];
+
+            case 'sub_section_head':
+                // Sub-section head can submit for employees in their subsection
+                return ['authorized' => $currentUser['subsection_id'] == $targetEmployee['subsection_id']];
+
+            case 'section_head':
+                // Section head can submit for employees in their section
+                return ['authorized' => $currentUser['section_id'] == $targetEmployee['section_id']];
+
+            case 'dept_head':
+                // Department head can submit for employees in their department
+                return ['authorized' => $currentUser['department_id'] == $targetEmployee['department_id']];
+
+            default:
+                return ['authorized' => false];
+        }
+    }
+
+    /**
+     * Verify if the user is authorized to select the given delegate.
+     */
+    private function verifyDelegateAuthorization(int $userId, int $delegateEmployeeId): array
+    {
+        $db = $this->db;
+        
+        // Get current user's employee record and role
+        $stmt = $db->prepare("
+            SELECT e.*, u.role as user_role 
+            FROM employees e 
+            JOIN users u ON u.employee_id = e.employee_id 
+            WHERE u.id = ? AND e.employee_status = 'active'
+        ");
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $currentUser = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$currentUser) {
+            return ['authorized' => false];
+        }
+
+        $role = $currentUser['user_role'] ?? 'officer';
+
+        // Super admin and managing director can do anything
+        if ($role === 'super_admin' || $role === 'managing_director') {
+            return ['authorized' => true];
+        }
+
+        // Get delegate employee
+        $delegate = $this->getEmployee($delegateEmployeeId);
+        if (!$delegate) {
+            return ['authorized' => false];
+        }
+
+        // A delegate is authorized if they are within the logged-in user's
+        // organisational scope (same subsection / section / department),
+        // matching the candidate list shown in the dropdown.
+        switch ($role) {
+            case 'officer':
+            case 'sub_section_head':
+                // Same subsection; fall back to same section when no subsection is assigned.
+                if (!empty($currentUser['subsection_id'])) {
+                    return ['authorized' => $currentUser['subsection_id'] == $delegate['subsection_id']];
+                }
+                return ['authorized' => !empty($currentUser['section_id']) && $currentUser['section_id'] == $delegate['section_id']];
+
+            case 'section_head':
+                // Same section
+                return ['authorized' => !empty($currentUser['section_id']) && $currentUser['section_id'] == $delegate['section_id']];
+
+            case 'dept_head':
+                // Same department
+                return ['authorized' => !empty($currentUser['department_id']) && $currentUser['department_id'] == $delegate['department_id']];
+
+            case 'hr_manager':
+                // HR or Admin department — always include the HR manager's own
+                // department since it is the HR department, even if its name
+                // does not contain "hr"/"human resource"/"admin".
+                $hrDept = $this->getHRDepartmentId();
+                $adminDept = $this->getAdminDepartmentId();
+                $allowedDepts = array_filter([$currentUser['department_id'] ?? 0, $hrDept, $adminDept]);
+                return ['authorized' => in_array($delegate['department_id'], $allowedDepts, true)];
+
+            default:
+                return ['authorized' => false];
+        }
+    }
+
+    /**
+     * Get employee by ID.
+     */
+    private function getEmployee(int $employeeId): ?array
+    {
+        $stmt = $this->db->prepare("SELECT * FROM employees WHERE id = ? AND employee_status = 'active'");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $result ?: null;
+    }
+
+    /**
+     * Get employee's role.
+     */
+    private function getEmployeeRole(int $employeeId): string
+    {
+        $stmt = $this->db->prepare("
+            SELECT u.role 
+            FROM users u 
+            JOIN employees e ON e.employee_id = u.employee_id 
+            WHERE e.id = ?
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $result['role'] ?? '';
+    }
+
+    /**
+     * Get HR department ID.
+     */
+    private function getHRDepartmentId(): int
+    {
+        $stmt = $this->db->prepare("SELECT id FROM departments WHERE name LIKE '%hr%' OR name LIKE '%human resource%' LIMIT 1");
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $result ? (int) $result['id'] : 0;
+    }
+
+    /**
+     * Get Admin department ID.
+     */
+    private function getAdminDepartmentId(): int
+    {
+        $stmt = $this->db->prepare("SELECT id FROM departments WHERE name LIKE '%admin%' LIMIT 1");
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $result ? (int) $result['id'] : 0;
     }
 
     /**

@@ -121,6 +121,16 @@ class LeaveWorkflowService
 
     /**
      * Get eligible delegate candidates for an applicant.
+     *
+     * A delegate is anyone in the logged-in user's organisational scope who can
+     * cover their duties while on leave:
+     *   - officer / sub_section_head: everyone in the same subsection
+     *   - section_head:               everyone in the same section
+     *   - dept_head:                  everyone in the same department
+     *   - hr_manager:                 everyone in HR / Admin departments
+     *   - managing_director:          all department heads
+     *   - super_admin:                all active employees
+     * The applicant (self) is excluded.
      */
     public function getEligibleDelegates(int $applicantUserId): array
     {
@@ -141,23 +151,36 @@ class LeaveWorkflowService
             case 'managing_director':
                 $delegates = $this->getEmployeesByRole('dept_head');
                 break;
+            case 'super_admin':
+                $delegates = $this->getAllEmployeesExcept($employeeId);
+                break;
             case 'dept_head':
-                $delegates = $this->getEmployeesByRoleInDepartment('section_head', (int) $targetEmployee['department_id']);
+                $delegates = $this->getEmployeesInDepartmentExcept((int) $targetEmployee['department_id'], $employeeId);
                 break;
             case 'section_head':
-                $delegates = $this->getEmployeesByRoleInSection('sub_section_head', (int) $targetEmployee['section_id']);
+                $delegates = $this->getEmployeesInSectionExcept((int) $targetEmployee['section_id'], $employeeId);
                 break;
             case 'sub_section_head':
-                $delegates = $this->getEmployeesByRoleInSubsection('employee', (int) $targetEmployee['subsection_id']);
+                // Same subsection; fall back to same section when no subsection is assigned.
+                $subId = (int) ($targetEmployee['subsection_id'] ?? 0);
+                if ($subId > 0) {
+                    $delegates = $this->getEmployeesInSubsectionExcept($subId, $employeeId);
+                } else {
+                    $delegates = $this->getEmployeesInSectionExcept((int) ($targetEmployee['section_id'] ?? 0), $employeeId);
+                }
+                break;
+            case 'hr_manager':
+                // HR manager can select anyone in HR or Admin departments.
+                // Always include the HR manager's own department since it is
+                // the HR department, even if its name does not contain
+                // "hr"/"human resource"/"admin".
+                $hrDeptId = $this->getDepartmentIdByNamePattern("hr", "human resource");
+                $adminDeptId = $this->getDepartmentIdByNamePattern("admin");
+                $ownDeptId = (int) ($targetEmployee['department_id'] ?? 0);
+                $delegates = $this->getEmployeesInDepartmentsExcept(array_filter([$ownDeptId, $hrDeptId, $adminDeptId]), $employeeId);
                 break;
             default:
-                $delegates = $this->getEmployeesByRoleInSubsection('employee', (int) ($targetEmployee['subsection_id'] ?? 0));
-        }
-
-        // Fallback: if no role-specific delegates found, return all employees
-        // except the current user so the delegate dropdown is never empty.
-        if (empty($delegates)) {
-            $delegates = $this->getAllEmployeesExcept($employeeId);
+                $delegates = $this->getEmployeesInSubsectionExcept((int) ($targetEmployee['subsection_id'] ?? 0), $employeeId);
         }
 
         return $delegates;
@@ -223,6 +246,61 @@ class LeaveWorkflowService
         return $employees;
     }
 
+    /**
+     * Get employees by role in any of the given departments.
+     */
+    private function getEmployeesByRoleInDepartments(string $role, array $departmentIds): array
+    {
+        $departmentIds = array_values(array_filter(array_map('intval', $departmentIds)));
+        if ($departmentIds === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($departmentIds), '?'));
+        $types = 's' . str_repeat('i', count($departmentIds));
+        $stmt = $this->db->prepare("
+            SELECT e.id, e.first_name, e.last_name, e.employee_id, u.role
+            FROM employees e
+            JOIN users u ON u.employee_id = e.employee_id
+            WHERE u.role = ? AND e.department_id IN ({$placeholders})
+            ORDER BY e.first_name, e.last_name
+        ");
+        $bindParams = array_merge([$types, $role], $departmentIds);
+        $stmt->bind_param(...$bindParams);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $employees = [];
+        while ($row = $result->fetch_assoc()) {
+            $employees[] = $row;
+        }
+        return $employees;
+    }
+
+    /**
+     * Get a department ID by fuzzy name patterns.
+     */
+    private function getDepartmentIdByNamePattern(string ...$patterns): int
+    {
+        if ($patterns === []) {
+            return 0;
+        }
+        $likeClauses = [];
+        $params = [];
+        foreach ($patterns as $pattern) {
+            $likeClauses[] = "name LIKE ?";
+            $params[] = '%' . $pattern . '%';
+        }
+        $stmt = $this->db->prepare("
+            SELECT id FROM departments
+            WHERE " . implode(' OR ', $likeClauses) . "
+            LIMIT 1
+        ");
+        $types = str_repeat('s', count($params));
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        return $result ? (int) $result['id'] : 0;
+    }
+
     private function getEmployeesByRoleInSection(string $role, int $sectionId): array
     {
         $stmt = $this->db->prepare("
@@ -252,6 +330,119 @@ class LeaveWorkflowService
             ORDER BY e.first_name, e.last_name
         ");
         $stmt->bind_param('si', $role, $subsectionId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $employees = [];
+        while ($row = $result->fetch_assoc()) {
+            $employees[] = $row;
+        }
+        return $employees;
+    }
+
+    /**
+     * Get all active employees in a subsection, excluding the given employee.
+     * Employees without a user account are treated as officers so they can be delegates.
+     */
+    private function getEmployeesInSubsectionExcept(int $subsectionId, int $excludeEmployeeId): array
+    {
+        if ($subsectionId <= 0) {
+            return [];
+        }
+        $stmt = $this->db->prepare("
+            SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role
+            FROM employees e
+            LEFT JOIN users u ON u.employee_id = e.employee_id
+            WHERE e.subsection_id = ?
+            AND e.employee_status = 'active'
+            AND e.id != ?
+            ORDER BY e.first_name, e.last_name
+        ");
+        $stmt->bind_param('ii', $subsectionId, $excludeEmployeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $employees = [];
+        while ($row = $result->fetch_assoc()) {
+            $employees[] = $row;
+        }
+        return $employees;
+    }
+
+    /**
+     * Get all active employees in a section, excluding the given employee.
+     */
+    private function getEmployeesInSectionExcept(int $sectionId, int $excludeEmployeeId): array
+    {
+        if ($sectionId <= 0) {
+            return [];
+        }
+        $stmt = $this->db->prepare("
+            SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role
+            FROM employees e
+            LEFT JOIN users u ON u.employee_id = e.employee_id
+            WHERE e.section_id = ?
+            AND e.employee_status = 'active'
+            AND e.id != ?
+            ORDER BY e.first_name, e.last_name
+        ");
+        $stmt->bind_param('ii', $sectionId, $excludeEmployeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $employees = [];
+        while ($row = $result->fetch_assoc()) {
+            $employees[] = $row;
+        }
+        return $employees;
+    }
+
+    /**
+     * Get all active employees in a department, excluding the given employee.
+     */
+    private function getEmployeesInDepartmentExcept(int $departmentId, int $excludeEmployeeId): array
+    {
+        if ($departmentId <= 0) {
+            return [];
+        }
+        $stmt = $this->db->prepare("
+            SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role
+            FROM employees e
+            LEFT JOIN users u ON u.employee_id = e.employee_id
+            WHERE e.department_id = ?
+            AND e.employee_status = 'active'
+            AND e.id != ?
+            ORDER BY e.first_name, e.last_name
+        ");
+        $stmt->bind_param('ii', $departmentId, $excludeEmployeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $employees = [];
+        while ($row = $result->fetch_assoc()) {
+            $employees[] = $row;
+        }
+        return $employees;
+    }
+
+    /**
+     * Get all active employees in any of the given departments, excluding the given employee.
+     */
+    private function getEmployeesInDepartmentsExcept(array $departmentIds, int $excludeEmployeeId): array
+    {
+        $departmentIds = array_values(array_filter(array_map('intval', $departmentIds)));
+        if ($departmentIds === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($departmentIds), '?'));
+        $types = str_repeat('i', count($departmentIds)) . 'i';
+        $stmt = $this->db->prepare("
+            SELECT e.id, e.first_name, e.last_name, e.employee_id, COALESCE(u.role, 'officer') AS role
+            FROM employees e
+            LEFT JOIN users u ON u.employee_id = e.employee_id
+            WHERE e.department_id IN ({$placeholders})
+            AND e.employee_status = 'active'
+            AND e.id != ?
+            ORDER BY e.first_name, e.last_name
+        ");
+        $bindParams = array_merge([$types], $departmentIds, [$excludeEmployeeId]);
+        $stmt->bind_param(...$bindParams);
         $stmt->execute();
         $result = $stmt->get_result();
         $employees = [];
