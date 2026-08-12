@@ -333,6 +333,18 @@ try {
         $controller = new \App\Controllers\LeaveController();
         $controller->delegatesAction();
     }
+    // Leave eligible employees (role-based)
+    elseif ($endpoint === '/leave/eligible-employees' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $controller->eligibleEmployeesAction();
+    }
+    // Leave eligible delegates (role-based)
+    elseif ($endpoint === '/leave/eligible-delegates' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $controller->eligibleDelegatesAction();
+    }
     // Leave types with balances
     elseif ($endpoint === '/leave/types' && $requestMethod === 'GET') {
         require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
@@ -362,6 +374,41 @@ try {
         $applicationId = (int)$matches[1];
         $documentId = (int)$matches[2];
         $controller->viewDocumentAction($applicationId, $documentId);
+    }
+    // Leave manage (supervisor approvals tab)
+    elseif ($endpoint === '/leave/manage' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $controller->manageAction();
+    }
+    // Leave approve / reject / invalidate / cancel
+    elseif (preg_match('#^/leave/applications/(\d+)/approve$#', $endpoint, $matches)
+        && ($requestMethod === 'PUT' || $requestMethod === 'POST')) {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $applicationId = (int)$matches[1];
+        $controller->approveAction($applicationId);
+    }
+    elseif (preg_match('#^/leave/applications/(\d+)/reject$#', $endpoint, $matches)
+        && ($requestMethod === 'PUT' || $requestMethod === 'POST')) {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $applicationId = (int)$matches[1];
+        $controller->rejectAction($applicationId);
+    }
+    elseif (preg_match('#^/leave/applications/(\d+)/invalidate$#', $endpoint, $matches)
+        && ($requestMethod === 'PUT' || $requestMethod === 'POST')) {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $applicationId = (int)$matches[1];
+        $controller->invalidateAction($applicationId);
+    }
+    elseif (preg_match('#^/leave/applications/(\d+)/cancel$#', $endpoint, $matches)
+        && ($requestMethod === 'PUT' || $requestMethod === 'POST')) {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveController.php';
+        $controller = new \App\Controllers\LeaveController();
+        $applicationId = (int)$matches[1];
+        $controller->cancelAction($applicationId);
     }
     // Holiday routes
     elseif ($endpoint === '/holidays' && $requestMethod === 'GET') {
@@ -471,6 +518,42 @@ try {
             http_response_code(404);
             echo json_encode(['success' => false, 'message' => 'Not found']);
         }
+    }
+    // Users routes
+    elseif ($endpoint === '/users' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/UserController.php';
+        $controller = new \App\Controllers\UserController();
+        $controller->indexAction();
+    }
+    elseif (preg_match('#^/users/(\d+)$#', $endpoint, $matches)) {
+        require_once __DIR__ . '/backend/app/Controllers/UserController.php';
+        $controller = new \App\Controllers\UserController();
+        $id = (int)$matches[1];
+
+        if ($requestMethod === 'GET') {
+            $controller->showAction($id);
+        } elseif ($requestMethod === 'PUT' || $requestMethod === 'POST') {
+            $controller->updateAction($id);
+        } elseif ($requestMethod === 'DELETE') {
+            $controller->destroyAction($id);
+        } else {
+            http_response_code(405);
+            echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        }
+    }
+    elseif (preg_match('#^/users/(\d+)/toggle-status$#', $endpoint, $matches)
+        && ($requestMethod === 'PUT' || $requestMethod === 'POST')) {
+        require_once __DIR__ . '/backend/app/Controllers/UserController.php';
+        $controller = new \App\Controllers\UserController();
+        $id = (int)$matches[1];
+        $controller->toggleStatus($id);
+    }
+    elseif (preg_match('#^/users/(\d+)/change-password$#', $endpoint, $matches)
+        && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/UserController.php';
+        $controller = new \App\Controllers\UserController();
+        $id = (int)$matches[1];
+        $controller->changePassword($id);
     }
     else {
         http_response_code(404);
