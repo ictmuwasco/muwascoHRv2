@@ -193,6 +193,39 @@ try {
         exit(1);
     }
 
+    // Run migration 015 - Hybrid permission overrides (module/action structure)
+    $sql = file_get_contents(__DIR__ . '/migrations/015_hybrid_permission_overrides.sql');
+
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+
+        echo "Migration 015_hybrid_permission_overrides.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 015: " . $conn->error . "\n";
+        exit(1);
+    }
+
+    // Verify module/action columns were added
+    $result = $conn->query("SHOW COLUMNS FROM user_page_permissions LIKE 'module'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ module column added successfully\n";
+    } else {
+        echo "✗ module column not found\n";
+        exit(1);
+    }
+
+    $result = $conn->query("SHOW COLUMNS FROM user_page_permissions LIKE 'action'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ action column added successfully\n";
+    } else {
+        echo "✗ action column not found\n";
+        exit(1);
+    }
+
     echo "\n✓ All migrations completed successfully!\n";
     
     // Re-run role permissions migration to ensure new permissions are added

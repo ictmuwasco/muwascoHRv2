@@ -23,6 +23,7 @@ use App\Controllers\NotificationController;
 use App\Controllers\AuditLogController;
 use App\Controllers\SettingController;
 use App\Controllers\HolidayController;
+use App\Controllers\PermissionController;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 
@@ -158,4 +159,14 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::put('/profile', [EmployeeController::class, 'updateProfileAction']);
     Route::post('/profile/documents', [EmployeeController::class, 'uploadProfileDocumentAction']);
     Route::delete('/profile/documents/{documentId}', [EmployeeController::class, 'deleteProfileDocumentAction']);
+
+    // Permission Management routes (Phase 16 - Permission Catalog)
+    Route::get('/permissions/catalog', [PermissionController::class, 'catalog']);
+    Route::get('/permissions/statistics', [PermissionController::class, 'statistics']);
+    Route::get('/permissions/roles', [PermissionController::class, 'roles']);
+    Route::get('/permissions/users', [PermissionController::class, 'users']);
+    Route::get('/permissions/users/{userId}', [PermissionController::class, 'userPermissions']);
+    Route::get('/permissions/overrides', [PermissionController::class, 'overrides']);
+    Route::post('/permissions/users/{userId}/overrides', [PermissionController::class, 'setOverride']);
+    Route::delete('/permissions/users/{userId}/overrides', [PermissionController::class, 'removeOverride']);
 });
