@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Shield, Users, Search, User as UserIcon, Check, X, RefreshCw, AlertTriangle, Save, Layers, Info, Trash2 } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Shield, Users, Search, User as UserIcon, Check, X, RefreshCw, AlertTriangle, Info } from 'lucide-react'
 import Card from '../ui/Card'
 import Button from '../ui/Button'
 import Input from '../ui/Input'
-import Select from '../ui/Select'
 import Badge from '../ui/Badge'
 import { permissionService } from '../../api/services/permissionService'
 
@@ -166,17 +165,6 @@ const PermissionsTab = () => {
     if (!dateStr) return '—'
     const d = new Date(dateStr)
     return d.toLocaleString()
-  }
-
-  const getModuleLabel = (key) => {
-    if (!catalog) return key
-    return catalog.modules[key]?.label || key
-  }
-
-  const getActionLabel = (module, action) => {
-    if (!catalog?.modules[module]) return action
-    const act = catalog.modules[module].actions.find(a => a.key === action)
-    return act?.label || action
   }
 
   // Build permission matrix from role_permissions for display
@@ -358,7 +346,7 @@ const PermissionsTab = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100">
                     {catalog && Object.entries(catalog.modules).map(([moduleKey, module]) => (
-                      <>
+                      <React.Fragment key={moduleKey}>
                         {module.actions.map((action) => {
                           const rolePerm = rolePermissionMap[moduleKey]?.[action.key]
                           const override = getOverrideFor(moduleKey, action.key)
@@ -479,7 +467,7 @@ const PermissionsTab = () => {
                             </tr>
                           )
                         })}
-                      </>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
