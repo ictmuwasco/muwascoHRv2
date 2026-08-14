@@ -771,7 +771,12 @@ class LeaveController
                 \App\Services\AuditService::MODULE_LEAVE,
                 \App\Services\AuditService::ACTION_APPROVE,
                 'Approved leave application',
-                ['target_type' => 'LeaveApplication', 'target_id' => $applicationId]
+                [
+                    'target_type' => 'LeaveApplication',
+                    'target_id' => $applicationId,
+                    'target_name' => $this->getLeaveApplicantName($applicationId),
+                    'metadata' => ['application_id' => $applicationId],
+                ]
             );
         }
 
@@ -808,7 +813,12 @@ class LeaveController
                 \App\Services\AuditService::MODULE_LEAVE,
                 \App\Services\AuditService::ACTION_REJECT,
                 'Rejected leave application',
-                ['target_type' => 'LeaveApplication', 'target_id' => $applicationId, 'metadata' => ['reason' => mb_substr($reason, 0, 1000)]]
+                [
+                    'target_type' => 'LeaveApplication',
+                    'target_id' => $applicationId,
+                    'target_name' => $this->getLeaveApplicantName($applicationId),
+                    'metadata' => ['application_id' => $applicationId, 'reason' => mb_substr($reason, 0, 1000)],
+                ]
             );
         }
 
@@ -845,7 +855,12 @@ class LeaveController
                 \App\Services\AuditService::MODULE_LEAVE,
                 \App\Services\AuditService::ACTION_INVALIDATE,
                 'Invalidated leave application',
-                ['target_type' => 'LeaveApplication', 'target_id' => $applicationId, 'metadata' => ['reason' => mb_substr($reason, 0, 1000)]]
+                [
+                    'target_type' => 'LeaveApplication',
+                    'target_id' => $applicationId,
+                    'target_name' => $this->getLeaveApplicantName($applicationId),
+                    'metadata' => ['application_id' => $applicationId, 'reason' => mb_substr($reason, 0, 1000)],
+                ]
             );
         }
 
@@ -875,13 +890,45 @@ class LeaveController
                 \App\Services\AuditService::MODULE_LEAVE,
                 \App\Services\AuditService::ACTION_UPDATE,
                 'Cancelled leave application',
-                ['target_type' => 'LeaveApplication', 'target_id' => $applicationId]
+                [
+                    'target_type' => 'LeaveApplication',
+                    'target_id' => $applicationId,
+                    'target_name' => $this->getLeaveApplicantName($applicationId),
+                    'metadata' => ['application_id' => $applicationId],
+                ]
             );
         }
 
         $httpCode = ($result['success'] ?? false) ? 200 : 400;
         http_response_code($httpCode);
         echo json_encode($result);
+    }
+
+    /**
+     * Resolve the applicant's display name for a leave application.
+     * Used to populate audit_logs.target_name so the audit trail shows
+     * WHO the leave belongs to — not just a numeric target_id.
+     */
+    private function getLeaveApplicantName(int $applicationId): ?string
+    {
+        try {
+            $stmt = \App\Helpers\Database::getInstance()->getConnection()->prepare("
+                SELECT TRIM(CONCAT(COALESCE(e.first_name, ''), ' ', COALESCE(e.last_name, ''))) AS applicant_name
+                FROM leave_applications la
+                LEFT JOIN employees e ON la.employee_id = e.id
+                WHERE la.id = ?
+                LIMIT 1
+            ");
+            $stmt->bind_param('i', $applicationId);
+            $stmt->execute();
+            $result = $stmt->get_result()->fetch_assoc();
+            if ($result && !empty($result['applicant_name'])) {
+                return (string) $result['applicant_name'];
+            }
+        } catch (\Throwable $e) {
+            \logger()->debug('Could not resolve leave applicant name for audit', ['application_id' => $applicationId]);
+        }
+        return null;
     }
 
     /**
