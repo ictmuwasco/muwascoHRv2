@@ -165,6 +165,18 @@ class AuditService
                 $row['old_values'] = $this->decodeJson($row['old_values']);
                 $row['new_values'] = $this->decodeJson($row['new_values']);
                 $row['metadata']   = $this->decodeJson($row['metadata']);
+
+                // Enrich actor identity when the snapshot is missing but a
+                // user_id is recorded (e.g. legacy rows or failed logins).
+                if (empty($row['user_name_snapshot']) && !empty($row['user_id'])) {
+                    $resolved = $this->resolveUserName((int) $row['user_id']);
+                    if ($resolved['name'] !== null) {
+                        $row['user_name_snapshot'] = $resolved['name'];
+                    }
+                    if (empty($row['user_role_snapshot']) && $resolved['role'] !== null) {
+                        $row['user_role_snapshot'] = $resolved['role'];
+                    }
+                }
             }
             unset($row);
 
@@ -191,6 +203,19 @@ class AuditService
             $row['old_values'] = $this->decodeJson($row['old_values']);
             $row['new_values'] = $this->decodeJson($row['new_values']);
             $row['metadata']   = $this->decodeJson($row['metadata']);
+
+            // Enrich actor identity from the users table when the snapshot is
+            // missing but a user_id is recorded.
+            if (empty($row['user_name_snapshot']) && !empty($row['user_id'])) {
+                $resolved = $this->resolveUserName((int) $row['user_id']);
+                if ($resolved['name'] !== null) {
+                    $row['user_name_snapshot'] = $resolved['name'];
+                }
+                if (empty($row['user_role_snapshot']) && $resolved['role'] !== null) {
+                    $row['user_role_snapshot'] = $resolved['role'];
+                }
+            }
+
             return $row;
         } catch (\Throwable $e) {
             error_log('[AuditService] getById failed: ' . $e->getMessage());
@@ -271,6 +296,32 @@ class AuditService
             'name' => $options['user_name_snapshot'] ?? (isset($_SESSION['user_name']) ? (string) $_SESSION['user_name'] : null),
             'role' => $options['user_role_snapshot'] ?? (isset($_SESSION['user_role']) ? (string) $_SESSION['user_role'] : null),
         ];
+    }
+
+    /**
+     * Resolve a user's display name and role from the users table.
+     * Used to fill in missing actor snapshots (e.g. legacy audit rows or
+     * failed-login entries where no session exists).
+     *
+     * @return array{name: string|null, role: string|null}
+     */
+    private function resolveUserName(int $userId): array
+    {
+        try {
+            $row = db()->fetchOne(
+                'SELECT first_name, last_name, role FROM users WHERE id = ?',
+                'i',
+                [$userId]
+            );
+            if ($row === null || empty($row['first_name'])) {
+                return ['name' => null, 'role' => null];
+            }
+            $name = trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+            return ['name' => $name !== '' ? $name : null, 'role' => $row['role'] ?? null];
+        } catch (\Throwable $e) {
+            error_log('[AuditService] resolveUserName failed: ' . $e->getMessage());
+            return ['name' => null, 'role' => null];
+        }
     }
 
     /**

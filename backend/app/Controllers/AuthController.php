@@ -64,11 +64,30 @@ class AuthController extends BaseController
 
             $this->success($result, 'Login successful');
         } catch (\InvalidArgumentException $e) {
+            // Resolve user identity even when login fails so the audit trail
+            // shows WHO attempted the login (name + role) — not just the email.
+            $auditOptions = [
+                'status' => \App\Services\AuditService::STATUS_FAILED,
+                'metadata' => ['email' => $email ?? ''],
+            ];
+
+            try {
+                $attemptedUser = $this->authService->getUserByEmail($email ?? '');
+                if ($attemptedUser) {
+                    $auditOptions['user_id']            = (int) $attemptedUser['id'];
+                    $auditOptions['user_name_snapshot'] = trim(($attemptedUser['first_name'] ?? '') . ' ' . ($attemptedUser['last_name'] ?? ''));
+                    $auditOptions['user_role_snapshot'] = $attemptedUser['role'] ?? null;
+                }
+            } catch (\Throwable $resolveError) {
+                // Never let audit identity resolution break the login failure path.
+                \logger()->debug('Could not resolve failed-login user identity', ['email' => $email ?? '']);
+            }
+
             \App\Services\AuditService::getInstance()->log(
                 \App\Services\AuditService::MODULE_AUTH,
                 \App\Services\AuditService::ACTION_LOGIN_FAILED,
                 'Login failed: ' . $e->getMessage(),
-                ['status' => \App\Services\AuditService::STATUS_FAILED, 'metadata' => ['email' => $email ?? '']]
+                $auditOptions
             );
             $this->error($e->getMessage(), 401);
         } catch (\Exception $e) {
