@@ -155,6 +155,12 @@ class LeaveController
         ], $file);
 
         if ($result['success']) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_CREATE,
+                'Submitted leave application',
+                ['target_type' => 'LeaveApplication', 'target_id' => $result['id'] ?? ($result['application_id'] ?? null), 'metadata' => ['leave_type_id' => $leaveTypeId, 'start_date' => $startDate, 'end_date' => $endDate]]
+            );
             http_response_code(201);
             echo json_encode([
                 'success' => true,
@@ -760,6 +766,20 @@ class LeaveController
 
         $result = $this->approvalService->approve($userId, $applicationId);
 
+        if (($result['success'] ?? false)) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_APPROVE,
+                'Approved leave application',
+                [
+                    'target_type' => 'LeaveApplication',
+                    'target_id' => $applicationId,
+                    'target_name' => $this->getLeaveApplicantName($applicationId),
+                    'metadata' => ['application_id' => $applicationId],
+                ]
+            );
+        }
+
         $httpCode = ($result['success'] ?? false) ? 200 : 400;
         http_response_code($httpCode);
         echo json_encode($result);
@@ -787,6 +807,20 @@ class LeaveController
         }
 
         $result = $this->approvalService->reject($userId, $applicationId, $reason);
+
+        if (($result['success'] ?? false)) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_REJECT,
+                'Rejected leave application',
+                [
+                    'target_type' => 'LeaveApplication',
+                    'target_id' => $applicationId,
+                    'target_name' => $this->getLeaveApplicantName($applicationId),
+                    'metadata' => ['application_id' => $applicationId, 'reason' => mb_substr($reason, 0, 1000)],
+                ]
+            );
+        }
 
         $httpCode = ($result['success'] ?? false) ? 200 : 400;
         http_response_code($httpCode);
@@ -816,6 +850,20 @@ class LeaveController
 
         $result = $this->approvalService->invalidate($userId, $applicationId, $reason);
 
+        if (($result['success'] ?? false)) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_INVALIDATE,
+                'Invalidated leave application',
+                [
+                    'target_type' => 'LeaveApplication',
+                    'target_id' => $applicationId,
+                    'target_name' => $this->getLeaveApplicantName($applicationId),
+                    'metadata' => ['application_id' => $applicationId, 'reason' => mb_substr($reason, 0, 1000)],
+                ]
+            );
+        }
+
         $httpCode = ($result['success'] ?? false) ? 200 : 400;
         http_response_code($httpCode);
         echo json_encode($result);
@@ -837,9 +885,50 @@ class LeaveController
 
         $result = $this->approvalService->cancel($userId, $applicationId);
 
+        if (($result['success'] ?? false)) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_UPDATE,
+                'Cancelled leave application',
+                [
+                    'target_type' => 'LeaveApplication',
+                    'target_id' => $applicationId,
+                    'target_name' => $this->getLeaveApplicantName($applicationId),
+                    'metadata' => ['application_id' => $applicationId],
+                ]
+            );
+        }
+
         $httpCode = ($result['success'] ?? false) ? 200 : 400;
         http_response_code($httpCode);
         echo json_encode($result);
+    }
+
+    /**
+     * Resolve the applicant's display name for a leave application.
+     * Used to populate audit_logs.target_name so the audit trail shows
+     * WHO the leave belongs to — not just a numeric target_id.
+     */
+    private function getLeaveApplicantName(int $applicationId): ?string
+    {
+        try {
+            $stmt = \App\Helpers\Database::getInstance()->getConnection()->prepare("
+                SELECT TRIM(CONCAT(COALESCE(e.first_name, ''), ' ', COALESCE(e.last_name, ''))) AS applicant_name
+                FROM leave_applications la
+                LEFT JOIN employees e ON la.employee_id = e.id
+                WHERE la.id = ?
+                LIMIT 1
+            ");
+            $stmt->bind_param('i', $applicationId);
+            $stmt->execute();
+            $result = $stmt->get_result()->fetch_assoc();
+            if ($result && !empty($result['applicant_name'])) {
+                return (string) $result['applicant_name'];
+            }
+        } catch (\Throwable $e) {
+            \logger()->debug('Could not resolve leave applicant name for audit', ['application_id' => $applicationId]);
+        }
+        return null;
     }
 
     /**
