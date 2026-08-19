@@ -117,6 +117,7 @@ const PermissionsTab = () => {
       
       // Reload user permissions
       await loadUserPermissions(selectedUserId)
+      await loadStats()
       setSuccessMsg(`Permission ${module}:${action} set to ${permissionType}`)
       
       // Clear success after 3s
@@ -138,6 +139,7 @@ const PermissionsTab = () => {
     try {
       await permissionService.removeOverride(selectedUserId, { module, action })
       await loadUserPermissions(selectedUserId)
+      await loadStats()
       setSuccessMsg(`Override ${module}:${action} removed (will inherit role permission)`)
       setTimeout(() => setSuccessMsg(null), 3000)
     } catch (err) {
