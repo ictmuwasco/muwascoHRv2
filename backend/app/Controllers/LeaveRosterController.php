@@ -758,6 +758,7 @@ class LeaveRosterController
                    e.first_name, e.last_name, e.employee_id AS emp_code,
                    d.name AS department_name,
                    lr.scheduled_month,
+                   lr.notes,
                    lr.id AS roster_id
             FROM employees e
             LEFT JOIN departments d ON d.id = e.department_id
@@ -787,6 +788,7 @@ class LeaveRosterController
                 'emp_code' => $row['emp_code'] ?? '',
                 'department_name' => $row['department_name'] ?? '',
                 'scheduled_month' => $row['scheduled_month'] ?? null,
+                'notes' => $row['notes'] ?? '',
                 'roster_id' => $row['roster_id'] ? (int) $row['roster_id'] : null,
             ];
         }
