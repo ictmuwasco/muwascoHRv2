@@ -555,6 +555,82 @@ try {
         $id = (int)$matches[1];
         $controller->changePassword($id);
     }
+    // Audit trail routes (must be declared before /audit/{id} wildcard)
+    elseif ($endpoint === '/audit' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AuditLogController.php';
+        $controller = new \App\Controllers\AuditLogController();
+        $controller->index();
+    }
+    elseif ($endpoint === '/audit/statistics' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AuditLogController.php';
+        $controller = new \App\Controllers\AuditLogController();
+        $controller->statistics();
+    }
+    elseif ($endpoint === '/audit/filters' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AuditLogController.php';
+        $controller = new \App\Controllers\AuditLogController();
+        $controller->filters();
+    }
+    elseif ($endpoint === '/audit/export' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AuditLogController.php';
+        $controller = new \App\Controllers\AuditLogController();
+        $controller->export();
+    }
+    elseif (preg_match('#^/audit/(\d+)$#', $endpoint, $matches) && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AuditLogController.php';
+        $controller = new \App\Controllers\AuditLogController();
+        $id = (int)$matches[1];
+        $controller->show($id);
+    }
+    // Backwards-compatible alias
+    elseif ($endpoint === '/audit-logs' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/AuditLogController.php';
+        $controller = new \App\Controllers\AuditLogController();
+        $controller->index();
+    }
+    // Permission Management routes
+    elseif ($endpoint === '/permissions/catalog' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/PermissionController.php';
+        $controller = new \App\Controllers\PermissionController();
+        $controller->catalog();
+    }
+    elseif ($endpoint === '/permissions/statistics' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/PermissionController.php';
+        $controller = new \App\Controllers\PermissionController();
+        $controller->statistics();
+    }
+    elseif ($endpoint === '/permissions/roles' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/PermissionController.php';
+        $controller = new \App\Controllers\PermissionController();
+        $controller->roles();
+    }
+    elseif ($endpoint === '/permissions/users' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/PermissionController.php';
+        $controller = new \App\Controllers\PermissionController();
+        $controller->users();
+    }
+    elseif ($endpoint === '/permissions/overrides' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/PermissionController.php';
+        $controller = new \App\Controllers\PermissionController();
+        $controller->overrides();
+    }
+    elseif (preg_match('#^/permissions/users/(\d+)$#', $endpoint, $matches) && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/PermissionController.php';
+        $controller = new \App\Controllers\PermissionController();
+        $id = (int)$matches[1];
+        $controller->userPermissions($id);
+    }
+    elseif (preg_match('#^/permissions/users/(\d+)/overrides$#', $endpoint, $matches)
+        && ($requestMethod === 'POST' || $requestMethod === 'DELETE')) {
+        require_once __DIR__ . '/backend/app/Controllers/PermissionController.php';
+        $controller = new \App\Controllers\PermissionController();
+        $id = (int)$matches[1];
+        if ($requestMethod === 'POST') {
+            $controller->setOverride($id);
+        } else {
+            $controller->removeOverride($id);
+        }
+    }
     else {
         http_response_code(404);
         echo json_encode(['success' => false, 'message' => 'Not found']);
