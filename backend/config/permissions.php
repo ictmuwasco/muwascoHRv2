@@ -165,6 +165,19 @@ return [
             ],
         ],
 
+        'meetings' => [
+            'key'     => 'meetings',
+            'label'   => 'Meetings',
+            'actions' => [
+                ['key' => 'view',            'label' => 'View',             'type' => 'page'],
+                ['key' => 'create',          'label' => 'Create',           'type' => 'action'],
+                ['key' => 'edit',            'label' => 'Edit',             'type' => 'action'],
+                ['key' => 'manage',          'label' => 'Manage',           'type' => 'action'],
+                ['key' => 'confirm',         'label' => 'Respond',          'type' => 'action'],
+                ['key' => 'view_attendance', 'label' => 'View Attendance',  'type' => 'action'],
+            ],
+        ],
+
         'holidays' => [
             'key'     => 'holidays',
             'label'   => 'Holidays',
