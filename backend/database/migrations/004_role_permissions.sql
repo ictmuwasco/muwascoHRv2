@@ -45,6 +45,7 @@ INSERT INTO role_permissions (role, module, action, is_granted) VALUES
 ('super_admin', 'admin', 'view', 1),
 ('super_admin', 'admin', 'manage', 1),
 ('super_admin', 'audit', 'view', 1),
+('super_admin', 'audit', 'export', 1),
 ('super_admin', 'profile', 'view', 1),
 ('super_admin', 'profile', 'edit', 1),
 ('super_admin', 'performance', 'view', 1),
@@ -82,6 +83,7 @@ INSERT INTO role_permissions (role, module, action, is_granted) VALUES
 ('hr_manager', 'admin', 'view', 1),
 ('hr_manager', 'admin', 'manage', 1),
 ('hr_manager', 'audit', 'view', 1),
+('hr_manager', 'audit', 'export', 1),
 ('hr_manager', 'profile', 'view', 1),
 ('hr_manager', 'profile', 'edit', 1),
 ('hr_manager', 'performance', 'view', 1),
@@ -190,4 +192,39 @@ INSERT INTO role_permissions (role, module, action, is_granted) VALUES
 ('admin', 'financial_year', 'view', 1),
 ('admin', 'financial_year', 'create', 1),
 ('admin', 'financial_year', 'edit', 1)
+ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted);
+
+-- Business-Specific Leave Actions (Phase 5 - approve/reject/invalidate)
+-- These are the granular leave workflow actions required by the HR system.
+INSERT INTO role_permissions (role, module, action, is_granted) VALUES
+-- Super Admin - full leave workflow control
+('super_admin', 'leave', 'approve', 1),
+('super_admin', 'leave', 'reject', 1),
+('super_admin', 'leave', 'invalidate', 1),
+-- HR Manager - full leave workflow control
+('hr_manager', 'leave', 'approve', 1),
+('hr_manager', 'leave', 'reject', 1),
+('hr_manager', 'leave', 'invalidate', 1),
+-- Department Head - approve/reject for their department
+('dept_head', 'leave', 'approve', 1),
+('dept_head', 'leave', 'reject', 1),
+('dept_head', 'leave', 'invalidate', 1),
+-- Section Head - approve/reject for their section
+('section_head', 'leave', 'approve', 1),
+('section_head', 'leave', 'reject', 1),
+('section_head', 'leave', 'invalidate', 1),
+-- Sub Section Head - approve/reject for their sub-section
+('sub_section_head', 'leave', 'approve', 1),
+('sub_section_head', 'leave', 'reject', 1),
+('sub_section_head', 'leave', 'invalidate', 1)
+ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted);
+
+-- Reports Export for Officer (Phase 9 - Internal Auditor scenario)
+-- Officer role gets reports view by default; export can be granted via user override.
+-- This ensures the Internal Auditor scenario works without hardcoding.
+INSERT INTO role_permissions (role, module, action, is_granted) VALUES
+('officer', 'reports', 'export', 0),
+('officer', 'reports', 'create', 0),
+('officer', 'reports', 'edit', 0),
+('officer', 'reports', 'delete', 0)
 ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted);

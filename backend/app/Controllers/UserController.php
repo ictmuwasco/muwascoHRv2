@@ -95,6 +95,12 @@ class UserController extends BaseController
 
         try {
             $userId = $this->userService->createUser($data);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_USERS,
+                \App\Services\AuditService::ACTION_CREATE,
+                'Created user account',
+                ['target_type' => 'User', 'target_id' => $userId, 'target_name' => ($data['first_name'] ?? '') . ' ' . ($data['last_name'] ?? ''), 'new_values' => $data]
+            );
             $this->success(['id' => $userId], 'User created successfully', 201);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -114,7 +120,14 @@ class UserController extends BaseController
         $data = $this->getJsonBody();
 
         try {
+            $oldUser = $this->userService->getUserById($id);
             $result = $this->userService->updateUser($id, $data);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_USERS,
+                \App\Services\AuditService::ACTION_UPDATE,
+                'Updated user account',
+                ['target_type' => 'User', 'target_id' => $id, 'target_name' => ($oldUser['first_name'] ?? '') . ' ' . ($oldUser['last_name'] ?? ''), 'old_values' => $oldUser, 'new_values' => $data]
+            );
             $this->success($result, 'User updated successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -132,7 +145,14 @@ class UserController extends BaseController
         $this->requirePermission('users', 'delete');
 
         try {
+            $oldUser = $this->userService->getUserById($id);
             $this->userService->deleteUser($id);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_USERS,
+                \App\Services\AuditService::ACTION_DELETE,
+                'Deleted user account',
+                ['target_type' => 'User', 'target_id' => $id, 'target_name' => ($oldUser['first_name'] ?? '') . ' ' . ($oldUser['last_name'] ?? ''), 'old_values' => $oldUser]
+            );
             $this->success(null, 'User deleted successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -153,7 +173,14 @@ class UserController extends BaseController
 
         try {
             $status = $data['is_active'] ?? ($data['status'] ?? 'active');
+            $oldUser = $this->userService->getUserById($id);
             $result = $this->userService->updateUserStatus($id, $status);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_USERS,
+                \App\Services\AuditService::ACTION_STATUS_CHANGE,
+                'Changed user status to ' . $status,
+                ['target_type' => 'User', 'target_id' => $id, 'target_name' => ($oldUser['first_name'] ?? '') . ' ' . ($oldUser['last_name'] ?? ''), 'old_values' => ['is_active' => $oldUser['is_active'] ?? null], 'new_values' => ['is_active' => $status]]
+            );
             $this->success($result, 'User status updated successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);

@@ -23,6 +23,7 @@ use App\Controllers\NotificationController;
 use App\Controllers\AuditLogController;
 use App\Controllers\SettingController;
 use App\Controllers\HolidayController;
+use App\Controllers\PermissionController;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 
@@ -135,6 +136,14 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
+    // Audit trail endpoints. The `/audit/statistics`, `/audit/filters`, and
+    // `/audit/export` routes must be declared BEFORE the `/audit/{id}` wildcard.
+    Route::get('/audit', [AuditLogController::class, 'index']);
+    Route::get('/audit/statistics', [AuditLogController::class, 'statistics']);
+    Route::get('/audit/filters', [AuditLogController::class, 'filters']);
+    Route::get('/audit/export', [AuditLogController::class, 'export']);
+    Route::get('/audit/{id}', [AuditLogController::class, 'show']);
+    // Backwards-compatible alias
     Route::get('/audit-logs', [AuditLogController::class, 'index']);
 
     Route::get('/settings', [SettingController::class, 'index']);
@@ -150,4 +159,14 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::put('/profile', [EmployeeController::class, 'updateProfileAction']);
     Route::post('/profile/documents', [EmployeeController::class, 'uploadProfileDocumentAction']);
     Route::delete('/profile/documents/{documentId}', [EmployeeController::class, 'deleteProfileDocumentAction']);
+
+    // Permission Management routes (Phase 16 - Permission Catalog)
+    Route::get('/permissions/catalog', [PermissionController::class, 'catalog']);
+    Route::get('/permissions/statistics', [PermissionController::class, 'statistics']);
+    Route::get('/permissions/roles', [PermissionController::class, 'roles']);
+    Route::get('/permissions/users', [PermissionController::class, 'users']);
+    Route::get('/permissions/users/{userId}', [PermissionController::class, 'userPermissions']);
+    Route::get('/permissions/overrides', [PermissionController::class, 'overrides']);
+    Route::post('/permissions/users/{userId}/overrides', [PermissionController::class, 'setOverride']);
+    Route::delete('/permissions/users/{userId}/overrides', [PermissionController::class, 'removeOverride']);
 });

@@ -155,6 +155,12 @@ class LeaveController
         ], $file);
 
         if ($result['success']) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_CREATE,
+                'Submitted leave application',
+                ['target_type' => 'LeaveApplication', 'target_id' => $result['id'] ?? ($result['application_id'] ?? null), 'metadata' => ['leave_type_id' => $leaveTypeId, 'start_date' => $startDate, 'end_date' => $endDate]]
+            );
             http_response_code(201);
             echo json_encode([
                 'success' => true,
@@ -760,6 +766,15 @@ class LeaveController
 
         $result = $this->approvalService->approve($userId, $applicationId);
 
+        if (($result['success'] ?? false)) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_APPROVE,
+                'Approved leave application',
+                ['target_type' => 'LeaveApplication', 'target_id' => $applicationId]
+            );
+        }
+
         $httpCode = ($result['success'] ?? false) ? 200 : 400;
         http_response_code($httpCode);
         echo json_encode($result);
@@ -787,6 +802,15 @@ class LeaveController
         }
 
         $result = $this->approvalService->reject($userId, $applicationId, $reason);
+
+        if (($result['success'] ?? false)) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_REJECT,
+                'Rejected leave application',
+                ['target_type' => 'LeaveApplication', 'target_id' => $applicationId, 'metadata' => ['reason' => mb_substr($reason, 0, 1000)]]
+            );
+        }
 
         $httpCode = ($result['success'] ?? false) ? 200 : 400;
         http_response_code($httpCode);
@@ -816,6 +840,15 @@ class LeaveController
 
         $result = $this->approvalService->invalidate($userId, $applicationId, $reason);
 
+        if (($result['success'] ?? false)) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_INVALIDATE,
+                'Invalidated leave application',
+                ['target_type' => 'LeaveApplication', 'target_id' => $applicationId, 'metadata' => ['reason' => mb_substr($reason, 0, 1000)]]
+            );
+        }
+
         $httpCode = ($result['success'] ?? false) ? 200 : 400;
         http_response_code($httpCode);
         echo json_encode($result);
@@ -836,6 +869,15 @@ class LeaveController
         }
 
         $result = $this->approvalService->cancel($userId, $applicationId);
+
+        if (($result['success'] ?? false)) {
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_LEAVE,
+                \App\Services\AuditService::ACTION_UPDATE,
+                'Cancelled leave application',
+                ['target_type' => 'LeaveApplication', 'target_id' => $applicationId]
+            );
+        }
 
         $httpCode = ($result['success'] ?? false) ? 200 : 400;
         http_response_code($httpCode);
