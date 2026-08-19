@@ -219,6 +219,16 @@ Also fixed: the `PERMISSION_CHANGE` audit entry recorded `target_name` as `"User
 because the user row was fetched with `SELECT id, role`. It now selects the name fields
 and records the user's name (falling back to email).
 
+A second runtime pass confirmed all five are fixed and found two more, also fixed:
+the roster edit slide-over left **Notes** blank (the `/leave/roster/matrix` payload
+carried no `notes` field, so saving after editing only the month wiped the note), and
+the Permissions header counters only refreshed on page reload (the tab now reloads
+statistics after each Allow/Deny/Inherit).
+
+Note when re-testing on an existing database: migration `017` was edited in place, so
+`meeting_invitations.response_status` / `attendance_status` must be `ALTER`ed manually
+or the migration re-run on a fresh database.
+
 Verified working in the same run: the real Permissions UI, effective values with real
 sources, override grant → persist → audit → remove → re-grant (the upsert/reactivate
 path), all nine `/leave/roster/*` GETs, `DELETE /api/leave/roster/{id}`, the whole
