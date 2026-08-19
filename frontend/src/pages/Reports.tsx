@@ -34,8 +34,8 @@ const Reports = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-        <p className="text-gray-500">Generate and view system reports</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Reports</h1>
+        <p className="text-gray-500 dark:text-gray-400">Generate and view system reports</p>
       </div>
 
       {/* Report Type Tabs */}
@@ -58,7 +58,7 @@ const Reports = () => {
 
       <Card title={`${reportTypes.find((t) => t.id === activeTab)?.label || 'Reports'}`}>
         <div className="space-y-4">
-          <p className="text-gray-600">Generate reports for {activeTab} module.</p>
+          <p className="text-gray-600 dark:text-gray-400">Generate reports for {activeTab} module.</p>
           <div className="flex space-x-3">
             <Button variant="outline" onClick={() => handleExport('pdf')}>
               <Download className="h-4 w-4 mr-2" />

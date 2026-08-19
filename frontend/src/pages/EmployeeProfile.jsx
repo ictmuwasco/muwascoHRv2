@@ -231,7 +231,7 @@ const EmployeeProfile = () => {
         <EmployeeTabs />
         <Card>
           <div className="text-center py-8">
-            <p className="text-gray-500">Employee not found</p>
+            <p className="text-gray-500 dark:text-gray-400">Employee not found</p>
             <Button variant="outline" className="mt-4" onClick={() => navigate('/employees')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Employees
@@ -259,7 +259,7 @@ const EmployeeProfile = () => {
       {/* Back button */}
       <button
         onClick={() => navigate('/employees')}
-        className="flex items-center text-sm text-gray-600 hover:text-gray-900"
+        className="flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
       >
         <ArrowLeft className="h-4 w-4 mr-1" />
         Back to Employees
@@ -273,15 +273,15 @@ const EmployeeProfile = () => {
               {employee.first_name?.[0]}{employee.last_name?.[0]}
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                 {employee.first_name} {employee.last_name}
               </h1>
-              <p className="text-gray-500">{employee.designation || 'No designation'}</p>
+              <p className="text-gray-500 dark:text-gray-400">{employee.designation || 'No designation'}</p>
               <div className="flex items-center space-x-2 mt-1">
                 <Badge variant={employee.employee_status === 'active' ? 'success' : 'danger'}>
                   {employee.employee_status || 'Active'}
                 </Badge>
-                <span className="text-sm text-gray-500">ID: {employee.employee_id}</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">ID: {employee.employee_id}</span>
               </div>
             </div>
           </div>
@@ -292,19 +292,19 @@ const EmployeeProfile = () => {
       </Card>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded-md">
           {success}
         </div>
       )}
 
       {/* Detail tabs */}
-      <div className="border-b border-gray-200 overflow-x-auto scrollbar-thin">
+      <div className="border-b border-gray-200 dark:border-slate-700 overflow-x-auto scrollbar-thin">
         <nav className="-mb-px flex space-x-1 sm:space-x-8" aria-label="Employee details">
           {tabs.map((tab) => (
             <button
@@ -330,16 +330,16 @@ const EmployeeProfile = () => {
           <Card title="Contact Information">
             <div className="space-y-3">
               <div className="flex items-center text-sm">
-                <Mail className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">{employee.email || 'Not provided'}</span>
+                <Mail className="h-4 w-4 mr-2 text-gray-400 dark:text-gray-500" />
+                <span className="text-gray-600 dark:text-gray-400">{employee.email || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <Phone className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">{employee.phone || 'Not provided'}</span>
+                <Phone className="h-4 w-4 mr-2 text-gray-400 dark:text-gray-500" />
+                <span className="text-gray-600 dark:text-gray-400">{employee.phone || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <MapPin className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">{employee.address || 'Not provided'}</span>
+                <MapPin className="h-4 w-4 mr-2 text-gray-400 dark:text-gray-500" />
+                <span className="text-gray-600 dark:text-gray-400">{employee.address || 'Not provided'}</span>
               </div>
             </div>
           </Card>
@@ -347,20 +347,20 @@ const EmployeeProfile = () => {
           <Card title="Employment Information">
             <div className="space-y-3">
               <div className="flex items-center text-sm">
-                <Briefcase className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">{employee.position || employee.designation || 'Not provided'}</span>
+                <Briefcase className="h-4 w-4 mr-2 text-gray-400 dark:text-gray-500" />
+                <span className="text-gray-600 dark:text-gray-400">{employee.position || employee.designation || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <Building2 className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">{employee.department_name || employee.department || 'Not provided'}</span>
+                <Building2 className="h-4 w-4 mr-2 text-gray-400 dark:text-gray-500" />
+                <span className="text-gray-600 dark:text-gray-400">{employee.department_name || employee.department || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <FileText className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">Employment Type: {employee.employment_type || employee.employee_type || 'Not provided'}</span>
+                <FileText className="h-4 w-4 mr-2 text-gray-400 dark:text-gray-500" />
+                <span className="text-gray-600 dark:text-gray-400">Employment Type: {employee.employment_type || employee.employee_type || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <Briefcase className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">Hire Date: {employee.hire_date || 'Not provided'}</span>
+                <Briefcase className="h-4 w-4 mr-2 text-gray-400 dark:text-gray-500" />
+                <span className="text-gray-600 dark:text-gray-400">Hire Date: {employee.hire_date || 'Not provided'}</span>
               </div>
             </div>
           </Card>
@@ -368,16 +368,16 @@ const EmployeeProfile = () => {
           <Card title="Personal Information">
             <div className="space-y-3">
               <div className="flex items-center text-sm">
-                <span className="w-32 text-gray-500">Gender:</span>
-                <span className="text-gray-900 capitalize">{employee.gender || 'Not provided'}</span>
+                <span className="w-32 text-gray-500 dark:text-gray-400">Gender:</span>
+                <span className="text-gray-900 dark:text-gray-100 capitalize">{employee.gender || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <span className="w-32 text-gray-500">Date of Birth:</span>
-                <span className="text-gray-900">{employee.date_of_birth || 'Not provided'}</span>
+                <span className="w-32 text-gray-500 dark:text-gray-400">Date of Birth:</span>
+                <span className="text-gray-900 dark:text-gray-100">{employee.date_of_birth || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <span className="w-32 text-gray-500">National ID:</span>
-                <span className="text-gray-900">{employee.national_id || 'Not provided'}</span>
+                <span className="w-32 text-gray-500 dark:text-gray-400">National ID:</span>
+                <span className="text-gray-900 dark:text-gray-100">{employee.national_id || 'Not provided'}</span>
               </div>
             </div>
           </Card>
@@ -385,20 +385,20 @@ const EmployeeProfile = () => {
           <Card title="HR Information">
             <div className="space-y-3">
               <div className="flex items-center text-sm">
-                <span className="w-32 text-gray-500">Section:</span>
-                <span className="text-gray-900">{employee.section_name || employee.section_id || 'Not provided'}</span>
+                <span className="w-32 text-gray-500 dark:text-gray-400">Section:</span>
+                <span className="text-gray-900 dark:text-gray-100">{employee.section_name || employee.section_id || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <span className="w-32 text-gray-500">Subsection:</span>
-                <span className="text-gray-900">{employee.subsection_name || employee.subsection_id || 'Not provided'}</span>
+                <span className="w-32 text-gray-500 dark:text-gray-400">Subsection:</span>
+                <span className="text-gray-900 dark:text-gray-100">{employee.subsection_name || employee.subsection_id || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <span className="w-32 text-gray-500">Office:</span>
-                <span className="text-gray-900">{employee.office_name || employee.office_id || 'Not provided'}</span>
+                <span className="w-32 text-gray-500 dark:text-gray-400">Office:</span>
+                <span className="text-gray-900 dark:text-gray-100">{employee.office_name || employee.office_id || 'Not provided'}</span>
               </div>
               <div className="flex items-center text-sm">
-                <span className="w-32 text-gray-500">Scale:</span>
-                <span className="text-gray-900">{employee.scale_id || 'Not provided'}</span>
+                <span className="w-32 text-gray-500 dark:text-gray-400">Scale:</span>
+                <span className="text-gray-900 dark:text-gray-100">{employee.scale_id || 'Not provided'}</span>
               </div>
             </div>
           </Card>
@@ -418,7 +418,7 @@ const EmployeeProfile = () => {
                   placeholder="e.g. National ID, KRA PIN, Certificate"
                 />
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
                   <select
                     value={newDocument.category}
                     onChange={(e) => setNewDocument((prev) => ({ ...prev, category: e.target.value }))}
@@ -435,7 +435,7 @@ const EmployeeProfile = () => {
                   </select>
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">File</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">File</label>
                   <input
                     type="file"
                     onChange={handleDocumentFileChange}
@@ -465,12 +465,12 @@ const EmployeeProfile = () => {
             {documents.length > 0 ? (
               <div className="space-y-3">
                 {documents.map((doc, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-900/40 rounded-lg">
                     <div className="flex items-center">
-                      <FileText className="h-5 w-5 mr-2 text-gray-400" />
+                      <FileText className="h-5 w-5 mr-2 text-gray-400 dark:text-gray-500" />
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{doc.name || doc.document_name || `Document ${index + 1}`}</p>
-                        <p className="text-xs text-gray-500">{doc.type || doc.category || 'Document'}</p>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{doc.name || doc.document_name || `Document ${index + 1}`}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{doc.type || doc.category || 'Document'}</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -490,7 +490,7 @@ const EmployeeProfile = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">No documents uploaded for this employee.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">No documents uploaded for this employee.</p>
             )}
           </Card>
         </div>
@@ -544,12 +544,12 @@ const EmployeeProfile = () => {
             {nextOfKin.length > 0 ? (
               <div className="space-y-3">
                 {nextOfKin.map((kin, index) => (
-                  <div key={index} className="p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm font-medium text-gray-900">{kin.name || `Next of Kin ${index + 1}`}</p>
-                    <p className="text-xs text-gray-500 mt-1">{kin.relationship || 'Relationship not specified'}</p>
+                  <div key={index} className="p-4 bg-gray-50 dark:bg-slate-900/40 rounded-lg">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{kin.name || `Next of Kin ${index + 1}`}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{kin.relationship || 'Relationship not specified'}</p>
                     {kin.contact && (
-                      <div className="flex items-center mt-2 text-sm text-gray-600">
-                        <Phone className="h-3 w-3 mr-1 text-gray-400" />
+                      <div className="flex items-center mt-2 text-sm text-gray-600 dark:text-gray-400">
+                        <Phone className="h-3 w-3 mr-1 text-gray-400 dark:text-gray-500" />
                         {kin.contact}
                       </div>
                     )}
@@ -557,7 +557,7 @@ const EmployeeProfile = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">No next of kin information on file.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">No next of kin information on file.</p>
             )}
           </Card>
         </div>
@@ -629,14 +629,14 @@ const EmployeeProfile = () => {
             {dependantsList.length > 0 ? (
               <div className="space-y-3">
                 {dependantsList.map((dep, index) => (
-                  <div key={index} className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
+                  <div key={index} className="p-4 bg-gray-50 dark:bg-slate-900/40 rounded-lg flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{dep.name || `Dependant ${index + 1}`}</p>
-                      <p className="text-xs text-gray-500 mt-1">{dep.relationship || 'Relationship not specified'}</p>
-                      <p className="text-xs text-gray-500 mt-1">Date of Birth: {dep.date_of_birth || 'Not provided'}</p>
-                      {dep.gender && <p className="text-xs text-gray-500 mt-1">Gender: {dep.gender}</p>}
-                      {dep.id_no && <p className="text-xs text-gray-500 mt-1">ID No: {dep.id_no}</p>}
-                      {dep.contact && <p className="text-xs text-gray-500 mt-1">Contact: {dep.contact}</p>}
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{dep.name || `Dependant ${index + 1}`}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{dep.relationship || 'Relationship not specified'}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Date of Birth: {dep.date_of_birth || 'Not provided'}</p>
+                      {dep.gender && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Gender: {dep.gender}</p>}
+                      {dep.id_no && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">ID No: {dep.id_no}</p>}
+                      {dep.contact && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Contact: {dep.contact}</p>}
                     </div>
                     <Button
                       variant="danger"
@@ -649,7 +649,7 @@ const EmployeeProfile = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">No dependants on record.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">No dependants on record.</p>
             )}
           </Card>
         </div>

@@ -34,7 +34,7 @@ const CoverageBar = ({ stats, label = 'PLANNING COVERAGE', showDetails = true })
       </div>
       {showDetails && (
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-600 dark:text-gray-300">
+          <span className="text-gray-600 dark:text-gray-400 dark:text-gray-300">
             <span className="font-medium">{scheduled}</span> of <span className="font-medium">{active}</span> employees scheduled
           </span>
           {notScheduled > 0 && (

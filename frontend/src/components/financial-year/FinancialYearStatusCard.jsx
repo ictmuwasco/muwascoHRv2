@@ -24,7 +24,7 @@ const FinancialYearStatusCard = ({ status }) => {
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 bg-white bg-opacity-50 border border-current rounded-md text-sm"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-800 bg-opacity-50 border border-current rounded-md text-sm"
                 value={status.current_month}
                 readOnly
               />
@@ -35,7 +35,7 @@ const FinancialYearStatusCard = ({ status }) => {
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 bg-white bg-opacity-50 border border-current rounded-md text-sm"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-800 bg-opacity-50 border border-current rounded-md text-sm"
                 value={status.current_date}
                 readOnly
               />
@@ -46,7 +46,7 @@ const FinancialYearStatusCard = ({ status }) => {
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 bg-white bg-opacity-50 border border-current rounded-md text-sm"
+                className="w-full px-3 py-2 bg-white dark:bg-slate-800 bg-opacity-50 border border-current rounded-md text-sm"
                 value={
                   status.next_financial_year
                     ? `${status.next_financial_year.year_name} (${status.next_financial_year.start_date} to ${status.next_financial_year.end_date})`

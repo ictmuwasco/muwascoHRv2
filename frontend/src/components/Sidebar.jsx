@@ -91,7 +91,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
 
       {/* Sidebar */}
       <div
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-slate-800 border-r transform transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0 lg:block`}
       >
@@ -102,7 +102,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           {/* Close button for mobile */}
           <button
             onClick={onClose}
-            className="lg:hidden text-gray-500 hover:text-gray-700"
+            className="lg:hidden text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
           >
             <X className="h-5 w-5" />
           </button>
@@ -126,7 +126,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
                 <div key={item.name}>
                   <button
                     onClick={toggle}
-                    className="flex items-center w-full space-x-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                    className="flex items-center w-full space-x-3 px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
                   >
                     <item.icon className="h-5 w-5" />
                     <span className="font-medium flex-1 text-left">{item.name}</span>
@@ -189,21 +189,21 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           <NavLink
             to="/profile"
             onClick={onClose}
-            className="flex items-center space-x-3 mb-3 p-2 rounded-lg hover:bg-gray-50 transition-colors"
+            className="flex items-center space-x-3 mb-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors"
           >
             <div className="h-10 w-10 rounded-full bg-primary-600 flex items-center justify-center text-white">
               {user?.first_name?.[0] || 'U'}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                 {user?.first_name} {user?.last_name}
               </p>
-              <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
             </div>
           </NavLink>
           <button
             onClick={logout}
-            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg"
+            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700/50 rounded-lg"
           >
             <LogOut className="h-4 w-4 mr-2" />
             Logout

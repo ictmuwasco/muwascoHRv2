@@ -37,7 +37,7 @@ const DepartmentTable = ({ departments = [] }) => {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-        <thead className="bg-gray-50 dark:bg-slate-900">
+        <thead className="bg-gray-50 dark:bg-slate-900/40 dark:bg-slate-900">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Department
@@ -62,13 +62,13 @@ const DepartmentTable = ({ departments = [] }) => {
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
                 {dept.department_name}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300 text-right">
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300 text-right">
                 {dept.total_employees}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300 text-right">
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300 text-right">
                 {dept.scheduled_count}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300 text-right">
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300 text-right">
                 {dept.unscheduled_count}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-right">

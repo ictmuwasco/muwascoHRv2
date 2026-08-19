@@ -72,7 +72,7 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen w-full flex bg-slate-50">
+    <div className="min-h-screen w-full flex bg-slate-50 text-gray-900">
       {/* Left brand panel */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-primary-700 via-primary-600 to-primary-800 text-white">
         {/* Decorative shapes */}

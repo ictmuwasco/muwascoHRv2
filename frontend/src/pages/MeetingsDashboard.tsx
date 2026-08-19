@@ -179,7 +179,7 @@ const MeetingsDashboard = () => {
       label: 'Date',
       render: (value: string) => (
         <div className="flex items-center text-sm">
-          <Calendar className="h-4 w-4 mr-1 text-gray-400" />
+          <Calendar className="h-4 w-4 mr-1 text-gray-400 dark:text-gray-500" />
           {formatDate(value)}
         </div>
       ),
@@ -189,7 +189,7 @@ const MeetingsDashboard = () => {
       label: 'Time',
       render: (value: string, row: Meeting) => (
         <div className="flex items-center text-sm">
-          <Clock className="h-4 w-4 mr-1 text-gray-400" />
+          <Clock className="h-4 w-4 mr-1 text-gray-400 dark:text-gray-500" />
           {formatTime(value)} - {formatTime(row.end_time)}
         </div>
       ),
@@ -199,7 +199,7 @@ const MeetingsDashboard = () => {
       label: 'Location',
       render: (value: string) => (
         <div className="flex items-center text-sm">
-          <MapPin className="h-4 w-4 mr-1 text-gray-400" />
+          <MapPin className="h-4 w-4 mr-1 text-gray-400 dark:text-gray-500" />
           {value}
         </div>
       ),
@@ -249,8 +249,8 @@ const MeetingsDashboard = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Meetings Dashboard</h1>
-          <p className="text-gray-500">Manage all scheduled meetings</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Meetings Dashboard</h1>
+          <p className="text-gray-500 dark:text-gray-400">Manage all scheduled meetings</p>
         </div>
         <Button onClick={() => navigate('/meetings/create')}>
           <Plus className="h-4 w-4 mr-2" />

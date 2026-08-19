@@ -170,7 +170,7 @@ const MyMeetings = () => {
       label: 'Date',
       render: (value: string, row: MeetingInvitation) => (
         <div className="flex items-center text-sm">
-          <Calendar className="h-4 w-4 mr-1 text-gray-400" />
+          <Calendar className="h-4 w-4 mr-1 text-gray-400 dark:text-gray-500" />
           {formatDate(value)}
         </div>
       ),
@@ -180,7 +180,7 @@ const MyMeetings = () => {
       label: 'Time',
       render: (value: string, row: MeetingInvitation) => (
         <div className="flex items-center text-sm">
-          <Clock className="h-4 w-4 mr-1 text-gray-400" />
+          <Clock className="h-4 w-4 mr-1 text-gray-400 dark:text-gray-500" />
           {formatTime(value)} - {formatTime(row.end_time)}
         </div>
       ),
@@ -190,7 +190,7 @@ const MyMeetings = () => {
       label: 'Location',
       render: (value: string) => (
         <div className="flex items-center text-sm">
-          <MapPin className="h-4 w-4 mr-1 text-gray-400" />
+          <MapPin className="h-4 w-4 mr-1 text-gray-400 dark:text-gray-500" />
           {value}
         </div>
       ),
@@ -308,8 +308,8 @@ const MyMeetings = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Meetings</h1>
-          <p className="text-gray-500">Meetings you have been invited to</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">My Meetings</h1>
+          <p className="text-gray-500 dark:text-gray-400">Meetings you have been invited to</p>
         </div>
         <Button onClick={() => navigate('/meetings')}>
           <CalendarCheck className="h-4 w-4 mr-2" />

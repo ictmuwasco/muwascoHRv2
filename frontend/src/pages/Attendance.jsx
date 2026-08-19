@@ -67,8 +67,8 @@ const Attendance = () => {
       label: 'Employee',
       render: (value, row) => (
         <div>
-          <div className="font-medium text-gray-900">{value}</div>
-          <div className="text-xs text-gray-500">ID: {row.employee_id}</div>
+          <div className="font-medium text-gray-900 dark:text-gray-100">{value}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">ID: {row.employee_id}</div>
         </div>
       ),
     },
@@ -79,7 +79,7 @@ const Attendance = () => {
       render: (value, row) => (
         <div>
           <div>{value || '-'}</div>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-gray-500 dark:text-gray-400">
             In: {row.clock_in_office_id} | Out: {row.clock_out_office_id}
           </div>
         </div>
@@ -106,8 +106,8 @@ const Attendance = () => {
         return (
           <div>
             <Badge variant={variant}>{value}</Badge>
-            {row.is_late && <div className="text-xs text-yellow-600 mt-1">Late</div>}
-            {row.auto_clocked_out && <div className="text-xs text-red-600 mt-1">Auto</div>}
+            {row.is_late && <div className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Late</div>}
+            {row.auto_clocked_out && <div className="text-xs text-red-600 dark:text-red-400 mt-1">Auto</div>}
           </div>
         )
       },
@@ -116,7 +116,7 @@ const Attendance = () => {
       key: 'location',
       label: 'GPS Location',
       render: (_, row) => (
-        <div className="text-xs text-gray-600">
+        <div className="text-xs text-gray-600 dark:text-gray-400">
           {row.lat && row.lng ? (
             <>
               <div>Lat: {row.lat}</div>
@@ -133,7 +133,7 @@ const Attendance = () => {
       key: 'timestamps',
       label: 'Created / Updated',
       render: (_, row) => (
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-gray-500 dark:text-gray-400">
           <div>Created: {formatDateTime(row.created_at)}</div>
           <div>Updated: {formatDateTime(row.updated_at)}</div>
         </div>
@@ -145,8 +145,8 @@ const Attendance = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Attendance Records</h1>
-          <p className="text-gray-500">Individual clock-in and clock-out records</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Attendance Records</h1>
+          <p className="text-gray-500 dark:text-gray-400">Individual clock-in and clock-out records</p>
         </div>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -158,8 +158,8 @@ const Attendance = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Attendance Records</h1>
-        <p className="text-gray-500">Individual clock-in and clock-out records</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Attendance Records</h1>
+        <p className="text-gray-500 dark:text-gray-400">Individual clock-in and clock-out records</p>
       </div>
 
       <Card>
@@ -167,7 +167,7 @@ const Attendance = () => {
 
         {/* Pagination */}
         <div className="flex items-center justify-between mt-4 px-2 py-3">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Showing {attendance.length > 0 ? ((page - 1) * PER_PAGE) + 1 : 0} to{' '}
             {Math.min(page * PER_PAGE, total)} of {total} records
           </p>
@@ -176,19 +176,19 @@ const Attendance = () => {
               type="button"
               disabled={page <= 1}
               onClick={() => setPage(page - 1)}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-slate-600 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronLeft className="h-4 w-4 mr-1" />
               Previous
             </button>
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">
               Page {page} of {Math.max(totalPages, 1)}
             </span>
             <button
               type="button"
               disabled={page >= totalPages}
               onClick={() => setPage(page + 1)}
-              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center px-3 py-2 border border-gray-300 dark:border-slate-600 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700/50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
               <ChevronRight className="h-4 w-4 ml-1" />

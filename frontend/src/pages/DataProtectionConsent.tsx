@@ -24,7 +24,7 @@ const sections: Section[] = [
     id: 'collect',
     title: 'What information do we collect?',
     content: (
-      <div className="space-y-2 text-sm text-gray-600">
+      <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
         <p>
           The MUWASCO HR System collects and processes the following categories of
           personal information for legitimate HR and organizational purposes:
@@ -220,7 +220,7 @@ const DataProtectionConsent = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900/40 py-8 px-4 sm:px-6">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -243,7 +243,7 @@ const DataProtectionConsent = () => {
         </div>
 
         {/* Notice intro */}
-        <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
           <h2 className="text-lg font-semibold text-slate-900 mb-3">Data Protection Notice</h2>
           <p className="text-sm text-slate-600 leading-relaxed">
             MUWASCO collects and processes employee information for legitimate HR and
@@ -257,7 +257,7 @@ const DataProtectionConsent = () => {
         {/* Expandable sections */}
         <div className="space-y-3 mb-6">
           {sections.map((section) => (
-            <div key={section.id} className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 overflow-hidden">
+            <div key={section.id} className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 overflow-hidden">
               <button
                 onClick={() => toggleSection(section.id)}
                 className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-50 transition"
@@ -277,7 +277,7 @@ const DataProtectionConsent = () => {
         </div>
 
         {/* National ID verification */}
-        <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
           <h3 className="font-semibold text-slate-900 mb-1">Verify Your National ID</h3>
           <p className="text-sm text-slate-500 mb-4">
             Enter your National ID to verify your identity before providing consent.
@@ -292,7 +292,7 @@ const DataProtectionConsent = () => {
                 setSuccess('');
               }}
               placeholder="Enter your National ID"
-              className="flex-1 px-4 py-2.5 bg-white text-sm rounded-lg border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
+              className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-800 text-sm rounded-lg border border-slate-200 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500"
             />
             <button
               onClick={handleVerify}
@@ -313,7 +313,7 @@ const DataProtectionConsent = () => {
             </button>
           </div>
           {verified && success && (
-            <div className="mt-3 flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+            <div className="mt-3 flex items-center gap-2 text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg px-4 py-3">
               <CheckCircle className="w-4 h-4 flex-shrink-0" />
               {success}
             </div>
@@ -322,20 +322,20 @@ const DataProtectionConsent = () => {
 
         {/* Error / Success messages */}
         {error && (
-          <div className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="mb-6 flex items-start gap-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
             <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
         {success && !verified && (
-          <div className="mb-6 flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          <div className="mb-6 flex items-start gap-2 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 px-4 py-3 text-sm text-green-700 dark:text-green-300">
             <CheckCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
             <span>{success}</span>
           </div>
         )}
 
         {/* Consent checkbox */}
-        <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
+        <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
           <label className="flex items-start gap-3 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -372,7 +372,7 @@ const DataProtectionConsent = () => {
           <button
             onClick={handleDecline}
             disabled={submitting}
-            className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 transition"
+            className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-slate-600 bg-white dark:bg-slate-800 border border-slate-300 hover:bg-slate-50 disabled:opacity-50 transition"
           >
             <XCircle className="w-4 h-4" />
             I do not agree

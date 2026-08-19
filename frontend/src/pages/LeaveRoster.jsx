@@ -341,7 +341,7 @@ const LeaveRoster = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-101">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 dark:text-gray-101">
             Annual Leave Roster
           </h1>
           <p className="text-gray-500 dark:text-gray-400">
@@ -372,10 +372,10 @@ const LeaveRoster = () => {
 
       {/* Planning Progress (Spec #32) */}
       {stats && (
-        <div className="bg-gray-50 dark:bg-slate-800/50 rounded-xl p-6 space-y-4">
+        <div className="bg-gray-50 dark:bg-slate-900/40 dark:bg-slate-800/50 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-101">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 dark:text-gray-101">
                 {fyName} Annual Leave Planning
               </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -415,10 +415,10 @@ const LeaveRoster = () => {
           <Card className="cursor-pointer transition-transform hover:scale-[1.02]" onClick={handleAllClick}>
             <div className="flex items-center space-x-3">
               <div className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center">
-                <Users className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                <Users className="h-5 w-5 text-gray-600 dark:text-gray-400 dark:text-gray-300" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-900 dark:text-gray-101">
+                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 dark:text-gray-101">
                   {stats.total_active}
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Active Employees</p>
@@ -511,7 +511,7 @@ const LeaveRoster = () => {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-101">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 dark:text-gray-101">
               Planning Matrix
             </h3>
             <div className="flex items-center space-x-2">

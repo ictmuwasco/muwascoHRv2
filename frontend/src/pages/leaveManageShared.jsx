@@ -50,7 +50,7 @@ export const Pagination = ({ pages, offset, onChange }) => {
   const currentPage = Math.floor(offset / ROWS_PER_PAGE) + 1
   return (
     <div className="flex items-center justify-between mt-4 text-sm">
-      <span className="text-gray-500">Page {currentPage} of {pages}</span>
+      <span className="text-gray-500 dark:text-gray-400">Page {currentPage} of {pages}</span>
       <div className="flex space-x-2">
         <Button
           size="sm"

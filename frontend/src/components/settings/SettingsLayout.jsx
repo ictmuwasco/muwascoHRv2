@@ -23,12 +23,12 @@ const SettingsLayout = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-500">Manage your account, users, and system configuration</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h1>
+        <p className="text-gray-500 dark:text-gray-400">Manage your account, users, and system configuration</p>
       </div>
 
       {/* Horizontal tab nav */}
-      <div className="border-b border-gray-200 overflow-x-auto scrollbar-thin">
+      <div className="border-b border-gray-200 dark:border-slate-700 overflow-x-auto scrollbar-thin">
         <nav className="-mb-px flex space-x-1 sm:space-x-8" aria-label="Settings tabs">
           {tabs.map((tab) => (
             <NavLink

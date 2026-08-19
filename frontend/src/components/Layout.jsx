@@ -10,7 +10,7 @@ const Layout = () => {
   const closeSidebar = () => setSidebarOpen(false)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900/40">
       <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
       <div className="lg:pl-64">
         <Header onToggleSidebar={toggleSidebar} />
