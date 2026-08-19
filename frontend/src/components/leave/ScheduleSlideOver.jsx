@@ -165,7 +165,7 @@ const ScheduleSlideOver = ({
           </h2>
           <button
             onClick={handleClose}
-            className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg"
+            className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 dark:hover:text-gray-200 rounded-lg"
           >
             <X className="h-5 w-5" />
           </button>
@@ -188,7 +188,7 @@ const ScheduleSlideOver = ({
                   setShowDropdown(true)
                 }}
                 onFocus={() => setShowDropdown(true)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
             </div>
@@ -209,7 +209,7 @@ const ScheduleSlideOver = ({
                     <button
                       key={emp.id}
                       onClick={() => handleSelectEmployee(emp)}
-                      className="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                      className="w-full text-left p-3 hover:bg-gray-50 dark:hover:bg-slate-700/50 dark:hover:bg-slate-700 transition-colors"
                     >
                       <div className="font-medium text-gray-900 dark:text-gray-100">
                         {emp.employee_name}
@@ -232,7 +232,7 @@ const ScheduleSlideOver = ({
 
           {/* Selected Employee Info */}
           {selectedEmployee && (
-            <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4">
+            <div className="bg-gray-50 dark:bg-slate-900/40 dark:bg-slate-700/50 rounded-lg p-4">
               <div className="flex items-center space-x-3">
                 <div className="h-10 w-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
                   <User className="h-5 w-5 text-primary-600 dark:text-primary-400" />
@@ -305,7 +305,7 @@ const ScheduleSlideOver = ({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Optional planning notes..."
               rows={3}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
             />
           </div>
 

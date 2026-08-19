@@ -45,7 +45,7 @@ const DistributionChart = ({ distribution = [], highest = null, lowest = null, m
               <span className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {FY_MONTH_SHORT[idx]}
               </span>
-              <span className="text-xs font-medium text-gray-600 dark:text-gray-300">
+              <span className="text-xs font-medium text-gray-600 dark:text-gray-400 dark:text-gray-300">
                 {item.count}
               </span>
             </div>
@@ -62,10 +62,10 @@ const DistributionChart = ({ distribution = [], highest = null, lowest = null, m
                 <span className="text-amber-600 dark:text-amber-400 text-sm">📊</span>
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-101">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
                   Highest concentration
                 </p>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300">
                   {highest.month} · {highest.count} employees scheduled
                 </p>
               </div>
@@ -77,10 +77,10 @@ const DistributionChart = ({ distribution = [], highest = null, lowest = null, m
                 <span className="text-blue-600 dark:text-blue-400 text-sm">📉</span>
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-101">
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
                   Lowest concentration
                 </p>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
+                <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300">
                   {lowest.month} · {lowest.count} employees scheduled
                 </p>
               </div>

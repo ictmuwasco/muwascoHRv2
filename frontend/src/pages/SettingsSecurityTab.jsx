@@ -10,22 +10,22 @@ const SecurityTab = () => {
             <Lock className="h-8 w-8 text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Security</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Security</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Manage your password and security settings
             </p>
           </div>
         </div>
       </Card>
       <Card>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Active Sessions</h3>
-        <p className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Active Sessions</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Active sessions and device management will be available here.
         </p>
       </Card>
       <Card>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Two-Factor Auth</h3>
-        <p className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Two-Factor Auth</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Two-factor authentication setup will be available here.
         </p>
       </Card>

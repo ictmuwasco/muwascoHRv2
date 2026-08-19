@@ -291,7 +291,7 @@ const EmployeeForm = () => {
 
       <button
         onClick={() => navigate('/employees')}
-        className="flex items-center text-sm text-gray-600 hover:text-gray-900"
+        className="flex items-center text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
       >
         <ArrowLeft className="h-4 w-4 mr-1" />
         Back to Employees
@@ -299,23 +299,23 @@ const EmployeeForm = () => {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             {isEdit ? 'Edit Employee' : 'Add Employee'}
           </h1>
-          <p className="text-gray-500">
+          <p className="text-gray-500 dark:text-gray-400">
             {isEdit ? 'Update employee information' : 'Create a new employee record'}
           </p>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded-md">
           {success}
         </div>
       )}

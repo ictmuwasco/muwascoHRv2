@@ -298,3 +298,34 @@ and the router's endpoint matching break.
 7. Commit a base schema dump (`schema.sql`) so a database can be built from scratch —
    the absence of one is why several failures could only be classified as "probably
    environmental".
+
+---
+
+## 9. Dark mode
+
+### 9.1 Why the toggle was invisible
+
+Three pieces were missing, so no toggle could have worked:
+
+| Piece | State before |
+|---|---|
+| `frontend/src/context/ThemeContext.jsx` | Committed in `23bc00d`, but **never imported anywhere** — no `ThemeProvider` was mounted. |
+| `frontend/src/components/Header.jsx` | Contained no toggle at all (last modified in `1fd9b72`); any local toggle was never pushed. |
+| `frontend/tailwind.config.js` | No `darkMode` key, so Tailwind used the default `media` strategy — `dark:` classes followed the OS setting and ignored the `dark` class on `<html>`. |
+
+### 9.2 Implementation
+
+* `tailwind.config.js` → `darkMode: 'class'`.
+* `main.jsx` wraps the app in `ThemeProvider`; it applies/removes `dark` on
+  `document.documentElement` and persists the choice in `localStorage` under `theme`.
+  **Light is the default** — the system preference is deliberately not consulted.
+* `Header.jsx` renders a sun/moon toggle next to the notification bell.
+* `index.css` gives `body`, `.card`, `.input` and `.btn-secondary` dark variants.
+* Every page and component under `frontend/src` except `pages/Login.jsx` received
+  `dark:` counterparts for its surface, text, border, divider and badge colours.
+  Login keeps an explicit `text-gray-900` so it stays light-themed in either mode.
+
+Convention for new UI: surfaces `bg-white dark:bg-slate-800`, page/section fills
+`bg-gray-50 dark:bg-slate-900/40`, body text `text-gray-900 dark:text-gray-100`,
+muted text `text-gray-500 dark:text-gray-400`, borders `border-gray-200 dark:border-slate-700`,
+coloured badges `bg-X-100 dark:bg-X-900/30` with `text-X-800 dark:text-X-300`.

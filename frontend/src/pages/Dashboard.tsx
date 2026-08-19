@@ -273,21 +273,21 @@ const Dashboard = () => {
       return (
         <div className="flex items-center space-x-2">
           <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-sm font-medium text-green-700">Clocked In</span>
+          <span className="text-sm font-medium text-green-700 dark:text-green-300">Clocked In</span>
         </div>
       )
     } else if (attendanceData.has_clocked_in_today) {
       return (
         <div className="flex items-center space-x-2">
           <div className="h-3 w-3 bg-gray-400 rounded-full"></div>
-          <span className="text-sm font-medium text-gray-700">Clocked Out</span>
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Clocked Out</span>
         </div>
       )
     }
     return (
       <div className="flex items-center space-x-2">
         <div className="h-3 w-3 bg-red-500 rounded-full"></div>
-        <span className="text-sm font-medium text-red-700">Not Clocked In</span>
+        <span className="text-sm font-medium text-red-700 dark:text-red-300">Not Clocked In</span>
       </div>
     )
   }
@@ -295,8 +295,8 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500">Welcome to MUWASCO HR Management System</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
+        <p className="text-gray-500 dark:text-gray-400">Welcome to MUWASCO HR Management System</p>
       </div>
 
       {/* Statistics Cards */}
@@ -308,8 +308,8 @@ const Dashboard = () => {
                 <card.icon className="h-6 w-6 text-white" />
               </div>
               <div>
-                <p className="text-sm text-gray-500">{card.title}</p>
-                <p className="text-2xl font-bold text-gray-900">{card.value}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{card.title}</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{card.value}</p>
               </div>
             </div>
           </Card>
@@ -320,26 +320,26 @@ const Dashboard = () => {
       <Card>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-gray-900">Attendance</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Attendance</h3>
             {getStatusBadge()}
           </div>
           
           {locationError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md">
               {locationError}
             </div>
           )}
 
           {attendanceData.current_session && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-700">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <p className="text-sm text-blue-700 dark:text-blue-300">
                 <strong>Clocked in at:</strong> {new Date(attendanceData.current_session.clock_in).toLocaleTimeString()}
               </p>
-              <p className="text-sm text-blue-700 mt-1">
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
                 <strong>Location:</strong> {attendanceData.current_session.office_name}
               </p>
               {attendanceData.current_session.is_late && (
-                <p className="text-sm text-yellow-700 mt-1">
+                <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                   <strong>Status:</strong> Late Arrival
                 </p>
               )}
@@ -348,13 +348,13 @@ const Dashboard = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 {attendanceData.is_clocked_in ? 'Clock Out At:' : 'Clock In At:'}
               </label>
               <select
                 value={selectedOffice}
                 onChange={(e) => setSelectedOffice(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 {attendanceData.offices.map((office) => (
                   <option key={office.id} value={office.id}>
@@ -413,12 +413,12 @@ const Dashboard = () => {
         <Card>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-blue-100 rounded-lg">
-                <FileText className="h-6 w-6 text-blue-600" />
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                <FileText className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Apply Leave</h3>
-                <p className="text-sm text-gray-500">Submit leave application</p>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Apply Leave</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Submit leave application</p>
               </div>
             </div>
             <Button onClick={() => navigate('/leave')}>
@@ -430,12 +430,12 @@ const Dashboard = () => {
         <Card>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="p-3 bg-purple-100 rounded-lg">
-                <Star className="h-6 w-6 text-purple-600" />
+              <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                <Star className="h-6 w-6 text-purple-600 dark:text-purple-400" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">My Appraisal</h3>
-                <p className="text-sm text-gray-500">View performance reviews</p>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">My Appraisal</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">View performance reviews</p>
               </div>
             </div>
             <Button onClick={() => navigate('/appraisal')} variant="secondary">
@@ -449,8 +449,8 @@ const Dashboard = () => {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
-            <Bell className="h-5 w-5 text-gray-600" />
-            <h3 className="text-lg font-semibold text-gray-900">Notifications</h3>
+            <Bell className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
             {unreadCount > 0 && (
               <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
                 {unreadCount}
@@ -473,13 +473,13 @@ const Dashboard = () => {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h4 className="text-sm font-medium text-gray-900">
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
                       {notification.title}
                     </h4>
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                       {notification.message}
                     </p>
-                    <p className="text-xs text-gray-500 mt-2">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                       {new Date(notification.created_at).toLocaleString()}
                     </p>
                   </div>
@@ -490,7 +490,7 @@ const Dashboard = () => {
               </div>
             ))
           ) : (
-            <p className="text-gray-500 text-center py-8">No notifications</p>
+            <p className="text-gray-500 dark:text-gray-400 text-center py-8">No notifications</p>
           )}
         </div>
       </Card>
@@ -501,11 +501,11 @@ const Dashboard = () => {
           <Card title="Attendance Analytics">
             <div className="h-64 flex items-center justify-center">
               <div className="text-center">
-                <CalendarCheck className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">
+                <CalendarCheck className="h-12 w-12 text-gray-400 dark:text-gray-500 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   Present: {analytics.attendance.present || 0}
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   Late: {analytics.attendance.late || 0}
                 </p>
               </div>
@@ -515,11 +515,11 @@ const Dashboard = () => {
           <Card title="Leave Statistics">
             <div className="h-64 flex items-center justify-center">
               <div className="text-center">
-                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">
+                <Calendar className="h-12 w-12 text-gray-400 dark:text-gray-500 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   On Leave: {analytics.leave?.on_leave || 0}
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   Pending: {analytics.leave?.pending || 0}
                 </p>
               </div>
@@ -529,8 +529,8 @@ const Dashboard = () => {
           <Card title="Department Distribution">
             <div className="h-64 flex items-center justify-center">
               <div className="text-center">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">
+                <Users className="h-12 w-12 text-gray-400 dark:text-gray-500 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   Total Departments: {analytics.departments?.total_departments || 0}
                 </p>
               </div>
@@ -540,8 +540,8 @@ const Dashboard = () => {
           <Card title="Employee Statistics">
             <div className="h-64 flex items-center justify-center">
               <div className="text-center">
-                <TrendingUp className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-600">
+                <TrendingUp className="h-12 w-12 text-gray-400 dark:text-gray-500 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 dark:text-gray-400">
                   Active Employees: {stats.totalEmployees}
                 </p>
               </div>

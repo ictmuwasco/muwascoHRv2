@@ -162,8 +162,8 @@ const Users = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Users</h1>
-          <p className="text-gray-500">Manage system users</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Users</h1>
+          <p className="text-gray-500 dark:text-gray-400">Manage system users</p>
         </div>
         <Button>
           <Plus className="h-4 w-4 mr-2" />
@@ -172,12 +172,12 @@ const Users = () => {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md text-sm">
           {error}
         </div>
       )}
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md text-sm">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded-md text-sm">
           {success}
         </div>
       )}
@@ -187,7 +187,7 @@ const Users = () => {
 
         {/* Pagination */}
         <div className="flex items-center justify-between mt-4 px-2 py-3">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Showing {users.length > 0 ? ((page - 1) * PER_PAGE) + 1 : 0} to{' '}
             {Math.min(page * PER_PAGE, total)} of {total} users
           </p>
@@ -201,7 +201,7 @@ const Users = () => {
               <ChevronLeft className="h-4 w-4 mr-1" />
               Previous
             </Button>
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">
               Page {page} of {Math.max(totalPages, 1)}
             </span>
             <Button
@@ -219,12 +219,12 @@ const Users = () => {
 
       {resetUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
               Reset Password
             </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Set a new password for <span className="font-medium text-gray-900">{resetUser.email}</span>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Set a new password for <span className="font-medium text-gray-900 dark:text-gray-100">{resetUser.email}</span>
             </p>
             {(error || success) && (
               <div className={`px-4 py-3 rounded-md text-sm mb-4 ${error ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>

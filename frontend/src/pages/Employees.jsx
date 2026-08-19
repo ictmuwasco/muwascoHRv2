@@ -137,8 +137,8 @@ const Employees = () => {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Employees</h1>
-          <p className="text-gray-500">Manage employee records</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Employees</h1>
+          <p className="text-gray-500 dark:text-gray-400">Manage employee records</p>
         </div>
         <Button onClick={() => navigate('/employees/add')}>
           <Plus className="h-4 w-4 mr-2" />
@@ -151,13 +151,13 @@ const Employees = () => {
         <div className="mb-4">
           <form onSubmit={handleSearch} className="flex items-center space-x-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 dark:text-gray-500" />
               <input
                 type="text"
                 placeholder="Search employees..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
             <Button type="submit" size="md">
@@ -176,7 +176,7 @@ const Employees = () => {
 
         {/* Pagination */}
         <div className="flex items-center justify-between mt-4 px-2 py-3">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Showing {employees.length > 0 ? ((page - 1) * PER_PAGE) + 1 : 0} to{' '}
             {Math.min(page * PER_PAGE, total)} of {total} employees
           </p>
@@ -190,7 +190,7 @@ const Employees = () => {
               <ChevronLeft className="h-4 w-4 mr-1" />
               Previous
             </Button>
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">
               Page {page} of {Math.max(totalPages, 1)}
             </span>
             <Button

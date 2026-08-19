@@ -313,7 +313,7 @@ const LeaveOversight = () => {
       {/* Header (Spec #9) */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-101">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 dark:text-gray-101">
             Annual Leave Oversight
           </h1>
           <p className="text-gray-500 dark:text-gray-400">
@@ -367,10 +367,10 @@ const LeaveOversight = () => {
           <Card className="cursor-pointer transition-transform hover:scale-[1.02]" onClick={handleAllClick}>
             <div className="flex items-center space-x-3">
               <div className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center">
-                <Users className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                <Users className="h-5 w-5 text-gray-600 dark:text-gray-400 dark:text-gray-300" />
               </div>
               <div>
-                <div className="text-2xl font-bold text-gray-900 dark:text-gray-101">
+                <div className="text-2xl font-bold text-gray-900 dark:text-gray-100 dark:text-gray-101">
                   {stats.total_active}
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Active Employees</p>
@@ -457,10 +457,10 @@ const LeaveOversight = () => {
                   <span className="text-amber-600 dark:text-amber-400">📊</span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-101">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
                     {distribution.highest.month}
                   </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300">
                     {distribution.highest.count} employees scheduled
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -475,10 +475,10 @@ const LeaveOversight = () => {
                   <span className="text-blue-600 dark:text-blue-400">📉</span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-101">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
                     {distribution.lowest.month}
                   </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300">
                     {distribution.lowest.count} employees scheduled
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -490,13 +490,13 @@ const LeaveOversight = () => {
             {stats && stats.not_scheduled > 0 && (
               <div className="flex items-start space-x-3">
                 <div className="h-8 w-8 rounded-full bg-gray-100 dark:bg-slate-700 flex items-center justify-center flex-shrink-0">
-                  <span className="text-gray-600 dark:text-gray-300">!</span>
+                  <span className="text-gray-600 dark:text-gray-400 dark:text-gray-300">!</span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-101">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
                     {stats.not_scheduled} employees
                   </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300">
                     No leave month assigned
                   </p>
                 </div>
@@ -520,7 +520,7 @@ const LeaveOversight = () => {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-101">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 dark:text-gray-101">
               Employee Roster
             </h3>
             {stats && (
