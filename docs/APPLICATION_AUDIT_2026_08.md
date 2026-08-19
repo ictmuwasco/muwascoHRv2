@@ -61,7 +61,7 @@ These pages were committed but not reachable: no import in `App.jsx`, no sidebar
 
 | Page file | Route added | Sidebar entry |
 |---|---|---|
-| `pages/LeaveRoster.jsx` | `/leave/roster`, `/leave/roster/:id/edit` | Leave → Leave Roster |
+| `pages/LeaveRoster.jsx` | `/leave/roster` | Leave → Leave Roster |
 | `pages/LeaveOversight.jsx` | `/leave/oversight` | Leave → Leave Oversight (managers) |
 | `pages/MeetingsDashboard.tsx` | `/meetings` | Meetings |
 | `pages/CreateMeeting.tsx` | `/meetings/create`, `/meetings/:id/edit` | via Meetings page |
@@ -202,6 +202,30 @@ in `018_meetings_role_permissions.sql`.
 
 ---
 
+## 5b. Defects found by the PR #17 runtime test (and fixed)
+
+Running the newly-routed screens end-to-end surfaced five further defects in the
+previously-unreachable code. All are fixed on this branch.
+
+| Defect | Cause | Fix |
+|---|---|---|
+| `POST /api/leave/roster` → 500 `Undefined array key "start_date"` — no roster entry could be created | `LeaveRosterController` selected `id, year_name` from `financial_years` but then read `$fy['start_date']` | added `start_date` to the SELECT |
+| Roster ✏️ Edit did nothing | `onEdit` navigated to `/leave/roster/:id/edit`, a route with no edit UI behind it | `ScheduleSlideOver` now takes an `editEntry` prop (prefills, hides the employee search, `PUT`s instead of `POST`s); the dead route is removed |
+| `GET /api/meetings` → 403 for every role including `super_admin` | `Auth::hasPermission($m, 'view')` goes through `AuthorizationService::hasPageAccess()`, whose page list was a hardcoded array without `meetings` | `getPageNames()`/`getAllPageIds()` now derive from the `config/permissions.php` catalog, so adding a module to the catalog is sufficient |
+| Every meetings write → 500 `Undefined constant AuditService::MODULE_MEETINGS`, *after* the DB commit (UI showed failure while the row existed) | `MeetingController` used `MODULE_MEETINGS`, `ACTION_CANCEL_MEETING`, `ACTION_CONFIRM`, `ACTION_DECLINE`, none of which were declared | added the four constants to `AuditService` |
+| `POST /api/meetings/{id}/confirm` → 500 `Data truncated for column 'response_status'` | controller and frontend use `accepted`; the new migration's enum said `confirmed` | enum is now `('pending','accepted','declined')`; `attendance_status` also gained `excused`, which the controller accepts |
+
+Also fixed: the `PERMISSION_CHANGE` audit entry recorded `target_name` as `"User #2"`
+because the user row was fetched with `SELECT id, role`. It now selects the name fields
+and records the user's name (falling back to email).
+
+Verified working in the same run: the real Permissions UI, effective values with real
+sources, override grant → persist → audit → remove → re-grant (the upsert/reactivate
+path), all nine `/leave/roster/*` GETs, `DELETE /api/leave/roster/{id}`, the whole
+Leave Oversight page, `/my-meetings`, and `npm run build`.
+
+---
+
 ## 6. Other findings from the runtime test run (PR #16)
 
 | Finding | Assessment |
@@ -254,6 +278,8 @@ and the router's endpoint matching break.
 ## 8. Outstanding work
 
 1. Write a `MeetingDetails` page and register `/meetings/:id/details`.
+1b. Re-test meetings create/confirm/decline/cancel end-to-end — the fixes above are
+    code-verified but the previous run could not get past the 403/500s.
 2. Implement `AppraisalController` + `/api/appraisals/*`, or hide the Appraisal page.
 3. Implement `ReportsController` (currently an empty file) + `/api/reports/*`.
 4. Implement strategic-plan endpoints, or hide the page.

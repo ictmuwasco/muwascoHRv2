@@ -68,7 +68,6 @@ function App() {
           <Route path="leave" element={<Leave />} />
           <Route path="leave/apply" element={<LeaveApplication />} />
           <Route path="leave/roster" element={<LeaveRoster />} />
-          <Route path="leave/roster/:id/edit" element={<LeaveRoster />} />
           <Route path="leave/oversight" element={<LeaveOversight />} />
           <Route path="leave/manage" element={<ManageLeaveLayout />}>
             <Route index element={<Navigate to="pending" replace />} />

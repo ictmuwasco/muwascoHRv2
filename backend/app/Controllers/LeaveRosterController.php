@@ -202,7 +202,7 @@ class LeaveRosterController
         }
 
         // Check financial year exists
-        $stmt = $db->prepare("SELECT id, year_name FROM financial_years WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, year_name, start_date FROM financial_years WHERE id = ?");
         $stmt->bind_param('i', $fyId);
         $stmt->execute();
         $fy = $stmt->get_result()->fetch_assoc();

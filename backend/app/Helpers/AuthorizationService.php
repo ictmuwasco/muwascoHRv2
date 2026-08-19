@@ -426,21 +426,7 @@ class AuthorizationService
      */
     private function getAllPageIds(): array
     {
-        return [
-            'dashboard',
-            'employees',
-            'departments',
-            'attendance',
-            'leave',
-            'reports',
-            'users',
-            'admin',
-            'audit',
-            'profile',
-            'performance',
-            'consent',
-            'permission_overrides'
-        ];
+        return array_keys($this->getPageNames());
     }
 
     /**
@@ -450,6 +436,17 @@ class AuthorizationService
      */
     private function getPageNames(): array
     {
+        $modules = config('permissions', [])['modules'] ?? [];
+
+        $names = [];
+        foreach ($modules as $key => $module) {
+            $names[(string) ($module['key'] ?? $key)] = (string) ($module['label'] ?? $key);
+        }
+
+        if ($names !== []) {
+            return $names;
+        }
+
         return [
             'dashboard' => 'Dashboard',
             'employees' => 'Employees',
