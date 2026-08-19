@@ -33,7 +33,7 @@ const PlanningMatrix = ({ employees = [], onEdit, onDelete, onSchedule }) => {
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-        <thead className="bg-gray-50 dark:bg-slate-900">
+        <thead className="bg-gray-50 dark:bg-slate-900/40 dark:bg-slate-900">
           <tr>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Employee
@@ -63,7 +63,7 @@ const PlanningMatrix = ({ employees = [], onEdit, onDelete, onSchedule }) => {
                 <div className="font-medium text-gray-900 dark:text-gray-100">{emp.employee_name}</div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">{emp.emp_code}</div>
               </td>
-              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
+              <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300">
                 {emp.department_name || '—'}
               </td>
               {FY_MONTHS.map((month) => {

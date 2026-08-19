@@ -82,8 +82,8 @@ const PendingTab = () => {
     if (!rows.length) {
       return (
         <tr>
-          <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-            <Inbox className="h-6 w-6 mx-auto mb-2 text-gray-400" />
+          <td colSpan={7} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+            <Inbox className="h-6 w-6 mx-auto mb-2 text-gray-400 dark:text-gray-500" />
             No pending leave applications.
           </td>
         </tr>
@@ -95,8 +95,8 @@ const PendingTab = () => {
       return (
         <tr key={row.id} className="border-t">
           <td className="px-4 py-2">
-            <div className="font-medium text-gray-900">{row.first_name} {row.last_name}</div>
-            <div className="text-xs text-gray-500">{row.emp_no || row.employee_id}</div>
+            <div className="font-medium text-gray-900 dark:text-gray-100">{row.first_name} {row.last_name}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">{row.emp_no || row.employee_id}</div>
           </td>
           <td className="px-4 py-2">{row.leave_type_name}</td>
           <td className="px-4 py-2 text-sm">
@@ -109,8 +109,8 @@ const PendingTab = () => {
             </span>
           </td>
           <td className="px-4 py-2 text-sm">
-            <div className="text-gray-900">{stageLabel}</div>
-            <div className="text-xs text-gray-500">{stageName}</div>
+            <div className="text-gray-900 dark:text-gray-100">{stageLabel}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">{stageName}</div>
           </td>
           <td className="px-4 py-2">
             <div className="flex flex-wrap gap-2">
@@ -136,7 +136,7 @@ const PendingTab = () => {
     <>
       <Card>
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-4">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md mb-4">
             {error}
           </div>
         )}
@@ -154,7 +154,7 @@ const PendingTab = () => {
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-600">
+              <tr className="text-left text-gray-600 dark:text-gray-400">
                 <th className="px-4 py-2">Employee</th>
                 <th className="px-4 py-2">Leave Type</th>
                 <th className="px-4 py-2">Dates</th>
@@ -176,14 +176,14 @@ const PendingTab = () => {
 
       {modal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
               {modal.action === 'approve' && 'Approve Leave'}
               {modal.action === 'reject' && 'Reject Leave'}
               {modal.action === 'invalidate' && 'Invalidate Leave'}
             </h3>
             {modal.row && (
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 <strong>{modal.row.first_name} {modal.row.last_name}</strong> — {modal.row.leave_type_name}
                 <br />
                 {formatDate(modal.row.start_date)} → {formatDate(modal.row.end_date)}
@@ -191,7 +191,7 @@ const PendingTab = () => {
             )}
             {(modal.action === 'reject' || modal.action === 'invalidate') && (
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Reason *
                 </label>
                 <textarea
@@ -205,7 +205,7 @@ const PendingTab = () => {
               </div>
             )}
             {modal.action === 'approve' && (
-              <p className="text-sm text-gray-600 mb-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 Approving this application will advance it to the next stage in the chain
                 (or mark it fully approved if this is the final stage).
               </p>

@@ -251,8 +251,8 @@ const Profile = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
-        <p className="text-gray-500">View and manage your profile information</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">My Profile</h1>
+        <p className="text-gray-500 dark:text-gray-400">View and manage your profile information</p>
       </div>
 
       {/* Profile Tabs */}
@@ -275,13 +275,13 @@ const Profile = () => {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded-md">
           {success}
         </div>
       )}
@@ -347,7 +347,7 @@ const Profile = () => {
               className="md:col-span-2"
             />
           </div>
-          <p className="text-sm text-gray-500 mt-4">Personal information is managed by HR department.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">Personal information is managed by HR department.</p>
         </Card>
       )}
 
@@ -399,7 +399,7 @@ const Profile = () => {
               disabled
             />
           </div>
-          <p className="text-sm text-gray-500 mt-4">Employment information is managed by HR department.</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">Employment information is managed by HR department.</p>
         </Card>
       )}
 
@@ -513,14 +513,14 @@ const Profile = () => {
             {dependants.length > 0 ? (
               <div className="space-y-3">
                 {dependants.map((dep, index) => (
-                  <div key={index} className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
+                  <div key={index} className="p-4 bg-gray-50 dark:bg-slate-900/40 rounded-lg flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{dep.name || `Dependant ${index + 1}`}</p>
-                      <p className="text-xs text-gray-500 mt-1">{dep.relationship || 'Relationship not specified'}</p>
-                      <p className="text-xs text-gray-500 mt-1">Date of Birth: {dep.date_of_birth || 'Not provided'}</p>
-                      {dep.gender && <p className="text-xs text-gray-500 mt-1">Gender: {dep.gender}</p>}
-                      {dep.id_no && <p className="text-xs text-gray-500 mt-1">ID No: {dep.id_no}</p>}
-                      {dep.contact && <p className="text-xs text-gray-500 mt-1">Contact: {dep.contact}</p>}
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{dep.name || `Dependant ${index + 1}`}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{dep.relationship || 'Relationship not specified'}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Date of Birth: {dep.date_of_birth || 'Not provided'}</p>
+                      {dep.gender && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Gender: {dep.gender}</p>}
+                      {dep.id_no && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">ID No: {dep.id_no}</p>}
+                      {dep.contact && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Contact: {dep.contact}</p>}
                     </div>
                     <Button
                       variant="danger"
@@ -533,7 +533,7 @@ const Profile = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">No dependants on record.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">No dependants on record.</p>
             )}
           </Card>
         </div>
@@ -553,7 +553,7 @@ const Profile = () => {
                   placeholder="e.g. National ID, KRA PIN, Certificate"
                 />
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
                   <select
                     value={newDocument.category}
                     onChange={(e) => setNewDocument((prev) => ({ ...prev, category: e.target.value }))}
@@ -570,7 +570,7 @@ const Profile = () => {
                   </select>
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">File</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">File</label>
                   <input
                     type="file"
                     onChange={handleDocumentFileChange}
@@ -603,7 +603,7 @@ const Profile = () => {
                   <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
                       <p className="font-medium">{doc.name}</p>
-                      <p className="text-sm text-gray-500">{doc.type} - {doc.uploaded_at}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{doc.type} - {doc.uploaded_at}</p>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Button size="sm" variant="outline">Download</Button>
@@ -618,7 +618,7 @@ const Profile = () => {
                   </div>
                 ))
               ) : (
-                <p className="text-gray-500 text-center py-4">No documents uploaded</p>
+                <p className="text-gray-500 dark:text-gray-400 text-center py-4">No documents uploaded</p>
               )}
             </div>
           </Card>

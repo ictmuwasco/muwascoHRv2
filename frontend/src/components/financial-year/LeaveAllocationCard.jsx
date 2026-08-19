@@ -89,7 +89,7 @@ const LeaveAllocationCard = ({ financialYears }) => {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Allocate Leave to Employee</h3>
         <div className="flex items-center justify-center h-32">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -99,22 +99,22 @@ const LeaveAllocationCard = ({ financialYears }) => {
   }
 
   return (
-    <div className="bg-white rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
+    <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
       <h3 className="text-lg font-semibold mb-2">Allocate Leave to Employee</h3>
-      <p className="text-sm text-gray-500 mb-4">
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Use this for newly hired employees or to fill missing leave records. Existing records are automatically skipped.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Select Employee <span className="text-red-500">*</span>
             </label>
             <select
               value={formData.employee_id}
               onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               required
             >
               <option value="">Select an employee</option>
@@ -127,13 +127,13 @@ const LeaveAllocationCard = ({ financialYears }) => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Financial Year <span className="text-red-500">*</span>
             </label>
             <select
               value={formData.financial_year_id}
               onChange={(e) => setFormData({ ...formData, financial_year_id: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               required
             >
               <option value="">Select financial year</option>
@@ -147,19 +147,19 @@ const LeaveAllocationCard = ({ financialYears }) => {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Leave Types <span className="text-xs text-gray-500">(leave unchecked to allocate all applicable types)</span>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Leave Types <span className="text-xs text-gray-500 dark:text-gray-400">(leave unchecked to allocate all applicable types)</span>
           </label>
-          <div className="border border-gray-300 rounded-md p-4">
+          <div className="border border-gray-300 dark:border-slate-600 rounded-md p-4">
             <div className="mb-3">
               <label className="flex items-center">
                 <input
                   type="checkbox"
                   checked={selectAll}
                   onChange={(e) => handleSelectAll(e.target.checked)}
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-slate-600 rounded"
                 />
-                <span className="ml-2 text-sm font-medium text-gray-700">Select All</span>
+                <span className="ml-2 text-sm font-medium text-gray-700 dark:text-gray-300">Select All</span>
               </label>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -169,9 +169,9 @@ const LeaveAllocationCard = ({ financialYears }) => {
                     type="checkbox"
                     checked={formData.leave_types.includes(lt.id)}
                     onChange={(e) => handleLeaveTypeChange(lt.id, e.target.checked)}
-                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-slate-600 rounded"
                   />
-                  <span className="ml-2 text-sm text-gray-700">{lt.name}</span>
+                  <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">{lt.name}</span>
                 </label>
               ))}
             </div>

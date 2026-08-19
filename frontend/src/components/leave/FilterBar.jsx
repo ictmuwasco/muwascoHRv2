@@ -65,7 +65,7 @@ const FilterBar = ({
           <select
             value={selectedFinancialYear}
             onChange={(e) => onChange('selectedFinancialYear', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
             <option value="">All Years</option>
             {financialYears.map((y) => (
@@ -84,7 +84,7 @@ const FilterBar = ({
           <select
             value={selectedDepartment}
             onChange={(e) => onChange('selectedDepartment', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
             <option value="">All Departments</option>
             {departments.map((d) => (
@@ -103,7 +103,7 @@ const FilterBar = ({
           <select
             value={selectedSection}
             onChange={(e) => onChange('selectedSection', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
             <option value="">All Sections</option>
             {sections.map((s) => (
@@ -122,7 +122,7 @@ const FilterBar = ({
           <select
             value={selectedMonth}
             onChange={(e) => onChange('selectedMonth', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
           >
             <option value="">All Months</option>
             {FY_MONTHS.map((m) => (
@@ -142,7 +142,7 @@ const FilterBar = ({
             <select
               value={selectedStatus}
               onChange={(e) => onChange('selectedStatus', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             >
               <option value="">All Statuses</option>
               <option value="scheduled">Scheduled</option>
@@ -162,7 +162,7 @@ const FilterBar = ({
               placeholder="Employee name or ID..."
               value={searchTerm}
               onChange={(e) => onChange('searchTerm', e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
             <Filter className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
           </div>

@@ -81,8 +81,8 @@ const StrategicPlan = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Strategic Plan</h1>
-          <p className="text-gray-500">Manage strategic plans, workplans, and KPIs</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Strategic Plan</h1>
+          <p className="text-gray-500 dark:text-gray-400">Manage strategic plans, workplans, and KPIs</p>
         </div>
         <Button>
           <Plus className="h-4 w-4 mr-2" />

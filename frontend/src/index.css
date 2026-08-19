@@ -4,10 +4,10 @@
 
 @layer base {
   * {
-    @apply border-gray-200;
+    @apply border-gray-200 dark:border-slate-700;
   }
   body {
-    @apply bg-white text-gray-900;
+    @apply bg-white text-gray-900 dark:bg-slate-900 dark:text-gray-100;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
@@ -22,7 +22,7 @@
   }
 
   .btn-secondary {
-    @apply btn bg-gray-200 text-gray-900 hover:bg-gray-300 h-10 py-2 px-4;
+    @apply btn bg-gray-200 text-gray-900 hover:bg-gray-300 dark:bg-slate-700 dark:text-gray-100 dark:hover:bg-slate-600 h-10 py-2 px-4;
   }
 
   .btn-danger {
@@ -34,11 +34,11 @@
   }
 
   .card {
-    @apply rounded-lg border border-gray-200 bg-white shadow-sm;
+    @apply rounded-lg border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800;
   }
 
   .input {
-    @apply flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply flex h-10 w-full rounded-md border border-gray-200 bg-white dark:border-slate-600 dark:bg-slate-900 dark:text-gray-100 px-3 py-2 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .label {

@@ -186,24 +186,24 @@ const UsersTab = () => {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Users</h2>
-          <p className="text-gray-500">Manage system users</p>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Users</h2>
+          <p className="text-gray-500 dark:text-gray-400">Manage system users</p>
         </div>
 
         {/* Responsive search */}
         <div className="relative w-full sm:w-72 md:w-80">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500" />
           <input
             type="text"
             placeholder="Search by name or email..."
             value={searchInput}
             onChange={handleSearchChange}
-            className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            className="w-full pl-9 pr-9 py-2 border border-gray-300 dark:border-slate-600 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
           />
           {searchInput && (
             <button
               onClick={clearSearch}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 hover:text-gray-600"
               title="Clear search"
             >
               <X className="h-4 w-4" />
@@ -213,12 +213,12 @@ const UsersTab = () => {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md text-sm">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md text-sm">
           {error}
         </div>
       )}
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md text-sm">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded-md text-sm">
           {success}
         </div>
       )}
@@ -234,7 +234,7 @@ const UsersTab = () => {
 
         {/* Pagination */}
         <div className="flex flex-col sm:flex-row items-center justify-between mt-4 px-2 py-3 gap-3">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Showing {users.length > 0 ? ((page - 1) * PER_PAGE) + 1 : 0} to{' '}
             {Math.min(page * PER_PAGE, total)} of {total} users
           </p>
@@ -248,7 +248,7 @@ const UsersTab = () => {
               <ChevronLeft className="h-4 w-4 mr-1" />
               Previous
             </Button>
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-gray-700 dark:text-gray-300">
               Page {page} of {Math.max(totalPages, 1)}
             </span>
             <Button
@@ -266,12 +266,12 @@ const UsersTab = () => {
 
       {resetUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+          <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl w-full max-w-md p-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">
               Reset Password
             </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Set a new password for <span className="font-medium text-gray-900">{resetUser.email}</span>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Set a new password for <span className="font-medium text-gray-900 dark:text-gray-100">{resetUser.email}</span>
             </p>
             {(error || success) && (
               <div className={`px-4 py-3 rounded-md text-sm mb-4 ${error ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>

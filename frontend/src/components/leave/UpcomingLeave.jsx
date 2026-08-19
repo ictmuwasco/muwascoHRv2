@@ -37,7 +37,7 @@ const UpcomingLeave = ({ upcoming = null }) => {
           Current Month · {current_month}
         </h4>
         {current_month_employees.length === 0 ? (
-          <div className="text-center py-8 bg-gray-50 dark:bg-slate-700/30 rounded-lg">
+          <div className="text-center py-8 bg-gray-50 dark:bg-slate-900/40 dark:bg-slate-700/30 rounded-lg">
             <Calendar className="h-8 w-8 mx-auto text-gray-300 dark:text-gray-500 mb-2" />
             <p className="text-sm text-gray-500 dark:text-gray-400">
               No employees scheduled for {current_month}
@@ -55,7 +55,7 @@ const UpcomingLeave = ({ upcoming = null }) => {
                     <User className="h-4 w-4 text-primary-600 dark:text-primary-400" />
                   </div>
                   <div className="flex-1">
-                    <div className="font-medium text-gray-900 dark:text-gray-101">
+                    <div className="font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
                       {emp.employee_name}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -81,7 +81,7 @@ const UpcomingLeave = ({ upcoming = null }) => {
           Next Month · {next_month}
         </h4>
         {next_month_employees.length === 0 ? (
-          <div className="text-center py-8 bg-gray-50 dark:bg-slate-700/30 rounded-lg">
+          <div className="text-center py-8 bg-gray-50 dark:bg-slate-900/40 dark:bg-slate-700/30 rounded-lg">
             <Calendar className="h-8 w-8 mx-auto text-gray-300 dark:text-gray-500 mb-2" />
             <p className="text-sm text-gray-500 dark:text-gray-400">
               No employees scheduled for {next_month}
@@ -99,7 +99,7 @@ const UpcomingLeave = ({ upcoming = null }) => {
                     <User className="h-4 w-4 text-primary-600 dark:text-primary-400" />
                   </div>
                   <div className="flex-1">
-                    <div className="font-medium text-gray-900 dark:text-gray-101">
+                    <div className="font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
                       {emp.employee_name}
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">

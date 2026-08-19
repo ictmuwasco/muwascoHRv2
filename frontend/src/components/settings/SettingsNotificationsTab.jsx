@@ -10,16 +10,16 @@ const NotificationsTab = () => {
             <Bell className="h-8 w-8 text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Notification Preferences</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Notification Preferences</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Configure email, SMS and in-app alerts
             </p>
           </div>
         </div>
       </Card>
       <Card>
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Quiet Hours</h3>
-        <p className="text-sm text-gray-500">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Quiet Hours</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           Quiet hours scheduling will be available here.
         </p>
       </Card>

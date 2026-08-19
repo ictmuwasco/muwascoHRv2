@@ -10,8 +10,8 @@ const ProfileSettings = () => {
             <SettingsIcon className="h-8 w-8 text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Profile Settings</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Profile Settings</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Update your personal information and preferences
             </p>
           </div>
@@ -23,8 +23,8 @@ const ProfileSettings = () => {
             <SettingsIcon className="h-8 w-8 text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Email & Phone</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Email & Phone</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Manage how MUWASCO contacts you
             </p>
           </div>
@@ -36,8 +36,8 @@ const ProfileSettings = () => {
             <SettingsIcon className="h-8 w-8 text-white" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">Appearance</h3>
-            <p className="text-sm text-gray-500 mt-1">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Appearance</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               Theme, language and date format
             </p>
           </div>
