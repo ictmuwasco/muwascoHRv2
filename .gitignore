@@ -11,6 +11,7 @@ config.php
 *.db
 *.sqlite
 muwasco (1).sql
+!backend/database/migrations/*.sql
 
 # ── Dependencies ───────────────────────────────────────────────────────────
 vendor/

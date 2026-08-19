@@ -178,9 +178,12 @@ class AuthorizationService
                 try {
                     $userOverrides = $this->userPagePermissionModel->getByUserId($userId);
                     
-                    // Build override map: page_id => permission_type
+                    // Build override map: module => permission_type, page level only
                     foreach ($userOverrides as $override) {
-                        $overrideMap[$override['page_id']] = $override['permission_type'];
+                        if (($override['action'] ?? UserPagePermission::DEFAULT_ACTION) !== UserPagePermission::DEFAULT_ACTION) {
+                            continue;
+                        }
+                        $overrideMap[$override['module'] ?? $override['page_id']] = $override['permission_type'];
                     }
                 } catch (\Exception $e) {
                     error_log("Failed to load user overrides: " . $e->getMessage());
@@ -244,7 +247,15 @@ class AuthorizationService
      */
     public function setPermissionOverride(int $userId, string $pageId, string $permissionType, int $grantedBy, ?string $notes = null): bool
     {
-        $result = $this->userPagePermissionModel->setPermission($userId, $pageId, $permissionType, $grantedBy, $notes);
+        $result = $this->userPagePermissionModel->setPermission(
+            $userId,
+            $pageId,
+            UserPagePermission::DEFAULT_ACTION,
+            $permissionType,
+            $grantedBy,
+            $grantedBy,
+            $notes
+        );
         
         if ($result) {
             // Clear cache to force reload
@@ -263,7 +274,7 @@ class AuthorizationService
      */
     public function removePermissionOverride(int $userId, string $pageId): bool
     {
-        $result = $this->userPagePermissionModel->removePermission($userId, $pageId);
+        $result = $this->userPagePermissionModel->removePermission($userId, $pageId, UserPagePermission::DEFAULT_ACTION);
         
         if ($result) {
             // Clear cache to force reload

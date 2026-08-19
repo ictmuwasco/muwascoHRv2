@@ -192,14 +192,59 @@ class PermissionService
 
     /**
      * Get all effective permissions for a user.
-     * Combines role permissions with user overrides to show the final state.
+     * Combines role permissions with user overrides to show the final state
+     * for every module/action pair in the catalog.
      *
      * @param int $userId
-     * @return array Array of effective permissions with source info
+     * @return array Array of ['module', 'action', 'allowed', 'source']
      */
     public function getEffectivePermissions(int $userId): array
     {
-        return $this->authService->getAllEffectivePermissions($userId);
+        $user = db()->fetchOne('SELECT id, role FROM users WHERE id = ?', 'i', [$userId]);
+        if (!$user) {
+            return [];
+        }
+
+        $isSuperAdmin = $user['role'] === 'super_admin';
+
+        $rolePermissions = [];
+        foreach ($this->rbac->getRolePermissions($user['role']) as $perm) {
+            $rolePermissions[$perm['module'] . '.' . $perm['action']] = $perm['is_granted'];
+        }
+
+        $overrides = [];
+        foreach ($this->userPagePermissionModel->getByUserId($userId) as $override) {
+            $module = $override['module'] ?? $override['page_id'];
+            $action = $override['action'] ?? UserPagePermission::DEFAULT_ACTION;
+            $overrides[$module . '.' . $action] = $override['permission_type'];
+        }
+
+        $effective = [];
+        foreach ($this->getPermissionCatalog() as $moduleKey => $module) {
+            foreach ($module['actions'] as $action) {
+                $key = $moduleKey . '.' . $action['key'];
+
+                if ($isSuperAdmin) {
+                    $allowed = true;
+                    $source  = 'Super Admin';
+                } elseif (isset($overrides[$key])) {
+                    $allowed = $overrides[$key] === 'allow';
+                    $source  = 'Override';
+                } else {
+                    $allowed = $rolePermissions[$key] ?? false;
+                    $source  = isset($rolePermissions[$key]) ? 'Role' : 'Default';
+                }
+
+                $effective[] = [
+                    'module'  => $moduleKey,
+                    'action'  => $action['key'],
+                    'allowed' => $allowed,
+                    'source'  => $source,
+                ];
+            }
+        }
+
+        return $effective;
     }
 
     /**
