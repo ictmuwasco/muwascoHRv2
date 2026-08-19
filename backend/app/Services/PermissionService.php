@@ -283,7 +283,11 @@ class PermissionService
         }
 
         // Check if user exists
-        $user = db()->fetchOne('SELECT id, role FROM users WHERE id = ?', 'i', [$userId]);
+        $user = db()->fetchOne(
+            'SELECT id, role, email, first_name, last_name FROM users WHERE id = ?',
+            'i',
+            [$userId]
+        );
         if (!$user) {
             return ['success' => false, 'message' => 'User not found'];
         }
@@ -322,7 +326,7 @@ class PermissionService
             [
                 'target_type' => 'User',
                 'target_id'   => $userId,
-                'target_name' => $user['email'] ?? "User #{$userId}",
+                'target_name' => $this->describeUser($userId, $user),
                 'old_values'  => $previous ? [
                     'permission_type' => $previous['permission_type'],
                     'active'          => $previous['active'],
@@ -371,7 +375,11 @@ class PermissionService
         $this->authService->clearCache();
 
         // Log to audit trail
-        $user = db()->fetchOne('SELECT id, email FROM users WHERE id = ?', 'i', [$userId]);
+        $user = db()->fetchOne(
+            'SELECT id, email, first_name, last_name FROM users WHERE id = ?',
+            'i',
+            [$userId]
+        );
         $this->auditService->log(
             AuditService::MODULE_SETTINGS,
             AuditService::ACTION_PERMISSION_CHANGE,
@@ -379,7 +387,7 @@ class PermissionService
             [
                 'target_type' => 'User',
                 'target_id'   => $userId,
-                'target_name' => $user['email'] ?? "User #{$userId}",
+                'target_name' => $this->describeUser($userId, $user),
                 'old_values'  => [
                     'permission_type' => $previous['permission_type'],
                     'active'          => $previous['active'],
@@ -391,6 +399,23 @@ class PermissionService
         );
 
         return ['success' => true, 'message' => 'Permission override removed successfully'];
+    }
+
+    /**
+     * Human-readable label for a user, used as the audit trail target name.
+     *
+     * @param int $userId
+     * @param array|null $user Row containing first_name/last_name/email
+     * @return string
+     */
+    private function describeUser(int $userId, ?array $user): string
+    {
+        $name = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        return $user['email'] ?? "User #{$userId}";
     }
 
     /**

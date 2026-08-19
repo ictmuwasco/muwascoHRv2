@@ -27,6 +27,7 @@ const ScheduleSlideOver = ({
   financialYearId,
   financialYears = [],
   onSuccess,
+  editEntry = null,
 }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -38,6 +39,7 @@ const ScheduleSlideOver = ({
   const [submitLoading, setSubmitLoading] = useState(false)
   const [error, setError] = useState('')
   const dropdownRef = useRef(null)
+  const isEdit = Boolean(editEntry?.roster_id)
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -49,6 +51,21 @@ const ScheduleSlideOver = ({
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  // Prefill when editing an existing roster entry
+  useEffect(() => {
+    if (!isOpen || !editEntry) return
+    setSelectedEmployee({
+      id: editEntry.employee_id,
+      employee_name: editEntry.employee_name,
+      emp_code: editEntry.emp_code,
+      department_name: editEntry.department_name,
+      section_name: editEntry.section_name,
+      scheduled_month: editEntry.scheduled_month,
+    })
+    setSelectedMonth(editEntry.scheduled_month || '')
+    setNotes(editEntry.notes || '')
+  }, [isOpen, editEntry])
 
   // Debounced employee search
   useEffect(() => {
@@ -97,16 +114,24 @@ const ScheduleSlideOver = ({
     setSubmitLoading(true)
     setError('')
     try {
-      await api.post('/leave/roster', {
-        employee_id: selectedEmployee.id,
-        financial_year_id: financialYearId,
-        scheduled_month: selectedMonth,
-        notes: notes.trim(),
-      })
+      if (isEdit) {
+        await api.put(`/leave/roster/${editEntry.roster_id}`, {
+          scheduled_month: selectedMonth,
+          notes: notes.trim(),
+        })
+      } else {
+        await api.post('/leave/roster', {
+          employee_id: selectedEmployee.id,
+          financial_year_id: financialYearId,
+          scheduled_month: selectedMonth,
+          notes: notes.trim(),
+        })
+      }
       onSuccess && onSuccess()
       handleClose()
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to schedule leave.'
+      const msg = err.response?.data?.message
+        || (isEdit ? 'Failed to update roster entry.' : 'Failed to schedule leave.')
       setError(msg)
     } finally {
       setSubmitLoading(false)
@@ -136,7 +161,7 @@ const ScheduleSlideOver = ({
         {/* Header */}
         <div className="flex items-center justify-between h-14 border-b dark:border-slate-700 px-6 flex-shrink-0">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Schedule Annual Leave
+            {isEdit ? 'Edit Scheduled Leave' : 'Schedule Annual Leave'}
           </h2>
           <button
             onClick={handleClose}
@@ -149,7 +174,7 @@ const ScheduleSlideOver = ({
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* Employee Search */}
-          <div className="relative" ref={dropdownRef}>
+          <div className={`relative ${isEdit ? 'hidden' : ''}`} ref={dropdownRef}>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Employee
             </label>
@@ -303,7 +328,7 @@ const ScheduleSlideOver = ({
             loading={submitLoading}
             disabled={!selectedEmployee || !selectedMonth}
           >
-            Schedule Leave
+            {isEdit ? 'Save Changes' : 'Schedule Leave'}
           </Button>
         </div>
       </div>

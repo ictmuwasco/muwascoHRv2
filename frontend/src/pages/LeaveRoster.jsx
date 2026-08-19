@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Users, Download, Plus, RefreshCw, CalendarRange, LayoutGrid, List } from 'lucide-react'
 import api from '../utils/api'
 import Card from '../components/ui/Card'
@@ -15,7 +14,6 @@ import FilterBar from '../components/leave/FilterBar'
 import { FY_MONTHS } from '../constants/leaveConstants'
 
 const LeaveRoster = () => {
-  const navigate = useNavigate()
 
   // Data state
   const [rosterEntries, setRosterEntries] = useState([])
@@ -39,6 +37,7 @@ const LeaveRoster = () => {
   const [viewMode, setViewMode] = useState('matrix')
   const [showScheduleModal, setShowScheduleModal] = useState(false)
   const [selectedEmployeeForSchedule, setSelectedEmployeeForSchedule] = useState(null)
+  const [rosterEntryBeingEdited, setRosterEntryBeingEdited] = useState(null)
   const [pagination, setPagination] = useState({ total: 0, per_page: 20, current_page: 1, last_page: 1 })
   const [actionLoading, setActionLoading] = useState(null)
 
@@ -257,8 +256,20 @@ const LeaveRoster = () => {
   }
 
   const handleScheduleClick = (emp) => {
+    setRosterEntryBeingEdited(null)
     setSelectedEmployeeForSchedule(emp)
     setShowScheduleModal(true)
+  }
+
+  const handleEditClick = (emp) => {
+    setSelectedEmployeeForSchedule(emp)
+    setRosterEntryBeingEdited(emp)
+    setShowScheduleModal(true)
+  }
+
+  const handleScheduleClose = () => {
+    setShowScheduleModal(false)
+    setRosterEntryBeingEdited(null)
   }
 
   const handleNotScheduledClick = () => {
@@ -538,7 +549,7 @@ const LeaveRoster = () => {
         {viewMode === 'matrix' ? (
           <PlanningMatrix
             employees={filteredMatrixEmployees}
-            onEdit={(emp) => navigate(`/leave/roster/${emp.roster_id}/edit`)}
+            onEdit={handleEditClick}
             onDelete={handleDelete}
             onSchedule={handleScheduleClick}
           />
@@ -552,7 +563,7 @@ const LeaveRoster = () => {
               <>
                 <EmployeeRosterTable
                   employees={listViewEmployees}
-                  onEdit={(emp) => navigate(`/leave/roster/${emp.roster_id}/edit`)}
+                  onEdit={handleEditClick}
                   onDelete={handleDelete}
                   onSchedule={handleScheduleClick}
                   showLastUpdated={true}
@@ -596,7 +607,8 @@ const LeaveRoster = () => {
       {/* Schedule Slide-over (Spec #6) */}
       <ScheduleSlideOver
         isOpen={showScheduleModal}
-        onClose={() => setShowScheduleModal(false)}
+        onClose={handleScheduleClose}
+        editEntry={rosterEntryBeingEdited}
         financialYearId={selectedFinancialYear}
         financialYears={financialYears}
         onSuccess={handleScheduleSuccess}
