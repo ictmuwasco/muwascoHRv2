@@ -110,6 +110,12 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       // Ignore errors, still logout
     } finally {
+      // Note: We deliberately do NOT clear the consent cache here.
+      // Consent is a database fact that persists when a user logs out.
+      // Keeping the cache lets ProtectedRoute skip the server-side
+      // consent check on the next login — avoiding the race condition
+      // where the session cookie hasn't propagated yet, which would
+      // otherwise redirect already-consented users back to the consent page.
       localStorage.removeItem('user')
       setUser(null)
     }

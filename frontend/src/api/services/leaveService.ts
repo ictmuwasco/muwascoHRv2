@@ -74,4 +74,65 @@ export const leaveService = {
     const response = await apiClient.get<ApiResponse<LeaveRequest[]>>(`/leave/employee/${employeeId}`);
     return response.data;
   },
+
+  // Leave Roster
+  getRoster: async (params?: Record<string, any>): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>('/leave/roster', { params });
+    return response.data;
+  },
+
+  createRoster: async (data: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await apiClient.post<ApiResponse<any>>('/leave/roster', data);
+    return response.data;
+  },
+
+  updateRoster: async (id: number, data: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await apiClient.put<ApiResponse<any>>(`/leave/roster/${id}`, data);
+    return response.data;
+  },
+
+  deleteRoster: async (id: number): Promise<ApiResponse<any>> => {
+    const response = await apiClient.delete<ApiResponse<any>>(`/leave/roster/${id}`);
+    return response.data;
+  },
+
+  getRosterStats: async (params?: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/leave/roster/stats', { params });
+    return response.data;
+  },
+
+  getRosterDistribution: async (params?: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/leave/roster/distribution', { params });
+    return response.data;
+  },
+
+  getRosterUpcoming: async (params?: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/leave/roster/upcoming', { params });
+    return response.data;
+  },
+
+  getRosterDepartments: async (params?: Record<string, any>): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>('/leave/roster/departments', { params });
+    return response.data;
+  },
+
+  getRosterMatrix: async (params?: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>('/leave/roster/matrix', { params });
+    return response.data;
+  },
+
+  getRosterEmployees: async (params?: Record<string, any>): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>('/leave/roster/employees', { params });
+    return response.data;
+  },
+
+  getRosterFinancialYears: async (): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>('/leave/roster/financial-years');
+    return response.data;
+  },
+
+  exportRoster: async (params?: Record<string, any>): Promise<any> => {
+    const response = await apiClient.get('/leave/roster/export', { params, responseType: 'blob' });
+    return response.data;
+  },
 };

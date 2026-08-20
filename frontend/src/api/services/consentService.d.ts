@@ -1,7 +1,20 @@
+export interface ConsentCacheEntry {
+  consented: boolean;
+  version: string;
+  timestamp: number;
+}
+
+export const getCachedConsent: (userId: number | string) => ConsentCacheEntry | null;
+
+export const saveCachedConsent: (userId: number | string, version: string) => void;
+
+export const clearCachedConsent: (userId: number | string) => void;
+
 export const getConsentStatus: () => Promise<{
   success: boolean;
   consented: boolean;
   consent_version: string;
+  message?: string;
 }>;
 
 export const verifyEmployeeId: (nationalId: string) => Promise<{
@@ -19,6 +32,7 @@ export const submitConsent: (employeeId: string) => Promise<{
   data?: {
     consent_version: string;
     consented: boolean;
+    already_consented?: boolean;
   };
 }>;
 

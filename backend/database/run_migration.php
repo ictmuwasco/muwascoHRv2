@@ -168,6 +168,106 @@ try {
         exit(1);
     }
     
+    // Run migration 013 - Audit logs table
+    $sql = file_get_contents(__DIR__ . '/migrations/013_audit_logs.sql');
+
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+
+        echo "Migration 013_audit_logs.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 013: " . $conn->error . "\n";
+        exit(1);
+    }
+
+    // Verify table was created
+    $result = $conn->query("SHOW TABLES LIKE 'audit_logs'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ audit_logs table created successfully\n";
+    } else {
+        echo "✗ audit_logs table not found\n";
+        exit(1);
+    }
+
+    // Run migration 015 - Hybrid permission overrides (module/action structure)
+    $sql = file_get_contents(__DIR__ . '/migrations/015_hybrid_permission_overrides.sql');
+
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+
+        echo "Migration 015_hybrid_permission_overrides.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 015: " . $conn->error . "\n";
+        exit(1);
+    }
+
+    // Verify module/action columns were added
+    $result = $conn->query("SHOW COLUMNS FROM user_page_permissions LIKE 'module'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ module column added successfully\n";
+    } else {
+        echo "✗ module column not found\n";
+        exit(1);
+    }
+
+    $result = $conn->query("SHOW COLUMNS FROM user_page_permissions LIKE 'action'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ action column added successfully\n";
+    } else {
+        echo "✗ action column not found\n";
+        exit(1);
+    }
+
+    // Run migration 016 - Create meetings table
+    $sql = file_get_contents(__DIR__ . '/migrations/016_create_meetings_table.sql');
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        echo "Migration 016_create_meetings_table.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 016: " . $conn->error . "\n";
+        exit(1);
+    }
+    $result = $conn->query("SHOW TABLES LIKE 'meetings'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ meetings table created successfully\n";
+    } else {
+        echo "✗ meetings table not found\n";
+        exit(1);
+    }
+
+    // Run migration 017 - Create meeting_invitations table
+    $sql = file_get_contents(__DIR__ . '/migrations/017_create_meeting_invitations_table.sql');
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        echo "Migration 017_create_meeting_invitations_table.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 017: " . $conn->error . "\n";
+        exit(1);
+    }
+    $result = $conn->query("SHOW TABLES LIKE 'meeting_invitations'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ meeting_invitations table created successfully\n";
+    } else {
+        echo "✗ meeting_invitations table not found\n";
+        exit(1);
+    }
+
     echo "\n✓ All migrations completed successfully!\n";
     
     // Re-run role permissions migration to ensure new permissions are added

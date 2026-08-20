@@ -477,15 +477,148 @@ Export report.
 
 ## Audit Logs
 
-#### GET /audit-logs
-Get audit trail.
+The audit trail API provides a full dashboard with summary statistics, filterable
+paginated logs, single-log detail views, and CSV export. All endpoints require
+the `audit:view` permission (export requires `audit:export`).
+
+### Endpoints
+
+#### GET /api/audit
+Get a paginated, searchable, filterable, sortable list of audit logs.
 
 **Query Parameters:**
-- `user_id` (optional): Filter by user
-- `action` (optional): Filter by action
-- `resource` (optional): Filter by resource
-- `start_date` (optional): Start date
-- `end_date` (optional): End date
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 20, max: 100)
+- `sort` (optional): Sort column — `created_at`, `action`, `module`, `user_name_snapshot`, `user_role_snapshot`, `status`, `ip_address`, `id` (default: `created_at`)
+- `order` (optional): Sort direction — `ASC` or `DESC` (default: `DESC`)
+- `action` (optional): Filter by action (e.g. `LOGIN`, `CREATE`, `UPDATE`, `DELETE`)
+- `module` (optional): Filter by module (e.g. `Employees`, `Leave`, `Authentication`)
+- `user_id` (optional): Filter by user ID
+- `user_name_snapshot` (optional): Filter by user name
+- `user_role_snapshot` (optional): Filter by user role
+- `status` (optional): Filter by status — `SUCCESS` or `FAILED`
+- `target_type` (optional): Filter by target type
+- `target_id` (optional): Filter by target ID
+- `date_from` (optional): Start date (YYYY-MM-DD)
+- `date_to` (optional): End date (YYYY-MM-DD)
+- `search` (optional): Full-text search across description, target_name, user_name_snapshot, and ip_address
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Audit logs retrieved successfully",
+  "data": {
+    "data": [
+      {
+        "id": 1,
+        "user_id": 1,
+        "user_name_snapshot": "John Doe",
+        "user_role_snapshot": "admin",
+        "action": "LOGIN",
+        "module": "Authentication",
+        "description": "User logged in successfully",
+        "target_type": null,
+        "target_id": null,
+        "target_name": null,
+        "ip_address": "192.168.1.100",
+        "user_agent": "Mozilla/5.0 ...",
+        "location": "Local network",
+        "old_values": null,
+        "new_values": null,
+        "metadata": null,
+        "status": "SUCCESS",
+        "created_at": "2024-01-15 10:30:00"
+      }
+    ],
+    "total": 150,
+    "page": 1,
+    "per_page": 20,
+    "pages": 8
+  }
+}
+```
+
+#### GET /api/audit/statistics
+Get summary statistics for the audit dashboard cards.
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Audit statistics retrieved successfully",
+  "data": {
+    "total_logs": 150,
+    "success": 142,
+    "failed": 8,
+    "last_30_days": 45,
+    "by_module": [
+      { "module": "Employees", "count": 50 },
+      { "module": "Leave", "count": 30 },
+      { "module": "Authentication", "count": 25 }
+    ]
+  }
+}
+```
+
+#### GET /api/audit/filters
+Get distinct values for filter dropdowns (actions, modules, roles, status, users).
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Audit filter options retrieved successfully",
+  "data": {
+    "actions": ["LOGIN", "CREATE", "UPDATE", "DELETE"],
+    "modules": ["Employees", "Leave", "Authentication", "Departments"],
+    "roles": ["admin", "manager", "employee"],
+    "status": ["SUCCESS", "FAILED"],
+    "users": ["John Doe", "Jane Smith"]
+  }
+}
+```
+
+#### GET /api/audit/{id}
+Get a single audit log by ID, with decoded JSON columns (`old_values`, `new_values`, `metadata`).
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "user_id": 1,
+    "user_name_snapshot": "John Doe",
+    "user_role_snapshot": "admin",
+    "action": "UPDATE",
+    "module": "Employees",
+    "description": "Updated employee record",
+    "target_type": "Employee",
+    "target_id": 42,
+    "target_name": "Jane Smith",
+    "ip_address": "192.168.1.100",
+    "user_agent": "Mozilla/5.0 ...",
+    "location": "Local network",
+    "old_values": { "first_name": "Jane", "last_name": "Smith" },
+    "new_values": { "first_name": "Jane", "last_name": "Smith-Jones" },
+    "metadata": { "source": "web" },
+    "status": "SUCCESS",
+    "created_at": "2024-01-15 10:30:00"
+  }
+}
+```
+
+#### GET /api/audit/export?format=csv
+Export audit logs as CSV, honoring active filters. Requires `audit:export` permission.
+
+**Query Parameters:**
+- Same filter parameters as `GET /api/audit` (action, module, user_id, status, date_from, date_to, search)
+
+**Response:** CSV file download with columns: ID, Timestamp, User, Role, Action, Module, Description, Target Type, Target ID, Target Name, IP Address, Location, Status.
+
+#### GET /api/audit-logs (alias)
+Alias for `GET /api/audit`. Returns the same paginated list.
 
 ---
 

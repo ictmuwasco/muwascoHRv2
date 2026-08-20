@@ -278,19 +278,34 @@ export interface Notification {
 }
 
 // --- Audit Log ---
+// Mirrors the `audit_logs` table defined in
+// backend/database/migrations/013_audit_logs.sql
+export type AuditStatus = 'SUCCESS' | 'FAILED';
+
 export interface AuditLog {
   id: number;
-  user_id: number;
-  user_name: string;
+  user_id: number | null;
+  user_name_snapshot: string | null;
+  user_role_snapshot: string | null;
   action: string;
-  resource: string;
-  resource_id: number;
-  details: string;
-  ip_address: string;
+  module: string;
+  description: string | null;
+  target_type: string | null;
+  target_id: number | null;
+  target_name: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  location: string | null;
+  old_values: Record<string, any> | null;
+  new_values: Record<string, any> | null;
+  metadata: Record<string, any> | null;
+  status: AuditStatus;
   created_at: string;
 }
 
+
 // --- Permission ---
+
 export interface Permission {
   id: number;
   role: string;
