@@ -1,28 +1,22 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Controllers\AuthController;
-use App\Controllers\EmployeeController;
-use App\Controllers\DepartmentController;
-use App\Controllers\LeaveController;
+use App\Controllers\Auth\AuthController;
+use App\Controllers\Employee\EmployeeController;
+use App\Controllers\HR\DepartmentController;
+use App\Controllers\Leave\LeaveController;
 use App\Controllers\AttendanceController;
-use App\Controllers\UserController;
-use App\Controllers\SectionController;
-use App\Controllers\SubsectionController;
+use App\Controllers\Employee\UserController;
+use App\Controllers\HR\SectionController;
+use App\Controllers\HR\SubsectionController;
 use App\Controllers\DashboardController;
-use App\Controllers\ReportController;
-use App\Controllers\PayrollController;
-use App\Controllers\ConsentController;
-use App\Controllers\FinancialYearController;
-use App\Controllers\ComplaintController;
-use App\Controllers\AppraisalController;
-use App\Controllers\StrategicPlanController;
-use App\Controllers\WorkplanController;
-use App\Controllers\KPIController;
-use App\Controllers\NotificationController;
-use App\Controllers\AuditLogController;
-use App\Controllers\SettingController;
-use App\Controllers\HolidayController;
+use App\Controllers\HR\ConsentController;
+use App\Controllers\HR\FinancialYearController;
+use App\Controllers\Settings\NotificationController;
+use App\Controllers\Settings\AuditLogController;
+use App\Controllers\HR\HolidayController;
+use App\Controllers\Settings\PermissionController;
+use App\Controllers\Meeting\MeetingController;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 
@@ -68,6 +62,20 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::put('/leave/{leaveApplication}/approve', [LeaveController::class, 'approve']);
     Route::put('/leave/{leaveApplication}/reject', [LeaveController::class, 'reject']);
     Route::put('/leave/{leaveApplication}/cancel', [LeaveController::class, 'cancel']);
+
+    // Leave Roster routes - must be before apiResource's {leaveRoster}
+    Route::get('/leave/roster/stats', [LeaveRosterController::class, 'statsAction']);
+    Route::get('/leave/roster/distribution', [LeaveRosterController::class, 'distributionAction']);
+    Route::get('/leave/roster/upcoming', [LeaveRosterController::class, 'upcomingAction']);
+    Route::get('/leave/roster/departments', [LeaveRosterController::class, 'departmentsAction']);
+    Route::get('/leave/roster/matrix', [LeaveRosterController::class, 'matrixAction']);
+    Route::get('/leave/roster/export', [LeaveRosterController::class, 'exportAction']);
+    Route::get('/leave/roster/employees', [LeaveRosterController::class, 'employeesAction']);
+    Route::get('/leave/roster/financial-years', [LeaveRosterController::class, 'financialYearsAction']);
+    Route::get('/leave/roster', [LeaveRosterController::class, 'indexAction']);
+    Route::post('/leave/roster', [LeaveRosterController::class, 'storeAction']);
+    Route::put('/leave/roster/{id}', [LeaveRosterController::class, 'updateAction']);
+    Route::delete('/leave/roster/{id}', [LeaveRosterController::class, 'destroyAction']);
 
     Route::put('/users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
     Route::post('/users/{user}/change-password', [UserController::class, 'changePassword']);
@@ -135,6 +143,14 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
+    // Audit trail endpoints. The `/audit/statistics`, `/audit/filters`, and
+    // `/audit/export` routes must be declared BEFORE the `/audit/{id}` wildcard.
+    Route::get('/audit', [AuditLogController::class, 'index']);
+    Route::get('/audit/statistics', [AuditLogController::class, 'statistics']);
+    Route::get('/audit/filters', [AuditLogController::class, 'filters']);
+    Route::get('/audit/export', [AuditLogController::class, 'export']);
+    Route::get('/audit/{id}', [AuditLogController::class, 'show']);
+    // Backwards-compatible alias
     Route::get('/audit-logs', [AuditLogController::class, 'index']);
 
     Route::get('/settings', [SettingController::class, 'index']);
@@ -150,4 +166,15 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::put('/profile', [EmployeeController::class, 'updateProfileAction']);
     Route::post('/profile/documents', [EmployeeController::class, 'uploadProfileDocumentAction']);
     Route::delete('/profile/documents/{documentId}', [EmployeeController::class, 'deleteProfileDocumentAction']);
+
+    // Permission Management routes (Phase 16 - Permission Catalog)
+    Route::get('/permissions/catalog', [PermissionController::class, 'catalog']);
+    Route::get('/permissions/statistics', [PermissionController::class, 'statistics']);
+    Route::get('/permissions/roles', [PermissionController::class, 'roles']);
+    Route::get('/permissions/users', [PermissionController::class, 'users']);
+    Route::get('/permissions/users/{userId}', [PermissionController::class, 'userPermissions']);
+    Route::get('/permissions/overrides', [PermissionController::class, 'overrides']);
+    Route::post('/permissions/users/{userId}/overrides', [PermissionController::class, 'setOverride']);
+    Route::delete('/permissions/users/{userId}/overrides', [PermissionController::class, 'removeOverride']);
 });
+

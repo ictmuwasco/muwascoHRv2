@@ -161,7 +161,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // The Dashboard fires 4+ concurrent AJAX requests (stats, attendance,
 // notifications, analytics). Without this, each request blocks on the
 // session lock held by the previous request, causing cascading timeouts.
-if ($isApiRequest) {
+//
+// IMPORTANT: We must NOT close the session for the login request.
+// AuthService::login() sets $_SESSION values (user_id, session_valid, etc.)
+// AFTER this point. If the session is already closed, those values are
+// never persisted to the session file, so subsequent API requests see an
+// empty session and return 401 Unauthorized.
+$requestPath = $_SERVER['REQUEST_URI'] ?? '';
+$isLoginRequest = strpos($requestPath, '/api/auth/login') !== false;
+if ($isApiRequest && !$isLoginRequest) {
     session_write_close();
 }
 

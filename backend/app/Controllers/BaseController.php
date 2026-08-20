@@ -19,6 +19,23 @@ abstract class BaseController
     {
         http_response_code($statusCode);
         header('Content-Type: application/json; charset=utf-8');
+        
+        // CORS configuration - must be specific origin when using credentials
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+        $allowedOrigins = [
+            'http://localhost:5173',  // Vite dev server
+            'http://localhost:3000',  // Alternative dev port
+            'http://localhost',       // Production
+        ];
+        
+        if (in_array($origin, $allowedOrigins)) {
+            header('Access-Control-Allow-Origin: ' . $origin);
+            header('Access-Control-Allow-Credentials: true');
+        }
+        
+        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization');
+        
         echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit();
     }
@@ -87,6 +104,10 @@ abstract class BaseController
 
     /**
      * Get the current authenticated user ID from session or JWT.
+     *
+     * Checks the PHP session first, then falls back to JWT token
+     * authentication via the Authorization header OR the httpOnly
+     * access_token cookie (set by the server during login).
      */
     protected function getUserId(): int
     {
@@ -94,15 +115,19 @@ abstract class BaseController
         if (isset($_SESSION['user_id']) && $_SESSION['user_id'] > 0) {
             return (int) $_SESSION['user_id'];
         }
-        
-        // Fallback to JWT token from Authorization header
-        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] 
-            ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] 
+
+        // Fallback to JWT token from Authorization header or access_token cookie
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION']
+            ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION']
             ?? '';
-        
-        if (strpos($authHeader, 'Bearer ') === 0) {
-            // Use Auth helper to authenticate from JWT token
-            // This will restore the session from the token
+
+        $hasBearerToken = strpos($authHeader, 'Bearer ') === 0;
+        $hasCookieToken = isset($_COOKIE['access_token']);
+
+        if ($hasBearerToken || $hasCookieToken) {
+            // Use Auth helper to authenticate from JWT token.
+            // Auth::check() reads the token from the Authorization header
+            // OR the httpOnly access_token cookie, then restores the session.
             try {
                 $auth = \App\Helpers\Auth::getInstance();
                 if ($auth->check()) {
@@ -112,7 +137,7 @@ abstract class BaseController
                 error_log('JWT auth error: ' . $authError->getMessage());
             }
         }
-        
+
         return 0;
     }
 

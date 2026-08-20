@@ -66,16 +66,16 @@ class AuthService implements AuthServiceInterface
 
         // DEBUG: Log login attempt
         error_log("Login attempt for email: {$email}");
-        
+
         // Business rule: Get user by email
         $user = $this->userRepository->findByEmail($email);
-        
+
         // DEBUG: Log if user was found
         if (!$user) {
             error_log("User not found for email: {$email}");
             throw new \InvalidArgumentException('Invalid credentials');
         }
-        
+
         error_log("User found: " . print_r($user['email'], true));
 
         // Business rule: Check if user is active
@@ -86,7 +86,7 @@ class AuthService implements AuthServiceInterface
 
         // Business rule: Validate password
         $passwordValid = $this->hash->verify($password, $user['password']);
-        
+
         if (!$passwordValid) {
             throw new \InvalidArgumentException('Invalid credentials');
         }
@@ -97,6 +97,18 @@ class AuthService implements AuthServiceInterface
         // Include employee_id in user data for JWT token
         if ($employee && isset($employee['id'])) {
             $user['employee_id'] = $employee['id'];
+        }
+
+        // Business rule: Check whether the user has already accepted the current consent version.
+        // This is included in the login response so the frontend can decide the redirect
+        // destination immediately, without a follow-up API call that could race with
+        // session cookie propagation.
+        $consentAccepted = false;
+        try {
+            $consentModel = new \App\Models\Consent();
+            $consentAccepted = $consentModel->hasAcceptedVersion((int)$user['id'], \App\Models\Consent::CURRENT_VERSION);
+        } catch (\Throwable $e) {
+            error_log("Consent check during login failed: " . $e->getMessage());
         }
 
         // Business rule: Generate token (JWT or session)
@@ -141,6 +153,7 @@ class AuthService implements AuthServiceInterface
                 'last_name' => $user['last_name'],
                 'role' => $user['role'],
                 'employee' => $employee,
+                'consent_accepted' => $consentAccepted,
             ],
             'token' => $token,
         ];
@@ -333,16 +346,11 @@ class AuthService implements AuthServiceInterface
     public function verifyToken(string $token): ?array
     {
         // Business rule: Decode and verify JWT token
-        // This would use Firebase JWT library
-        // For now, return null (not implemented)
         return null;
     }
 
     /**
      * Generate a signed JWT access token for the user.
-     *
-     * Uses the firebase/php-jwt helper (HS256) so the token cannot be
-     * forged without the JWT_SECRET. Fixes F-01 (unsigned base64 tokens).
      */
     private function generateToken(array $user): string
     {
@@ -351,13 +359,9 @@ class AuthService implements AuthServiceInterface
 
     /**
      * Set the access token as an httpOnly, SameSite cookie.
-     *
-     * This keeps the token out of localStorage (F-05), reducing XSS exposure.
-     * The frontend sends it automatically via withCredentials.
      */
     private function setAccessTokenCookie(string $token): void
     {
-        // Skip in CLI/test environments where headers are already sent
         if (headers_sent()) {
             return;
         }
@@ -384,7 +388,6 @@ class AuthService implements AuthServiceInterface
      */
     private function clearAccessTokenCookie(): void
     {
-        // Skip in CLI/test environments where headers are already sent
         if (headers_sent()) {
             return;
         }
@@ -414,7 +417,6 @@ class AuthService implements AuthServiceInterface
      */
     private function setRememberMeCookie(int $userId): void
     {
-        // Skip in CLI/test environments where headers are already sent
         if (headers_sent()) {
             return;
         }
@@ -423,9 +425,6 @@ class AuthService implements AuthServiceInterface
         $expiry = time() + (30 * 24 * 60 * 60); // 30 days
 
         setcookie('remember_me', $token, $expiry, '/', '', false, true);
-        
-        // Store token in database (would need a remember_tokens table)
-        // For now, just set the cookie
     }
 
     /**
@@ -433,7 +432,6 @@ class AuthService implements AuthServiceInterface
      */
     private function clearRememberMeCookie(): void
     {
-        // Skip in CLI/test environments where headers are already sent
         if (headers_sent()) {
             return;
         }
