@@ -93,6 +93,12 @@ hrdemo/
 │   │   ├── components/       # Reusable components
 │   │   │   └── ui/           # UI component library
 │   │   ├── pages/            # Page components
+│   │   │   ├── auth/         # Authentication pages
+│   │   │   ├── employee/     # Employee management pages
+│   │   │   ├── leave/        # Leave management pages
+│   │   │   ├── hr-admin/     # HR administration pages
+│   │   │   ├── meetings/     # Meeting management pages
+│   │   │   └── settings/     # Settings and admin pages
 │   │   ├── context/          # React contexts
 │   │   ├── types/            # TypeScript definitions
 │   │   └── utils/            # Utilities
@@ -101,6 +107,7 @@ hrdemo/
 └── docs/                     # Documentation
     ├── API_DOCUMENTATION.md
     ├── ARCHITECTURE.md
+    ├── PAGE_DOCUMENTATION.md
     ├── SETUP.md
     └── DEPLOYMENT.md
 ```

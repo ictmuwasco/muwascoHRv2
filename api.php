@@ -27,23 +27,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // Load the application bootstrap
 require_once __DIR__ . '/backend/bootstrap.php';
 
-use App\Controllers\AuthController;
-use App\Controllers\EmployeeController;
-use App\Controllers\DepartmentController;
-use App\Controllers\LeaveController;
-use App\Controllers\LeaveRosterController;
+use App\Controllers\Auth\AuthController;
+use App\Controllers\Employee\EmployeeController;
+use App\Controllers\HR\DepartmentController;
+use App\Controllers\Leave\LeaveController;
 use App\Controllers\AttendanceController;
-use App\Controllers\UserController;
-use App\Controllers\SectionController;
-use App\Controllers\SubsectionController;
+use App\Controllers\Employee\UserController;
+use App\Controllers\HR\SectionController;
+use App\Controllers\HR\SubsectionController;
 use App\Controllers\DashboardController;
-use App\Controllers\ConsentController;
-use App\Controllers\FinancialYearController;
-use App\Controllers\NotificationController;
-use App\Controllers\AuditLogController;
-use App\Controllers\HolidayController;
-use App\Controllers\PermissionController;
-use App\Controllers\MeetingController;
+use App\Controllers\HR\ConsentController;
+use App\Controllers\HR\FinancialYearController;
+use App\Controllers\Settings\NotificationController;
+use App\Controllers\Settings\AuditLogController;
+use App\Controllers\HR\HolidayController;
+use App\Controllers\Settings\PermissionController;
+use App\Controllers\Meeting\MeetingController;
 
 /**
  * Simple Router
