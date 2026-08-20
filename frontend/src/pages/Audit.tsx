@@ -18,7 +18,11 @@ const Audit = () => {
   const fetchLogs = async () => {
     try {
       const response = await apiClient.get('/audit-logs');
-      setLogs(response.data.data || []);
+      // The backend wraps the paginated result inside BaseController::success(),
+      // producing: { success: true, data: { data: [...], total, page, ... } }
+      // Some endpoints return data as a direct array. Handle both shapes safely.
+      const responseData = response.data?.data;
+      setLogs(Array.isArray(responseData) ? responseData : (responseData?.data || []));
     } catch (error) {
       console.error('Failed to fetch audit logs:', error);
     } finally {
@@ -27,10 +31,10 @@ const Audit = () => {
   };
 
   const columns = [
-    { key: 'user_name', label: 'User' },
+    { key: 'user_name_snapshot', label: 'User' },
     { key: 'action', label: 'Action' },
-    { key: 'resource', label: 'Resource' },
-    { key: 'details', label: 'Details' },
+    { key: 'module', label: 'Resource' },
+    { key: 'description', label: 'Details' },
     { key: 'ip_address', label: 'IP Address' },
     { key: 'created_at', label: 'Timestamp' },
   ];

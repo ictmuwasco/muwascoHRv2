@@ -29,9 +29,17 @@ class ConsentController extends BaseController
     {
         try {
             $userId = $this->getAuthUserId();
-            
+
+            // If not authenticated yet, return consented=false (no error, just no consent)
+            // ProtectedRoute.jsx already checks isAuthenticated separately, but sometimes
+            // the session cookie hasn't propagated by the time this endpoint is called after login.
             if ($userId <= 0) {
-                $this->json(['success' => false, 'message' => 'Unauthenticated'], 401);
+                $this->json([
+                    'success' => true,
+                    'consented' => false,
+                    'consent_version' => Consent::CURRENT_VERSION ?? 1,
+                    'message' => 'Not authenticated',
+                ]);
                 return;
             }
 
@@ -45,17 +53,20 @@ class ConsentController extends BaseController
             } catch (\Exception $dbError) {
                 // Database error - log and return false (require consent)
                 error_log("Consent check database error: " . $dbError->getMessage());
+                http_response_code(500);
                 $this->json([
-                    'success' => true,
+                    'success' => false,
                     'consented' => false,
                     'consent_version' => Consent::CURRENT_VERSION,
-                ]);
+                    'error' => 'Consent check failed - please try again',
+                ], 500);
             }
         } catch (\Throwable $e) {
             error_log("Consent Status Error: " . $e->getMessage());
             // On critical error, require consent (safer approach)
+            http_response_code(500);
             $this->json([
-                'success' => true,
+                'success' => false,
                 'consented' => false,
             ]);
         }
@@ -235,8 +246,8 @@ class ConsentController extends BaseController
             }
 
             // Check specific permission from RBAC system
-            $auth = new \App\Helpers\Auth();
-            return $auth->hasPermission($userId, "{$module}.{$action}");
+            $auth = \App\Helpers\Auth::getInstance();
+            return $auth->hasPermission($module, $action);
         } catch (\Exception $e) {
             error_log("Permission check error: " . $e->getMessage());
             return false;

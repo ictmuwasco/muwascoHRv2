@@ -7,19 +7,31 @@ namespace App\Models;
 /**
  * UserPagePermission Model
  *
- * Handles database operations for user-specific page permission overrides.
+ * Handles database operations for user-specific permission overrides.
  * This model manages the hybrid authorization system where users can have
- * explicit allow/deny permissions that override their role-based permissions.
+ * explicit allow/deny permissions for specific module/action combinations
+ * that override their role-based permissions.
+ *
+ * Authorization Hierarchy:
+ *   1. Super Admin (handled in RBAC.php)
+ *   2. User-Specific Override (this model / user_page_permissions table)
+ *   3. Role Permission (role_permissions table)
+ *   4. Default Deny
+ *
+ * Permission Model:
+ *   'allow'  = explicitly allow this user for module/action
+ *   'deny'   = explicitly deny this user for module/action
+ *   (no record) = inherit role permission
  *
  * Place: backend/app/Models/UserPagePermission.php
  */
 class UserPagePermission
 {
     /**
-     * Get all permission overrides for a specific user.
+     * Get all permission overrides for a specific user (active only).
      *
      * @param int $userId
-     * @return array Array of permission overrides
+     * @return array Array of permission overrides with module/action granularity
      */
     public function getByUserId(int $userId): array
     {
@@ -27,16 +39,16 @@ class UserPagePermission
             $conn = \App\Helpers\Database::getInstance()->getConnection();
 
             $stmt = $conn->prepare("
-                SELECT id, user_id, page_id, permission_type, granted_by, 
-                       granted_at, updated_at, active, notes
+                SELECT id, user_id, module, action, permission_type, granted_by,
+                       updated_by, granted_at, updated_at, active, notes
                 FROM user_page_permissions
                 WHERE user_id = ? AND active = 1
-                ORDER BY page_id ASC
+                ORDER BY module ASC, action ASC
             ");
             $stmt->bind_param("i", $userId);
             $stmt->execute();
             $result = $stmt->get_result();
-            $permissions = $result->fetch_all(MYSQLI_ASSOC);
+            $permissions = $result->fetch_all(\MYSQLI_ASSOC);
             $stmt->close();
 
             return $permissions;
@@ -47,25 +59,26 @@ class UserPagePermission
     }
 
     /**
-     * Get a specific permission override for a user and page.
+     * Get a specific permission override for a user and module/action.
      *
      * @param int $userId
-     * @param string $pageId
-     * @return array|null Permission record or null if not found
+     * @param string $module
+     * @param string $action
+     * @return array|null Permission record or null if not found / inactive
      */
-    public function getByUserAndPage(int $userId, string $pageId): ?array
+    public function getByUserAndModuleAction(int $userId, string $module, string $action): ?array
     {
         try {
             $conn = \App\Helpers\Database::getInstance()->getConnection();
 
             $stmt = $conn->prepare("
-                SELECT id, user_id, page_id, permission_type, granted_by, 
-                       granted_at, updated_at, active, notes
+                SELECT id, user_id, module, action, permission_type, granted_by,
+                       updated_by, granted_at, updated_at, active, notes
                 FROM user_page_permissions
-                WHERE user_id = ? AND page_id = ? AND active = 1
+                WHERE user_id = ? AND module = ? AND action = ? AND active = 1
                 LIMIT 1
             ");
-            $stmt->bind_param("is", $userId, $pageId);
+            $stmt->bind_param("iss", $userId, $module, $action);
             $stmt->execute();
             $result = $stmt->get_result();
             $permission = $result->fetch_assoc();
@@ -73,7 +86,7 @@ class UserPagePermission
 
             return $permission ?: null;
         } catch (\Exception $e) {
-            error_log("Failed to load permission for user {$userId}, page {$pageId}: " . $e->getMessage());
+            error_log("Failed to load permission for user {$userId}, module {$module}, action {$action}: " . $e->getMessage());
             return null;
         }
     }
@@ -81,57 +94,63 @@ class UserPagePermission
     /**
      * Create or update a permission override.
      *
+     * Uses INSERT ... ON DUPLICATE KEY UPDATE to prevent duplicate
+     * (user_id, module, action) records (Phase 13 - unique constraint).
+     *
      * @param int $userId
-     * @param string $pageId
+     * @param string $module
+     * @param string $action
      * @param string $permissionType 'allow' or 'deny'
      * @param int $grantedBy
+     * @param int $updatedBy
      * @param string|null $notes
      * @return bool Success status
      */
-    public function setPermission(int $userId, string $pageId, string $permissionType, int $grantedBy, ?string $notes = null): bool
-    {
+    public function setPermission(
+        int $userId,
+        string $module,
+        string $action,
+        string $permissionType,
+        int $grantedBy,
+        int $updatedBy,
+        ?string $notes = null
+    ): bool {
         try {
             $conn = \App\Helpers\Database::getInstance()->getConnection();
 
-            // Check if permission already exists
-            $existing = $this->getByUserAndPage($userId, $pageId);
-
-            if ($existing) {
-                // Update existing permission
-                $stmt = $conn->prepare("
-                    UPDATE user_page_permissions
-                    SET permission_type = ?, granted_by = ?, updated_at = NOW(), notes = ?
-                    WHERE user_id = ? AND page_id = ? AND active = 1
-                ");
-                $stmt->bind_param("sisis", $permissionType, $grantedBy, $notes, $userId, $pageId);
-            } else {
-                // Insert new permission
-                $stmt = $conn->prepare("
-                    INSERT INTO user_page_permissions 
-                    (user_id, page_id, permission_type, granted_by, notes, granted_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, NOW(), NOW())
-                ");
-                $stmt->bind_param("issis", $userId, $pageId, $permissionType, $grantedBy, $notes);
-            }
-
+            $stmt = $conn->prepare("
+                INSERT INTO user_page_permissions
+                    (user_id, module, action, permission_type, granted_by, updated_by, notes, granted_at, updated_at, active)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)
+                ON DUPLICATE KEY UPDATE
+                    permission_type = VALUES(permission_type),
+                    granted_by      = VALUES(granted_by),
+                    updated_by      = VALUES(updated_by),
+                    notes           = VALUES(notes),
+                    active          = 1,
+                    updated_at      = NOW()
+            ");
+            $stmt->bind_param("isssiis", $userId, $module, $action, $permissionType, $grantedBy, $updatedBy, $notes);
             $result = $stmt->execute();
             $stmt->close();
 
             return $result;
         } catch (\Exception $e) {
-            error_log("Failed to set permission for user {$userId}, page {$pageId}: " . $e->getMessage());
+            error_log("Failed to set permission for user {$userId}, module {$module}, action {$action}: " . $e->getMessage());
             return false;
         }
     }
 
     /**
      * Remove a permission override (set to inactive).
+     * Inactive overrides are treated as if no override exists (Phase 12).
      *
      * @param int $userId
-     * @param string $pageId
+     * @param string $module
+     * @param string $action
      * @return bool Success status
      */
-    public function removePermission(int $userId, string $pageId): bool
+    public function removePermission(int $userId, string $module, string $action): bool
     {
         try {
             $conn = \App\Helpers\Database::getInstance()->getConnection();
@@ -139,15 +158,15 @@ class UserPagePermission
             $stmt = $conn->prepare("
                 UPDATE user_page_permissions
                 SET active = 0, updated_at = NOW()
-                WHERE user_id = ? AND page_id = ? AND active = 1
+                WHERE user_id = ? AND module = ? AND action = ? AND active = 1
             ");
-            $stmt->bind_param("is", $userId, $pageId);
+            $stmt->bind_param("iss", $userId, $module, $action);
             $result = $stmt->execute();
             $stmt->close();
 
             return $result;
         } catch (\Exception $e) {
-            error_log("Failed to remove permission for user {$userId}, page {$pageId}: " . $e->getMessage());
+            error_log("Failed to remove permission for user {$userId}, module {$module}, action {$action}: " . $e->getMessage());
             return false;
         }
     }
@@ -160,37 +179,44 @@ class UserPagePermission
      */
     public function removeAllPermissions(int $userId): bool
     {
-        $conn = \App\Helpers\Database::getInstance()->getConnection();
+        try {
+            $conn = \App\Helpers\Database::getInstance()->getConnection();
 
-        $stmt = $conn->prepare("
-            UPDATE user_page_permissions
-            SET active = 0, updated_at = NOW()
-            WHERE user_id = ? AND active = 1
-        ");
-        $stmt->bind_param("i", $userId);
-        $result = $stmt->execute();
-        $stmt->close();
+            $stmt = $conn->prepare("
+                UPDATE user_page_permissions
+                SET active = 0, updated_at = NOW()
+                WHERE user_id = ? AND active = 1
+            ");
+            $stmt->bind_param("i", $userId);
+            $result = $stmt->execute();
+            $stmt->close();
 
-        return $result;
+            return $result;
+        } catch (\Exception $e) {
+            error_log("Failed to remove all permissions for user {$userId}: " . $e->getMessage());
+            return false;
+        }
     }
 
     /**
-     * Get all permissions with user information for audit purposes.
+     * Get all permission overrides with user and grantor information for audit purposes.
      *
-     * @param array $filters Optional filters
-     * @return array Array of permissions with user details
+     * @param array $filters Optional filters (user_id, module, action, permission_type)
+     * @return array Array of permissions with user and grantor details
      */
     public function getAllWithUserInfo(array $filters = []): array
     {
         $conn = \App\Helpers\Database::getInstance()->getConnection();
 
         $query = "
-            SELECT 
+            SELECT
                 upp.id,
                 upp.user_id,
-                upp.page_id,
+                upp.module,
+                upp.action,
                 upp.permission_type,
                 upp.granted_by,
+                upp.updated_by,
                 upp.granted_at,
                 upp.updated_at,
                 upp.active,
@@ -202,13 +228,15 @@ class UserPagePermission
                 e.employee_id,
                 d.name as department,
                 s.name as section,
-                CONCAT(g.first_name, ' ', g.last_name) as granted_by_name
+                CONCAT(gu.first_name, ' ', gu.last_name) as granted_by_name,
+                CONCAT(uu.first_name, ' ', uu.last_name) as updated_by_name
             FROM user_page_permissions upp
             JOIN users u ON upp.user_id = u.id
             LEFT JOIN employees e ON u.email = e.email
             LEFT JOIN departments d ON e.department_id = d.id
             LEFT JOIN sections s ON e.section_id = s.id
-            JOIN users g ON upp.granted_by = g.id
+            LEFT JOIN users gu ON upp.granted_by = gu.id
+            LEFT JOIN users uu ON upp.updated_by = uu.id
             WHERE upp.active = 1
         ";
 
@@ -221,9 +249,15 @@ class UserPagePermission
             $types .= 'i';
         }
 
-        if (isset($filters['page_id'])) {
-            $query .= " AND upp.page_id = ?";
-            $params[] = $filters['page_id'];
+        if (isset($filters['module'])) {
+            $query .= " AND upp.module = ?";
+            $params[] = $filters['module'];
+            $types .= 's';
+        }
+
+        if (isset($filters['action'])) {
+            $query .= " AND upp.action = ?";
+            $params[] = $filters['action'];
             $types .= 's';
         }
 
@@ -233,7 +267,7 @@ class UserPagePermission
             $types .= 's';
         }
 
-        $query .= " ORDER BY u.first_name, u.last_name, upp.page_id";
+        $query .= " ORDER BY u.first_name, u.last_name, upp.module, upp.action";
 
         $stmt = $conn->prepare($query);
 
@@ -243,71 +277,77 @@ class UserPagePermission
 
         $stmt->execute();
         $result = $stmt->get_result();
-        $permissions = $result->fetch_all(MYSQLI_ASSOC);
+        $permissions = $result->fetch_all(\MYSQLI_ASSOC);
         $stmt->close();
 
         return $permissions;
     }
 
     /**
-     * Get all available page IDs from the system.
+     * Get all available module names from the application.
+     * Derived from the existing role_permissions table and application routes.
      *
-     * @return array Array of page IDs
+     * @return array Array of module names
      */
-    public function getAllPageIds(): array
+    public function getAllModules(): array
     {
         return [
             'dashboard',
             'employees',
+            'departments',
             'attendance',
             'leave',
-            'payroll',
-            'complaints',
             'reports',
-            'appraisal',
             'users',
-            'roles',
-            'settings',
+            'admin',
             'audit',
-            'notifications'
+            'profile',
+            'performance',
+            'consent',
+            'permission_overrides',
+            'financial_year',
+            'holidays',
         ];
     }
 
     /**
-     * Get page display names.
+     * Get module display names.
      *
-     * @return array Array of page_id => display_name
+     * @return array Array of module => display_name
      */
-    public function getPageNames(): array
+    public function getModuleNames(): array
     {
         return [
-            'dashboard' => 'Dashboard',
-            'employees' => 'Employees',
-            'attendance' => 'Attendance',
-            'leave' => 'Leave Management',
-            'payroll' => 'Payroll',
-            'complaints' => 'Complaints',
-            'reports' => 'Reports',
-            'appraisal' => 'Performance Appraisal',
-            'users' => 'User Management',
-            'roles' => 'Roles & Permissions',
-            'settings' => 'Settings',
-            'audit' => 'Audit Trail',
-            'notifications' => 'Notifications'
+            'dashboard'            => 'Dashboard',
+            'employees'            => 'Employees',
+            'departments'          => 'Departments',
+            'attendance'           => 'Attendance',
+            'leave'                => 'Leave Management',
+            'reports'              => 'Reports',
+            'users'                => 'User Management',
+            'admin'                => 'Admin',
+            'audit'                => 'Audit Trail',
+            'profile'              => 'Profile',
+            'performance'          => 'Performance Appraisal',
+            'consent'              => 'Consent',
+            'permission_overrides' => 'Permission Overrides',
+            'financial_year'       => 'Financial Year',
+            'holidays'             => 'Holidays',
         ];
     }
 
     /**
-     * Check if a user has an explicit permission override for a page.
+     * Check if a user has an explicit permission override for a module/action.
      *
      * @param int $userId
-     * @param string $pageId
-     * @return string|null 'allow', 'deny', or null if no override
+     * @param string $module
+     * @param string $action
+     * @return string|null 'allow', 'deny', or null if no override exists (inherit)
      */
-    public function getExplicitPermission(int $userId, string $pageId): ?string
+    public function getExplicitPermission(int $userId, string $module, string $action): ?string
     {
-        $permission = $this->getByUserAndPage($userId, $pageId);
-        
+        $permission = $this->getByUserAndModuleAction($userId, $module, $action);
+
         if (!$permission) {
             return null;
         }
@@ -326,8 +366,8 @@ class UserPagePermission
             $conn = \App\Helpers\Database::getInstance()->getConnection();
 
             $result = $conn->query("
-                SELECT COUNT(*) as count 
-                FROM user_page_permissions 
+                SELECT COUNT(*) as count
+                FROM user_page_permissions
                 WHERE active = 1
             ");
 
@@ -351,8 +391,8 @@ class UserPagePermission
             $conn = \App\Helpers\Database::getInstance()->getConnection();
 
             $stmt = $conn->prepare("
-                SELECT COUNT(*) as count 
-                FROM user_page_permissions 
+                SELECT COUNT(*) as count
+                FROM user_page_permissions
                 WHERE active = 1 AND permission_type = ?
             ");
             $stmt->bind_param("s", $type);

@@ -226,6 +226,48 @@ try {
         exit(1);
     }
 
+    // Run migration 016 - Create meetings table
+    $sql = file_get_contents(__DIR__ . '/migrations/016_create_meetings_table.sql');
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        echo "Migration 016_create_meetings_table.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 016: " . $conn->error . "\n";
+        exit(1);
+    }
+    $result = $conn->query("SHOW TABLES LIKE 'meetings'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ meetings table created successfully\n";
+    } else {
+        echo "✗ meetings table not found\n";
+        exit(1);
+    }
+
+    // Run migration 017 - Create meeting_invitations table
+    $sql = file_get_contents(__DIR__ . '/migrations/017_create_meeting_invitations_table.sql');
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        echo "Migration 017_create_meeting_invitations_table.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 017: " . $conn->error . "\n";
+        exit(1);
+    }
+    $result = $conn->query("SHOW TABLES LIKE 'meeting_invitations'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ meeting_invitations table created successfully\n";
+    } else {
+        echo "✗ meeting_invitations table not found\n";
+        exit(1);
+    }
+
     echo "\n✓ All migrations completed successfully!\n";
     
     // Re-run role permissions migration to ensure new permissions are added

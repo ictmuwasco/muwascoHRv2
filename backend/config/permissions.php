@@ -175,6 +175,22 @@ return [
                 ['key' => 'delete', 'label' => 'Delete', 'type' => 'action'],
             ],
         ],
+
+        'meetings' => [
+            'key'     => 'meetings',
+            'label'   => 'Meetings',
+            'actions' => [
+                ['key' => 'view',            'label' => 'View',             'type' => 'page'],
+                ['key' => 'create',          'label' => 'Create',           'type' => 'action'],
+                ['key' => 'edit',            'label' => 'Edit',             'type' => 'action'],
+                ['key' => 'delete',          'label' => 'Delete',           'type' => 'action'],
+                ['key' => 'invite',          'label' => 'Invite',           'type' => 'action'],
+                ['key' => 'manage',          'label' => 'Manage',           'type' => 'action'],
+                ['key' => 'view_attendance', 'label' => 'View Attendance',  'type' => 'action'],
+                ['key' => 'export',          'label' => 'Export',           'type' => 'action'],
+                ['key' => 'confirm',         'label' => 'Confirm Attendance', 'type' => 'action'],
+            ],
+        ],
     ],
 
     /**

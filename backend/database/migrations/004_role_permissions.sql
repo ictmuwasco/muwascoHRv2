@@ -223,8 +223,59 @@ ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted);
 -- Officer role gets reports view by default; export can be granted via user override.
 -- This ensures the Internal Auditor scenario works without hardcoding.
 INSERT INTO role_permissions (role, module, action, is_granted) VALUES
-('officer', 'reports', 'export', 0),
-('officer', 'reports', 'create', 0),
-('officer', 'reports', 'edit', 0),
-('officer', 'reports', 'delete', 0)
+    ('officer', 'reports', 'export', 0),
+    ('officer', 'reports', 'create', 0),
+    ('officer', 'reports', 'edit', 0),
+    ('officer', 'reports', 'delete', 0)
+ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted);
+
+-- Meeting Management Permissions
+INSERT INTO role_permissions (role, module, action, is_granted) VALUES
+    ('super_admin', 'meetings', 'view', 1),
+    ('super_admin', 'meetings', 'create', 1),
+    ('super_admin', 'meetings', 'edit', 1),
+    ('super_admin', 'meetings', 'delete', 1),
+    ('super_admin', 'meetings', 'invite', 1),
+    ('super_admin', 'meetings', 'manage', 1),
+    ('super_admin', 'meetings', 'view_attendance', 1),
+    ('super_admin', 'meetings', 'export', 1),
+    ('super_admin', 'meetings', 'confirm', 1),
+
+    ('hr_manager', 'meetings', 'view', 1),
+    ('hr_manager', 'meetings', 'create', 1),
+    ('hr_manager', 'meetings', 'edit', 1),
+    ('hr_manager', 'meetings', 'delete', 1),
+    ('hr_manager', 'meetings', 'invite', 1),
+    ('hr_manager', 'meetings', 'manage', 1),
+    ('hr_manager', 'meetings', 'view_attendance', 1),
+    ('hr_manager', 'meetings', 'export', 1),
+    ('hr_manager', 'meetings', 'confirm', 1),
+
+    ('dept_head', 'meetings', 'view', 1),
+    ('dept_head', 'meetings', 'create', 1),
+    ('dept_head', 'meetings', 'edit', 1),
+    ('dept_head', 'meetings', 'invite', 1),
+    ('dept_head', 'meetings', 'view_attendance', 1),
+    ('dept_head', 'meetings', 'export', 1),
+    ('dept_head', 'meetings', 'confirm', 1),
+
+    ('section_head', 'meetings', 'view', 1),
+    ('section_head', 'meetings', 'manage', 1),
+    ('section_head', 'meetings', 'view_attendance', 1),
+
+    ('sub_section_head', 'meetings', 'view', 1),
+    ('sub_section_head', 'meetings', 'view_attendance', 1),
+
+    ('manager', 'meetings', 'view', 1),
+
+    ('officer', 'meetings', 'view', 1),
+    ('officer', 'meetings', 'confirm', 1),
+
+    ('employee', 'meetings', 'view', 1),
+    ('employee', 'meetings', 'confirm', 1),
+
+    ('managing_director', 'meetings', 'view', 1),
+    ('managing_director', 'meetings', 'export', 1),
+
+    ('bod_chairman', 'meetings', 'view', 1)
 ON DUPLICATE KEY UPDATE is_granted = VALUES(is_granted);

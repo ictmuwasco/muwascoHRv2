@@ -5,6 +5,7 @@ use App\Controllers\AuthController;
 use App\Controllers\EmployeeController;
 use App\Controllers\DepartmentController;
 use App\Controllers\LeaveController;
+use App\Controllers\LeaveRosterController;
 use App\Controllers\AttendanceController;
 use App\Controllers\UserController;
 use App\Controllers\SectionController;
@@ -69,6 +70,20 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::put('/leave/{leaveApplication}/approve', [LeaveController::class, 'approve']);
     Route::put('/leave/{leaveApplication}/reject', [LeaveController::class, 'reject']);
     Route::put('/leave/{leaveApplication}/cancel', [LeaveController::class, 'cancel']);
+
+    // Leave Roster routes - must be before apiResource's {leaveRoster}
+    Route::get('/leave/roster/stats', [LeaveRosterController::class, 'statsAction']);
+    Route::get('/leave/roster/distribution', [LeaveRosterController::class, 'distributionAction']);
+    Route::get('/leave/roster/upcoming', [LeaveRosterController::class, 'upcomingAction']);
+    Route::get('/leave/roster/departments', [LeaveRosterController::class, 'departmentsAction']);
+    Route::get('/leave/roster/matrix', [LeaveRosterController::class, 'matrixAction']);
+    Route::get('/leave/roster/export', [LeaveRosterController::class, 'exportAction']);
+    Route::get('/leave/roster/employees', [LeaveRosterController::class, 'employeesAction']);
+    Route::get('/leave/roster/financial-years', [LeaveRosterController::class, 'financialYearsAction']);
+    Route::get('/leave/roster', [LeaveRosterController::class, 'indexAction']);
+    Route::post('/leave/roster', [LeaveRosterController::class, 'storeAction']);
+    Route::put('/leave/roster/{id}', [LeaveRosterController::class, 'updateAction']);
+    Route::delete('/leave/roster/{id}', [LeaveRosterController::class, 'destroyAction']);
 
     Route::put('/users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
     Route::post('/users/{user}/change-password', [UserController::class, 'changePassword']);

@@ -384,6 +384,20 @@ class EmployeeController extends BaseController
             ];
 
             $documentId = $this->employeeService->addDocument($documentData);
+
+            // Audit: log document upload
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\AuditService::ACTION_CREATE,
+                'Uploaded document: ' . $documentName,
+                [
+                    'target_type' => 'Document',
+                    'target_id' => $documentId,
+                    'target_name' => $documentName,
+                    'metadata' => ['category' => $category, 'file_name' => $fileName],
+                ]
+            );
+
             $this->success(['id' => $documentId, 'message' => 'Document uploaded successfully']);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -428,6 +442,20 @@ class EmployeeController extends BaseController
 
             // Delete record from database
             $this->employeeService->deleteDocument($documentId);
+
+            // Audit: log document deletion
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\AuditService::ACTION_DELETE,
+                'Deleted document: ' . ($document['document_name'] ?? 'Document #' . $documentId),
+                [
+                    'target_type' => 'Document',
+                    'target_id' => $documentId,
+                    'target_name' => $document['document_name'] ?? null,
+                    'old_values' => $document,
+                ]
+            );
+
             $this->success(null, 'Document deleted successfully');
         } catch (\Exception $e) {
             \logger()->error('Document delete error', ['error' => $e->getMessage()]);
@@ -555,6 +583,31 @@ class EmployeeController extends BaseController
 
             // Update the employee record (partial update, no full validation)
             $result = $this->employeeService->updateEmployeeProfile((int)$employee['id'], $updateData);
+
+            // Audit: log profile update
+            $auditDescription = 'Updated profile';
+            if (isset($updateData['next_of_kin'])) {
+                $auditDescription = 'Updated next of kin information';
+            } elseif (isset($updateData['dependants'])) {
+                $auditDescription = 'Updated dependants';
+            } elseif (isset($updateData['personal'])) {
+                $auditDescription = 'Updated personal information';
+            } elseif (isset($updateData['employment'])) {
+                $auditDescription = 'Updated employment information';
+            }
+
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\AuditService::ACTION_UPDATE,
+                $auditDescription,
+                [
+                    'target_type' => 'Employee',
+                    'target_id' => (int)$employee['id'],
+                    'target_name' => trim(($employee['first_name'] ?? '') . ' ' . ($employee['last_name'] ?? '')),
+                    'new_values' => $updateData,
+                ]
+            );
+
             $this->success($result, 'Profile updated successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
