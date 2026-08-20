@@ -1,6 +1,17 @@
 import { FY_MONTH_SHORT } from '../../constants/leaveConstants'
 
-
+/**
+ * Monthly distribution bar chart (July → June).
+ *
+ * Spec point #11: "Monthly Distribution Should Be the Main Chart"
+ * Spec point #12: "Add 'Planning Attention' Rather Than Fake Rules"
+ *
+ * Props:
+ *   - distribution: array of { month, count }
+ *   - highest: { month, count } | null
+ *   - lowest: { month, count } | null
+ *   - maxHeight: number (max bar height in px)
+ */
 const DistributionChart = ({ distribution = [], highest = null, lowest = null, maxHeight = 120 }) => {
   const maxCount = Math.max(...distribution.map((d) => d.count), 1)
 
