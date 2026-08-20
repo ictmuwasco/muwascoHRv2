@@ -161,15 +161,11 @@ class Auth
             return false;
         }
 
-        // For page-level access (view action), use hybrid authorization
-        if ($action === 'view') {
-            $userId = (int)($_SESSION['user_id'] ?? 0);
-            return $this->authService->hasPageAccess($userId, $module);
-        }
-
-        // For other actions, fall back to RBAC
-        $role = $_SESSION['user_role'] ?? '';
-        return $this->rbac->hasPermission($role, $module, $action);
+        // Hybrid authorization: check user overrides first, then RBAC.
+        // Super Admin is handled by RBAC.php (always returns true).
+        // User overrides support module/action granularity for ALL actions.
+        $userId = (int)($_SESSION['user_id'] ?? 0);
+        return $this->authService->hasPermission($userId, $module, $action);
     }
 
     /**

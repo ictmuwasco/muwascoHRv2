@@ -4,21 +4,27 @@ declare(strict_types=1);
 
 namespace App\Helpers;
 
+use App\Helpers\RBAC;
 use App\Models\UserPagePermission;
 
 /**
  * AuthorizationService - Hybrid Authorization System
- * 
+ *
  * Implements a centralized authorization service that combines:
- * 1. Role-Based Access Control (RBAC)
- * 2. User-Specific Permission Overrides
- * 
+ * 1. Role-Based Access Control (RBAC) — role_permissions table
+ * 2. User-Specific Permission Overrides — user_page_permissions table
+ *
  * Authorization Hierarchy (Priority Order):
- * 1. Explicit User Deny (Highest Priority)
- * 2. Explicit User Grant
- * 3. Role Permissions
+ * 1. SUPER ADMIN  → ALLOW (handled in RBAC.php)
+ * 2. User Override (allow/deny) → ALLOW / DENY
+ * 3. Role Permission → ALLOW / DENY
  * 4. Default Deny
- * 
+ *
+ * Permission Override Model:
+ * 'allow' = explicitly allow this user for module/action
+ * 'deny'  = explicitly deny this user for module/action
+ * (no record) = inherit role permission
+ *
  * Place: backend/app/Helpers/AuthorizationService.php
  */
 class AuthorizationService
@@ -28,15 +34,21 @@ class AuthorizationService
     private ?UserPagePermission $userPagePermissionModel = null;
 
     /**
-     * Cached permissions for the current user session
-     * Format: ['page_id' => 'allow'|'deny'|'role']
+     * Cached user-specific overrides for the current user session.
+     * Format: ['module|action' => 'allow'|'deny']
+     * Only stores explicit overrides (allow/deny), NOT inherited permissions.
      */
-    private array $cachedPermissions = [];
+    private array $cachedOverrides = [];
 
     /**
-     * Flag to track if permissions have been loaded for current request
+     * Flag to track if overrides have been loaded for current request.
      */
-    private bool $permissionsLoaded = false;
+    private bool $overridesLoaded = false;
+
+    /**
+     * The user ID for whom overrides were loaded.
+     */
+    private int $cachedUserId = 0;
 
     private function __construct()
     {
@@ -61,21 +73,23 @@ class AuthorizationService
     }
 
     /**
-     * Check if a user has access to a specific page/module.
-     * 
-     * Authorization Flow:
-     * 1. Check for explicit user deny → DENY
-     * 2. Check for explicit user grant → ALLOW
-     * 3. Check role permissions → ALLOW/DENY based on role
-     * 4. Default → DENY
+     * Check if a user has permission for a specific module/action.
      *
-     * @param int|null $userId User ID (null for current user)
-     * @param string $pageId Page/module identifier
+     * Authorization Flow:
+     *   1. Is user Super Admin? → ALLOW (via RBAC)
+     *   2. Does active user override exist?
+     *      - allow → ALLOW
+     *      - deny  → DENY
+     *   3. Check role_permissions for (role, module, action)
+     *   4. Default → DENY
+     *
+     * @param int|null $userId User ID (null for current session user)
+     * @param string $module Module name (e.g., 'reports', 'employees')
+     * @param string $action Action (e.g., 'view', 'export', 'create')
      * @return bool True if access is granted
      */
-    public function hasPageAccess(?int $userId, string $pageId): bool
+    public function hasPermission(?int $userId, string $module, string $action): bool
     {
-        // If no user ID provided, use current session user
         if ($userId === null) {
             $userId = (int)($_SESSION['user_id'] ?? 0);
         }
@@ -84,29 +98,63 @@ class AuthorizationService
             return false;
         }
 
-        // Load permissions if not already loaded for this request
-        if (!$this->permissionsLoaded) {
-            $this->loadUserPermissions($userId);
+        // Load overrides if not already loaded for this user
+        if (!$this->overridesLoaded || $this->cachedUserId !== $userId) {
+            $this->loadUserPermissionOverrides($userId);
         }
 
-        // Check cache first
-        if (isset($this->cachedPermissions[$pageId])) {
-            // 'allow' (user grant) or 'role' (role permission) both mean access granted
-            return $this->cachedPermissions[$pageId] === 'allow' || $this->cachedPermissions[$pageId] === 'role';
+        $key = "{$module}|{$action}";
+
+        // Priority 2: Explicit User Override
+        if (isset($this->cachedOverrides[$key])) {
+            return $this->cachedOverrides[$key] === 'allow';
         }
 
-        // If not in cache, default to deny
-        return false;
+        // Priority 1 & 3: Super Admin or Role Permission (RBAC handles super_admin)
+        $role = $_SESSION['user_role'] ?? '';
+        if ($role === '') {
+            // Try to get role from database
+            try {
+                $userModel = new \App\Models\User();
+                $user = $userModel->findById($userId);
+                if ($user) {
+                    $role = $user['role'] ?? '';
+                }
+            } catch (\Exception $e) {
+                error_log("Failed to load user role: " . $e->getMessage());
+            }
+        }
+
+        if (empty($role)) {
+            return false;
+        }
+
+        // RBAC::hasPermission handles super_admin (returns true) and role_permissions lookup
+        return $this->rbac->hasPermission($role, $module, $action);
     }
 
     /**
-     * Get the effective permission for a page with source information.
-     * 
-     * @param int|null $userId User ID (null for current user)
+     * Backward-compatible alias: check page-level access.
+     * Calls hasPermission with action='view'.
+     *
+     * @param int|null $userId User ID (null for current session user)
      * @param string $pageId Page/module identifier
+     * @return bool True if access is granted
+     */
+    public function hasPageAccess(?int $userId, string $pageId): bool
+    {
+        return $this->hasPermission($userId, $pageId, 'view');
+    }
+
+    /**
+     * Get the effective permission for a module/action with source information.
+     *
+     * @param int|null $userId User ID (null for current session user)
+     * @param string $module Module name
+     * @param string $action Action name
      * @return array ['allowed' => bool, 'source' => string, 'permission_type' => string|null]
      */
-    public function getEffectivePermission(?int $userId, string $pageId): array
+    public function getEffectivePermission(?int $userId, string $module, string $action): array
     {
         if ($userId === null) {
             $userId = (int)($_SESSION['user_id'] ?? 0);
@@ -116,109 +164,84 @@ class AuthorizationService
             return ['allowed' => false, 'source' => 'no_user', 'permission_type' => null];
         }
 
-        // Load permissions if not already loaded
-        if (!$this->permissionsLoaded) {
-            $this->loadUserPermissions($userId);
+        // Load overrides if not already loaded for this user
+        if (!$this->overridesLoaded || $this->cachedUserId !== $userId) {
+            $this->loadUserPermissionOverrides($userId);
         }
 
-        // Check cache
-        if (isset($this->cachedPermissions[$pageId])) {
-            $source = $this->cachedPermissions[$pageId];
-            $allowed = $source === 'allow';
-            
+        $key = "{$module}|{$action}";
+
+        // Priority: User Override
+        if (isset($this->cachedOverrides[$key])) {
+            $override = $this->cachedOverrides[$key];
             return [
-                'allowed' => $allowed,
-                'source' => $source === 'role' ? 'Role' : ($source === 'allow' ? 'User Grant' : 'User Deny'),
-                'permission_type' => in_array($source, ['allow', 'deny']) ? $source : null
+                'allowed' => $override === 'allow',
+                'source' => $override === 'allow' ? 'User Grant' : 'User Deny',
+                'permission_type' => $override,
             ];
         }
 
-        // Not in cache = not allowed
+        // Check role permissions (RBAC handles super_admin)
+        $role = $_SESSION['user_role'] ?? '';
+        if ($role === '') {
+            try {
+                $userModel = new \App\Models\User();
+                $user = $userModel->findById($userId);
+                if ($user) {
+                    $role = $user['role'] ?? '';
+                }
+            } catch (\Exception $e) {
+                error_log("Failed to load user role: " . $e->getMessage());
+            }
+        }
+
+        if (empty($role)) {
+            return ['allowed' => false, 'source' => 'no_role', 'permission_type' => null];
+        }
+
+        // Super Admin check (RBAC handles this)
+        if ($role === 'super_admin') {
+            return ['allowed' => true, 'source' => 'Super Admin', 'permission_type' => null];
+        }
+
+        // Check role_permissions
+        if ($this->rbac->hasPermission($role, $module, $action)) {
+            return ['allowed' => true, 'source' => 'Role', 'permission_type' => null];
+        }
+
         return ['allowed' => false, 'source' => 'Default Deny', 'permission_type' => null];
     }
 
     /**
-     * Load all permissions for a user (role + overrides) into cache.
-     * 
+     * Load all permission overrides for a user (module/action granularity) into cache.
+     * Only active overrides are loaded; inactive overrides are treated as no override.
+     *
      * @param int $userId
      */
-    private function loadUserPermissions(int $userId): void
+    private function loadUserPermissionOverrides(int $userId): void
     {
         try {
-            $this->cachedPermissions = [];
-            $this->permissionsLoaded = true;
+            $this->cachedOverrides = [];
+            $this->overridesLoaded = true;
+            $this->cachedUserId = $userId;
 
-            // Get user role from session or database
-            $role = $_SESSION['user_role'] ?? '';
-            
-            if (empty($role)) {
-                // Try to get from database
-                try {
-                    $userModel = new \App\Models\User();
-                    $user = $userModel->findById($userId);
-                    if ($user) {
-                        $role = $user['role'] ?? '';
-                    }
-                } catch (\Exception $e) {
-                    // If User model fails, just use session role
-                    error_log("Failed to load user role: " . $e->getMessage());
-                }
+            if ($this->userPagePermissionModel === null) {
+                return;
             }
 
-            if (empty($role)) {
-                return; // No role = no permissions
+            // Get all active user-specific overrides
+            $overrides = $this->userPagePermissionModel->getByUserId($userId);
+
+            // Build override map: 'module|action' => 'allow'|'deny'
+            foreach ($overrides as $override) {
+                $key = "{$override['module']}|{$override['action']}";
+                $this->cachedOverrides[$key] = $override['permission_type'];
             }
-
-            // Get all page IDs - use hardcoded list if table doesn't exist
-            $allPages = $this->getAllPageIds();
-
-            // Get all user-specific overrides (only if table exists)
-            $overrideMap = [];
-            if ($this->userPagePermissionModel !== null) {
-                try {
-                    $userOverrides = $this->userPagePermissionModel->getByUserId($userId);
-                    
-                    // Build override map: page_id => permission_type
-                    foreach ($userOverrides as $override) {
-                        $overrideMap[$override['page_id']] = $override['permission_type'];
-                    }
-                } catch (\Exception $e) {
-                    error_log("Failed to load user overrides: " . $e->getMessage());
-                }
-            }
-
-            // Apply authorization hierarchy for each page
-            foreach ($allPages as $pageId) {
-                // Priority 1: Explicit User Deny
-                if (isset($overrideMap[$pageId]) && $overrideMap[$pageId] === 'deny') {
-                    $this->cachedPermissions[$pageId] = 'deny';
-                    continue;
-                }
-
-                // Priority 2: Explicit User Grant
-                if (isset($overrideMap[$pageId]) && $overrideMap[$pageId] === 'allow') {
-                    $this->cachedPermissions[$pageId] = 'allow';
-                    continue;
-                }
-
-                // Priority 3: Role Permissions
-                // Check if role has view permission for this module
-                try {
-                    if ($this->rbac->hasPermission($role, $pageId, 'view')) {
-                        $this->cachedPermissions[$pageId] = 'role';
-                        continue;
-                    }
-                } catch (\Exception $e) {
-                    error_log("Failed to check RBAC permission for role={$role}, page={$pageId}: " . $e->getMessage());
-                }
-
-                // Priority 4: Default Deny (not in cache = denied)
-            }
-        } catch (\Exception $e) {
-            error_log("Critical error in loadUserPermissions for user {$userId}: " . $e->getMessage());
-            // Set empty cache on critical error
-            $this->cachedPermissions = [];
-            $this->permissionsLoaded = true;
+        } catch (\Throwable $e) {
+            error_log("Critical error in loadUserPermissionOverrides for user {$userId}: " . $e->getMessage());
+            $this->cachedOverrides = [];
+            $this->overridesLoaded = true;
+            $this->cachedUserId = $userId;
         }
     }
 
@@ -228,24 +251,40 @@ class AuthorizationService
      */
     public function clearCache(): void
     {
-        $this->cachedPermissions = [];
-        $this->permissionsLoaded = false;
+        $this->cachedOverrides = [];
+        $this->overridesLoaded = false;
+        $this->cachedUserId = 0;
     }
 
     /**
      * Set a permission override for a user.
-     * 
-     * @param int $userId
-     * @param string $pageId
+     *
+     * @param int $userId Target user
+     * @param string $module Module name
+     * @param string $action Action name
      * @param string $permissionType 'allow' or 'deny'
-     * @param int $grantedBy
-     * @param string|null $notes
+     * @param int $grantedBy User who is granting
+     * @param int $updatedBy User who is updating (for change tracking)
+     * @param string|null $notes Administrative context
      * @return bool Success status
      */
-    public function setPermissionOverride(int $userId, string $pageId, string $permissionType, int $grantedBy, ?string $notes = null): bool
-    {
-        $result = $this->userPagePermissionModel->setPermission($userId, $pageId, $permissionType, $grantedBy, $notes);
-        
+    public function setPermissionOverride(
+        int $userId,
+        string $module,
+        string $action,
+        string $permissionType,
+        int $grantedBy,
+        int $updatedBy,
+        ?string $notes = null
+    ): bool {
+        if ($this->userPagePermissionModel === null) {
+            return false;
+        }
+
+        $result = $this->userPagePermissionModel->setPermission(
+            $userId, $module, $action, $permissionType, $grantedBy, $updatedBy, $notes
+        );
+
         if ($result) {
             // Clear cache to force reload
             $this->clearCache();
@@ -256,15 +295,20 @@ class AuthorizationService
 
     /**
      * Remove a permission override for a user.
-     * 
-     * @param int $userId
-     * @param string $pageId
+     *
+     * @param int $userId Target user
+     * @param string $module Module name
+     * @param string $action Action name
      * @return bool Success status
      */
-    public function removePermissionOverride(int $userId, string $pageId): bool
+    public function removePermissionOverride(int $userId, string $module, string $action): bool
     {
-        $result = $this->userPagePermissionModel->removePermission($userId, $pageId);
-        
+        if ($this->userPagePermissionModel === null) {
+            return false;
+        }
+
+        $result = $this->userPagePermissionModel->removePermission($userId, $module, $action);
+
         if ($result) {
             // Clear cache to force reload
             $this->clearCache();
@@ -275,54 +319,27 @@ class AuthorizationService
 
     /**
      * Get all effective permissions for a user with source information.
-     * Used for displaying the permission preview.
-     * 
+     * Used for displaying the permission management UI.
+     *
+     * Iterates over all module/action combinations from role_permissions
+     * and resolves each through the authorization hierarchy.
+     *
      * @param int $userId
-     * @return array Array of ['page_id', 'page_name', 'allowed', 'source']
+     * @return array Array of ['module', 'action', 'allowed', 'source', 'permission_type']
      */
     public function getAllEffectivePermissions(int $userId): array
     {
-        $allPages = $this->getAllPageIds();
-        $pageNames = $this->getPageNames();
-
-        // Temporarily load permissions for this user
-        $this->permissionsLoaded = false;
-        $this->loadUserPermissions($userId);
-
-        $permissions = [];
-        foreach ($allPages as $pageId) {
-            $effective = $this->getEffectivePermission($userId, $pageId);
-            $permissions[] = [
-                'page_id' => $pageId,
-                'page_name' => $pageNames[$pageId] ?? $pageId,
-                'allowed' => $effective['allowed'],
-                'source' => $effective['source'],
-                'permission_type' => $effective['permission_type']
-            ];
-        }
-
-        return $permissions;
-    }
-
-    /**
-     * Get role permissions for a user.
-     * 
-     * @param int|null $userId
-     * @return array Array of module => [actions]
-     */
-    public function getRolePermissions(?int $userId = null): array
-    {
-        if ($userId === null) {
-            $userId = (int)($_SESSION['user_id'] ?? 0);
-        }
-
         $role = $_SESSION['user_role'] ?? '';
-        
-        if (empty($role) && $userId > 0) {
-            $userModel = new \App\Models\User();
-            $user = $userModel->findById($userId);
-            if ($user) {
-                $role = $user['role'] ?? '';
+
+        if (empty($role)) {
+            try {
+                $userModel = new \App\Models\User();
+                $user = $userModel->findById($userId);
+                if ($user) {
+                    $role = $user['role'] ?? '';
+                }
+            } catch (\Exception $e) {
+                error_log("Failed to load user role: " . $e->getMessage());
             }
         }
 
@@ -330,13 +347,37 @@ class AuthorizationService
             return [];
         }
 
-        return $this->rbac->getRolePermissions($role);
+        // Get all role permissions (module/action combinations) from RBAC
+        $rolePermissions = $this->rbac->getRolePermissions($role);
+
+        // Load user overrides for this user
+        $this->overridesLoaded = false;
+        $this->loadUserPermissionOverrides($userId);
+
+        $permissions = [];
+        $moduleNames = $this->userPagePermissionModel ? $this->userPagePermissionModel->getModuleNames() : [];
+
+        foreach ($rolePermissions as $perm) {
+            $module = $perm['module'];
+            $action = $perm['action'];
+            $effective = $this->getEffectivePermission($userId, $module, $action);
+            $permissions[] = [
+                'module'            => $module,
+                'module_name'       => $moduleNames[$module] ?? $module,
+                'action'            => $action,
+                'allowed'           => $effective['allowed'],
+                'source'            => $effective['source'],
+                'permission_type'   => $effective['permission_type'],
+            ];
+        }
+
+        return $permissions;
     }
 
     /**
      * Check if the current user is authorized to manage permission overrides.
      * Only Super Administrators and HR Managers can manage permission overrides.
-     * 
+     *
      * @return bool
      */
     public function isPermissionManager(): bool
@@ -345,39 +386,31 @@ class AuthorizationService
             return false;
         }
 
-        // Only super_admin and hr_manager have permission_overrides permissions
+        // Super Admin and HR Manager can manage permission overrides
         $allowedRoles = ['super_admin', 'hr_manager'];
-        return in_array($_SESSION['user_role'], $allowedRoles);
+        $role = $_SESSION['user_role'] ?? '';
+        return in_array($role, $allowedRoles, true);
     }
 
     /**
-     * Require permission manager role - redirects or returns 403 if not authorized.
+     * Require permission manager role - returns 403 if not authorized.
      */
     public function requirePermissionManager(): void
     {
         if (!$this->isPermissionManager()) {
-            // DEBUG: Log the redirect attempt
             error_log("PERMISSION DEBUG: User role='" . ($_SESSION['user_role'] ?? 'none') . "' denied access to permission-overrides/manage");
-            
+
             if ($this->isApiRequest()) {
                 http_response_code(403);
-                echo json_encode(['error' => 'Forbidden: Only Super Administrators can manage permission overrides.']);
+                echo json_encode(['error' => 'Forbidden: Only Super Administrators and HR Managers can manage permission overrides.']);
                 exit();
             }
-            
+
             $_SESSION['flash_error'] = 'You do not have permission to access this resource.';
-            // Build redirect URL with BASE_URL prefix
             $baseUrl = defined('BASE_URL') ? BASE_URL : '';
             $redirectUrl = $baseUrl . '/?route=admin/permission-overrides';
-            
-            // DEBUG: Log the redirect destination
-            error_log("PERMISSION DEBUG: Redirecting to: {$redirectUrl}");
-            
             header('Location: ' . $redirectUrl);
             exit();
-        } else {
-            // DEBUG: Log successful access
-            error_log("PERMISSION DEBUG: User role='" . ($_SESSION['user_role'] ?? 'none') . "' GRANTED access to permission-overrides/manage");
         }
     }
 
@@ -409,54 +442,6 @@ class AuthorizationService
     }
 
     /**
-     * Get all available page IDs from the system.
-     *
-     * @return array Array of page IDs
-     */
-    private function getAllPageIds(): array
-    {
-        return [
-            'dashboard',
-            'employees',
-            'departments',
-            'attendance',
-            'leave',
-            'reports',
-            'users',
-            'admin',
-            'audit',
-            'profile',
-            'performance',
-            'consent',
-            'permission_overrides'
-        ];
-    }
-
-    /**
-     * Get page display names.
-     *
-     * @return array Array of page_id => display_name
-     */
-    private function getPageNames(): array
-    {
-        return [
-            'dashboard' => 'Dashboard',
-            'employees' => 'Employees',
-            'departments' => 'Departments',
-            'attendance' => 'Attendance',
-            'leave' => 'Leave Management',
-            'reports' => 'Reports',
-            'users' => 'User Management',
-            'admin' => 'Admin',
-            'audit' => 'Audit Trail',
-            'profile' => 'Profile',
-            'performance' => 'Performance',
-            'consent' => 'Consent',
-            'permission_overrides' => 'Permission Overrides'
-        ];
-    }
-
-    /**
      * Prevent cloning of the singleton instance.
      */
     private function __clone(): void {}
@@ -482,7 +467,7 @@ function hasPageAccess(?int $userId, string $pageId): bool
 /**
  * Global helper function to get effective permission with source.
  */
-function getEffectivePermission(?int $userId, string $pageId): array
+function getEffectivePermission(?int $userId, string $module, string $action = 'view'): array
 {
-    return AuthorizationService::getInstance()->getEffectivePermission($userId, $pageId);
+    return AuthorizationService::getInstance()->getEffectivePermission($userId, $module, $action);
 }

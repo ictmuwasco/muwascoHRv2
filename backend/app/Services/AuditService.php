@@ -30,8 +30,9 @@ class AuditService
     public const MODULE_SETTINGS        = 'Settings';
     public const MODULE_AUDIT           = 'Audit';
     public const MODULE_FINANCIAL_YEAR  = 'FinancialYear';
-    public const MODULE_HOLIDAYS        = 'Holidays';
-    public const MODULE_REPORTS         = 'Reports';
+     public const MODULE_HOLIDAYS        = 'Holidays';
+     public const MODULE_REPORTS         = 'Reports';
+     public const MODULE_MEETINGS        = 'Meetings';
 
     // ---- Action constants (Phase 4) ----
     public const ACTION_LOGIN            = 'LOGIN';
@@ -47,6 +48,12 @@ class AuditService
     public const ACTION_EXPORT           = 'EXPORT';
     public const ACTION_PERMISSION_CHANGE = 'PERMISSION_CHANGE';
     public const ACTION_CONSENT          = 'CONSENT';
+    public const ACTION_INVITE           = 'INVITE';
+    public const ACTION_REMOVE_INVITATION = 'REMOVE_INVITATION';
+    public const ACTION_CONFIRM          = 'CONFIRM';
+    public const ACTION_DECLINE          = 'DECLINE';
+    public const ACTION_CHECKIN          = 'CHECKIN';
+     public const ACTION_CANCEL_MEETING   = 'CANCEL_MEETING';
 
     public const STATUS_SUCCESS = 'SUCCESS';
     public const STATUS_FAILED  = 'FAILED';

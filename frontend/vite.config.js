@@ -23,10 +23,9 @@ export default defineConfig({
     // own router can match /auth/login correctly.
     proxy: {
       '/api': {
-        target: 'http://localhost',
+        target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => `/hrdemo${path}`,
       },
     },
   },
