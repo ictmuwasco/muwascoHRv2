@@ -3,7 +3,7 @@
 namespace Tests\Unit\Controllers;
 
 use Tests\TestCase;
-use App\Controllers\EmployeeController;
+use App\Controllers\Employee\EmployeeController;
 use App\Services\Contracts\EmployeeServiceInterface;
 use App\Responses\JsonResponse;
 use Mockery;

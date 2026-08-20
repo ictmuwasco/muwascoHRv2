@@ -1,30 +1,22 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Controllers\AuthController;
-use App\Controllers\EmployeeController;
-use App\Controllers\DepartmentController;
-use App\Controllers\LeaveController;
-use App\Controllers\LeaveRosterController;
+use App\Controllers\Auth\AuthController;
+use App\Controllers\Employee\EmployeeController;
+use App\Controllers\HR\DepartmentController;
+use App\Controllers\Leave\LeaveController;
 use App\Controllers\AttendanceController;
-use App\Controllers\UserController;
-use App\Controllers\SectionController;
-use App\Controllers\SubsectionController;
+use App\Controllers\Employee\UserController;
+use App\Controllers\HR\SectionController;
+use App\Controllers\HR\SubsectionController;
 use App\Controllers\DashboardController;
-use App\Controllers\ReportController;
-use App\Controllers\PayrollController;
-use App\Controllers\ConsentController;
-use App\Controllers\FinancialYearController;
-use App\Controllers\ComplaintController;
-use App\Controllers\AppraisalController;
-use App\Controllers\StrategicPlanController;
-use App\Controllers\WorkplanController;
-use App\Controllers\KPIController;
-use App\Controllers\NotificationController;
-use App\Controllers\AuditLogController;
-use App\Controllers\SettingController;
-use App\Controllers\HolidayController;
-use App\Controllers\PermissionController;
+use App\Controllers\HR\ConsentController;
+use App\Controllers\HR\FinancialYearController;
+use App\Controllers\Settings\NotificationController;
+use App\Controllers\Settings\AuditLogController;
+use App\Controllers\HR\HolidayController;
+use App\Controllers\Settings\PermissionController;
+use App\Controllers\Meeting\MeetingController;
 
 Route::post('/auth/login', [AuthController::class, 'login']);
 
@@ -185,3 +177,4 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/permissions/users/{userId}/overrides', [PermissionController::class, 'setOverride']);
     Route::delete('/permissions/users/{userId}/overrides', [PermissionController::class, 'removeOverride']);
 });
+

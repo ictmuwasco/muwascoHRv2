@@ -54,8 +54,8 @@ echo Setup Complete!
 echo ========================================
 echo.
 echo Login Credentials:
-echo   Email: admin@muwasco.co.ke
-echo   Password: Admin@123
+echo   Email: admin001@gmail.com
+echo   Password: ADMIN001
 echo.
 echo Next steps:
 echo   1. Start Laravel: php artisan serve --host=127.0.0.1 --port=8000

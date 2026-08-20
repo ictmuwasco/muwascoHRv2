@@ -49,7 +49,7 @@ class Bootstrap
 
         // Route to appropriate controller
         if (preg_match('#^/api/employees/?$#', $requestUri)) {
-            $controller = new \App\Controllers\EmployeeController();
+            $controller = new \App\Controllers\Employee\EmployeeController();
             
             if ($requestMethod === 'GET') {
                 $controller->indexAction();
@@ -61,7 +61,7 @@ class Bootstrap
             }
         } elseif (preg_match('#^/api/employees/(\d+)/?$#', $requestUri, $matches)) {
             $id = (int)$matches[1];
-            $controller = new \App\Controllers\EmployeeController();
+            $controller = new \App\Controllers\Employee\EmployeeController();
             
             if ($requestMethod === 'GET') {
                 $controller->showAction($id);

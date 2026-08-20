@@ -4,42 +4,55 @@ import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import ConnectionStatus from './components/ConnectionStatus'
 
-// Pages
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard.tsx'
-import Employees from './pages/Employees'
-import EmployeeProfile from './pages/EmployeeProfile'
-import EmployeeForm from './pages/EmployeeForm'
-import Departments from './pages/Departments'
-import Attendance from './pages/Attendance'
-import Leave from './pages/Leave'
-import LeaveApplication from './pages/LeaveApplication'
-import LeaveRoster from './pages/LeaveRoster'
-import LeaveOversight from './pages/LeaveOversight'
-import ManageLeaveLayout from './pages/ManageLeaveLayout'
-import ManageLeavePendingTab from './pages/ManageLeavePendingTab'
-import ManageLeaveApprovedTab from './pages/ManageLeaveApprovedTab'
-import ManageLeaveRejectedTab from './pages/ManageLeaveRejectedTab'
+// Pages - Auth
+import Login from './pages/auth/Login'
+import DataProtectionConsent from './pages/auth/DataProtectionConsent'
+
+// Pages - Employee
+import Employees from './pages/employee/Employees'
+import EmployeeProfile from './pages/employee/EmployeeProfile'
+import EmployeeForm from './pages/employee/EmployeeForm'
+import Profile from './pages/employee/Profile'
+
+// Pages - Leave
+import Leave from './pages/leave/Leave'
+import LeaveApplication from './pages/leave/LeaveApplication'
+import LeaveRoster from './pages/leave/LeaveRoster'
+import LeaveOversight from './pages/leave/LeaveOversight'
+import ManageLeaveLayout from './pages/leave/ManageLeaveLayout'
+import ManageLeavePendingTab from './pages/leave/ManageLeavePendingTab'
+import ManageLeaveApprovedTab from './pages/leave/ManageLeaveApprovedTab'
+import ManageLeaveRejectedTab from './pages/leave/ManageLeaveRejectedTab'
+
+// Pages - HR Admin
+import FinancialYear from './pages/hr-admin/FinancialYear'
+import Consent from './pages/hr-admin/Consent'
+import Holidays from './pages/hr-admin/Holidays'
+import Departments from './pages/hr-admin/Departments'
+import Attendance from './pages/hr-admin/Attendance'
+import Appraisal from './pages/hr-admin/Appraisal'
+
+// Pages - Meetings
+import MeetingsDashboard from './pages/meetings/MeetingsDashboard'
+import CreateMeeting from './pages/meetings/CreateMeeting'
+import MyMeetings from './pages/meetings/MyMeetings'
+
+// Pages - Settings
+import Admin from './pages/settings/Admin'
+import Audit from './pages/settings/Audit'
+
+// Pages - Standalone
+import Dashboard from './pages/dashboard/Dashboard'
+import Reports from './pages/reports/Reports'
+import StrategicPlan from './pages/strategic-plan/StrategicPlan'
+
+// Settings components
 import SettingsLayout from './components/settings/SettingsLayout'
 import SettingsProfileTab from './components/settings/SettingsProfileTab'
 import SettingsNotificationsTab from './components/settings/SettingsNotificationsTab'
 import SettingsSecurityTab from './components/settings/SettingsSecurityTab'
 import SettingsUsersTab from './components/settings/SettingsUsersTab'
 import SettingsPermissionsTab from './components/settings/SettingsPermissionsTab'
-import Admin from './pages/Admin'
-import Appraisal from './pages/Appraisal.tsx'
-import Audit from './pages/Audit'
-import Consent from './pages/Consent'
-import ConsentManagement from './pages/Consent'
-import DataProtectionConsent from './pages/DataProtectionConsent'
-import FinancialYear from './pages/FinancialYear'
-import Reports from './pages/Reports'
-import Profile from './pages/Profile'
-import StrategicPlan from './pages/StrategicPlan'
-import Holidays from './pages/Holidays'
-import MeetingsDashboard from './pages/MeetingsDashboard'
-import CreateMeeting from './pages/CreateMeeting'
-import MyMeetings from './pages/MyMeetings'
 
 function App() {
   return (
@@ -62,7 +75,7 @@ function App() {
           <Route path="employees/:id/profile" element={<EmployeeProfile />} />
           <Route path="departments" element={<Departments />} />
           <Route path="financial_year" element={<FinancialYear />} />
-          <Route path="consent_management" element={<ConsentManagement />} />
+          <Route path="consent_management" element={<Consent />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="leave" element={<Leave />} />
           <Route path="leave/apply" element={<LeaveApplication />} />
