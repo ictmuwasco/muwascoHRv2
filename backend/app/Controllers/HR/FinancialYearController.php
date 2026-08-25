@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\HR;
 
+use App\Controllers\BaseController;
+
 use App\Models\FinancialYear;
 use App\Models\EmployeeLeaveBalance;
 use App\Models\Employee;
@@ -375,3 +377,4 @@ class FinancialYearController extends BaseController
         return false;
     }
 }
+

@@ -13,9 +13,11 @@ interface TabsProps {
   onChange?: (tabId: string) => void
   variant?: 'underline' | 'pills' | 'boxed'
   className?: string
+  /** Accessible name for the tab list (forwarded to the <nav> element). */
+  ariaLabel?: string
 }
 
-const Tabs = ({ tabs, activeTab, onChange, variant = 'underline', className = '' }: TabsProps) => {
+const Tabs = ({ tabs, activeTab, onChange, variant = 'underline', className = '', ariaLabel }: TabsProps) => {
   const variantStyles: Record<string, any> = {
     underline: {
       container: 'border-b border-gray-200 dark:border-slate-700',
@@ -41,7 +43,7 @@ const Tabs = ({ tabs, activeTab, onChange, variant = 'underline', className = ''
 
   return (
     <div className={`${styles.container} ${className}`}>
-      <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+      <nav className="-mb-px flex space-x-8" aria-label={ariaLabel || 'Tabs'}>
         {tabs.map((tab) => {
           const isActive = activeTab ? activeTab === tab.id : false
           const content = (
@@ -74,6 +76,9 @@ const Tabs = ({ tabs, activeTab, onChange, variant = 'underline', className = ''
           return (
             <button
               key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
               onClick={() => onChange?.(tab.id)}
               className={tabClassName}
             >

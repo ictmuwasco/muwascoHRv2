@@ -29,7 +29,7 @@ class AttendanceController extends BaseController
         $this->attendanceService = new \App\Services\AttendanceService();
         $this->employeeRepository = new \App\Repositories\EmployeeRepository();
         $this->officeRepository = new \App\Repositories\OfficeRepository();
-        
+
         $this->attendanceService->setAttendanceRepository(new \App\Repositories\AttendanceRepository());
         $this->attendanceService->setEmployeeRepository($this->employeeRepository);
     }
@@ -40,9 +40,9 @@ class AttendanceController extends BaseController
     public function indexAction(): void
     {
         $this->requirePermission('attendance', 'view');
-        
+
         $db = \db();
-        
+
         $records = $db->fetchAll(
             "SELECT a.*, e.first_name, e.last_name, d.name as department, o.name as office_name,
              DATE(a.clock_in) as date,
@@ -93,10 +93,10 @@ class AttendanceController extends BaseController
     public function todayAction(): void
     {
         $this->requirePermission('attendance', 'view');
-        
+
         $db = \db();
         $today = date('Y-m-d');
-        
+
         $records = $db->fetchAll(
             "SELECT a.*, e.first_name, e.last_name, d.name as department, o.name as office_name
              FROM attendance a
@@ -124,21 +124,27 @@ class AttendanceController extends BaseController
     }
 
     /**
-     * GET /api/attendance/dashboard - Get dashboard attendance data.
+     * GET /api/attendance/dashboard - Get employee's attendance dashboard data.
+     *
+     * The backend is the single source of truth. It resolves stale previous-day
+     * open sessions, derives the employee's default office, and returns the
+     * exact card state the UI must reflect.
      */
     public function dashboardAction(): void
     {
         $this->requirePermission('attendance', 'view');
-        
+
         $userId = $this->getUserId();
         $employee = $this->employeeRepository->findByUserId($userId);
-        
+
         if (!$employee) {
             $this->success([
                 'is_clocked_in' => false,
                 'has_clocked_in_today' => false,
                 'current_session' => null,
                 'today_record' => null,
+                'default_office' => null,
+                'office_mode' => 'manual',
                 'offices' => [],
             ]);
             return;
@@ -148,30 +154,42 @@ class AttendanceController extends BaseController
         $today = date('Y-m-d');
         $employeeDbId = (int)$employee['id'];
 
-        // Get current active session (clocked in, not clocked out)
-        $currentSession = $db->fetchOne(
-            "SELECT a.*, o.name as office_name, o.latitude, o.longitude, o.geo_fence_radius
+        // Lazy midnight reconciliation for THIS employee: close any previous-day
+        // open session so a forgotten clock-out can never carry over into today.
+        $this->reconcileStaleSession($employeeDbId);
+
+        // Today's record is the single source of truth for today's state.
+        $todayRecord = $db->fetchOne(
+            "SELECT a.id, a.employee_id, a.office_id, a.clock_in, a.clock_out,
+                    a.is_late, a.auto_clocked_out, a.status, a.created_at, a.updated_at,
+                    o.name AS office_name
              FROM attendance a
              LEFT JOIN offices o ON a.office_id = o.id
-             WHERE a.employee_id = ? AND a.clock_out IS NULL
+             WHERE a.employee_id = ? AND DATE(a.clock_in) = ?
              ORDER BY a.clock_in DESC LIMIT 1",
-            'i',
-            [$employeeDbId]
-        );
-
-        // Get today's record
-        $todayRecord = $db->fetchOne(
-            "SELECT * FROM attendance
-             WHERE employee_id = ? AND DATE(clock_in) = ?
-             ORDER BY clock_in DESC LIMIT 1",
             'is',
             [$employeeDbId, $today]
         );
 
-        $isClockedIn = !empty($currentSession);
         $hasClockedInToday = !empty($todayRecord);
+        $isClockedIn = $hasClockedInToday
+            && empty($todayRecord['clock_out'])
+            && (string)$todayRecord['status'] !== 'clocked_out';
 
-        // Get all offices for clock in
+        // Employee's default/assigned office (State A: auto-select).
+        $defaultOffice = null;
+        $employeeOfficeId = $employee['office_id'] ?? null;
+        if (!empty($employeeOfficeId)) {
+            $defaultOffice = $db->fetchOne(
+                "SELECT id, name, latitude, longitude, geo_fence_radius
+                 FROM offices
+                 WHERE id = ? AND latitude IS NOT NULL AND longitude IS NOT NULL",
+                'i',
+                [(int)$employeeOfficeId]
+            );
+        }
+
+        // All recognised (geo-enabled) offices for manual/alternative selection.
         $offices = $db->fetchAll(
             "SELECT id, name, latitude, longitude, geo_fence_radius
              FROM offices
@@ -179,13 +197,50 @@ class AttendanceController extends BaseController
              ORDER BY name ASC"
         );
 
+        // Office selector state machine:
+        //  - 'default'     = State A (employee has an assigned office)
+        //  - 'alternative' = State B (employee may pick another recognised office)
+        //  - 'manual'      = State C (no assigned office -> must pick)
+        $officeMode = $defaultOffice ? 'default' : 'manual';
+
         $this->success([
             'is_clocked_in' => $isClockedIn,
             'has_clocked_in_today' => $hasClockedInToday,
-            'current_session' => $currentSession,
+            'current_session' => $isClockedIn ? $todayRecord : null,
             'today_record' => $todayRecord,
+            'default_office' => $defaultOffice,
+            'office_mode' => $officeMode,
             'offices' => $offices,
         ]);
+    }
+
+    /**
+     * Per-employee lazy midnight reconciliation.
+     *
+     * Closes any still-open attendance session from a previous day for the
+     * given employee so a forgotten clock-out can never carry yesterday's
+     * clock-in into today's state. Runs on every attendance read/write —
+     * the safety net that covers the browser-closed / cron-missed cases.
+     *
+     * clock_out is set to the end of the day the employee clocked in
+     * (organisation timezone Africa/Nairobi, 23:59:59) and the record is
+     * flagged auto_clocked_out = 1 for HR reporting.
+     */
+    private function reconcileStaleSession(int $employeeDbId): void
+    {
+        $db = \db();
+        $today = date('Y-m-d');
+
+        $db->query(
+            "UPDATE attendance
+               SET clock_out = DATE_FORMAT(clock_in, '%Y-%m-%d 23:59:59'),
+                   status = 'auto_clocked_out',
+                   auto_clocked_out = 1,
+                   updated_at = NOW()
+             WHERE employee_id = ? AND clock_out IS NULL AND DATE(clock_in) < ?",
+            'is',
+            [$employeeDbId, $today]
+        );
     }
 
     /**
@@ -194,10 +249,10 @@ class AttendanceController extends BaseController
     public function myRecordsAction(): void
     {
         $this->requirePermission('attendance', 'view');
-        
+
         $userId = $this->getUserId();
         $employee = $this->employeeRepository->findByUserId($userId);
-        
+
         if (!$employee) {
             $this->success([]);
             return;
@@ -206,7 +261,7 @@ class AttendanceController extends BaseController
         $employeeDbId = (int)$employee['id'];
         $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
         $endDate = $_GET['end_date'] ?? date('Y-m-d');
-        
+
         $db = \db();
         $records = $db->fetchAll(
             "SELECT a.*, e.first_name, e.last_name, d.name as department, o.name as office_name,
@@ -260,10 +315,10 @@ class AttendanceController extends BaseController
     public function byEmployeeAction(int $employeeId): void
     {
         $this->requirePermission('attendance', 'view');
-        
+
         $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
         $endDate = $_GET['end_date'] ?? date('Y-m-d');
-        
+
         $records = $this->attendanceService->getAttendanceByEmployee($employeeId, $startDate, $endDate);
         $this->success($records);
     }
@@ -281,17 +336,20 @@ class AttendanceController extends BaseController
      */
     public function clockInAction(): void
     {
-        $this->requirePermission('attendance', 'edit');
-        
         $userId = $this->getUserId();
+        if ($userId === 0) {
+        $this->unauthorized('Authentication required to clock in');
+            return;
+        }
+
         $employee = $this->employeeRepository->findByUserId($userId);
-        
         if (!$employee) {
             $this->notFound('Employee profile not found');
+            return;
         }
 
         $data = $this->getJsonBody();
-        
+
         // ---- Input Validation ----
         $validationError = $this->validateClockRequest($data);
         if ($validationError !== null) {
@@ -299,13 +357,27 @@ class AttendanceController extends BaseController
         }
 
         $officeId = (int)$data['office_id'];
-        $latitude = (float)$data['latitude'];
-        $longitude = (float)$data['longitude'];
-        $accuracy = (float)($data['accuracy'] ?? 0);
 
-        // Reject unusable GPS accuracy
-        if ($accuracy > self::MAX_ACCURACY_METERS) {
-            $this->error("GPS accuracy too low ({$accuracy}m). Please move to an open area and try again.", 400);
+        // Coordinates optional ONLY under the explicit no-fix declaration -
+        // desktop PCs without GPS/Wi-Fi can still record attendance, stored
+        // with NULL lat/lng ("location not verified") for HR review.
+        $hasCoordinates = isset($data['latitude'], $data['longitude'])
+            && $data['latitude'] !== ''
+            && $data['longitude'] !== '';
+
+        if ($hasCoordinates) {
+            $latitude = (float)$data['latitude'];
+            $longitude = (float)$data['longitude'];
+            $accuracy = (float)($data['accuracy'] ?? 0);
+
+            // Reject unusable GPS accuracy
+            if ($accuracy > self::MAX_ACCURACY_METERS) {
+                $this->error("GPS accuracy too low ({$accuracy}m). Please move to an open area and try again.", 400);
+            }
+        } else {
+            $latitude = null;
+            $longitude = null;
+            $accuracy = null;
         }
 
         // ---- Get Office Details ----
@@ -320,73 +392,152 @@ class AttendanceController extends BaseController
             $this->error('Selected office has no valid GPS coordinates configured', 400);
         }
 
-        // ---- Calculate Distance (Haversine, in meters) ----
-        $radiusCheck = GeoLocation::isWithinRadius(
-            $latitude,
-            $longitude,
-            $officeLat,
-            $officeLon,
-            (float)($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS),
-            $accuracy
-        );
+                // ---- Geofence validation (skipped only for declared no-fix requests) ----
+        if ($hasCoordinates) {
+            // ---- Calculate Distance (Haversine, in meters) ----
+            $radiusCheck = GeoLocation::isWithinRadius(
+                $latitude,
+                $longitude,
+                $officeLat,
+                $officeLon,
+                (float)($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS),
+                $accuracy
+            );
 
-        // ---- Validate Radius (BEFORE insert) ----
-        if (!$radiusCheck['within']) {
-            $message = 'You are outside the allowed office radius. Please move closer to the office before clocking in.';
-            $this->json([
-                'success' => false,
-                'message' => $message,
-                'distance' => $radiusCheck['distance'],
-                'allowed_radius' => (float)($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS),
-                'code' => 'OUTSIDE_RADIUS',
-            ], 403);
+            // ---- Validate Radius (BEFORE insert) ----
+            if (!$radiusCheck['within']) {
+                $message = 'You are about '
+                    . \App\Helpers\GeoLocation::formatDistanceMeters((float) $radiusCheck['distance'])
+                    . ' from the office. You must be within '
+                    . \App\Helpers\GeoLocation::formatDistanceMeters((float) ($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS))
+                    . ' of the office to clock in. Please move closer and try again.';
+                $this->json([
+                    'success' => false,
+                    'message' => $message,
+                    'distance' => $radiusCheck['distance'],
+                    'allowed_radius' => (float)($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS),
+                    'code' => 'OUTSIDE_RADIUS',
+                ], 403);
+            }
+        } else {
+            $radiusCheck = ['within' => true, 'distance' => null];
         }
 
-        // ---- Check for existing record (prevent duplicates) ----
+                        // ---- Check for existing record (prevent duplicates) ----
         $db = \db();
         $today = date('Y-m-d');
-        
-        // Use an INSERT ... SELECT with NOT EXISTS for atomic duplicate prevention
         $employeeDbId = (int)$employee['id'];
+        $now = date('Y-m-d H:i:s');
+
+        // Idempotency: a pre-check SELECT handles sequential double-clicks;
+        // the unique key uk_attendance_employee_date is the authoritative guard
+        // against true concurrent inserts (see migration 020_attendance_attendance_date_column.sql).
         $existing = $db->fetchOne(
-            "SELECT id FROM attendance 
-             WHERE employee_id = ? AND DATE(clock_in) = ? 
-             LIMIT 1",
+            "SELECT a.id, a.clock_in, a.clock_out, a.is_late, a.status,
+                    o.name AS office_name
+             FROM attendance a
+             LEFT JOIN offices o ON a.office_id = o.id
+             WHERE a.employee_id = ? AND DATE(a.clock_in) = ?
+             ORDER BY a.clock_in DESC LIMIT 1",
             'is',
             [$employeeDbId, $today]
         );
 
         if ($existing) {
-            $this->error('You have already clocked in today', 400, null, ['code' => 'ALREADY_CLOCKED_IN']);
+            // Idempotent success: return the existing record; never error on retry.
+            $this->json([
+                'success' => true,
+                'message' => 'You have already clocked in today.',
+                'clock_in' => $existing['clock_in'] ?? null,
+                'is_late' => (bool)($existing['is_late'] ?? 0),
+                'distance' => $radiusCheck['distance'],
+                'record' => $existing,
+                'idempotent' => true,
+            ]);
+            return;
         }
 
-        // ---- Determine if late ----
+        // ---- Determine if late (organisation cutoff 08:30 Africa/Nairobi) ----
         $currentHour = (int)date('H');
         $currentMinute = (int)date('i');
         $isLate = $currentHour > 8 || ($currentHour === 8 && $currentMinute > 30);
         $status = $isLate ? 'late' : 'clocked_in';
-        $now = date('Y-m-d H:i:s');
 
-        // ---- Insert attendance record (ONLY after validation passes) ----
-        $db->insert('attendance', [
-            'employee_id' => $employeeDbId,
-            'office_id' => $officeId,
-            'clock_in_office_id' => $officeId,
-            'clock_in' => $now,
-            'lat' => $latitude,
-            'lng' => $longitude,
-            'accuracy' => $accuracy,
-            'status' => $status,
-            'is_late' => $isLate ? 1 : 0,
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        // ---- Atomic insert (transaction + unique-constraint backstop) ----
+        $inTransaction = false;
+        $attendanceId = 0;
+        try {
+            $db->beginTransaction();
+            $inTransaction = true;
+
+            try {
+                $record = [
+                    'employee_id' => $employeeDbId,
+                    'office_id' => $officeId,
+                    'clock_in_office_id' => $officeId,
+                    'clock_in' => $now,
+                    'ip_address' => $this->clientIp(),
+                    'status' => $status,
+                    'is_late' => $isLate ? 1 : 0,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ];
+                if ($hasCoordinates) {
+                    $record['lat'] = $latitude;
+                    $record['lng'] = $longitude;
+                    $record['accuracy'] = $accuracy;
+                }
+                $attendanceId = $db->insert('attendance', $record);
+                $db->commit();
+                $inTransaction = false;
+            } catch (\mysqli_sql_exception $e) {
+                if ($inTransaction) {
+                    $db->rollback();
+                    $inTransaction = false;
+                }
+                // 1062 / SQLSTATE 23000 = duplicate key -> a concurrent request won the race.
+                if ((int)$e->getCode() === 1062 || (string)$e->sqlstate === '23000') {
+                    $ref = $db->fetchOne(
+                        "SELECT a.id, a.clock_in, a.clock_out, a.is_late, a.status,
+                                o.name AS office_name
+                         FROM attendance a
+                         LEFT JOIN offices o ON a.office_id = o.id
+                         WHERE a.employee_id = ? AND DATE(a.clock_in) = ?
+                         ORDER BY a.clock_in DESC LIMIT 1",
+                        'is',
+                        [$employeeDbId, $today]
+                    );
+                    $this->json([
+                        'success' => true,
+                        'message' => 'You have already clocked in today.',
+                        'clock_in' => $ref['clock_in'] ?? $now,
+                        'is_late' => (bool)($ref['is_late'] ?? ($isLate ? 1 : 0)),
+                        'distance' => $radiusCheck['distance'],
+                        'record' => $ref,
+                        'idempotent' => true,
+                    ]);
+                    return;
+                }
+                throw $e;
+            }
+        } catch (\Throwable $e) {
+            if ($inTransaction) {
+                try { $db->rollback(); } catch (\Throwable $ignored) {}
+            }
+            \logger()->error('Clock-in failed', [
+                'employee_id' => $employeeDbId,
+                'error' => $e->getMessage(),
+            ]);
+            $this->error('Failed to record your clock-in. Please try again.', 500);
+        }
 
         $this->json([
             'success' => true,
-            'message' => $isLate ? 'Clocked in (LATE ARRIVAL)' : 'Clock In successful.',
+            'message' => ($isLate ? 'Clocked in (LATE ARRIVAL)' : 'Clock In successful.')
+                . ($hasCoordinates ? '' : ' (location not verified)'),
             'is_late' => $isLate,
             'clock_in' => $now,
+            'clock_in_id' => $attendanceId,
             'distance' => $radiusCheck['distance'],
         ]);
     }
@@ -404,17 +555,20 @@ class AttendanceController extends BaseController
      */
     public function clockOutAction(): void
     {
-        $this->requirePermission('attendance', 'edit');
-        
         $userId = $this->getUserId();
+        if ($userId === 0) {
+        $this->unauthorized('Authentication required to clock out');
+            return;
+        }
+
         $employee = $this->employeeRepository->findByUserId($userId);
-        
         if (!$employee) {
             $this->notFound('Employee profile not found');
+            return;
         }
 
         $data = $this->getJsonBody();
-        
+
         // ---- Input Validation ----
         $validationError = $this->validateClockRequest($data);
         if ($validationError !== null) {
@@ -422,13 +576,26 @@ class AttendanceController extends BaseController
         }
 
         $officeId = (int)$data['office_id'];
-        $latitude = (float)$data['latitude'];
-        $longitude = (float)$data['longitude'];
-        $accuracy = (float)($data['accuracy'] ?? 0);
 
-        // Reject unusable GPS accuracy
-        if ($accuracy > self::MAX_ACCURACY_METERS) {
-            $this->error("GPS accuracy too low ({$accuracy}m). Please move to an open area and try again.", 400);
+        // Coordinates optional ONLY under the explicit no-fix declaration -
+        // mirrors clockInAction so desktop users can also CLOCK OUT easily.
+        $hasCoordinates = isset($data['latitude'], $data['longitude'])
+            && $data['latitude'] !== ''
+            && $data['longitude'] !== '';
+
+        if ($hasCoordinates) {
+            $latitude = (float)$data['latitude'];
+            $longitude = (float)$data['longitude'];
+            $accuracy = (float)($data['accuracy'] ?? 0);
+
+            // Reject unusable GPS accuracy
+            if ($accuracy > self::MAX_ACCURACY_METERS) {
+                $this->error("GPS accuracy too low ({$accuracy}m). Please move to an open area and try again.", 400);
+            }
+        } else {
+            $latitude = null;
+            $longitude = null;
+            $accuracy = null;
         }
 
         // ---- Get Office Details ----
@@ -443,55 +610,82 @@ class AttendanceController extends BaseController
             $this->error('Selected office has no valid GPS coordinates configured', 400);
         }
 
-        // ---- Calculate Distance (Haversine, in meters) ----
-        $radiusCheck = GeoLocation::isWithinRadius(
-            $latitude,
-            $longitude,
-            $officeLat,
-            $officeLon,
-            (float)($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS),
-            $accuracy
-        );
+                // ---- Geofence validation (skipped only for declared no-fix requests) ----
+        if ($hasCoordinates) {
+            // ---- Calculate Distance (Haversine, in meters) ----
+            $radiusCheck = GeoLocation::isWithinRadius(
+                $latitude,
+                $longitude,
+                $officeLat,
+                $officeLon,
+                (float)($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS),
+                $accuracy
+            );
 
-        // ---- Validate Radius (BEFORE update) ----
-        if (!$radiusCheck['within']) {
-            $message = 'You are outside the allowed office radius. Please move closer to the office before clocking out.';
-            $this->json([
-                'success' => false,
-                'message' => $message,
-                'distance' => $radiusCheck['distance'],
-                'allowed_radius' => (float)($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS),
-                'code' => 'OUTSIDE_RADIUS',
-            ], 403);
+            // ---- Validate Radius (BEFORE update) ----
+            if (!$radiusCheck['within']) {
+                $message = 'You are about '
+                    . \App\Helpers\GeoLocation::formatDistanceMeters((float) $radiusCheck['distance'])
+                    . ' from the office. You must be within '
+                    . \App\Helpers\GeoLocation::formatDistanceMeters((float) ($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS))
+                    . ' of the office to clock out. Please move closer and try again.';
+                $this->json([
+                    'success' => false,
+                    'message' => $message,
+                    'distance' => $radiusCheck['distance'],
+                    'allowed_radius' => (float)($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS),
+                    'code' => 'OUTSIDE_RADIUS',
+                ], 403);
+            }
+        } else {
+            $radiusCheck = ['within' => true, 'distance' => null];
         }
 
-        // ---- Get current active session ----
+        // ---- Get today's open session (clock out is valid for today only) ----
         $db = \db();
+        $today = date('Y-m-d');
         $employeeDbId = (int)$employee['id'];
         $session = $db->fetchOne(
-            "SELECT id, clock_in FROM attendance 
-             WHERE employee_id = ? AND clock_out IS NULL 
+            "SELECT id, clock_in, clock_out, status
+             FROM attendance
+             WHERE employee_id = ? AND DATE(clock_in) = ?
              ORDER BY clock_in DESC LIMIT 1",
-            'i',
-            [$employeeDbId]
+            'is',
+            [$employeeDbId, $today]
         );
 
         if (!$session) {
-            $this->error('You are not clocked in', 400, null, ['code' => 'NOT_CLOCKED_IN']);
+            // No clock-in today (either absent, or yesterday's session was
+            // reconciled overnight) -> cannot clock out.
+            $this->error('No active clock-in found for today. Please clock in first.', 400, null, ['code' => 'NOT_CLOCKED_IN']);
+        }
+
+        // Idempotency: already clocked out earlier today (e.g. double-click).
+        if (!empty($session['clock_out']) || (string)$session['status'] === 'clocked_out') {
+            $this->json([
+                'success' => true,
+                'message' => 'You have already clocked out today.',
+                'clock_out' => $session['clock_out'],
+                'distance' => $radiusCheck['distance'],
+                'idempotent' => true,
+            ]);
+            return;
         }
 
         // ---- Update with clock out (ONLY after validation passes) ----
+        $now = date('Y-m-d H:i:s');
         $db->update('attendance', [
-            'clock_out' => date('Y-m-d H:i:s'),
+            'clock_out' => $now,
             'clock_out_office_id' => $officeId,
+            'ip_address' => $this->clientIp(),
             'status' => 'clocked_out',
-            'updated_at' => date('Y-m-d H:i:s'),
+            'updated_at' => $now,
         ], 'id = ?', 'i', [(int)$session['id']]);
 
         $this->json([
             'success' => true,
-            'message' => 'Clock Out successful.',
-            'clock_out' => date('Y-m-d H:i:s'),
+            'message' => 'Clock Out successful.' . ($hasCoordinates ? '' : ' (location not verified)'),
+            'clock_out' => $now,
             'distance' => $radiusCheck['distance'],
         ]);
     }
@@ -502,16 +696,91 @@ class AttendanceController extends BaseController
      * This endpoint is intended to be called by a cron job at midnight.
      * It clocks out all employees who are still clocked in from the previous day.
      */
+    /**
+     * GET /api/attendance/hr-dashboard - Organisation-wide attendance monitoring.
+     *
+     * Powers the HR "Attendance Dashboard" page. All statuses are computed
+     * server-side by AttendanceDashboardService (single source of truth);
+     * the frontend only renders what this endpoint returns.
+     *
+     * NOTE: distinct from /attendance/dashboard, which is the per-employee
+     * clock-in card state endpoint.
+     *
+     * Parameters:
+     *   date           Y-m-d            (default today)
+     *   department_id  int              scope: summary+rows
+     *   section_id     int              scope: summary+rows
+     *   status         STATUS constant  row filter
+     *   search         string           name / staff no row filter
+     *   page, limit    pagination of the employee table
+     *   trend_days     1-31             trailing trend window (default 7)
+     */
+    public function hrDashboardAction(): void
+    {
+        $this->requirePermission('attendance', 'view');
+
+        try {
+            $service = new \App\Services\AttendanceDashboardService();
+            $this->success($service->getDashboard([
+                'date'          => $_GET['date'] ?? null,
+                'trend_days'    => isset($_GET['trend_days']) ? (int)$_GET['trend_days'] : 7,
+                'department_id' => (isset($_GET['department_id']) && $_GET['department_id'] !== '')
+                                    ? (int)$_GET['department_id'] : null,
+                'section_id'    => (isset($_GET['section_id']) && $_GET['section_id'] !== '')
+                                    ? (int)$_GET['section_id'] : null,
+                'status'        => $_GET['status'] ?? null,
+                'search'        => $this->getSearchQuery(),
+                'page'          => max(1, (int)($_GET['page'] ?? 1)),
+                'limit'         => (int)($_GET['limit'] ?? 25),
+            ]));
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Throwable $e) {
+            error_log('[hrDashboard] ' . $e->getMessage());
+            $this->error('Failed to load attendance dashboard data', 500);
+        }
+    }
+
+    /**
+     * GET /api/attendance/hr-employee-history - Employee profile + recent history
+     * for the dashboard detail modal. Uses the live schema directly because the
+     * legacy /attendance/employee/{id} path relies on retired repository SQL.
+     */
+    public function hrEmployeeHistoryAction(): void
+    {
+        $this->requirePermission('attendance', 'view');
+
+        $employeeId = (int)($_GET['employee_id'] ?? 0);
+        if ($employeeId <= 0) {
+            $this->error('employee_id is required', 400);
+        }
+
+        try {
+            $service = new \App\Services\AttendanceDashboardService();
+            $this->success($service->getEmployeeHistory(
+                $employeeId,
+                (string)($_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'))),
+                (string)($_GET['end_date'] ?? date('Y-m-d')),
+                (int)($_GET['limit'] ?? 30)
+            ));
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 404);
+        } catch (\Throwable $e) {
+            error_log('[hrEmployeeHistory] ' . $e->getMessage());
+            $this->error('Failed to load employee attendance history', 500);
+        }
+    }
+
     public function autoClockOutAction(): void
     {
         // Only allow internal/cron calls (you can add IP whitelist here if needed)
         $db = \db();
-        
+
         // Find all attendance records from previous days that are still clocked in
         $yesterday = date('Y-m-d', strtotime('-1 day'));
         $openSessions = $db->fetchAll(
-            "SELECT id, employee_id, clock_in, office_id 
-             FROM attendance 
+            "SELECT id, employee_id, clock_in, office_id
+             FROM attendance
              WHERE clock_out IS NULL AND DATE(clock_in) < ?",
             's',
             [date('Y-m-d')]
@@ -526,24 +795,43 @@ class AttendanceController extends BaseController
             return;
         }
 
-        $now = date('Y-m-d H:i:s');
-        $count = 0;
+        $count = count($openSessions);
 
-        foreach ($openSessions as $session) {
-            // Update each open session with auto clock-out
-            $db->update('attendance', [
-                'clock_out' => $now,
-                'status' => 'auto_clocked_out',
-                'updated_at' => $now,
-            ], 'id = ?', 'i', [(int)$session['id']]);
-            $count++;
-        }
+        // Batch-close all previous-day open sessions at end of their attendance
+        // day (Africa/Nairobi) and flag auto_clocked_out = 1. One statement is
+        // atomic + fast (no per-row round-trips). This mirrors the per-employee
+        // reconcileStaleSession() so scheduled + lazy paths stay consistent.
+        $db->query(
+            "UPDATE attendance
+               SET clock_out = DATE_FORMAT(clock_in, '%Y-%m-%d 23:59:59'),
+                   status = 'auto_clocked_out',
+                   auto_clocked_out = 1,
+                   updated_at = NOW()
+             WHERE clock_out IS NULL AND DATE(clock_in) < ?",
+            's',
+            [date('Y-m-d')]
+        );
 
         $this->json([
             'success' => true,
             'message' => "Auto clock-out completed. {$count} employee(s) clocked out.",
             'auto_clocked_out' => $count,
         ]);
+    }
+
+    /**
+     * Best-effort client IP for the audit trail. Captured on every record -
+     * GPS-verified or not - so HR always has network-origin evidence
+     * (office workstations share the office public IP).
+     */
+    private function clientIp(): ?string
+    {
+        $forwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+        $ip = $forwarded !== ''
+            ? trim(explode(',', $forwarded)[0])
+            : ($_SERVER['REMOTE_ADDR'] ?? '');
+
+        return ($ip !== '' && filter_var($ip, FILTER_VALIDATE_IP)) ? $ip : null;
     }
 
     /**
@@ -556,6 +844,15 @@ class AttendanceController extends BaseController
     {
         if (empty($data['office_id']) || (int)$data['office_id'] <= 0) {
             return 'Office is required';
+        }
+
+        // A device may declare it has no fix at all (desktop PC without
+        // GPS/Wi-Fi). When the organisation allows it, coordinates become
+        // optional and the record is stored unverified (lat/lng NULL).
+        $unverifiedAllowed = (($data['location_status'] ?? '') === 'unavailable')
+            && env('ATTENDANCE_ALLOW_UNVERIFIED_LOCATION', false);
+        if ($unverifiedAllowed) {
+            return null;
         }
 
         if (!isset($data['latitude']) || !isset($data['longitude'])) {

@@ -226,6 +226,11 @@ try {
         exit(1);
     }
 
+    // Drop partially-created meetings tables first (if any) so the
+    // CREATE TABLE IF NOT EXISTS + CREATE INDEX statements run cleanly.
+    $conn->query("DROP TABLE IF EXISTS meeting_invitations");
+    $conn->query("DROP TABLE IF EXISTS meetings");
+
     // Run migration 016 - Create meetings table
     $sql = file_get_contents(__DIR__ . '/migrations/016_create_meetings_table.sql');
     if ($conn->multi_query($sql)) {
@@ -265,6 +270,27 @@ try {
         echo "✓ meeting_invitations table created successfully\n";
     } else {
         echo "✗ meeting_invitations table not found\n";
+        exit(1);
+    }
+
+    // Run migration 018 - Leave roster table
+    $sql = file_get_contents(__DIR__ . '/migrations/018_leave_roster.sql');
+    if ($conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        echo "Migration 018_leave_roster.sql executed successfully\n";
+    } else {
+        echo "Error executing migration 018: " . $conn->error . "\n";
+        exit(1);
+    }
+    $result = $conn->query("SHOW TABLES LIKE 'leave_roster'");
+    if ($result && $result->num_rows > 0) {
+        echo "✓ leave_roster table created successfully\n";
+    } else {
+        echo "✗ leave_roster table not found\n";
         exit(1);
     }
 

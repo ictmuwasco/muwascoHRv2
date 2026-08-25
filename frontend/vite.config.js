@@ -32,5 +32,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['**/*.{test,spec}.{js,ts,jsx,tsx}'],
+    // Globals are required by src/__tests__/setup.ts (@testing-library/jest-dom
+    // v6 extends the global expect). Explicit imports keep working too.
+    globals: true,
+    setupFiles: ['./src/__tests__/setup.ts'],
   },
 })

@@ -6,7 +6,10 @@ import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import EmployeeTabs from '../../components/EmployeeTabs'
-import { ArrowLeft, Mail, Phone, MapPin, Briefcase, Building2, FileText, Users, Heart, Download, Save, Loader2, Plus, Trash2, Upload } from 'lucide-react'
+import { ArrowLeft, Mail, Phone, MapPin, Briefcase, Building2, FileText, Users, Heart, Download, Save, Loader2, Plus, Trash2, Upload, Camera } from 'lucide-react'
+
+// Base URL for direct file access (authenticated via httpOnly cookie)
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
 const EmployeeProfile = () => {
   const { id } = useParams()
@@ -44,6 +47,10 @@ const EmployeeProfile = () => {
     file: null,
   })
 
+  // Profile picture state
+  const [profileImageUrl, setProfileImageUrl] = useState(null)
+  const [profileImageUploading, setProfileImageUploading] = useState(false)
+
   useEffect(() => {
     fetchEmployee()
   }, [id])
@@ -71,6 +78,13 @@ const EmployeeProfile = () => {
       // Parse documents
       const parsedDocuments = safeParse(data.documents)
       setDocuments(parsedDocuments)
+
+      // Set profile picture URL
+      if (data.profile_image_url) {
+        setProfileImageUrl(`${API_BASE}/employees/${id}/profile-image?t=${Date.now()}`)
+      } else {
+        setProfileImageUrl(null)
+      }
     } catch (error) {
       console.error('Failed to fetch employee:', error)
     } finally {
@@ -217,6 +231,48 @@ const EmployeeProfile = () => {
     }
   }
 
+  const handleProfileImageChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type - only images allowed
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      setError('Please select a valid image file (JPG, PNG, GIF or WebP)')
+      return
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image size exceeds 5MB limit')
+      return
+    }
+
+    setProfileImageUploading(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      await api.post(`/employees/${id}/profile-image`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setSuccess('Profile picture updated successfully')
+      // Refresh employee data to get updated profile_image_url
+      const response = await api.get(`/employees/${id}`)
+      const data = response.data.data || response.data
+      setEmployee(data)
+      if (data.profile_image_url) {
+        setProfileImageUrl(`${API_BASE}/employees/${id}/profile-image?t=${Date.now()}`)
+      }
+    } catch (err) {
+      setError('Failed to update profile picture')
+      console.error('Failed to update profile picture:', err)
+    } finally {
+      setProfileImageUploading(false)
+      e.target.value = ''
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -269,8 +325,36 @@ const EmployeeProfile = () => {
       <Card>
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center space-x-4">
-            <div className="h-16 w-16 rounded-full bg-primary-600 flex items-center justify-center text-white text-2xl font-bold">
-              {employee.first_name?.[0]}{employee.last_name?.[0]}
+            <div className="relative shrink-0">
+              <div className="h-16 w-16 rounded-full bg-primary-600 flex items-center justify-center text-white text-2xl font-bold overflow-hidden">
+                {profileImageUrl ? (
+                  <img
+                    src={profileImageUrl}
+                    alt={`${employee.first_name} ${employee.last_name}`}
+                    className="h-full w-full object-cover"
+                    onError={() => setProfileImageUrl(null)}
+                  />
+                ) : (
+                  employee.first_name?.[0] || employee.last_name?.[0]
+                )}
+              </div>
+              <label
+                className="absolute -bottom-1 -right-1 inline-flex items-center p-1.5 rounded-full bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 cursor-pointer shadow-sm"
+                title="Upload profile picture"
+              >
+                {profileImageUploading ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Camera className="h-3 w-3" />
+                )}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="hidden"
+                  onChange={handleProfileImageChange}
+                  disabled={profileImageUploading}
+                />
+              </label>
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
