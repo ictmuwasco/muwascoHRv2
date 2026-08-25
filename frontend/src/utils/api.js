@@ -1,77 +1,175 @@
-import axios from 'axios'
+const API_URL = '/api';
 
-// Create axios instance
-// Use direct URL to bypass Vite proxy issues
-// Use '/api' in dev mode so the Vite proxy handles forwarding to the backend.
-// In production (built files served from XAMPP), use /hrdemo/api path.
-const isProduction = import.meta.env.PROD
-const baseURL = isProduction 
-  ? '/hrdemo/api' 
-  : '/api'
+/**
+ * Default request timeout (ms). Prevents hung GPS lookups or a stalled
+ * network connection from leaving buttons spinning forever.
+ */
+const DEFAULT_TIMEOUT_MS = 30000;
 
-export const api = axios.create({
-  baseURL: baseURL,
-  // Do NOT set Content-Type globally - axios will set it automatically
-  // to multipart/form-data when sending FormData, and application/json otherwise.
-  timeout: 15000,
-  withCredentials: true,
-})
+/**
+ * Endpoints that must never trigger the automatic refresh-retry loop
+ * (otherwise a failed login/logout would be silently replayed).
+ */
+const NON_RETRIABLE_PATHS = ['/auth/login', '/auth/logout', '/auth/refresh'];
 
-// Request interceptor
-// The access token is now in an httpOnly cookie (set by the server),
-// so it is sent automatically with withCredentials. No manual header needed.
-api.interceptors.request.use(
-  (config) => {
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
+/**
+ * Silent, single-flight session renewal.
+ *
+ * The backend keeps the employee signed in with an httpOnly `access_token`
+ * cookie that expires after one hour (while the PHP session lives for two).
+ * When any API call answers 401 we renew the cookie once via /auth/refresh
+ * and then replay the original request, so an employee who leaves the tab
+ * idle is never logged out mid-shift. Concurrent 401s share one refresh.
+ */
+let refreshPromise = null;
+
+const refreshSession = () => {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const response = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        throw new Error(`Token refresh failed (${response.status})`);
+      }
+      return true;
+    })().finally(() => {
+      refreshPromise = null;
+    });
   }
-)
+  return refreshPromise;
+};
 
-api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const url = error.config?.url || ''
-    const status = error.response?.status
+export const apiFetch = async (endpoint, options = {}) => {
+  const {
+    method = 'GET',
+    body,
+    headers: customHeaders,
+    responseType,
+    params,
+    timeout = DEFAULT_TIMEOUT_MS,
+    credentials = 'include',
+    signal: callerSignal,
+    ...restOptions
+  } = options;
 
-    // Session validation endpoints - a 401 here genuinely means
-    // the session is dead/expired. Force logout.
-    const isSessionValidation = 
-      url.includes('/auth/me') ||
-      url.includes('/auth/refresh') ||
-      (url.includes('/auth/logout') && status === 401)
+  // If the body is FormData, let the browser set the Content-Type (including boundary).
+  // Strip any manually-supplied Content-Type to avoid breaking the boundary.
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
 
-    if (status === 401 && isSessionValidation) {
-      localStorage.removeItem('user')
-      window.location.href = '/login'
-      return Promise.reject(error)
-    }
-
-    // For other 401s (e.g. /leave, /consent/status) - retry a few times.
-    // This handles the race condition where the httpOnly session cookie
-    // or access_token cookie hasn't propagated to the server yet after
-    // login. The browser sets the cookie from the login response, but
-    // there can be a brief window where subsequent API requests don't
-    // include the cookie yet. Retrying after a short delay resolves this.
-    if (status === 401) {
-      const config = error.config
-      const retryCount = config._retryCount || 0
-      const maxRetries = 2
-      const retryDelay = 500
-
-      // Only retry if the user is authenticated (has a user object in localStorage)
-      const hasUser = !!localStorage.getItem('user')
-
-      if (hasUser && retryCount < maxRetries) {
-        config._retryCount = retryCount + 1
-        await new Promise((resolve) => setTimeout(resolve, retryDelay))
-        return api(config)
+  // Serialize params into a query string (axios-style behavior).
+  // This is required because the native fetch() API does not understand a
+  // `params` option — without this, query parameters are silently dropped.
+  let url = endpoint;
+  if (params && typeof params === 'object') {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value === null || value === undefined) continue;
+      if (Array.isArray(value)) {
+        value.forEach((v) => query.append(key, String(v)));
+      } else {
+        query.append(key, String(value));
       }
     }
-
-    return Promise.reject(error)
+    const queryString = query.toString();
+    if (queryString) {
+      url += (url.includes('?') ? '&' : '?') + queryString;
+    }
   }
-)
 
-export default api
+  const headers = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(customHeaders || {}),
+  };
+  if (isFormData && headers['Content-Type']) {
+    delete headers['Content-Type'];
+  }
+
+  const isRetriable = !NON_RETRIABLE_PATHS.some((path) => endpoint.startsWith(path));
+
+  // One request attempt, wrapped in an abort-based timeout so a hung GPS or
+  // network call can never block the UI indefinitely.
+  const send = () => {
+    const controller = callerSignal ? null : new AbortController();
+    const signal = callerSignal || controller.signal;
+    const timer = controller ? setTimeout(() => controller.abort(), timeout) : null;
+
+    return fetch(`${API_URL}${url}`, {
+      method,
+      headers,
+      body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
+      credentials,
+      signal,
+      ...restOptions,
+    }).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
+  };
+
+  const toTimeoutError = () => {
+    const error = new Error(
+      `Request timed out after ${Math.round(timeout / 1000)}s. Check your connection and try again.`
+    );
+    error.isTimeout = true;
+    error.response = { data: {}, status: 0, statusText: 'Timeout' };
+    return error;
+  };
+
+  let response;
+  try {
+    response = await send();
+  } catch (err) {
+    throw err && err.name === 'AbortError' ? toTimeoutError() : err;
+  }
+
+  // Expired access-token cookie -> renew once, then replay the request.
+  if (response.status === 401 && isRetriable) {
+    try {
+      await refreshSession();
+      response = await send();
+    } catch (err) {
+      if (err && err.name === 'AbortError') throw toTimeoutError();
+      const error = new Error('Your session has expired. Please sign in again.');
+      error.isAuthError = true;
+      error.response = { data: {}, status: 401, statusText: 'Unauthorized' };
+      throw error;
+    }
+  }
+
+  let data;
+  if (responseType === 'blob') {
+    data = await response.blob();
+  } else {
+    data = await response.json().catch(() => ({}));
+  }
+
+  if (!response.ok) {
+    const message = data.error || data.message || `Request failed with status ${response.status}`;
+    const error = new Error(message);
+    error.response = { data, status: response.status, statusText: response.statusText };
+    throw error;
+  }
+
+  // Return an axios-like response object so callers can use response.data
+  return {
+    data,
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+    config: {},
+  };
+};
+
+export const apiGet = (endpoint, config) => apiFetch(endpoint, { ...config });
+export const apiPost = (endpoint, data, config) => apiFetch(endpoint, { method: 'POST', body: data, ...config });
+export const apiPut = (endpoint, data, config) => apiFetch(endpoint, { method: 'PUT', body: data, ...config });
+export const apiDelete = (endpoint, config) => apiFetch(endpoint, { method: 'DELETE', ...config });
+
+export default {
+  get: apiGet,
+  post: apiPost,
+  put: apiPut,
+  delete: apiDelete,
+};

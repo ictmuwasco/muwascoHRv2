@@ -412,6 +412,30 @@ Get today's attendance records.
 #### GET /attendance/dashboard
 Get attendance data for dashboard widgets.
 
+#### GET /attendance/hr-dashboard
+Organisation-wide attendance monitoring dashboard (HR/authorised users; requires `attendance.view`).
+All statuses are computed server-side by `AttendanceDashboardService` — the single
+source of truth for attendance status (the client never derives statuses).
+
+**Status resolution priority:** HOLIDAY → NON_WORKING_DAY → ON_LEAVE → AUTO_CLOCKED_OUT → LATE → MISSING_CLOCK_OUT → PRESENT → CLOCKED_OUT → NOT_CLOCKED_IN* → ABSENT.
+\* Under the approved business rule, an expected employee with no clock-in is **ABSENT immediately** (no grace period), so NOT_CLOCKED_IN does not occur unless the service's `NOT_CLOCKED_IN_GRACE_ENABLED` switch is flipped.
+
+**Query Parameters:**
+- `date` (optional): Date to view, YYYY-MM-DD (default: today)
+- `department_id`, `section_id` (optional): scope summary + rows
+- `status` (optional): row filter by status constant (e.g. ABSENT)
+- `search` (optional): employee name / staff number
+- `page`, `limit` (optional): pagination of the employee table
+- `trend_days` (optional): trailing trend window 1–31 (default 7)
+
+**Response:** `{ date, is_today, context, summary, employees[], pagination, departments[], trend[], absent_employees[], statuses[] }`
+
+#### GET /attendance/hr-employee-history
+Employee profile + recent attendance history for the dashboard detail modal
+(requires `attendance.view`). Uses the live schema directly.
+
+**Query Parameters:** `employee_id` (required), `start_date`, `end_date`, `limit`.
+
 #### GET /attendance/employee/{employeeId}
 Get attendance for a specific employee.
 

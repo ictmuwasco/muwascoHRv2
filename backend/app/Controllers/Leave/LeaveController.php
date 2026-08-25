@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Controllers\Leave;
 
+use App\Controllers\BaseController;
+
 use App\Services\LeaveApplicationService;
 use App\Services\LeaveApprovalService;
 use App\Services\LeaveCalculationService;
 use App\Services\LeaveDocumentService;
 use App\Services\LeaveWorkflowService;
+use App\Services\LeaveProfileService;
 use App\Helpers\Auth;
 
 /**
@@ -24,6 +27,7 @@ class LeaveController
     private LeaveCalculationService $calculationService;
     private LeaveDocumentService $documentService;
     private LeaveWorkflowService $workflowService;
+    private LeaveProfileService $profileService;
 
     public function __construct()
     {
@@ -32,6 +36,7 @@ class LeaveController
         $this->calculationService = new LeaveCalculationService();
         $this->documentService = new LeaveDocumentService();
         $this->workflowService = new LeaveWorkflowService();
+        $this->profileService = new LeaveProfileService();
     }
 
     /**
@@ -41,8 +46,10 @@ class LeaveController
     public function indexAction(): void
     {
         $userId = Auth::getInstance()->id();
-        
+
         if (!$userId) {
+
+
             http_response_code(401);
             echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
             return;
@@ -991,4 +998,379 @@ class LeaveController
         $result = $stmt->get_result()->fetch_assoc();
         return $result ? (int) $result['id'] : 0;
     }
+
+    // ───────────────────────────────────────────────────────────────────
+    //  Employee Leave Profile endpoints
+    // ───────────────────────────────────────────────────────────────────
+
+    /**
+     * GET /api/leave/profile/employees
+     * Search / list employees eligible for the leave-profile selector.
+     * Role-scoped: officers see only themselves; HR sees all.
+     */
+    public function profileEmployeesAction(): void
+    {
+        $userId = Auth::getInstance()->id();
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        $search = trim($_GET['search'] ?? '');
+        $employees = $this->profileService->getEligibleEmployees();
+
+        if ($search !== '') {
+            $searchLower = strtolower($search);
+            $employees = array_filter($employees, function ($e) use ($searchLower) {
+                return strpos(strtolower($e['employee_id'] ?? ''), $searchLower) !== false
+                    || strpos(strtolower($e['first_name'] ?? ''), $searchLower) !== false
+                    || strpos(strtolower($e['last_name'] ?? ''), $searchLower) !== false
+                    || strpos(strtolower($e['surname'] ?? ''), $searchLower) !== false
+                    || strpos(strtolower($e['department_name'] ?? ''), $searchLower) !== false
+                    || strpos(strtolower($e['section_name'] ?? ''), $searchLower) !== false
+                    || strpos(strtolower($e['subsection_name'] ?? ''), $searchLower) !== false
+                    || strpos(strtolower($e['designation'] ?? ''), $searchLower) !== false;
+            });
+        }
+
+        echo json_encode([
+            'success' => true,
+            'data' => array_values($employees),
+        ]);
+    }
+
+    /**
+     * GET /api/leave/profile/{employeeId}
+     * Get the complete leave profile for an employee.
+     *
+     * Query params:
+     *   financial_year_id  (optional, defaults to current FY)
+     *   status             (optional filter)
+     *   leave_type_id      (optional filter)
+     *   date_from          (optional filter)
+     *   date_to            (optional filter)
+     */
+    public function profileAction(int $employeeId): void
+    {
+        try {
+            $userId = Auth::getInstance()->id();
+            if (!$userId) {
+                http_response_code(401);
+                echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+                return;
+            }
+
+            // Authorisation check — backend must verify
+            if (!$this->profileService->canViewProfile($employeeId)) {
+                http_response_code(403);
+                echo json_encode(['success' => false, 'message' => 'Access denied — you are not authorised to view this employee\'s leave profile']);
+                return;
+            }
+
+            $financialYearId = (int) ($_GET['financial_year_id'] ?? 0);
+            if ($financialYearId === 0) {
+                $financialYearId = $this->profileService->getCurrentFinancialYearId();
+            }
+
+            $filters = [];
+            if (!empty($_GET['status'])) {
+                $filters['status'] = $_GET['status'];
+            }
+            if (!empty($_GET['leave_type_id'])) {
+                $filters['leave_type_id'] = (int) $_GET['leave_type_id'];
+            }
+            if (!empty($_GET['date_from'])) {
+                $filters['date_from'] = $_GET['date_from'];
+            }
+            if (!empty($_GET['date_to'])) {
+                $filters['date_to'] = $_GET['date_to'];
+            }
+
+            $profile = $this->profileService->getFullProfile($employeeId, $financialYearId, $filters);
+
+            if (!$profile['success']) {
+                http_response_code(404);
+                echo json_encode($profile);
+                return;
+            }
+
+            echo json_encode([
+                'success' => true,
+                'data' => $profile,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('LeaveProfile profileAction error: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Internal server error: ' . $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+        }
+    }
+
+    /**
+     * GET /api/leave/profile/{employeeId}/balances
+     * Get leave balances for an employee in a financial year.
+     */
+    public function profileBalancesAction(int $employeeId): void
+    {
+        $userId = Auth::getInstance()->id();
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        if (!$this->profileService->canViewProfile($employeeId)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
+
+        $financialYearId = (int) ($_GET['financial_year_id'] ?? 0);
+        if ($financialYearId === 0) {
+            $financialYearId = $this->profileService->getCurrentFinancialYearId();
+        }
+
+        $balances = $this->profileService->getLeaveBalances($employeeId, $financialYearId);
+
+        echo json_encode([
+            'success' => true,
+            'data' => $balances,
+        ]);
+    }
+
+    /**
+     * GET /api/leave/profile/{employeeId}/applications
+     * Get leave applications for an employee with optional filters.
+     */
+    public function profileApplicationsAction(int $employeeId): void
+    {
+        $userId = Auth::getInstance()->id();
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        if (!$this->profileService->canViewProfile($employeeId)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
+
+        $financialYearId = (int) ($_GET['financial_year_id'] ?? 0);
+        if ($financialYearId === 0) {
+            $financialYearId = $this->profileService->getCurrentFinancialYearId();
+        }
+
+        $filters = [];
+        if (!empty($_GET['status'])) {
+            $filters['status'] = $_GET['status'];
+        }
+        if (!empty($_GET['leave_type_id'])) {
+            $filters['leave_type_id'] = (int) $_GET['leave_type_id'];
+        }
+        if (!empty($_GET['date_from'])) {
+            $filters['date_from'] = $_GET['date_from'];
+        }
+        if (!empty($_GET['date_to'])) {
+            $filters['date_to'] = $_GET['date_to'];
+        }
+
+        $applications = $this->profileService->getLeaveApplications($employeeId, $financialYearId, $filters);
+
+        echo json_encode([
+            'success' => true,
+            'data' => $applications,
+        ]);
+    }
+
+    /**
+     * GET /api/leave/profile/{employeeId}/timeline
+     * Get the balance timeline (buildBalanceTimeline) for an employee.
+     */
+    public function profileTimelineAction(int $employeeId): void
+    {
+        $userId = Auth::getInstance()->id();
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        if (!$this->profileService->canViewProfile($employeeId)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
+
+        $financialYearId = (int) ($_GET['financial_year_id'] ?? 0);
+        if ($financialYearId === 0) {
+            $financialYearId = $this->profileService->getCurrentFinancialYearId();
+        }
+
+        $timeline = $this->profileService->buildBalanceTimeline($employeeId, $financialYearId);
+
+        echo json_encode([
+            'success' => true,
+            'data' => $timeline,
+        ]);
+    }
+
+    /**
+     * GET /api/leave/profile/{employeeId}/summary
+     * Get summary statistics for an employee's leave account.
+     */
+    public function profileSummaryAction(int $employeeId): void
+    {
+        $userId = Auth::getInstance()->id();
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        if (!$this->profileService->canViewProfile($employeeId)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
+
+        $financialYearId = (int) ($_GET['financial_year_id'] ?? 0);
+        if ($financialYearId === 0) {
+            $financialYearId = $this->profileService->getCurrentFinancialYearId();
+        }
+
+        $summary = $this->profileService->getSummaryStatistics($employeeId, $financialYearId);
+
+        echo json_encode([
+            'success' => true,
+            'data' => $summary,
+        ]);
+    }
+
+    /**
+     * GET /api/leave/profile/{employeeId}/export
+     * Export the employee leave account as CSV.
+     */
+    public function profileExportAction(int $employeeId): void
+    {
+        $userId = Auth::getInstance()->id();
+        if (!$userId) {
+            http_response_code(401);
+            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            return;
+        }
+
+        if (!$this->profileService->canViewProfile($employeeId)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
+
+        $financialYearId = (int) ($_GET['financial_year_id'] ?? 0);
+        if ($financialYearId === 0) {
+            $financialYearId = $this->profileService->getCurrentFinancialYearId();
+        }
+
+        $filters = [];
+        if (!empty($_GET['status'])) {
+            $filters['status'] = $_GET['status'];
+        }
+        if (!empty($_GET['leave_type_id'])) {
+            $filters['leave_type_id'] = (int) $_GET['leave_type_id'];
+        }
+        if (!empty($_GET['date_from'])) {
+            $filters['date_from'] = $_GET['date_from'];
+        }
+        if (!empty($_GET['date_to'])) {
+            $filters['date_to'] = $_GET['date_to'];
+        }
+
+        $exportData = $this->profileService->getExportData($employeeId, $financialYearId, $filters);
+
+        if (!$exportData['success']) {
+            http_response_code(404);
+            echo json_encode($exportData);
+            return;
+        }
+
+        // If format=csv, output as CSV
+        $format = $_GET['format'] ?? 'json';
+        if ($format === 'csv') {
+            $this->outputCsvExport($exportData);
+            return;
+        }
+
+        echo json_encode([
+            'success' => true,
+            'data' => $exportData,
+        ]);
+    }
+
+    /**
+     * Output CSV export of the employee leave account.
+     */
+    private function outputCsvExport(array $exportData): void
+    {
+        $employee = $exportData['employee'];
+        $fy = $exportData['financial_year'];
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="leave_account_' . $employee['employee_id'] . '_' . $fy . '.csv"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        $output = fopen('php://output', 'w');
+
+        // Header
+        fputcsv($output, ['Employee Leave Account Export']);
+        fputcsv($output, ['Employee Name', $employee['name']]);
+        fputcsv($output, ['Employee ID', $employee['employee_id']]);
+        fputcsv($output, ['Employment Type', $employee['employment_type']]);
+        fputcsv($output, ['Department', $employee['department']]);
+        fputcsv($output, ['Section', $employee['section']]);
+        fputcsv($output, ['Sub-Section', $employee['subsection']]);
+        fputcsv($output, ['Designation', $employee['designation']]);
+        fputcsv($output, ['Financial Year', $fy]);
+        fputcsv($output, []);
+
+        // Summary
+        fputcsv($output, ['Summary Statistics']);
+        fputcsv($output, ['Total Leave Types', $exportData['summary']['total_leave_types']]);
+        fputcsv($output, ['Total Allocated Days', $exportData['summary']['total_allocated_days']]);
+        fputcsv($output, ['Total Brought Forward', $exportData['summary']['total_brought_forward']]);
+        fputcsv($output, ['Total Used Days', $exportData['summary']['total_used_days']]);
+        fputcsv($output, ['Total Remaining Days', $exportData['summary']['total_remaining_days']]);
+        fputcsv($output, ['Pending Applications', $exportData['summary']['pending_applications']]);
+        fputcsv($output, ['Approved Applications', $exportData['summary']['approved_applications']]);
+        fputcsv($output, ['Rejected Applications', $exportData['summary']['rejected_applications']]);
+        fputcsv($output, []);
+
+        // Data rows
+        fputcsv($output, ['Section', 'Leave Type', 'Allocated', 'Brought Forward', 'Used', 'Remaining', 'Start Date', 'End Date', 'Days Requested', 'Status', 'Balance Impact']);
+        foreach ($exportData['export_rows'] as $row) {
+            fputcsv($output, [
+                $row['section'],
+                $row['leave_type'],
+                $row['allocated'],
+                $row['brought_forward'],
+                $row['used'],
+                $row['remaining'],
+                $row['start_date'],
+                $row['days_requested'],
+                $row['status'],
+                $row['balance_impact'],
+            ]);
+        }
+
+        fclose($output);
+        exit;
+    }
 }
+
+

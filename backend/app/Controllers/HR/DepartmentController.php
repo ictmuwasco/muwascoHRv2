@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\HR;
 
+use App\Controllers\BaseController;
+
 use App\Services\Contracts\DepartmentServiceInterface;
 use App\Services\DepartmentService;
 
@@ -32,11 +34,17 @@ class DepartmentController extends BaseController
      */
     public function indexAction(): void
     {
-        try {
-            $this->requirePermission('departments', 'view');
-        } catch (\Exception $e) {
-            // If permission check fails, still return data for debugging
-            \logger()->warning('Departments permission check failed', ['error' => $e->getMessage()]);
+        // Read-only department hierarchy powers dropdowns/filters across modules
+        // (leave roster, reports, forms). Any AUTHENTICATED user may read it;
+        // department *management* endpoints below still enforce departments.view.
+        //
+        // NOTE: requirePermission() responds 403 and exits - wrapping it in
+        // try/catch to "continue anyway" never worked and only blocked requests.
+        if ($this->getUserId() === 0) {
+            $this->unauthorized('Authentication required');
+        }
+        if (!$this->hasPermission('departments', 'view')) {
+            \logger()->info('Departments list served without departments.view', ['user_id' => $this->getUserId()]);
         }
 
         try {
@@ -150,3 +158,4 @@ class DepartmentController extends BaseController
         }
     }
 }
+

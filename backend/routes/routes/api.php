@@ -5,6 +5,7 @@ use App\Controllers\Auth\AuthController;
 use App\Controllers\Employee\EmployeeController;
 use App\Controllers\HR\DepartmentController;
 use App\Controllers\Leave\LeaveController;
+use App\Controllers\Leave\LeaveRosterController;
 use App\Controllers\AttendanceController;
 use App\Controllers\Employee\UserController;
 use App\Controllers\HR\SectionController;
@@ -31,8 +32,9 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
     Route::get('/auth/user', [AuthController::class, 'user']);
 
-    // Employee routes - search must be before apiResource
+        // Employee routes - search must be before apiResource
     Route::get('employees/search', [EmployeeController::class, 'search']);
+    Route::get('employees/reference', [EmployeeController::class, 'reference']);
     Route::apiResource('employees', EmployeeController::class);
 
     Route::apiResource('departments', DepartmentController::class);
@@ -42,6 +44,9 @@ Route::middleware(['jwt.auth'])->group(function () {
     // Attendance routes - today/employee/dashboard/clock-in/clock-out must be before apiResource's {attendance}
     Route::get('/attendance/today', [AttendanceController::class, 'today']);
     Route::get('/attendance/dashboard', [AttendanceController::class, 'dashboard']);
+    // HR attendance monitoring dashboard + employee history (before {attendance} wildcard)
+    Route::get('/attendance/hr-dashboard', [AttendanceController::class, 'hrDashboard']);
+    Route::get('/attendance/hr-employee-history', [AttendanceController::class, 'hrEmployeeHistory']);
     Route::get('/attendance/my-records', [AttendanceController::class, 'myRecords']);
     Route::get('/attendance/employee/{employeeId}', [AttendanceController::class, 'byEmployee']);
     Route::post('/attendance/clock-in', [AttendanceController::class, 'clockIn']);
@@ -63,7 +68,18 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::put('/leave/{leaveApplication}/reject', [LeaveController::class, 'reject']);
     Route::put('/leave/{leaveApplication}/cancel', [LeaveController::class, 'cancel']);
 
+    // Employee Leave Profile routes - must be before apiResource's {leave}
+    Route::get('/leave/profile/employees', [LeaveController::class, 'profileEmployeesAction']);
+    Route::get('/leave/profile/{employeeId}', [LeaveController::class, 'profileAction']);
+    Route::get('/leave/profile/{employeeId}/balances', [LeaveController::class, 'profileBalancesAction']);
+    Route::get('/leave/profile/{employeeId}/applications', [LeaveController::class, 'profileApplicationsAction']);
+    Route::get('/leave/profile/{employeeId}/timeline', [LeaveController::class, 'profileTimelineAction']);
+    Route::get('/leave/profile/{employeeId}/summary', [LeaveController::class, 'profileSummaryAction']);
+    Route::get('/leave/profile/{employeeId}/export', [LeaveController::class, 'profileExportAction']);
+
     // Leave Roster routes - must be before apiResource's {leaveRoster}
+
+
     Route::get('/leave/roster/stats', [LeaveRosterController::class, 'statsAction']);
     Route::get('/leave/roster/distribution', [LeaveRosterController::class, 'distributionAction']);
     Route::get('/leave/roster/upcoming', [LeaveRosterController::class, 'upcomingAction']);
@@ -93,10 +109,6 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/reports/documentation', [ReportController::class, 'documentation']);
     Route::get('/reports/{type}/export/{format}', [ReportController::class, 'export']);
 
-    Route::get('/payroll/periods', [PayrollController::class, 'periods']);
-    Route::post('/payroll/periods', [PayrollController::class, 'storePeriod']);
-    Route::get('/payroll/records', [PayrollController::class, 'records']);
-    Route::post('/payroll/records', [PayrollController::class, 'storeRecord']);
 
     Route::get('/complaints', [ComplaintController::class, 'index']);
     Route::post('/complaints', [ComplaintController::class, 'store']);
@@ -121,6 +133,24 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/admin/financial-year/allocate', [FinancialYearController::class, 'allocateLeaveAction']);
     Route::get('/admin/financial-years/leave-types', [FinancialYearController::class, 'leaveTypes']);
     Route::get('/admin/financial-years/employees', [FinancialYearController::class, 'employees']);
+
+    // Meeting routes - stats must be before apiResource's {meeting}
+    Route::get('/meetings/stats', [MeetingController::class, 'statsAction']);
+    Route::get('/meetings/export', [MeetingController::class, 'exportAction']);
+    Route::get('/meetings/eligible-employees', [MeetingController::class, 'eligibleEmployeesAction']);
+    Route::get('/meetings/{meeting}/participants', [MeetingController::class, 'participantsAction']);
+    Route::post('/meetings/{meeting}/participants', [MeetingController::class, 'addParticipantAction']);
+    Route::delete('/meetings/{meeting}/participants/{employeeId}', [MeetingController::class, 'removeParticipantAction']);
+    Route::post('/meetings/{meeting}/confirm', [MeetingController::class, 'confirmAction']);
+    Route::post('/meetings/{meeting}/decline', [MeetingController::class, 'declineAction']);
+    Route::post('/meetings/{meeting}/cancel', [MeetingController::class, 'cancelAction']);
+    Route::post('/meetings/{meeting}/attendance', [MeetingController::class, 'markAttendanceAction']);
+    Route::get('/meetings', [MeetingController::class, 'indexAction']);
+    Route::post('/meetings', [MeetingController::class, 'storeAction']);
+    Route::get('/meetings/{meeting}', [MeetingController::class, 'showAction']);
+    Route::put('/meetings/{meeting}', [MeetingController::class, 'updateAction']);
+    Route::delete('/meetings/{meeting}', [MeetingController::class, 'destroyAction']);
+    Route::get('/my-meetings', [MeetingController::class, 'myMeetingsAction']);
 
     // Appraisal routes - submit/approve/pending/employee must be before apiResource's {appraisal}
     Route::get('/appraisals/pending', [AppraisalController::class, 'pending']);

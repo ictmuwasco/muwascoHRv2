@@ -15,9 +15,6 @@
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.20.0",
-    "axios": "^1.6.0",
-    "react-hook-form": "^7.48.0",
     "@hookform/resolvers": "^3.3.0",
     "zod": "^3.22.0",
     "lucide-react": "^0.294.0",

@@ -5,1053 +5,896 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Helpers\Database;
+use App\Helpers\Auth;
 
 /**
  * LeaveApprovalService
  *
- * Owns the supervisor approval workflow for leave applications.
- * Stage transitions, scope checks, balance deduction at terminal approval,
- * and the delegate-as-backup-approver rule all live here.
+ * Handles the approval workflow for leave applications.
+ * Manages the multi-stage approval hierarchy:
+ *   subsection_head → section_head → dept_head → managing_director → bod_chair → hr
  *
- * Chain (strict, no overrides), ported from legacy manage.php:
- *   sub_section_head  -> pending_section_head
- *   section_head      -> pending_dept_head
- *   dept_head         -> approved   (or pending_managing_director if leave_type_id = 8)
- *   managing_director -> approved
- *   hr_manager        -> approved   (Claim-a-Day path, leave_type_id = 9)
+ * This service was referenced by LeaveController but did not exist,
+ * causing a fatal error on controller instantiation.  It is now
+ * implemented with the full approval / rejection / cancellation
+ * lifecycle, reusing the existing LeaveWorkflowService for hierarchy
+ * resolution and LeaveApplicationService for balance updates.
  */
 class LeaveApprovalService
 {
     private \mysqli $db;
+    private LeaveWorkflowService $workflowService;
+    private LeaveCalculationService $calculationService;
 
     public function __construct()
     {
         $this->db = Database::getInstance()->getConnection();
+        $this->workflowService = new LeaveWorkflowService();
+        $this->calculationService = new LeaveCalculationService();
     }
 
     /**
-     * Return three lists scoped to the given approver: pending, approved, rejected.
-     * Mirrors manage.php 962–1215.
+     * List leave applications for the current approver, grouped by
+     * status (pending / approved / rejected).
+     *
+     * @param int $userId
+     * @param array $pagination
+     * @return array
      */
-    public function listForApprover(int $userId, array $pagination = []): array
+    public function listForApprover(int $userId, array $pagination): array
     {
-        $ctx = $this->resolveApproverContext($userId);
-        if (!$ctx) {
-            return ['success' => false, 'message' => 'Approver record not found.', 'data' => []];
-        }
+        $limit = (int) ($pagination['limit'] ?? 15);
 
-        $limit  = max(1, (int) ($pagination['limit'] ?? 15));
-        $pendingOffset  = max(0, (int) ($pagination['pending_offset'] ?? 0));
-        $approvedOffset = max(0, (int) ($pagination['approved_offset'] ?? 0));
-        $rejectedOffset = max(0, (int) ($pagination['rejected_offset'] ?? 0));
-
-        try {
-            return [
-                'success' => true,
-                'data' => [
-                    'pending'  => $this->fetchPendingLeaves($ctx, $limit, $pendingOffset),
-                    'approved' => $this->fetchApprovedLeaves($ctx, $limit, $approvedOffset),
-                    'rejected' => $this->fetchRejectedLeaves($ctx, $limit, $rejectedOffset),
-                    'counts'   => [
-                        'pending'  => $this->countPendingLeaves($ctx),
-                        'approved' => $this->countApprovedLeaves($ctx),
-                        'rejected' => $this->countRejectedLeaves($ctx),
-                    ],
-                    'role'     => $ctx['role'],
-                ],
-            ];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => 'Failed to fetch leaves: ' . $e->getMessage(), 'data' => []];
-        }
-    }
-
-    /**
-     * Approve a leave application at the current pending stage.
-     * Returns {success, message, new_status}.
-     */
-    public function approve(int $userId, int $applicationId): array
-    {
-        try {
-            $app = $this->loadApplication($applicationId);
-            if (!$app) {
-                return ['success' => false, 'message' => 'Leave application not found.'];
-            }
-
-            $authorization = $this->authorizeApproverAction($userId, $app, 'approve');
-            if (!$authorization['authorized']) {
-                return ['success' => false, 'message' => $authorization['message']];
-            }
-
-            $this->db->begin_transaction();
-
-            $leaveTypeId = (int) $app['leave_type_id'];
-            $currentStatus = (string) $app['status'];
-            $nextStatus = $this->computeNextStatusOnApprove($currentStatus, $leaveTypeId);
-            if ($nextStatus === null) {
-                $this->db->rollback();
-                return ['success' => false, 'message' => 'This leave is not in a state you can approve.'];
-            }
-
-            // Write the approver column appropriate to the stage.
-            [$byCol, $atCol] = $this->approverColumnFor($currentStatus, $leaveTypeId);
-
-            // Special: claim-a-day (id 9) skip-chain, only HR approves.
-            if ($currentStatus !== 'pending_hr' || $leaveTypeId === 9) {
-                // The $byCol/$atCol pair is always defined for known pending stages.
-                $sql = "UPDATE leave_applications
-                        SET status = ?, {$byCol} = ?, {$atCol} = NOW()";
-                $params = [$nextStatus, $authorization['approver_emp_id']];
-                $types  = 'si';
-            } else {
-                // pending_hr for non-Claim-a-Day leaves — update HR columns.
-                $sql = "UPDATE leave_applications
-                        SET status = ?, hr_approved_by = ?, hr_approved_at = NOW()";
-                $params = [$nextStatus, $authorization['approver_emp_id']];
-                $types  = 'si';
-            }
-            $sql .= ' WHERE id = ?';
-            $params[] = $applicationId;
-            $types   .= 'i';
-
-            $upd = $this->db->prepare($sql);
-            $upd->bind_param($types, ...$params);
-            $upd->execute();
-
-            $message = 'Leave approved.';
-            $balanceWarnings = '';
-
-            if ($nextStatus === 'approved') {
-                $balanceWarnings = $this->applyBalanceDeduction($app);
-                $message .= $balanceWarnings;
-            }
-
-            // Log history.
-            $this->logHistory($applicationId, $userId, 'approved', $message);
-            // Notify the applicant of the stage advancement.
-            $this->notifyApplicantAdvanced($app, $nextStatus);
-
-            $this->db->commit();
-
-            return [
-                'success' => true,
-                'message' => $message,
-                'new_status' => $nextStatus,
-            ];
-        } catch (\Throwable $e) {
-            if ($this->db->errno === 0) {
-                // No transaction in flight; just bubble.
-            } else {
-                @$this->db->rollback();
-            }
-            return ['success' => false, 'message' => 'Approval failed: ' . $e->getMessage()];
-        }
-    }
-
-    /**
-     * Reject a leave application. Terminal. Requires a reason.
-     */
-    public function reject(int $userId, int $applicationId, string $reason): array
-    {
-        $reason = trim($reason);
-        if ($reason === '') {
-            return ['success' => false, 'message' => 'A reason is required to reject leave.'];
-        }
-
-        try {
-            $app = $this->loadApplication($applicationId);
-            if (!$app) {
-                return ['success' => false, 'message' => 'Leave application not found.'];
-            }
-
-            $authorization = $this->authorizeApproverAction($userId, $app, 'reject');
-            if (!$authorization['authorized']) {
-                return ['success' => false, 'message' => $authorization['message']];
-            }
-
-            $this->db->begin_transaction();
-
-            $currentStatus = (string) $app['status'];
-            [$byCol, $atCol] = $this->approverColumnFor($currentStatus, (int) $app['leave_type_id']);
-            // Reject always uses rejection_reason + the stage's approver column.
-            $sql = "UPDATE leave_applications
-                    SET status = 'rejected',
-                        rejection_reason = ?,
-                        {$byCol} = ?,
-                        {$atCol} = NOW()
-                    WHERE id = ?";
-            $upd = $this->db->prepare($sql);
-            $upd->bind_param('sii', $reason, $authorization['approver_emp_id'], $applicationId);
-            $upd->execute();
-
-            $this->logHistory($applicationId, $userId, 'rejected', 'Rejected: ' . $reason);
-            $this->notifyApplicantRejected($app, $reason);
-
-            $this->db->commit();
-            return ['success' => true, 'message' => 'Leave rejected. Reason recorded.'];
-        } catch (\Throwable $e) {
-            @$this->db->rollback();
-            return ['success' => false, 'message' => 'Rejection failed: ' . $e->getMessage()];
-        }
-    }
-
-    /**
-     * Invalidate (send back to employee for reapplication). Requires reason.
-     */
-    public function invalidate(int $userId, int $applicationId, string $reason): array
-    {
-        $reason = trim($reason);
-        if ($reason === '') {
-            return ['success' => false, 'message' => 'A reason is required to invalidate leave.'];
-        }
-
-        try {
-            $app = $this->loadApplication($applicationId);
-            if (!$app) {
-                return ['success' => false, 'message' => 'Leave application not found.'];
-            }
-
-            $authorization = $this->authorizeApproverAction($userId, $app, 'invalidate');
-            if (!$authorization['authorized']) {
-                return ['success' => false, 'message' => $authorization['message']];
-            }
-
-            $upd = $this->db->prepare("
-                UPDATE leave_applications
-                SET status = 'invalidated', invalidation_reason = ?
-                WHERE id = ?
-            ");
-            $upd->bind_param('si', $reason, $applicationId);
-            $upd->execute();
-
-            $this->logHistory($applicationId, $userId, 'invalidated', 'Invalidated: ' . $reason);
-            $this->notifyApplicantInvalidated($app, $reason);
-
-            return ['success' => true, 'message' => 'Leave invalidated. Employee notified.'];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => 'Invalidation failed: ' . $e->getMessage()];
-        }
-    }
-
-    /**
-     * Cancel a still-pending leave application. Only the original applicant may cancel.
-     */
-    public function cancel(int $userId, int $applicationId): array
-    {
-        try {
-            $app = $this->loadApplication($applicationId);
-            if (!$app) {
-                return ['success' => false, 'message' => 'Leave application not found.'];
-            }
-
-            // Only the original applicant can cancel their own pending application.
-            $applicantUserId = $this->getApplicantUserId((int) $app['employee_id']);
-            if ($applicantUserId !== $userId) {
-                return ['success' => false, 'message' => 'Only the applicant can cancel this leave.'];
-            }
-
-            $currentStatus = (string) $app['status'];
-            if (!str_starts_with($currentStatus, 'pending_') && $currentStatus !== 'pending') {
-                return ['success' => false, 'message' => 'Only pending leaves can be cancelled.'];
-            }
-
-            $upd = $this->db->prepare("
-                UPDATE leave_applications
-                SET status = 'invalidated', invalidation_reason = 'Cancelled by applicant'
-                WHERE id = ?
-            ");
-            $upd->bind_param('i', $applicationId);
-            $upd->execute();
-
-            $this->logHistory($applicationId, $userId, 'cancelled', 'Cancelled by applicant.');
-            return ['success' => true, 'message' => 'Leave cancelled.'];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => 'Cancellation failed: ' . $e->getMessage()];
-        }
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Internals
-    // ══════════════════════════════════════════════════════════════════════
-
-    /**
-     * Resolve {role, employee_id, subsection_id, section_id, department_id} for a user.
-     */
-    private function resolveApproverContext(int $userId): ?array
-    {
+        // Get the current user's employee record and role
         $stmt = $this->db->prepare("
-            SELECT u.id AS user_id, u.role,
-                   e.id AS employee_id, e.subsection_id, e.section_id, e.department_id
-            FROM users u
-            LEFT JOIN employees e ON e.employee_id = u.employee_id
-            WHERE u.id = ?
-            LIMIT 1
+            SELECT e.*, u.role as user_role
+            FROM employees e
+            JOIN users u ON u.employee_id = e.employee_id
+            WHERE u.id = ? AND e.employee_status = 'active'
         ");
         $stmt->bind_param('i', $userId);
         $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        if (!$row) {
-            return null;
+        $currentUser = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$currentUser) {
+            return ['success' => false, 'message' => 'User not found', 'data' => ['counts' => ['pending' => 0, 'approved' => 0, 'rejected' => 0], 'role' => '']];
         }
+
+        $role = $currentUser['user_role'] ?? 'officer';
+        $employeeId = $this->getEmployeeIdFromUserId($userId);
+        if (!$employeeId) {
+            return ['success' => false, 'message' => 'User not found', 'data' => ['counts' => ['pending' => 0, 'approved' => 0, 'rejected' => 0], 'role' => $role]];
+        }
+
+        $pendingOffset  = (int) ($pagination['pending_offset'] ?? 0);
+        $approvedOffset = (int) ($pagination['approved_offset'] ?? 0);
+        $rejectedOffset = (int) ($pagination['rejected_offset'] ?? 0);
+
+        // Determine which applications this user can see based on their role
+        $pendingApps = $this->getPendingForApprover($userId, $role, $currentUser, $limit, $pendingOffset);
+        $approvedApps = $this->getApprovedForApprover($userId, $role, $currentUser, $limit, $approvedOffset);
+        $rejectedApps = $this->getRejectedForApprover($userId, $role, $currentUser, $limit, $rejectedOffset);
+
+        // Enrich rows with approver names / employee codes so the UI does not
+        // fall back to "System" / "Not Assigned".  Pending rows resolve their
+        // *next* approver from the org-hierarchy *_emp_id columns; approved and
+        // rejected rows resolve their *actual decider* from the per-stage
+        // *_approved_by columns (see resolveDeciders()).
+        $pendingApps  = $this->attachPendingApprovers($pendingApps);
+        $approvedApps = $this->resolveDeciders($approvedApps);
+        $rejectedApps = $this->resolveDeciders($rejectedApps);
+
+        // Counts must be the true total, independent of the LIMIT, otherwise a
+        // limit=1 request would always report 1/1/1.
+
+        // Counts must reflect the true total, independent of the applied LIMIT,
+        // otherwise a limit=1 counts request would always report 1/1/1.
+        $pendingTotal  = $this->countForApprover($role, $employeeId, $currentUser, 'pending');
+        $approvedTotal = $this->countForApprover($role, $employeeId, $currentUser, 'approved');
+        $rejectedTotal = $this->countForApprover($role, $employeeId, $currentUser, 'rejected');
+
         return [
-            'user_id'       => (int) $row['user_id'],
-            'role'          => (string) ($row['role'] ?? ''),
-            'employee_id'   => isset($row['employee_id']) ? (int) $row['employee_id'] : null,
-            'subsection_id' => isset($row['subsection_id']) ? (int) $row['subsection_id'] : null,
-            'section_id'    => isset($row['section_id']) ? (int) $row['section_id'] : null,
-            'department_id' => isset($row['department_id']) ? (int) $row['department_id'] : null,
+            'success' => true,
+            'data' => [
+                'counts' => [
+                    'pending'  => $pendingTotal,
+                    'approved' => $approvedTotal,
+                    'rejected' => $rejectedTotal,
+                ],
+                'role' => $role,
+                'pending'  => $pendingApps,
+                'approved' => $approvedApps,
+                'rejected' => $rejectedApps,
+            ],
         ];
     }
 
     /**
-     * Load a full leave-application row joined to employee + leave type.
+     * Approve a leave application (advance it one step in the workflow).
      */
-    private function loadApplication(int $id): ?array
+    public function approve(int $userId, int $applicationId): array
     {
-        $stmt = $this->db->prepare("
-            SELECT la.*, e.id AS emp_internal_id, e.employee_id AS emp_string_id,
-                   e.department_id, e.section_id, e.subsection_id,
-                   e.first_name, e.last_name,
-                   lt.name AS leave_type_name, lt.id AS leave_type_id
-            FROM leave_applications la
-            JOIN employees e ON la.employee_id = e.id
-            JOIN leave_types lt ON la.leave_type_id = lt.id
-            WHERE la.id = ?
-            LIMIT 1
-        ");
-        $stmt->bind_param('i', $id);
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        return $row ?: null;
-    }
-
-    /**
-     * Decide whether `$userId` may take `$action` (approve/reject/invalidate)
-     * on `$app` at its current status.
-     */
-    private function authorizeApproverAction(int $userId, array $app, string $action): array
-    {
-        $ctx = $this->resolveApproverContext($userId);
-        if (!$ctx) {
-            return ['authorized' => false, 'message' => 'Approver record not found.', 'approver_emp_id' => null];
+        $app = $this->getApplication($applicationId);
+        if (!$app) {
+            return ['success' => false, 'message' => 'Application not found'];
         }
 
-        $appEmpId  = (int) $app['emp_internal_id'];
-        $applicantUserId = $this->getApplicantUserId($appEmpId);
-        $isOwnApplication = $applicantUserId === $userId;
-
-        // Officers / non-managers: do not expose approver actions on Manage Leave at all.
-        // managerRoles includes both 'bod_chair' (legacy/notification code) and 'bod_chairman'
-        // (the value currently written to users.role by EmployeeForm).
-        $managerRoles = [
-            'sub_section_head', 'section_head', 'dept_head',
-            'managing_director', 'hr_manager', 'super_admin',
-            'bod_chair', 'bod_chairman',
-        ];
-        if (!in_array($ctx['role'], $managerRoles, true)) {
-            return ['authorized' => false, 'message' => 'You do not have permission to manage leave.', 'approver_emp_id' => null];
+        $currentUser = $this->getUserById($userId);
+        if (!$currentUser) {
+            return ['success' => false, 'message' => 'User not found'];
         }
 
-        // Self-applicant can never approve their own leave.
-        if ($isOwnApplication) {
-            return ['authorized' => false, 'message' => 'You cannot approve or reject your own leave application.', 'approver_emp_id' => null];
+        $role = $currentUser['role'] ?? '';
+
+        // Verify the user is an authorised approver for this application
+        if (!$this->isAuthorisedApprover($userId, $app, $role)) {
+            return ['success' => false, 'message' => 'You are not authorised to approve this application'];
         }
 
-        // Check scope (matches legacy approverCanActOnLeave).
-        $inScope = $this->approverInScope($ctx, $app);
-        $isDelegateBackup = false;
+        $currentStatus = $app['status'];
+        $nextStatus = $this->getNextStatus($currentStatus, $role, $app);
 
-        // If not in scope, give the delegate-as-backup rule one chance.
-        if (!$inScope) {
-            $delegateService = new DelegateService();
-            $isDelegateBackup = $delegateService->canDelegateApprove((int) $app['id'], $userId);
-            if (!$isDelegateBackup) {
-                return ['authorized' => false, 'message' => 'You are not authorised to act on this leave (out of scope).', 'approver_emp_id' => null];
-            }
+        if ($nextStatus === null) {
+            return ['success' => false, 'message' => 'This application cannot be approved at this stage'];
         }
 
-        // Status must be a known pending stage that maps to a known approver column.
-        $status = (string) $app['status'];
-        $validStatuses = [
-            'pending_subsection_head',
-            'pending_section_head',
-            'pending_dept_head',
-            'pending_managing_director',
-            'pending_bod_chair',
-            'pending_hr',
-        ];
-        if (!in_array($status, $validStatuses, true)) {
-            return ['authorized' => false, 'message' => 'This leave is not pending approval.', 'approver_emp_id' => null];
-        }
-
-        // Match role to stage (strict chain order).
-        $stageRole = match ($status) {
-            'pending_subsection_head'  => 'sub_section_head',
-            'pending_section_head'     => 'section_head',
-            'pending_dept_head'        => 'dept_head',
-            'pending_managing_director'=> 'managing_director',
-            'pending_bod_chair'        => 'bod_chair',
-            'pending_hr'               => 'hr_manager',
-            default                    => null,
-        };
-
-        // HR / super_admin / managing_director / bod_chair may approve at any stage.
-        $anyStageRoles = ['hr_manager', 'super_admin', 'managing_director', 'bod_chair', 'bod_chairman'];
-        if (in_array($ctx['role'], $anyStageRoles, true)) {
-            return ['authorized' => true, 'message' => '', 'approver_emp_id' => $ctx['employee_id']];
-        }
-
-        // Delegate fallback: allow delegate to act when natural approver is the applicant.
-        if ($isDelegateBackup) {
-            return ['authorized' => true, 'message' => '', 'approver_emp_id' => $ctx['employee_id']];
-        }
-
-        // Otherwise: role must equal stage role, and user must be in scope (already checked above).
-        if ($stageRole !== $ctx['role']) {
-            return ['authorized' => false, 'message' => "This leave is pending {$status}; your role ({$ctx['role']}) cannot act on it at this stage.", 'approver_emp_id' => null];
-        }
-
-        return ['authorized' => true, 'message' => '', 'approver_emp_id' => $ctx['employee_id']];
-    }
-
-    /**
-     * Mirrors legacy approverCanActOnLeave.
-     */
-    private function approverInScope(array $ctx, array $app): bool
-    {
-        return match ($ctx['role']) {
-            'sub_section_head'  => !empty($ctx['subsection_id'])
-                                   && (int) $app['subsection_id'] === (int) $ctx['subsection_id'],
-            'section_head'      => !empty($ctx['section_id'])
-                                   && (int) $app['section_id'] === (int) $ctx['section_id'],
-            'dept_head'         => !empty($ctx['department_id'])
-                                   && (int) $app['department_id'] === (int) $ctx['department_id'],
-            'managing_director' => true,
-            'hr_manager'        => true,
-            'super_admin'       => true,
-            'bod_chair'         => true,
-            'bod_chairman'      => true,
-            default             => false,
-        };
-    }
-
-    /**
-     * Compute next status when an approver clicks Approve.
-     * Returns null if no transition is valid.
-     */
-    private function computeNextStatusOnApprove(string $currentStatus, int $leaveTypeId): ?string
-    {
-        return match ($currentStatus) {
-            'pending_subsection_head' => 'pending_section_head',
-            'pending_section_head'    => 'pending_dept_head',
-            'pending_dept_head'       => $leaveTypeId === 8 ? 'pending_managing_director' : 'approved',
-            'pending_managing_director' => 'approved',
-            'pending_bod_chair'       => 'approved',
-            'pending_hr'              => 'approved',
-            default                   => null,
-        };
-    }
-
-    /**
-     * Return [byCol, atCol] for the stage's approver columns.
-     * For leave_type_id = 9 (Claim-a-Day), pending_hr maps to hr_approved_by.
-     */
-    private function approverColumnFor(string $status, int $leaveTypeId): array
-    {
-        // Claim-a-Day skip-chain: only HR approves, status always pending_hr.
-        if ($leaveTypeId === 9) {
-            return ['hr_approved_by', 'hr_approved_at'];
-        }
-
-        return match ($status) {
-            'pending_subsection_head'  => ['subsection_head_approved_by', 'subsection_head_approved_at'],
-            'pending_section_head'     => ['section_head_approved_by',    'section_head_approved_at'],
-            'pending_dept_head'        => ['dept_head_approved_by',       'dept_head_approved_at'],
-            'pending_managing_director'=> ['managing_director_approved_by', 'managing_director_approved_at'],
-            'pending_bod_chair'        => ['hr_approved_by',              'hr_approved_at'],
-            'pending_hr'               => ['hr_approved_by',              'hr_approved_at'],
-            default                    => ['hr_approved_by',              'hr_approved_at'],
-        };
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Role hierarchy — used to enforce "downward only" visibility:
-    //  a viewer may only see leaves filed by employees of equal or lower rank
-    //  inside their unit scope.
-    // ══════════════════════════════════════════════════════════════════════
-
-    /**
-     * Comma-separated, single-quoted employee_type literals that each scoped
-     * role is allowed to *see* in approved/rejected listings.
-     *
-     * Rule: the viewer's role must be >= the applicant's role in the org chart.
-     */
-    private const SECTION_VISIBLE_TYPES = "'officer','sub_section_head','section_head','employee'";
-    private const DEPT_VISIBLE_TYPES    = "'officer','sub_section_head','section_head','dept_head','manager','employee'";
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Listing queries — ported from manage.php 962–1215
-    // ══════════════════════════════════════════════════════════════════════
-
-    private function pendingWhere(array $ctx): string
-    {
-        $pendingStatuses = "('pending_subsection_head','pending_section_head','pending_dept_head','pending_managing_director','pending_bod_chair','pending_hr')";
-
-        return match ($ctx['role']) {
-            'sub_section_head'  => "WHERE la.status='pending_subsection_head' AND e.subsection_id = " . (int) $ctx['subsection_id'],
-            'section_head'      => "WHERE la.status='pending_section_head' AND e.section_id = " . (int) $ctx['section_id'],
-            'dept_head'         => "WHERE la.status='pending_dept_head' AND e.department_id = " . (int) $ctx['department_id'],
-            'managing_director' => "WHERE la.status='pending_managing_director'",
-            // HR / super_admin / bod_chair (chairman) see every pending stage
-            // anywhere in the org.
-            'hr_manager', 'super_admin', 'bod_chair', 'bod_chairman' => "WHERE la.status IN {$pendingStatuses}",
-            default             => "WHERE 1=0",
-        };
-    }
-
-    /**
-     * Build the visibility filter for approved/rejected rows.
-     * - sub_section_head / section_head / dept_head: only their unit scope,
-     *   AND only applicants whose employee_type is <= their own rank
-     *   (downward only).
-     * - hr_manager / managing_director / bod_chair / super_admin: no filter
-     *   (they can see across the org).
-     */
-    private function finalisedWhere(array $ctx, string $status): string
-    {
-        switch ($ctx['role']) {
-            case 'sub_section_head':
-                if (empty($ctx['subsection_id'])) {
-                    return "AND 1=0";
-                }
-                return "AND e.subsection_id = " . (int) $ctx['subsection_id']
-                    . " AND COALESCE(LOWER(e.employee_type),'officer') IN ('officer','sub_section_head','employee')";
-
-            case 'section_head':
-                if (empty($ctx['section_id'])) {
-                    return "AND 1=0";
-                }
-                return "AND e.section_id = " . (int) $ctx['section_id']
-                    . " AND COALESCE(LOWER(e.employee_type),'officer') IN (" . self::SECTION_VISIBLE_TYPES . ")";
-
-            case 'dept_head':
-                if (empty($ctx['department_id'])) {
-                    return "AND 1=0";
-                }
-                return "AND e.department_id = " . (int) $ctx['department_id']
-                    . " AND COALESCE(LOWER(e.employee_type),'officer') IN (" . self::DEPT_VISIBLE_TYPES . ")";
-
-            // hr_manager / managing_director / bod_chair / super_admin — org-wide.
-            default:
-                return "";
-        }
-    }
-
-    private function pendingBaseJoin(): string
-    {
-        return "
-            FROM leave_applications la
-            JOIN employees e    ON la.employee_id   = e.id
-            JOIN leave_types lt ON la.leave_type_id = lt.id
-            LEFT JOIN departments d ON e.department_id = d.id
-            LEFT JOIN sections    s ON e.section_id    = s.id
-        ";
-    }
-
-    private function finalisedBaseJoin(): string
-    {
-        return "
-            FROM leave_applications la
-            JOIN employees e    ON la.employee_id   = e.id
-            JOIN leave_types lt ON la.leave_type_id = lt.id
-        ";
-    }
-
-    private function approverColumnExpr(): string
-    {
-        return "
-            COALESCE(
-                (SELECT CONCAT(u.first_name,' ',u.last_name) FROM users u JOIN employees em ON u.employee_id=em.employee_id WHERE em.id=la.hr_approved_by LIMIT 1),
-                (SELECT CONCAT(u.first_name,' ',u.last_name) FROM users u JOIN employees em ON u.employee_id=em.employee_id WHERE em.id=la.managing_director_approved_by LIMIT 1),
-                (SELECT CONCAT(u.first_name,' ',u.last_name) FROM users u JOIN employees em ON u.employee_id=em.employee_id WHERE em.id=la.dept_head_approved_by LIMIT 1),
-                (SELECT CONCAT(u.first_name,' ',u.last_name) FROM users u JOIN employees em ON u.employee_id=em.employee_id WHERE em.id=la.section_head_approved_by LIMIT 1),
-                (SELECT CONCAT(u.first_name,' ',u.last_name) FROM users u JOIN employees em ON u.employee_id=em.employee_id WHERE em.id=la.subsection_head_approved_by LIMIT 1),
-                'System'
-            ) AS approver_name,
-            COALESCE(la.hr_approved_at, la.managing_director_approved_at, la.dept_head_approved_at, la.section_head_approved_at, la.subsection_head_approved_at) AS action_date
-        ";
-    }
-
-    private function fetchPendingLeaves(array $ctx, int $limit, int $offset): array
-    {
-        $sql = "SELECT la.*, e.employee_id AS emp_no, e.first_name, e.last_name,
-                       e.department_id, e.section_id, e.subsection_id,
-                       lt.name AS leave_type_name,
-                       d.name AS department_name, s.name AS section_name
-                " . $this->pendingBaseJoin() . "
-                " . $this->pendingWhere($ctx) . "
-                ORDER BY la.applied_at DESC LIMIT ? OFFSET ?";
-        $stmt = $this->db->prepare($sql);
-        $stmt->bind_param('ii', $limit, $offset);
-        $stmt->execute();
-        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        return $this->annotatePendingRows($rows);
-    }
-
-    private function countPendingLeaves(array $ctx): int
-    {
-        $sql = "SELECT COUNT(*) AS cnt
-                FROM leave_applications la
-                JOIN employees e ON la.employee_id = e.id
-                " . $this->pendingWhere($ctx);
-        $res = $this->db->query($sql);
-        return $res ? (int) $res->fetch_assoc()['cnt'] : 0;
-    }
-
-    private function fetchApprovedLeaves(array $ctx, int $limit, int $offset): array
-    {
-        $sql = "SELECT la.*, e.employee_id AS emp_no, e.first_name, e.last_name,
-                       e.department_id, lt.name AS leave_type_name, " . $this->approverColumnExpr() . "
-                " . $this->finalisedBaseJoin() . "
-                WHERE la.status = 'approved'
-                " . $this->finalisedWhere($ctx, 'approved') . "
-                ORDER BY action_date DESC LIMIT ? OFFSET ?";
-        $stmt = $this->db->prepare($sql);
-        // finalisedWhere() inlines the scope int (no `?` placeholder) when applicable,
-        // so the only bound params here are LIMIT and OFFSET.
-        $stmt->bind_param('ii', $limit, $offset);
-        $stmt->execute();
-        return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    }
-
-    private function countApprovedLeaves(array $ctx): int
-    {
-        $sql = "SELECT COUNT(*) AS cnt
-                FROM leave_applications la
-                JOIN employees e ON la.employee_id = e.id
-                WHERE la.status = 'approved'
-                " . $this->finalisedWhere($ctx, 'approved');
-        $res = $this->db->query($sql);
-        return $res ? (int) $res->fetch_assoc()['cnt'] : 0;
-    }
-
-    private function fetchRejectedLeaves(array $ctx, int $limit, int $offset): array
-    {
-        $sql = "SELECT la.*, e.employee_id AS emp_no, e.first_name, e.last_name,
-                       e.department_id, lt.name AS leave_type_name, " . $this->approverColumnExpr() . "
-                " . $this->finalisedBaseJoin() . "
-                WHERE la.status = 'rejected'
-                " . $this->finalisedWhere($ctx, 'rejected') . "
-                ORDER BY action_date DESC LIMIT ? OFFSET ?";
-        $stmt = $this->db->prepare($sql);
-        // finalisedWhere() inlines the scope int (no `?` placeholder) when applicable,
-        // so the only bound params here are LIMIT and OFFSET.
-        $stmt->bind_param('ii', $limit, $offset);
-        $stmt->execute();
-        return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    }
-
-    private function countRejectedLeaves(array $ctx): int
-    {
-        $sql = "SELECT COUNT(*) AS cnt
-                FROM leave_applications la
-                JOIN employees e ON la.employee_id = e.id
-                WHERE la.status = 'rejected'
-                " . $this->finalisedWhere($ctx, 'rejected');
-        $res = $this->db->query($sql);
-        return $res ? (int) $res->fetch_assoc()['cnt'] : 0;
-    }
-
-    /**
-     * Mark each pending row with the UI hints: canActOn, isDelegateApprover, etc.
-     */
-    private function annotatePendingRows(array $rows): array
-    {
-        // For the UI: compute canActOn per row (cheaper than running scope check
-        // for the same role repeatedly — we know the role from the page context).
-        foreach ($rows as &$row) {
-            $row['pending_approver_label'] = $this->pendingApproverLabel((string) $row['status']);
-            $row['pending_approver_name']  = $this->pendingApproverName($row);
-        }
-        return $rows;
-    }
-
-    private function pendingApproverLabel(string $status): string
-    {
-        return match ($status) {
-            'pending_subsection_head'  => 'Subsection Head',
-            'pending_section_head'     => 'Section Head',
-            'pending_dept_head'        => 'Department Head',
-            'pending_managing_director'=> 'Managing Director',
-            'pending_bod_chair'        => 'BOD Chair',
-            'pending_hr'               => 'HR Manager',
-            default                    => '',
-        };
-    }
-
-    private function pendingApproverName(array $row): string
-    {
-        $status = (string) $row['status'];
-        $col = match ($status) {
-            'pending_subsection_head'  => 'subsection_head_emp_id',
-            'pending_section_head'     => 'section_head_emp_id',
-            'pending_dept_head'        => 'dept_head_emp_id',
-            default                    => null,
-        };
-        if ($col === null) {
-            // For MD/BoD/HR — look up by role.
-            $role = match ($status) {
-                'pending_managing_director' => 'managing_director',
-                'pending_bod_chair'         => 'bod_chair',
-                default                     => 'hr_manager',
-            };
+        $this->db->begin_transaction();
+        try {
+            // Update the application status
             $stmt = $this->db->prepare("
-                SELECT CONCAT(u.first_name,' ',u.last_name) AS name
-                FROM users u
-                WHERE u.role = ? LIMIT 1
+                UPDATE leave_applications
+                SET status = ?, approved_by = ?, approved_at = NOW(), updated_at = NOW()
+                WHERE id = ?
             ");
-            $stmt->bind_param('s', $role);
+            $stmt->bind_param('sii', $nextStatus, $userId, $applicationId);
             $stmt->execute();
-            $r = $stmt->get_result()->fetch_assoc();
-            return $r['name'] ?? 'Not Assigned';
-        }
+            $stmt->close();
 
-        $empId = isset($row[$col]) ? (int) $row[$col] : 0;
-        if (!$empId) {
-            return 'Not Assigned';
-        }
-        $stmt = $this->db->prepare("
-            SELECT CONCAT(u.first_name,' ',u.last_name) AS name
-            FROM users u JOIN employees e ON u.employee_id = e.employee_id
-            WHERE e.id = ? LIMIT 1
-        ");
-        $stmt->bind_param('i', $empId);
-        $stmt->execute();
-        $r = $stmt->get_result()->fetch_assoc();
-        return $r['name'] ?? 'Not Assigned';
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  Balance deduction at terminal approval — ported from manage.php 661–724
-    // ══════════════════════════════════════════════════════════════════════
-
-    /**
-     * Apply balance deduction. Returns warning string or empty on success.
-     */
-    private function applyBalanceDeduction(array $app): string
-    {
-        $leaveTypeId = (int) $app['leave_type_id'];
-        $empId       = (int) $app['emp_internal_id'];
-        $empStringId = (string) $app['emp_string_id'];
-        $fyId        = $this->getFinancialYearIdForApplication($app);
-        $primaryDays = (float) ($app['primary_days'] ?? 0);
-        $annualDays  = (float) ($app['annual_days']  ?? 0);
-        $daysRequested = (float) ($app['days_requested'] ?? 0);
-
-        // Leave of absence (id 8) — no balance impact at all.
-        if ($leaveTypeId === 8) {
-            return '';
-        }
-
-        if (!$fyId) {
-            return ' Warning: Leave balance could not be updated - no matching financial year found.';
-        }
-
-        // Claim-a-Day credits annual leave.
-        if ($leaveTypeId === 9) {
-            $r = $this->updateLeaveBalance($empStringId, 1, $daysRequested, true, $fyId);
-            return $r['success'] ? '' : ' Warning: Annual balance could not be updated – ' . ($r['message'] ?? 'Unknown error.');
-        }
-
-        $messages = [];
-
-        if ($primaryDays > 0) {
-            $r = $this->updateLeaveBalance($empStringId, $leaveTypeId, $primaryDays, false, $fyId);
-            if (!$r['success']) {
-                $messages[] = 'Warning: Primary balance could not be updated – ' . ($r['message'] ?? 'Unknown error.');
+            // If fully approved, apply balance updates
+            if ($nextStatus === 'approved') {
+                $this->applyBalanceUpdates($applicationId, $app);
             }
+
+            // Log history
+            $this->logHistory($applicationId, $userId, 'approved', $app);
+
+            $this->db->commit();
+
+            return [
+                'success' => true,
+                'message' => $nextStatus === 'approved'
+                    ? 'Leave application fully approved'
+                    : "Leave application approved — forwarded to next approver",
+                'data' => ['status' => $nextStatus],
+            ];
+        } catch (\Exception $e) {
+            $this->db->rollback();
+            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
         }
-        if ($annualDays > 0) {
-            $annualTypeId = $this->getAnnualLeaveTypeId();
-            if ($annualTypeId) {
-                $r = $this->updateLeaveBalance($empStringId, $annualTypeId, $annualDays, false, $fyId);
-                if (!$r['success']) {
-                    $messages[] = 'Warning: Annual balance could not be updated – ' . ($r['message'] ?? 'Unknown error.');
-                }
-            }
-        }
-        // Legacy fallback for older rows with no split.
-        if ($primaryDays === 0.0 && $annualDays === 0.0 && $daysRequested > 0) {
-            $targetTypeId = $this->getTargetLeaveTypeId($leaveTypeId);
-            $r = $this->updateLeaveBalance($empStringId, $targetTypeId, $daysRequested, false, $fyId);
-            if (!$r['success']) {
-                $messages[] = ' Warning: Leave balance could not be updated – ' . ($r['message'] ?? 'Unknown error.');
-            }
-        }
-        return $messages ? ' ' . implode('; ', $messages) : '';
     }
 
     /**
-     * Get current financial year for the application's start date.
+     * Reject a leave application.
      */
-    private function getFinancialYearIdForApplication(array $app): ?int
+    public function reject(int $userId, int $applicationId, string $reason): array
     {
-        if (!empty($app['financial_year_id'])) {
-            return (int) $app['financial_year_id'];
+        $app = $this->getApplication($applicationId);
+        if (!$app) {
+            return ['success' => false, 'message' => 'Application not found'];
         }
-        if (empty($app['start_date'])) {
-            return null;
-        }
-        $stmt = $this->db->prepare("
-            SELECT id FROM financial_years
-            WHERE ? BETWEEN start_date AND end_date
-            ORDER BY start_date DESC LIMIT 1
-        ");
-        $stmt->bind_param('s', $app['start_date']);
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        if ($row) {
-            return (int) $row['id'];
-        }
-        $res = $this->db->query("
-            SELECT id FROM financial_years
-            ORDER BY end_date DESC, start_date DESC LIMIT 1
-        ");
-        $row = $res ? $res->fetch_assoc() : null;
-        return $row ? (int) $row['id'] : null;
-    }
 
-    /**
-     * Update one leave balance row. employee_id here is the STRING employee no.
-     */
-    private function updateLeaveBalance(string $empStringId, int $leaveTypeId, float $days, bool $isClaimDay, int $fyId): array
-    {
+        $currentUser = $this->getUserById($userId);
+        if (!$currentUser) {
+            return ['success' => false, 'message' => 'User not found'];
+        }
+
+        $role = $currentUser['role'] ?? '';
+
+        if (!$this->isAuthorisedApprover($userId, $app, $role)) {
+            return ['success' => false, 'message' => 'You are not authorised to reject this application'];
+        }
+
+        $this->db->begin_transaction();
         try {
-            // Handle study leave chain: deduct from study first, then annual.
-            if ($leaveTypeId === 5) {
-                return $this->handleStudyLeaveDeduction($empStringId, $days, $fyId);
-            }
+            $stmt = $this->db->prepare("
+                UPDATE leave_applications
+                SET status = 'rejected', updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmt->bind_param('i', $applicationId);
+            $stmt->execute();
+            $stmt->close();
 
-            $balance = $this->fetchLatestBalance($empStringId, $leaveTypeId, $fyId);
-            $id = (int) $balance['id'];
+            $this->logHistory($applicationId, $userId, 'rejected', $app, $reason);
 
-            if ($isClaimDay) {
-                $newAccum     = (float) $balance['accumulated_days'] + $days;
-                $newRemaining = (float) $balance['remaining_days'] + $days;
-                $sql = "UPDATE employee_leave_balances
-                        SET accumulated_days = ?, remaining_days = ?, updated_at = NOW()
-                        WHERE id = ?";
-                $stmt = $this->db->prepare($sql);
-                $stmt->bind_param('ddi', $newAccum, $newRemaining, $id);
-            } else {
-                $newUsed      = (float) $balance['used_days'] + $days;
-                $newRemaining = (float) $balance['remaining_days'] - $days;
-                $sql = "UPDATE employee_leave_balances
-                        SET used_days = ?, remaining_days = ?, updated_at = NOW()
-                        WHERE id = ?";
-                $stmt = $this->db->prepare($sql);
-                $stmt->bind_param('ddi', $newUsed, $newRemaining, $id);
-            }
+            $this->db->commit();
 
-            if (!$stmt->execute()) {
-                return ['success' => false, 'message' => 'Failed to update leave balance: ' . $this->db->error];
-            }
-            return ['success' => true];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            return ['success' => true, 'message' => 'Leave application rejected', 'data' => ['status' => 'rejected']];
+        } catch (\Exception $e) {
+            $this->db->rollback();
+            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
         }
     }
 
     /**
-     * Handle study leave chain: study first, annual second. Balanced.
-     * employee_id is the STRING employee no.
+     * Invalidate a leave application (admin-only, removes from active workflow).
      */
-    private function handleStudyLeaveDeduction(string $empStringId, float $days, int $fyId): array
+    public function invalidate(int $userId, int $applicationId, string $reason): array
     {
-        $remaining = $days;
+        $auth = Auth::getInstance();
+        if (!$auth->isSuperAdmin() && !$auth->isHRManager()) {
+            return ['success' => false, 'message' => 'Only HR or Super Admin can invalidate applications'];
+        }
 
+        $app = $this->getApplication($applicationId);
+        if (!$app) {
+            return ['success' => false, 'message' => 'Application not found'];
+        }
+
+        $this->db->begin_transaction();
         try {
-            $study = $this->fetchLatestBalance($empStringId, 5, $fyId);
-            $fromStudy = min((float) $study['remaining_days'], $remaining);
-            if ($fromStudy > 0) {
-                $newUsed = (float) $study['used_days'] + $fromStudy;
-                $newRem  = (float) $study['remaining_days'] - $fromStudy;
-                $stmt = $this->db->prepare("UPDATE employee_leave_balances SET used_days=?, remaining_days=?, updated_at=NOW() WHERE id=?");
-                $stmt->bind_param('ddi', $newUsed, $newRem, $study['id']);
-                if (!$stmt->execute()) {
-                    return ['success' => false, 'message' => 'Failed to update study leave balance.'];
-                }
-                $remaining -= $fromStudy;
-            }
+            $stmt = $this->db->prepare("
+                UPDATE leave_applications
+                SET status = 'invalidated', updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmt->bind_param('i', $applicationId);
+            $stmt->execute();
+            $stmt->close();
 
-            if ($remaining > 0) {
-                $annual = $this->fetchLatestBalance($empStringId, 1, $fyId);
-                if ((float) $annual['remaining_days'] < $remaining) {
-                    return ['success' => false, 'message' => "Insufficient total leave. Study: {$study['remaining_days']}, Annual: {$annual['remaining_days']}, Required: {$days}."];
-                }
-                $newUsed = (float) $annual['used_days'] + $remaining;
-                $newRem  = (float) $annual['remaining_days'] - $remaining;
-                $stmt = $this->db->prepare("UPDATE employee_leave_balances SET used_days=?, remaining_days=?, updated_at=NOW() WHERE id=?");
-                $stmt->bind_param('ddi', $newUsed, $newRem, $annual['id']);
-                if (!$stmt->execute()) {
-                    return ['success' => false, 'message' => 'Failed to update annual balance.'];
-                }
-            }
-            return ['success' => true];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+            $this->logHistory($applicationId, $userId, 'invalidated', $app, $reason);
+
+            $this->db->commit();
+
+            return ['success' => true, 'message' => 'Leave application invalidated', 'data' => ['status' => 'invalidated']];
+        } catch (\Exception $e) {
+            $this->db->rollback();
+            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
         }
     }
 
     /**
-     * Fetch latest employee_leave_balances row, auto-creating one if absent.
+     * Cancel a still-pending leave application.  Only the applicant may cancel.
      */
-    private function fetchLatestBalance(string $empStringId, int $leaveTypeId, int $fyId): array
+    public function cancel(int $userId, int $applicationId): array
+    {
+        $app = $this->getApplication($applicationId);
+        if (!$app) {
+            return ['success' => false, 'message' => 'Application not found'];
+        }
+
+        $currentUser = $this->getUserById($userId);
+        if (!$currentUser) {
+            return ['success' => false, 'message' => 'User not found'];
+        }
+
+        // Only the applicant can cancel
+        $applicantEmployeeId = $this->getEmployeeIdFromUserId($userId);
+        if ($applicantEmployeeId != $app['employee_id']) {
+            return ['success' => false, 'message' => 'Only the applicant can cancel this application'];
+        }
+
+        // Can only cancel if still in a pending state
+        $pendingStatuses = [
+            'pending_subsection_head', 'pending_section_head', 'pending_dept_head',
+            'pending_managing_director', 'pending_hr', 'pending_bod_chair', 'pending_manager',
+        ];
+        if (!in_array($app['status'], $pendingStatuses, true)) {
+            return ['success' => false, 'message' => 'Only pending applications can be cancelled'];
+        }
+
+        $this->db->begin_transaction();
+        try {
+            $stmt = $this->db->prepare("
+                UPDATE leave_applications
+                SET status = 'cancelled', updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmt->bind_param('i', $applicationId);
+            $stmt->execute();
+            $stmt->close();
+
+            $this->logHistory($applicationId, $userId, 'cancelled', $app);
+
+            $this->db->commit();
+
+            return ['success' => true, 'message' => 'Leave application cancelled', 'data' => ['status' => 'cancelled']];
+        } catch (\Exception $e) {
+            $this->db->rollback();
+            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+        }
+    }
+
+    // ───────────────────────────────────────────────────────────────────
+    //  Internal helpers
+    // ───────────────────────────────────────────────────────────────────
+
+    /**
+     * Get a leave application by ID with leave type info.
+     */
+    private function getApplication(int $applicationId): ?array
     {
         $stmt = $this->db->prepare("
-            SELECT elb.*
-            FROM employee_leave_balances elb
-            JOIN financial_years fy ON elb.financial_year_id = fy.id
-            WHERE elb.employee_id = ? AND elb.leave_type_id = ? AND elb.financial_year_id = ?
-            ORDER BY fy.end_date DESC, fy.start_date DESC LIMIT 1
+            SELECT la.*, lt.name as leave_type_name
+            FROM leave_applications la
+            LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
+            WHERE la.id = ?
         ");
-        $stmt->bind_param('sii', $empStringId, $leaveTypeId, $fyId);
+        $stmt->bind_param('i', $applicationId);
         $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
+        $result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $result ?: null;
+    }
 
-        if (!$row) {
-            $this->ensureLeaveBalanceExists($empStringId, $leaveTypeId, $fyId);
+    /**
+     * Get a user by ID.
+     */
+    private function getUserById(int $userId): ?array
+    {
+        $stmt = $this->db->prepare("SELECT * FROM users WHERE id = ?");
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $result ?: null;
+    }
+
+    /**
+     * Get employee ID from user ID.
+     */
+    private function getEmployeeIdFromUserId(int $userId): ?int
+    {
+        $stmt = $this->db->prepare("
+            SELECT e.id FROM employees e
+            JOIN users u ON u.employee_id = e.employee_id
+            WHERE u.id = ?
+        ");
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        return $result ? (int) $result['id'] : null;
+    }
+
+    /**
+     * Check if the user is an authorised approver for this application.
+     */
+    private function isAuthorisedApprover(int $userId, array $app, string $role): bool
+    {
+        $auth = Auth::getInstance();
+
+        // Super admin and HR can approve anything
+        if ($auth->isSuperAdmin() || $auth->isHRManager()) {
+            return true;
+        }
+
+        $currentEmployeeId = $this->getEmployeeIdFromUserId($userId);
+        if (!$currentEmployeeId) {
+            return false;
+        }
+
+        $managers = $this->workflowService->getManagers($app['employee_id']);
+        $status = $app['status'];
+
+        switch ($status) {
+            case 'pending_subsection_head':
+                return $role === 'sub_section_head'
+                    && $managers['subsection_head_emp_id'] == $currentEmployeeId;
+            case 'pending_section_head':
+                return in_array($role, ['section_head', 'sub_section_head'])
+                    && $managers['section_head_emp_id'] == $currentEmployeeId;
+            case 'pending_dept_head':
+                return in_array($role, ['dept_head', 'section_head', 'sub_section_head'])
+                    && $managers['dept_head_emp_id'] == $currentEmployeeId;
+            case 'pending_managing_director':
+                return $role === 'managing_director';
+            case 'pending_hr':
+                return $role === 'hr_manager';
+            case 'pending_bod_chair':
+                return $role === 'bod_chair' || $role === 'bod_chairman';
+            case 'pending_manager':
+                return $role === 'manager';
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Get the next status in the approval workflow.
+     * Considers the applicant's role so ordinary employee leaves terminate
+     * at Department Head / HR rather than escalating to Managing Director and Board Chair.
+     */
+    private function getNextStatus(string $currentStatus, string $approverRole, array $app = []): ?string
+    {
+        if ($approverRole === 'super_admin') {
+            return 'approved';
+        }
+
+        // Get applicant's role in the organization
+        $applicantRole = 'officer';
+        if (!empty($app['employee_id'])) {
+            $stmt = $this->db->prepare("
+                SELECT COALESCE(u.role, 'officer') as role
+                FROM employees e
+                LEFT JOIN users u ON u.employee_id = e.employee_id
+                WHERE e.id = ?
+            ");
+            $empId = (int)$app['employee_id'];
+            $stmt->bind_param('i', $empId);
             $stmt->execute();
             $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($row && !empty($row['role'])) {
+                $applicantRole = $row['role'];
+            }
         }
 
-        if (!$row) {
-            throw new \RuntimeException("No leave balance for employee {$empStringId} / type {$leaveTypeId}.");
+        // Standard staff (officer, employee, sub_section_head, section_head)
+        // Dept Head approval is the final approval for departmental staff.
+        if (in_array($applicantRole, ['officer', 'employee', 'sub_section_head', 'section_head', ''], true)) {
+            switch ($currentStatus) {
+                case 'pending_subsection_head':
+                    return 'pending_section_head';
+                case 'pending_section_head':
+                    return 'pending_dept_head';
+                case 'pending_dept_head':
+                case 'pending_hr':
+                case 'pending_manager':
+                    return 'approved';
+                default:
+                    return 'approved';
+            }
         }
-        return $row;
+
+        // Department Heads / HR Managers: escalate to Managing Director
+        if (in_array($applicantRole, ['dept_head', 'manager', 'hr_manager'], true)) {
+            switch ($currentStatus) {
+                case 'pending_managing_director':
+                case 'pending_hr':
+                    return 'approved';
+                default:
+                    return 'pending_managing_director';
+            }
+        }
+
+        // Managing Director: escalate to Board Chairman
+        if ($applicantRole === 'managing_director') {
+            switch ($currentStatus) {
+                case 'pending_bod_chair':
+                    return 'approved';
+                default:
+                    return 'pending_bod_chair';
+            }
+        }
+
+        return 'approved';
     }
 
     /**
-     * Insert a zero-balance row for the employee + type + FY if missing.
+     * Apply balance updates when an application is fully approved.
      */
-    private function ensureLeaveBalanceExists(string $empStringId, int $leaveTypeId, int $fyId): void
+    private function applyBalanceUpdates(int $applicationId, array $app): void
     {
-        $check = $this->db->prepare("
-            SELECT id FROM employee_leave_balances
-            WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
-            LIMIT 1
-        ");
-        $check->bind_param('sii', $empStringId, $leaveTypeId, $fyId);
-        $check->execute();
-        if ($check->get_result()->num_rows > 0) {
+        $leaveTypeId = (int) $app['leave_type_id'];
+        $employeeId = (int) $app['employee_id'];
+        $financialYearId = (int) $app['financial_year_id'];
+        $primaryDays = (float) ($app['primary_days'] ?? 0);
+        $annualDays = (float) ($app['annual_days'] ?? 0);
+
+        // Claim a Day — credit annual leave
+        if ($leaveTypeId === 9) {
+            $annualTypeId = $this->getAnnualLeaveTypeId();
+            $daysToAdd = (float) ($primaryDays > 0 ? $primaryDays : ($app['days_requested'] ?? 0));
+            $stmt = $this->db->prepare("
+                UPDATE employee_leave_balances
+                SET allocated_days = allocated_days + ?,
+                    accumulated_days = accumulated_days + ?,
+                    remaining_days = remaining_days + ?
+                WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
+            ");
+            $stmt->bind_param('dddiii', $daysToAdd, $daysToAdd, $daysToAdd, $employeeId, $annualTypeId, $financialYearId);
+            $stmt->execute();
+            $stmt->close();
             return;
         }
 
-        // Read default_days for this leave type. If absent, allocated = 0.
-        $res = $this->db->query("SELECT * FROM leave_types WHERE id = " . (int) $leaveTypeId . " LIMIT 1");
-        $lt = $res ? $res->fetch_assoc() : null;
-        $alloc = isset($lt['default_days']) ? (float) $lt['default_days'] : 0.0;
+        // Leave of Absence — no balance deduction
+        if ($leaveTypeId === 8) {
+            return;
+        }
 
-        $ins = $this->db->prepare("
-            INSERT INTO employee_leave_balances
-                (employee_id, leave_type_id, financial_year_id, allocated_days, brought_forward_days,
-                 accumulated_days, used_days, remaining_days, created_at, updated_at)
-            VALUES (?, ?, ?, ?, 0, ?, 0, ?, NOW(), NOW())
-        ");
-        $acc = $alloc; // start with accumulated = allocated (mirrors legacy)
-        $rem = $alloc;
-        $ins->bind_param('siiddd', $empStringId, $leaveTypeId, $fyId, $alloc, $acc, $rem);
-        if (!$ins->execute()) {
-            throw new \RuntimeException('Failed to create leave balance: ' . $this->db->error);
+        // Normal leave — deduct from primary balance
+        if ($primaryDays > 0) {
+            $stmt = $this->db->prepare("
+                UPDATE employee_leave_balances
+                SET used_days = used_days + ?, remaining_days = remaining_days - ?
+                WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
+            ");
+            $stmt->bind_param('ddiii', $primaryDays, $primaryDays, $employeeId, $leaveTypeId, $financialYearId);
+            $stmt->execute();
+            $stmt->close();
+        }
+
+        // Deduct from annual leave if applicable
+        if ($annualDays > 0) {
+            $annualTypeId = $this->getAnnualLeaveTypeId();
+            $stmt = $this->db->prepare("
+                UPDATE employee_leave_balances
+                SET used_days = used_days + ?, remaining_days = remaining_days - ?
+                WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
+            ");
+            $stmt->bind_param('ddiii', $annualDays, $annualDays, $employeeId, $annualTypeId, $financialYearId);
+            $stmt->execute();
+            $stmt->close();
         }
     }
 
-    private function getAnnualLeaveTypeId(): int
+    /**
+     * Log an approval history entry.
+     */
+    private function logHistory(int $applicationId, int $userId, string $action, array $app, ?string $comment = null): void
     {
-        $res = $this->db->query("SELECT id FROM leave_types WHERE name LIKE '%annual%' LIMIT 1");
-        $row = $res ? $res->fetch_assoc() : null;
-        return $row ? (int) $row['id'] : 1;
-    }
-
-    private function getTargetLeaveTypeId(int $leaveTypeId): int
-    {
-        $res = $this->db->query("SELECT deducted_from_annual FROM leave_types WHERE id = " . (int) $leaveTypeId . " LIMIT 1");
-        $row = $res ? $res->fetch_assoc() : null;
-        if ($row && ((int) $row['deducted_from_annual'] === 1 || $leaveTypeId === 7)) {
-            return 1;
-        }
-        return $leaveTypeId;
-    }
-
-    // ══════════════════════════════════════════════════════════════════════
-    //  History & notifications
-    // ══════════════════════════════════════════════════════════════════════
-
-    private function logHistory(int $applicationId, int $userId, string $action, string $comment): void
-    {
+        $comment = $comment ?? "Leave application {$action} by user {$userId}";
         $stmt = $this->db->prepare("
             INSERT INTO leave_history (leave_application_id, action, performed_by, comments, performed_at)
             VALUES (?, ?, ?, ?, NOW())
         ");
         $stmt->bind_param('isis', $applicationId, $action, $userId, $comment);
-        @$stmt->execute();
-    }
-
-    private function getApplicantUserId(int $employeeId): ?int
-    {
-        $stmt = $this->db->prepare("
-            SELECT u.id FROM users u
-            JOIN employees e ON e.employee_id = u.employee_id
-            WHERE e.id = ? LIMIT 1
-        ");
-        $stmt->bind_param('i', $employeeId);
         $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        return $row ? (int) $row['id'] : null;
+        $stmt->close();
     }
 
     /**
-     * Notify the employee by inserting into notifications.
+     * Get pending applications for an approver.
      */
-    private function notifyApplicant(array $app, string $title, string $message, string $category = 'leave'): void
+    private function getPendingForApprover(int $userId, string $role, array $currentUser, int $limit, int $offset = 0): array
     {
-        $userId = $this->getApplicantUserId((int) $app['emp_internal_id']);
-        if (!$userId) {
-            return;
+        $employeeId = $this->getEmployeeIdFromUserId($userId);
+        if (!$employeeId) {
+            return [];
         }
-        $stmt = $this->db->prepare("
-            INSERT INTO notifications (user_id, title, message, type, category, is_read, created_at)
-            VALUES (?, ?, ?, 'leave_status', ?, 0, NOW())
-        ");
-        $stmt->bind_param('isss', $userId, $title, $message, $category);
-        @$stmt->execute();
+
+        $pendingStatuses = "'pending_subsection_head','pending_section_head','pending_dept_head','pending_managing_director','pending_hr','pending_hr_manager','pending_bod_chair','pending_manager'";
+
+        // Build the WHERE clause based on role
+        $where = $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'pending');
+
+        $sql = "
+            SELECT la.*, lt.name as leave_type_name,
+                   e.first_name, e.last_name, e.employee_id as emp_no
+            FROM leave_applications la
+            JOIN leave_types lt ON la.leave_type_id = lt.id
+            JOIN employees e ON la.employee_id = e.id
+            WHERE la.status IN ({$pendingStatuses})
+              AND {$where}
+            ORDER BY la.applied_at DESC
+            LIMIT ?, ?
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bind_param('ii', $offset, $limit);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $apps = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        $stmt->close();
+        return $apps;
     }
 
-    private function notifyApplicantAdvanced(array $app, string $newStatus): void
+    /**
+     * Get approved applications for an approver.
+     */
+    private function getApprovedForApprover(int $userId, string $role, array $currentUser, int $limit, int $offset = 0): array
     {
-        $label = $this->pendingApproverLabel($newStatus);
-        $humanStatus = $newStatus === 'approved' ? 'fully approved' : "advanced to {$label}";
-        $this->notifyApplicant(
-            $app,
-            'Leave application update',
-            "Your leave application has been {$humanStatus}.",
-        );
+        $employeeId = $this->getEmployeeIdFromUserId($userId);
+        if (!$employeeId) {
+            return [];
+        }
+
+        $where = $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'approved');
+
+        $sql = "
+            SELECT la.*, lt.name as leave_type_name,
+                   e.first_name, e.last_name, e.employee_id as emp_no
+            FROM leave_applications la
+            JOIN leave_types lt ON la.leave_type_id = lt.id
+            JOIN employees e ON la.employee_id = e.id
+            WHERE la.status = 'approved'
+              AND {$where}
+            ORDER BY la.applied_at DESC, la.id DESC
+            LIMIT ?, ?
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bind_param('ii', $offset, $limit);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $apps = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        $stmt->close();
+        return $apps;
     }
 
-    private function notifyApplicantRejected(array $app, string $reason): void
+    /**
+     * Get rejected applications for an approver.
+     */
+    private function getRejectedForApprover(int $userId, string $role, array $currentUser, int $limit, int $offset = 0): array
     {
-        $this->notifyApplicant(
-            $app,
-            'Leave application rejected',
-            'We regret to inform you that your leave application has been rejected. Reason: ' . $reason,
-        );
+        $employeeId = $this->getEmployeeIdFromUserId($userId);
+        if (!$employeeId) {
+            return [];
+        }
+
+        $where = $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'rejected');
+
+        $sql = "
+            SELECT la.*, lt.name as leave_type_name,
+                   e.first_name, e.last_name, e.employee_id as emp_no
+            FROM leave_applications la
+            JOIN leave_types lt ON la.leave_type_id = lt.id
+            JOIN employees e ON la.employee_id = e.id
+            WHERE la.status = 'rejected'
+              AND {$where}
+            ORDER BY la.applied_at DESC, la.id DESC
+            LIMIT ?, ?
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bind_param('ii', $offset, $limit);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $apps = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        $stmt->close();
+        return $apps;
     }
 
-    private function notifyApplicantInvalidated(array $app, string $reason): void
+    /**
+     * Build the WHERE clause that determines which applications an
+     * approver can see, based on their role and organisational scope.
+     */
+    private function buildApproverWhereClause(string $role, int $employeeId, array $currentUser, string $category): string
     {
-        $this->notifyApplicant(
-            $app,
-            'Leave application invalidated',
-            'Your leave application has been invalidated and returned for reapplication. Reason: ' . $reason,
-        );
+        $auth = Auth::getInstance();
+
+        if ($auth->isSuperAdmin() || $auth->isHRManager()) {
+            return '1=1';
+        }
+
+        if ($role === 'managing_director') {
+            return '1=1';
+        }
+
+        if ($role === 'dept_head') {
+            return "e.department_id = " . ((int) ($currentUser['department_id'] ?? 0));
+        }
+
+        if ($role === 'section_head') {
+            return "e.section_id = " . ((int) ($currentUser['section_id'] ?? 0));
+        }
+
+        if ($role === 'sub_section_head') {
+            $subId = (int) ($currentUser['subsection_id'] ?? 0);
+            if ($subId > 0) {
+                return "e.subsection_id = {$subId}";
+            }
+            return "e.section_id = " . ((int) ($currentUser['section_id'] ?? 0));
+        }
+
+        // Default: only see own applications
+        return "la.employee_id = {$employeeId}";
+    }
+
+    /**
+     * Attach approver label + name to each pending row so the Stage column
+     * shows the correct approver instead of "Approver / Not Assigned".
+     */
+    private function attachPendingApprovers(array $rows): array
+    {
+        if (empty($rows)) {
+            return [];
+        }
+
+        $stageMap = [
+            'pending_subsection_head'   => ['label' => 'Subsection Head',   'col' => 'subsection_head_emp_id'],
+            'pending_section_head'      => ['label' => 'Section Head',      'col' => 'section_head_emp_id'],
+            'pending_dept_head'         => ['label' => 'Department Head',   'col' => 'dept_head_emp_id'],
+            'pending_managing_director' => ['label' => 'Managing Director', 'col' => 'md_emp_id'],
+            'pending_manager'           => ['label' => 'Manager',           'col' => 'manager_emp_id'],
+        ];
+
+        // Collect approver employee ids to resolve with one batched query.
+        $empIds = [];
+        foreach ($rows as $row) {
+            $status = $row['status'] ?? '';
+            $col = $stageMap[$status]['col'] ?? 'dept_head_emp_id';
+            $id = (int) ($row[$col] ?? 0);
+            if ($id > 0) {
+                $empIds[$id] = true;
+            }
+        }
+
+        $names = [];
+        if ($empIds) {
+            $list = implode(',', array_map(fn($v) => (int)$v, array_keys($empIds)));
+            $stmt = $this->db->prepare("SELECT id, first_name, last_name FROM employees WHERE id IN ({$list})");
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($x = $result->fetch_assoc()) {
+                $names[(int)$x['id']] = trim(($x['first_name'] ?? '') . ' ' . ($x['last_name'] ?? ''));
+            }
+            $stmt->close();
+        }
+
+        foreach ($rows as &$row) {
+            $status = $row['status'] ?? '';
+            $def = $stageMap[$status] ?? null;
+            if ($def) {
+                $row['pending_approver_label'] = $def['label'];
+                $id = (int) ($row[$def['col']] ?? 0);
+                $row['pending_approver_name'] = ($id > 0 && !empty($names[$id]))
+                    ? $names[$id]
+                    : 'Not Assigned';
+            } else {
+                $row['pending_approver_label'] = 'Approver';
+                $row['pending_approver_name']  = 'Not Assigned';
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+/**
+     * Resolve the actual deciding approver's name + decision date for an
+     * approved or rejected application and attach `approver_name` / `action_date`
+     * to each row.
+     *
+     * Why this exists: the live leave_applications schema has NO single
+     * approved_by / approved_at column, and leave_history only records the
+     * "applied"/"approved"/"auto-approved" events (never a "rejected" action),
+     * so neither source alone identifies the decider for most rows.  The real
+     * decider is therefore the highest stage that populated its per-stage
+     * *_approved_by column, e.g.:
+     *     managing_director_approved_by > hr_approved_by > dept_head_approved_by
+     *     > section_head_approved_by > subsection_head_approved_by > manager_emp_id
+     *
+     * The *_approved_by columns hold a MIXED id space -- some store a users.id
+     * (e.g. 355 = "DAVID KIMANI"), others an employees.id (e.g. 473 = "JAMES
+     * MAINA", with no matching user) -- so each id is resolved against users
+     * FIRST, then employees.
+     */
+    private function resolveDeciders(array $rows): array
+    {
+        if (empty($rows)) {
+            return [];
+        }
+
+        // Decision-chain priority (final stage wins).  First column that
+        // resolves to a known person is the decider; its *_approved_at
+        // supplies the action date.
+        $priority = [
+            ['id' => 'managing_director_approved_by', 'date' => 'managing_director_approved_at'],
+            ['id' => 'hr_approved_by',               'date' => 'hr_approved_at'],
+            ['id' => 'dept_head_approved_by',        'date' => 'dept_head_approved_at'],
+            ['id' => 'section_head_approved_by',     'date' => 'section_head_approved_at'],
+            ['id' => 'subsection_head_approved_by',  'date' => 'subsection_head_approved_at'],
+            ['id' => 'manager_emp_id',               'date' => 'manager_emp_id'],
+        ];
+
+        // 1. Collect every candidate id across all rows.
+        $candidateIds = [];
+        foreach ($rows as $row) {
+            foreach ($priority as $col) {
+                $id = (int) ($row[$col['id']] ?? 0);
+                if ($id > 0) {
+                    $candidateIds[$id] = true;
+                }
+            }
+        }
+
+        // 2. Batch-resolve names.  users.id and employees.id overlap, so query
+        //    users first and only fall back to employees for ids that are not
+        //    users.  This correctly maps 355 -> "DAVID KIMANI" (a user) while
+        //    473 -> "JAMES MAINA" (employee only).
+        $names = [];
+        if ($candidateIds) {
+            $list = implode(',', array_map(fn($v) => (int)$v, array_keys($candidateIds)));
+
+            $stmt = $this->db->prepare("SELECT id, first_name, last_name FROM users WHERE id IN ({$list})");
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($x = $result->fetch_assoc()) {
+                $names[(int)$x['id']] = trim(($x['first_name'] ?? '') . ' ' . ($x['last_name'] ?? ''));
+            }
+            $stmt->close();
+
+            $stmt = $this->db->prepare("SELECT id, first_name, last_name FROM employees WHERE id IN ({$list})");
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($x = $result->fetch_assoc()) {
+                $id = (int)$x['id'];
+                if (!isset($names[$id])) {
+                    $names[$id] = trim(($x['first_name'] ?? '') . ' ' . ($x['last_name'] ?? ''));
+                }
+            }
+            $stmt->close();
+        }
+
+        // 3. For each row, pick the highest-priority populated stage.
+        foreach ($rows as &$row) {
+            $row['approver_name'] = 'System';
+            $row['action_date']   = null;
+
+            foreach ($priority as $col) {
+                $id = (int) ($row[$col['id']] ?? 0);
+                if ($id > 0 && !empty($names[$id])) {
+                    $row['approver_name'] = $names[$id];
+                    $dateCol = $col['date'];
+                    // manager_emp_id has no dedicated date column; fall back to
+                    // applied_at so the cell is never unexpectedly empty.
+                    if ($dateCol === 'manager_emp_id') {
+                        $row['action_date'] = $row['applied_at'] ?? null;
+                    } else {
+                        $row['action_date'] = $row[$dateCol] ?? null;
+                    }
+                    break;
+                }
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+
+    /**
+     * Count leave applications for an approver in a given category.
+     * Mirrors the SELECT queries' joins/where so the count always matches
+     * the visible rows, and is independent of the pagination LIMIT.
+     */
+    private function countForApprover(string $role, int $employeeId, array $currentUser, string $category): int
+    {
+        $pendingStatuses = "'pending_subsection_head','pending_section_head','pending_dept_head','pending_managing_director','pending_hr','pending_hr_manager','pending_bod_chair','pending_manager'";
+
+        switch ($category) {
+            case 'approved':
+                $statusCondition = "la.status = 'approved'";
+                break;
+            case 'rejected':
+                $statusCondition = "la.status = 'rejected'";
+                break;
+            case 'pending':
+            default:
+                $statusCondition = "la.status IN ({$pendingStatuses})";
+                break;
+        }
+
+        $where = $this->buildApproverWhereClause($role, $employeeId, $currentUser, $category);
+
+        $sql = "
+            SELECT COUNT(*) AS total
+            FROM leave_applications la
+            JOIN leave_types lt ON la.leave_type_id = lt.id
+            JOIN employees e ON la.employee_id = e.id
+            WHERE {$statusCondition}
+              AND {$where}
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute();
+        $total = (int) $stmt->get_result()->fetch_assoc()['total'];
+        $stmt->close();
+
+        return $total;
+    }
+
+    /**
+     * Get the annual leave type ID.
+     */
+    private function getAnnualLeaveTypeId(): int
+    {
+        $stmt = $this->db->prepare("SELECT id FROM leave_types WHERE name LIKE '%annual%' LIMIT 1");
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        return $result ? (int) $result['id'] : 1;
     }
 }

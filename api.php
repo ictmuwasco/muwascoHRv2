@@ -31,6 +31,7 @@ use App\Controllers\Auth\AuthController;
 use App\Controllers\Employee\EmployeeController;
 use App\Controllers\HR\DepartmentController;
 use App\Controllers\Leave\LeaveController;
+use App\Controllers\Leave\LeaveRosterController;
 use App\Controllers\AttendanceController;
 use App\Controllers\Employee\UserController;
 use App\Controllers\HR\SectionController;
@@ -43,6 +44,14 @@ use App\Controllers\Settings\AuditLogController;
 use App\Controllers\HR\HolidayController;
 use App\Controllers\Settings\PermissionController;
 use App\Controllers\Meeting\MeetingController;
+use App\Controllers\Reports\ReportsController as ReportController;
+use App\Controllers\HR\AppraisalController;
+use App\Controllers\HR\StrategicPlanController;
+use App\Controllers\HR\WorkplanController;
+use App\Controllers\HR\KPIController;
+use App\Controllers\HR\PayrollController;
+use App\Controllers\HR\ComplaintController;
+use App\Controllers\Settings\SettingController;
 
 /**
  * Simple Router
@@ -157,6 +166,7 @@ $router->add('DELETE', '/holidays/{id}', HolidayController::class, 'destroy');
 $router->add('GET', '/employees/search', EmployeeController::class, 'search');
 $router->add('GET', '/employees', EmployeeController::class, 'index');
 $router->add('POST', '/employees', EmployeeController::class, 'store');
+$router->add('GET', '/employees/reference', EmployeeController::class, 'reference');
 $router->add('GET', '/employees/{id}', EmployeeController::class, 'show');
 $router->add('PUT', '/employees/{id}', EmployeeController::class, 'update');
 $router->add('DELETE', '/employees/{id}', EmployeeController::class, 'destroy');
@@ -194,6 +204,9 @@ $router->add('POST', '/users/{id}/change-password', UserController::class, 'chan
 // Attendance routes
 $router->add('GET', '/attendance/today', AttendanceController::class, 'today');
 $router->add('GET', '/attendance/dashboard', AttendanceController::class, 'dashboard');
+// HR attendance monitoring dashboard + employee history (before /attendance/{id} wildcard)
+$router->add('GET', '/attendance/hr-dashboard', AttendanceController::class, 'hrDashboard');
+$router->add('GET', '/attendance/hr-employee-history', AttendanceController::class, 'hrEmployeeHistory');
 $router->add('GET', '/attendance/my-records', AttendanceController::class, 'myRecords');
 $router->add('GET', '/attendance/employee/{id}', AttendanceController::class, 'byEmployee');
 $router->add('POST', '/attendance/clock-in', AttendanceController::class, 'clockIn');
@@ -220,6 +233,15 @@ $router->add('PUT', '/leave/{id}/approve', LeaveController::class, 'approve');
 $router->add('PUT', '/leave/{id}/reject', LeaveController::class, 'reject');
 $router->add('PUT', '/leave/{id}/invalidate', LeaveController::class, 'invalidate');
 $router->add('PUT', '/leave/{id}/cancel', LeaveController::class, 'cancel');
+
+// Employee Leave Profile routes - must be registered before /leave/{id} wildcard routes
+$router->add('GET', '/leave/profile/employees', LeaveController::class, 'profileEmployees');
+$router->add('GET', '/leave/profile/{id}', LeaveController::class, 'profile');
+$router->add('GET', '/leave/profile/{id}/balances', LeaveController::class, 'profileBalances');
+$router->add('GET', '/leave/profile/{id}/applications', LeaveController::class, 'profileApplications');
+$router->add('GET', '/leave/profile/{id}/timeline', LeaveController::class, 'profileTimeline');
+$router->add('GET', '/leave/profile/{id}/summary', LeaveController::class, 'profileSummary');
+$router->add('GET', '/leave/profile/{id}/export', LeaveController::class, 'profileExport');
 
 // Leave Roster routes - static sub-resource routes must be registered before /leave/roster/{id}
 $router->add('GET', '/leave/roster/stats', LeaveRosterController::class, 'stats');
@@ -290,14 +312,35 @@ $router->add('PUT', '/appraisals/{id}/submit', AppraisalController::class, 'subm
 $router->add('PUT', '/appraisals/{id}/approve', AppraisalController::class, 'approve');
 
 // Strategic Plan routes
-$router->add('GET', '/strategic-plans', StrategicPlanController::class, 'index');
-$router->add('POST', '/strategic-plans', StrategicPlanController::class, 'store');
-$router->add('PUT', '/strategic-plans/{id}', StrategicPlanController::class, 'update');
-$router->add('GET', '/strategic-plans/{id}/workplans', WorkplanController::class, 'index');
-$router->add('POST', '/strategic-plans/{id}/workplans', WorkplanController::class, 'store');
-$router->add('GET', '/workplans/{id}/kpis', KPIController::class, 'index');
-$router->add('POST', '/workplans/{id}/kpis', KPIController::class, 'store');
-$router->add('PUT', '/kpis/{id}', KPIController::class, 'update');
+$router->add('GET',    '/strategic-plans',          StrategicPlanController::class, 'index');
+$router->add('POST',   '/strategic-plans',          StrategicPlanController::class, 'store');
+$router->add('GET',    '/strategic-plans/{id}',     StrategicPlanController::class, 'show');
+$router->add('PUT',    '/strategic-plans/{id}',     StrategicPlanController::class, 'update');
+$router->add('DELETE', '/strategic-plans/{id}',     StrategicPlanController::class, 'destroy');
+
+// Workplan routes
+$router->add('GET',    '/strategic-plans/{id}/workplans', WorkplanController::class, 'index');
+$router->add('POST',   '/strategic-plans/{id}/workplans', WorkplanController::class, 'store');
+$router->add('PUT',    '/workplans/{id}',            WorkplanController::class, 'update');
+$router->add('DELETE', '/workplans/{id}',            WorkplanController::class, 'destroy');
+
+// KPI routes
+$router->add('GET',    '/workplans/{id}/kpis',       KPIController::class, 'index');
+$router->add('POST',   '/workplans/{id}/kpis',       KPIController::class, 'store');
+$router->add('PUT',    '/kpis/{id}',                 KPIController::class, 'update');
+$router->add('DELETE', '/kpis/{id}',                 KPIController::class, 'destroy');
+
+// Payroll routes
+$router->add('GET',    '/payroll/periods',           PayrollController::class, 'periods');
+$router->add('POST',   '/payroll/periods',           PayrollController::class, 'storePeriod');
+$router->add('GET',    '/payroll/records',           PayrollController::class, 'records');
+$router->add('POST',   '/payroll/records',           PayrollController::class, 'storeRecord');
+
+// Complaint routes
+$router->add('GET',    '/complaints',                ComplaintController::class, 'index');
+$router->add('POST',   '/complaints',                ComplaintController::class, 'store');
+$router->add('PUT',    '/complaints/{id}',           ComplaintController::class, 'update');
+
 
 // Notification routes
 $router->add('GET', '/notifications', NotificationController::class, 'index');
@@ -320,7 +363,15 @@ $router->add('PUT', '/settings', SettingController::class, 'update');
 $router->add('GET', '/profile', EmployeeController::class, 'profile');
 $router->add('PUT', '/profile', EmployeeController::class, 'updateProfile');
 $router->add('POST', '/profile/documents', EmployeeController::class, 'uploadProfileDocument');
+$router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewProfileDocument');
+$router->add('GET', '/profile/documents/{id}/view', EmployeeController::class, 'viewProfileDocument');
 $router->add('DELETE', '/profile/documents/{id}', EmployeeController::class, 'deleteProfileDocument');
+
+// Profile picture routes
+$router->add('POST', '/profile/profile-image', EmployeeController::class, 'uploadProfileImage');
+$router->add('GET', '/profile/profile-image', EmployeeController::class, 'profileImage');
+$router->add('POST', '/employees/{id}/profile-image', EmployeeController::class, 'uploadEmployeeProfileImage');
+$router->add('GET', '/employees/{id}/profile-image', EmployeeController::class, 'employeeProfileImage');
 
 // Permission routes - plain method names
 $router->add('GET', '/permissions/catalog', PermissionController::class, 'catalog');
@@ -335,6 +386,7 @@ $router->add('DELETE', '/permissions/users/{id}/overrides', PermissionController
 // Meeting routes - Laravel-style methods
 $router->add('GET', '/my-meetings', MeetingController::class, 'myMeetings');
 $router->add('GET', '/meetings', MeetingController::class, 'index');
+$router->add('GET', '/meetings/stats', MeetingController::class, 'stats');
 $router->add('GET', '/meetings/eligible-employees', MeetingController::class, 'eligibleEmployees');
 $router->add('POST', '/meetings', MeetingController::class, 'store');
 $router->add('GET', '/meetings/{id}', MeetingController::class, 'show');
@@ -347,5 +399,20 @@ $router->add('DELETE', '/meetings/{id}/participants/{employeeId}', MeetingContro
 $router->add('POST', '/meetings/{id}/confirm', MeetingController::class, 'confirm');
 $router->add('POST', '/meetings/{id}/decline', MeetingController::class, 'decline');
 $router->add('POST', '/meetings/{id}/attendance', MeetingController::class, 'markAttendance');
+
+// Notification preferences (own settings)
+$router->add('GET', '/notification-preferences', \App\Controllers\Notifications\NotificationPreferencesController::class, 'index');
+$router->add('PUT', '/notification-preferences', \App\Controllers\Notifications\NotificationPreferencesController::class, 'update');
+
+// Web Push subscriptions
+$router->add('GET', '/push/vapid-public-key', \App\Controllers\Notifications\PushSubscriptionController::class, 'vapidPublicKey');
+$router->add('GET', '/push/subscriptions', \App\Controllers\Notifications\PushSubscriptionController::class, 'index');
+$router->add('POST', '/push/subscribe', \App\Controllers\Notifications\PushSubscriptionController::class, 'subscribe');
+$router->add('DELETE', '/push/subscribe', \App\Controllers\Notifications\PushSubscriptionController::class, 'unsubscribe');
+
+// Admin / HR notification visibility + controlled test sending
+$router->add('GET', '/admin/notifications/stats', \App\Controllers\Notifications\AdminNotificationController::class, 'stats');
+$router->add('GET', '/admin/notifications/audit/{employeeId}', \App\Controllers\Notifications\AdminNotificationController::class, 'audit');
+$router->add('POST', '/admin/notifications/test-send', \App\Controllers\Notifications\NotificationTestController::class, 'send');
 
 $router->dispatch();

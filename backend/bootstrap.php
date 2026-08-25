@@ -26,7 +26,14 @@ $autoloadPath = BASE_PATH . '/vendor/autoload.php';
 if (!file_exists($autoloadPath)) {
     die("Composer autoloader not found. Run 'composer install' first.\n");
 }
+// Some vendored libraries emit PHP-version-ism notices while their
+// files are included (e.g. thecodingmachine/safe on PHP 8.0). Keep
+// that noise out of CLI/test output without hiding app-level errors.
+$errorReportingBeforeAutoload = error_reporting();
+error_reporting($errorReportingBeforeAutoload & ~E_WARNING & ~E_DEPRECATED);
 require_once $autoloadPath;
+error_reporting($errorReportingBeforeAutoload);
+
 
 // Load .env via vlucas/phpdotenv (handles quoted values, comments, etc.)
 $envFile = BASE_PATH . '/.env';
@@ -117,7 +124,9 @@ set_exception_handler(function (\Throwable $e) {
 
 date_default_timezone_set('Africa/Nairobi');
 
-if (session_status() === PHP_SESSION_NONE) {
+// Guard: CLI/test runners may have emitted output (e.g. third-party
+// deprecation notices) before reaching this point - never fatal on it.
+if (!headers_sent() && session_status() === PHP_SESSION_NONE) {
     $isSecure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || ($_SERVER['SERVER_PORT'] ?? 80) == 443;
 
@@ -130,11 +139,12 @@ if (session_status() === PHP_SESSION_NONE) {
         'httponly' => true,
         'samesite' => $samesite,
     ]);
-    session_start();
+    @session_start();
 }
 
+
 // Handle CORS preflight OPTIONS requests
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     // CORS configuration - must be specific origin when using credentials
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
     $allowedOrigins = [
