@@ -41,7 +41,7 @@ class NotificationRouter
         AttendanceReminderEligibilityService $eligibility,
         CalendarContextServiceInterface $calendar,
         NotificationLogRepositoryInterface $logs,
-        NotificationPreferenceRepositoryInterface $preferences,
+        ?NotificationPreferenceRepositoryInterface $preferences = null,
         ?WebPushChannel $pushChannel = null,
         ?SmsChannel $smsChannel = null,
         ?ReminderSettings $settings = null
@@ -49,7 +49,7 @@ class NotificationRouter
         $this->eligibility  = $eligibility;
         $this->calendar     = $calendar;
         $this->logs         = $logs;
-        $this->preferences  = $preferences;
+        $this->preferences  = $preferences ?? new \App\Repositories\NotificationPreferenceRepository();
         $this->pushChannel  = $pushChannel ?? new WebPushChannel(new \App\Repositories\PushSubscriptionRepository());
         $this->smsChannel   = $smsChannel ?? new SmsChannel(new \App\Services\Notification\Sms\HttpSmsProvider());
         $this->settings     = $settings ?? new ReminderSettings();
