@@ -207,9 +207,30 @@ class AttendanceDashboardService
                     return false;
                 }
             }
-            if ($statusFilter !== '' && $statusFilter !== 'ALL' && $e['status'] !== $statusFilter) {
-                return false;
+
+            if ($statusFilter !== '' && $statusFilter !== 'ALL') {
+                if ($statusFilter === self::STATUS_PRESENT) {
+                    // The "Present" tab matches the summary's `present` figure
+                    // exactly: every employee who clocked in today, whether
+                    // they are PRESENT, LATE, CLOCKED_OUT, or (on past dates)
+                    // AUTO_CLOCKED_OUT / MISSING_CLOCK_OUT. Without this,
+                    // a late or clocked-out employee is counted on the card
+                    // but disappears when the tab is clicked.
+                    $clockedInFamily = [
+                        self::STATUS_PRESENT,
+                        self::STATUS_LATE,
+                        self::STATUS_CLOCKED_OUT,
+                        self::STATUS_AUTO_CLOCKED_OUT,
+                        self::STATUS_MISSING_CLOCK_OUT,
+                    ];
+                    if (!in_array($e['status'], $clockedInFamily, true)) {
+                        return false;
+                    }
+                } elseif ($e['status'] !== $statusFilter) {
+                    return false;
+                }
             }
+
             return true;
         }));
 
