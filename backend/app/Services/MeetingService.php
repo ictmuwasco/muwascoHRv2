@@ -48,6 +48,14 @@ class MeetingService
     }
 
     /**
+     * Get dashboard summary statistics for meetings.
+     */
+    public function getDashboardStats(): array
+    {
+        return $this->meetingRepository->getDashboardStats();
+    }
+
+    /**
      * Get meetings for the currently authenticated employee.
      */
     public function getMyMeetings(): array
@@ -62,7 +70,7 @@ class MeetingService
             return [];
         }
 
-        $meetings = $this->meetingRepository->getMeetingsByEmployee($employeeId);
+        $meetings = $this->meetingRepository->getMeetingsByEmployee($employeeId, $userId);
 
         // Map to the format expected by the frontend
         $mapped = [];
@@ -84,7 +92,12 @@ class MeetingService
                 'org_last_name'    => $meeting['org_last_name'] ?? null,
                 'organizer_name'   => $organizerName,
                 'invitation'       => [
-                    'response_status'   => $meeting['response_status'] ?? 'pending',
+                    // Meetings the user organized without a self-invitation
+                    // are treated as pending (the creator has not explicitly
+                    // responded to an invitation).
+                    'response_status'   => $meeting['invitation_id'] === null
+                        ? 'pending'
+                        : ($meeting['response_status'] ?? 'pending'),
                     'attendance_status' => $meeting['attendance_status'] ?? 'not_marked',
                     'responded_at'      => $meeting['responded_at'] ?? null,
                 ],
@@ -213,8 +226,12 @@ class MeetingService
 
     /**
      * Confirm attendance for the current employee on a meeting.
+     *
+     * @param int $meetingId
+     * @return array|null  The updated invitation row from the database
+     * @throws InvalidArgumentException
      */
-    public function confirmAttendance(int $meetingId): bool
+    public function confirmAttendance(int $meetingId): ?array
     {
         $userId = Auth::getInstance()->id();
         if (!$userId) {
@@ -230,13 +247,18 @@ class MeetingService
             throw new InvalidArgumentException('Meeting not found');
         }
 
-        return $this->meetingRepository->updateInvitationResponse($meetingId, $employeeId, 'accepted');
+        $invitedBy = Auth::getInstance()->id();
+        return $this->meetingRepository->updateInvitationResponse($meetingId, $employeeId, 'accepted', $invitedBy);
     }
 
     /**
      * Decline attendance for the current employee on a meeting.
+     *
+     * @param int $meetingId
+     * @return array|null  The updated invitation row from the database
+     * @throws InvalidArgumentException
      */
-    public function declineAttendance(int $meetingId): bool
+    public function declineAttendance(int $meetingId): ?array
     {
         $userId = Auth::getInstance()->id();
         if (!$userId) {
@@ -252,7 +274,8 @@ class MeetingService
             throw new InvalidArgumentException('Meeting not found');
         }
 
-        return $this->meetingRepository->updateInvitationResponse($meetingId, $employeeId, 'declined');
+        $invitedBy = Auth::getInstance()->id();
+        return $this->meetingRepository->updateInvitationResponse($meetingId, $employeeId, 'declined', $invitedBy);
     }
 
     /**

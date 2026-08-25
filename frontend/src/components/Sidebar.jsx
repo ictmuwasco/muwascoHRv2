@@ -27,19 +27,33 @@ import Logo from './Logo'
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const { user, logout } = useAuth()
   const location = useLocation()
-  const [isHRAdminExpanded, setIsHRAdminExpanded] = useState(false)
-  const [isLeaveExpanded, setIsLeaveExpanded] = useState(false)
-  const [isMeetingsExpanded, setIsMeetingsExpanded] = useState(false)
+  const [expandedParent, setExpandedParent] = useState(null)
 
   const MANAGER_ROLES = ['sub_section_head', 'section_head', 'dept_head', 'managing_director', 'hr_manager', 'super_admin']
   const role = (user?.role || '').toLowerCase()
   const canManageLeave = MANAGER_ROLES.includes(role)
 
+  // Auto-expand the correct parent based on the current route.
   useEffect(() => {
-    if (location.pathname.startsWith('/leave')) {
-      setIsLeaveExpanded(true)
+    const path = location.pathname
+    if (path.startsWith('/leave/roster') || path.startsWith('/leave/oversight')) {
+      setExpandedParent('Roster')
+    } else if (path.startsWith('/leave')) {
+      setExpandedParent('LEAVE MANAGEMENT')
+    } else if (path.startsWith('/meetings') || path.startsWith('/my-meetings')) {
+      setExpandedParent('Meetings')
+    } else if (path.startsWith('/attendance')) {
+      setExpandedParent('Attendance')
+    } else if (path.startsWith('/financial_year') || path.startsWith('/consent_management') || path.startsWith('/holidays')) {
+      setExpandedParent('HR Admin')
+    } else {
+      setExpandedParent(null)
     }
   }, [location.pathname])
+
+  const toggleParent = (name) => {
+    setExpandedParent((prev) => (prev === name ? null : name))
+  }
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -55,7 +69,14 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
         { name: 'Holidays', href: '/holidays', icon: PartyPopper },
       ]
     },
-    { name: 'Attendance', href: '/attendance', icon: CalendarCheck },
+    {
+      name: 'Attendance',
+      icon: CalendarCheck,
+      submenu: [
+        { name: 'Attendance Dashboard', href: '/attendance/dashboard', icon: LayoutDashboard },
+        { name: 'Attendance Records', href: '/attendance', icon: CalendarCheck },
+      ]
+    },
     {
       name: 'Meetings',
       icon: CalendarDays,
@@ -72,11 +93,18 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           submenu: [
             { name: 'Leave Applications', href: '/leave', icon: Calendar },
             { name: 'Manage Leave', href: '/leave/manage', icon: ClipboardList },
-            { name: 'Leave Roster', href: '/leave/roster', icon: CalendarRange },
-            { name: 'Leave Oversight', href: '/leave/oversight', icon: BarChart3 },
+            { name: 'Employee Leave Profile', href: '/leave/profile', icon: User },
           ],
         }
       : { name: 'Leave', href: '/leave', icon: Calendar },
+    {
+      name: 'Roster',
+      icon: CalendarRange,
+      submenu: [
+        { name: 'Leave Roster', href: '/leave/roster', icon: CalendarRange },
+        { name: 'Leave Oversight', href: '/leave/oversight', icon: BarChart3 },
+      ]
+    },
     { name: 'Appraisal', href: '/appraisal', icon: Star },
     { name: 'Settings', href: '/settings', icon: Settings },
   ]
@@ -111,27 +139,14 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 space-y-1">
+        <nav className="h-[calc(100vh-4rem)] overflow-y-auto p-4 space-y-1">
           {navigation.map((item) => {
             if (item.submenu) {
-              const isExpanded = item.name === 'HR Admin'
-                ? isHRAdminExpanded
-                : item.name === 'LEAVE MANAGEMENT'
-                  ? isLeaveExpanded
-                  : item.name === 'Meetings'
-                    ? isMeetingsExpanded
-                    : false
-              const toggle = item.name === 'HR Admin'
-                ? () => setIsHRAdminExpanded(!isHRAdminExpanded)
-                : item.name === 'LEAVE MANAGEMENT'
-                  ? () => setIsLeaveExpanded(!isLeaveExpanded)
-                  : item.name === 'Meetings'
-                    ? () => setIsMeetingsExpanded(!isMeetingsExpanded)
-                    : () => {}
+              const isExpanded = expandedParent === item.name
               return (
                 <div key={item.name}>
                   <button
-                    onClick={toggle}
+                    onClick={() => toggleParent(item.name)}
                     className="flex items-center w-full space-x-3 px-4 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
                   >
                     <item.icon className="h-5 w-5" />

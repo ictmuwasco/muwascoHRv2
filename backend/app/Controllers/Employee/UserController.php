@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controllers\Employee;
 
+use App\Controllers\BaseController;
 use App\Services\Contracts\UserServiceInterface;
 use App\Services\UserService;
 
@@ -32,12 +33,7 @@ class UserController extends BaseController
      */
     public function indexAction(): void
     {
-        try {
-            $this->requirePermission('users', 'view');
-        } catch (\Exception $e) {
-            // If permission check fails, still return data for debugging
-            \logger()->warning('Users permission check failed', ['error' => $e->getMessage()]);
-        }
+        $this->requirePermission('users', 'view');
 
         try {
             $filters = $this->getFilters();
@@ -74,6 +70,7 @@ class UserController extends BaseController
             $user = $this->userService->getUserById($id);
             if (!$user) {
                 $this->notFound('User not found');
+                return;
             }
             $this->success((new \App\Responses\UserResource($user))->toArray());
         } catch (\InvalidArgumentException $e) {

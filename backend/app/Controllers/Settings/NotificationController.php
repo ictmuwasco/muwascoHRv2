@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\Settings;
 
+use App\Controllers\BaseController;
+
 use App\Services\NotificationService;
 
 /**
@@ -61,3 +63,4 @@ class NotificationController extends BaseController
         ]);
     }
 }
+

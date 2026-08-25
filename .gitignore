@@ -11,6 +11,8 @@ config.php
 *.db
 *.sqlite
 muwasco (1).sql
+# Schema migrations ARE version-controlled (schema-as-code)
+!backend/database/migrations/*.sql
 
 # ── Dependencies ───────────────────────────────────────────────────────────
 vendor/

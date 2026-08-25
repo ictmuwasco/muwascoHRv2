@@ -6,7 +6,7 @@ namespace App\Controllers;
 
 /**
  * Dashboard Controller - Handles dashboard data and statistics.
- * 
+ *
  * Provides operational widgets and analytics for the dashboard.
  */
 class DashboardController extends BaseController
@@ -18,15 +18,15 @@ class DashboardController extends BaseController
     public function indexAction(): void
     {
         $this->requirePermission('dashboard', 'view');
-        
+
         // Auto clock-out any open sessions from previous days
         // This runs every time the dashboard is loaded, ensuring forgotten clock-outs are handled
         $this->autoClockOutPreviousDays();
-        
+
         $db = \db();
         $userId = $this->getUserId();
         $employee = $this->employeeRepository->findByUserId($userId);
-        
+
         if (!$employee) {
             $this->success([
                 'stats' => [
@@ -45,7 +45,7 @@ class DashboardController extends BaseController
         $employeeDbId = (int)$employee['id'];
         $today = date('Y-m-d');
         $currentMonth = date('Y-m');
-        
+
         // Get dashboard statistics
         try {
             $totalEmployees = $this->getEmployeeCount();
@@ -84,27 +84,32 @@ class DashboardController extends BaseController
     {
         try {
             $db = \db();
-            $today = date('Y-m-d');
-            $now = date('Y-m-d H:i:s');
-            
+
             // Find all open sessions from previous days
             $openSessions = $db->fetchAll(
-                "SELECT id, employee_id, clock_in 
-                FROM attendance 
+                "SELECT id, employee_id, clock_in
+                FROM attendance
                 WHERE clock_out IS NULL AND DATE(clock_in) < ?",
                 's',
-                [$today]
+                [date('Y-m-d')]
             );
-            
+
             if (!empty($openSessions)) {
-                foreach ($openSessions as $session) {
-                    $db->update('attendance', [
-                        'clock_out' => $now,
-                        'status' => 'auto_clocked_out',
-                        'updated_at' => $now,
-                    ], 'id = ?', 'i', [(int)$session['id']]);
-                }
-                
+                // Batch-close at end of each employee's attendance day
+                // (Africa/Nairobi) and flag auto_clocked_out = 1 for HR
+                // reporting. Mirrors AttendanceController::reconcileStaleSession()
+                // and autoClockOutAction() so all three paths stay consistent.
+                $db->query(
+                    "UPDATE attendance
+                    SET clock_out = DATE_FORMAT(clock_in, '%Y-%m-%d 23:59:59'),
+                        status = 'auto_clocked_out',
+                        auto_clocked_out = 1,
+                        updated_at = NOW()
+                    WHERE clock_out IS NULL AND DATE(clock_in) < ?",
+                    's',
+                    [date('Y-m-d')]
+                );
+
                 \logger()->info('Auto clock-out completed', [
                     'count' => count($openSessions),
                     'employee_ids' => array_column($openSessions, 'employee_id')
@@ -121,9 +126,9 @@ class DashboardController extends BaseController
     public function statsAction(): void
     {
         $this->requirePermission('dashboard', 'view');
-        
+
         $db = \db();
-        
+
         try {
             $totalEmployees = $this->getEmployeeCount();
             $attendanceToday = $this->getTodayAttendance();
@@ -154,10 +159,10 @@ class DashboardController extends BaseController
     public function attendanceTodayAction(): void
     {
         $this->requirePermission('attendance', 'view');
-        
+
         $db = \db();
         $today = date('Y-m-d');
-        
+
         $records = $db->fetchAll(
             "SELECT a.*, e.first_name, e.last_name, d.name as department_name, o.name as office_name
              FROM attendance a
@@ -190,7 +195,7 @@ class DashboardController extends BaseController
     public function pendingLeavesAction(): void
     {
         $this->requirePermission('leave', 'view');
-        
+
         $db = \db();
         $leaves = $db->fetchAll(
             "SELECT l.*, e.first_name, e.last_name, d.name as department_name, lt.name as leave_type_name
@@ -212,7 +217,7 @@ class DashboardController extends BaseController
     public function recentComplaintsAction(): void
     {
         $this->requirePermission('complaints', 'view');
-        
+
         $db = \db();
         $complaints = $db->fetchAll(
             "SELECT c.*, e.first_name, e.last_name, d.name as department_name, cc.name as category_name
@@ -233,7 +238,7 @@ class DashboardController extends BaseController
     public function employeeCountAction(): void
     {
         $this->requirePermission('employees', 'view');
-        
+
         $data = $this->getDepartmentStats();
         $this->success([
             'total' => $this->getEmployeeCount(),
@@ -248,7 +253,7 @@ class DashboardController extends BaseController
     {
         $userId = $this->getUserId();
         $notificationService = \App\Services\NotificationService::getInstance();
-        
+
         $notifications = $notificationService->getUnreadNotifications($userId, 10);
         $unreadCount = $notificationService->getUnreadCount($userId);
 
@@ -276,13 +281,13 @@ class DashboardController extends BaseController
     {
         $db = \db();
         $today = date('Y-m-d');
-        
+
         $total = (int) $db->fetchValue(
             "SELECT COUNT(*) FROM attendance WHERE DATE(clock_in) = ?",
             's',
             [$today]
         );
-        
+
         $clockedIn = (int) $db->fetchValue(
             "SELECT COUNT(*) FROM attendance WHERE DATE(clock_in) = ? AND status = 'clocked_in'",
             's',
@@ -304,7 +309,7 @@ class DashboardController extends BaseController
         $db = \db();
         $today = date('Y-m-d');
         return (int) $db->fetchValue(
-            "SELECT COUNT(DISTINCT employee_id) FROM leave_applications 
+            "SELECT COUNT(DISTINCT employee_id) FROM leave_applications
              WHERE status = 'approved' AND start_date <= ? AND end_date >= ?",
             'ss',
             [$today, $today]
@@ -362,11 +367,11 @@ class DashboardController extends BaseController
     {
         $db = \db();
         return $db->fetchAll(
-            "SELECT d.name as department, COUNT(e.id) as count 
+            "SELECT d.name as department, COUNT(e.id) as count
              FROM employees e
              LEFT JOIN departments d ON e.department_id = d.id
              WHERE (e.employee_status = 'active' OR e.employee_status IS NULL)
-             GROUP BY d.name 
+             GROUP BY d.name
              ORDER BY count DESC"
         );
     }
@@ -398,22 +403,22 @@ class DashboardController extends BaseController
     public function chartsAttendanceAction(): void
     {
         $this->requirePermission('dashboard', 'view');
-        
+
         $db = \db();
         $today = date('Y-m-d');
-        
+
         $present = (int) $db->fetchValue(
             "SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE DATE(clock_in) = ? AND status IN ('clocked_in', 'clocked_out')",
             's',
             [$today]
         );
-        
+
         $late = (int) $db->fetchValue(
             "SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE DATE(clock_in) = ? AND is_late = 1",
             's',
             [$today]
         );
-        
+
         $absent = (int) $db->fetchValue(
             "SELECT COUNT(*) FROM employees WHERE employee_status = 'active' OR employee_status IS NULL"
         ) - $present;
@@ -432,14 +437,14 @@ class DashboardController extends BaseController
     public function chartsDepartmentsAction(): void
     {
         $this->requirePermission('dashboard', 'view');
-        
+
         $db = \db();
         $departments = $db->fetchAll(
-            "SELECT d.name as department, COUNT(e.id) as count 
+            "SELECT d.name as department, COUNT(e.id) as count
              FROM employees e
              LEFT JOIN departments d ON e.department_id = d.id
              WHERE (e.employee_status = 'active' OR e.employee_status IS NULL)
-             GROUP BY d.name 
+             GROUP BY d.name
              ORDER BY count DESC"
         );
 
@@ -455,17 +460,17 @@ class DashboardController extends BaseController
     public function chartsLeaveAction(): void
     {
         $this->requirePermission('dashboard', 'view');
-        
+
         $db = \db();
         $today = date('Y-m-d');
-        
+
         $onLeave = (int) $db->fetchValue(
-            "SELECT COUNT(DISTINCT employee_id) FROM leave_applications 
+            "SELECT COUNT(DISTINCT employee_id) FROM leave_applications
              WHERE status = 'approved' AND start_date <= ? AND end_date >= ?",
             'ss',
             [$today, $today]
         );
-        
+
         $pending = (int) $db->fetchValue(
             "SELECT COUNT(*) FROM leave_applications WHERE status = 'pending'"
         );

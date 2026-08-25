@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\Settings;
 
+use App\Controllers\BaseController;
+
 use App\Services\AuditService;
 
 /**
@@ -161,3 +163,4 @@ class AuditLogController extends BaseController
         return $filters;
     }
 }
+

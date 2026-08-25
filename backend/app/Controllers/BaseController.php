@@ -17,6 +17,12 @@ abstract class BaseController
      */
     protected function json(mixed $data, int $statusCode = 200): void
     {
+        // Guarantee a pure-JSON body: strip any stray output (third-party
+        // notices, debug echoes) that accumulated in the output buffers.
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
         http_response_code($statusCode);
         header('Content-Type: application/json; charset=utf-8');
         

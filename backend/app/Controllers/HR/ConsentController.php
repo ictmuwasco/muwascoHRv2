@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\HR;
 
+use App\Controllers\BaseController;
+
 use App\Models\Consent;
 
 /**
@@ -347,3 +349,4 @@ class ConsentController extends BaseController
         }
     }
 }
+

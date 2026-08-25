@@ -19,6 +19,7 @@ import Leave from './pages/leave/Leave'
 import LeaveApplication from './pages/leave/LeaveApplication'
 import LeaveRoster from './pages/leave/LeaveRoster'
 import LeaveOversight from './pages/leave/LeaveOversight'
+import LeaveProfile from './pages/leave/LeaveProfile'
 import ManageLeaveLayout from './pages/leave/ManageLeaveLayout'
 import ManageLeavePendingTab from './pages/leave/ManageLeavePendingTab'
 import ManageLeaveApprovedTab from './pages/leave/ManageLeaveApprovedTab'
@@ -29,7 +30,8 @@ import FinancialYear from './pages/hr-admin/FinancialYear'
 import Consent from './pages/hr-admin/Consent'
 import Holidays from './pages/hr-admin/Holidays'
 import Departments from './pages/hr-admin/Departments'
-import Attendance from './pages/hr-admin/Attendance'
+import Attendance from './pages/attendance/Attendance'
+import AttendanceDashboard from './pages/attendance/AttendanceDashboard'
 import Appraisal from './pages/hr-admin/Appraisal'
 
 // Pages - Meetings
@@ -76,9 +78,11 @@ function App() {
           <Route path="departments" element={<Departments />} />
           <Route path="financial_year" element={<FinancialYear />} />
           <Route path="consent_management" element={<Consent />} />
+          <Route path="attendance/dashboard" element={<AttendanceDashboard />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="leave" element={<Leave />} />
           <Route path="leave/apply" element={<LeaveApplication />} />
+          <Route path="leave/profile" element={<LeaveProfile />} />
           <Route path="leave/roster" element={<LeaveRoster />} />
           <Route path="leave/oversight" element={<LeaveOversight />} />
           <Route path="leave/manage" element={<ManageLeaveLayout />}>

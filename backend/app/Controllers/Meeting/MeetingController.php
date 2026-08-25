@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\Meeting;
 
+use App\Controllers\BaseController;
+
 use App\Services\MeetingService;
 use App\Helpers\Auth;
 
@@ -75,6 +77,12 @@ class MeetingController extends BaseController
             if (!empty($_GET['search'])) {
                 $filters['search'] = $_GET['search'];
             }
+            if (!empty($_GET['organizer'])) {
+                $filters['organizer'] = $_GET['organizer'];
+            }
+            if (!empty($_GET['location'])) {
+                $filters['location'] = $_GET['location'];
+            }
 
             $result = $this->meetingService->getAllMeetings($page, $perPage, $filters);
 
@@ -93,6 +101,75 @@ class MeetingController extends BaseController
         } catch (\Exception $e) {
             \logger()->error('Meetings listing error', ['error' => $e->getMessage()]);
             $this->error('Failed to retrieve meetings. Please try again.', 500);
+        }
+    }
+
+    /**
+     * GET /api/meetings/stats
+     * Get dashboard summary statistics for meetings.
+     */
+    public function statsAction(): void
+    {
+        try {
+            $this->requireAuth();
+            $stats = $this->meetingService->getDashboardStats();
+            $this->success($stats);
+        } catch (\Exception $e) {
+            \logger()->error('Meeting stats error', ['error' => $e->getMessage()]);
+            $this->error('Failed to retrieve meeting statistics. Please try again.', 500);
+        }
+    }
+
+    /**
+     * GET /api/meetings/export
+     * Export meetings to CSV with optional filters.
+     */
+    public function exportAction(): void
+    {
+        try {
+            $this->requireAuth();
+
+            $filters = [];
+            if (!empty($_GET['status'])) {
+                $filters['status'] = $_GET['status'];
+            }
+            if (!empty($_GET['date_from'])) {
+                $filters['date_from'] = $_GET['date_from'];
+            }
+            if (!empty($_GET['date_to'])) {
+                $filters['date_to'] = $_GET['date_to'];
+            }
+            if (!empty($_GET['search'])) {
+                $filters['search'] = $_GET['search'];
+            }
+
+            // Fetch all meetings (no pagination) for export
+            $result = $this->meetingService->getAllMeetings(1, 100000, $filters);
+            $meetings = $result['data'] ?? [];
+
+            // Build CSV
+            $csv = "ID,Title,Description,Agenda,Date,Start Time,End Time,Location,Status,Organizer\n";
+            foreach ($meetings as $m) {
+                $organizer = trim(($m['org_first_name'] ?? '') . ' ' . ($m['org_last_name'] ?? ''));
+                $csv .= '"' . str_replace('"', '""', (string)($m['id'] ?? '')) . '","'
+                     . str_replace('"', '""', (string)($m['title'] ?? '')) . '","'
+                     . str_replace('"', '""', (string)($m['description'] ?? '')) . '","'
+                     . str_replace('"', '""', (string)($m['agenda'] ?? '')) . '","'
+                     . str_replace('"', '""', (string)($m['meeting_date'] ?? '')) . '","'
+                     . str_replace('"', '""', (string)($m['start_time'] ?? '')) . '","'
+                     . str_replace('"', '""', (string)($m['end_time'] ?? '')) . '","'
+                     . str_replace('"', '""', (string)($m['location'] ?? '')) . '","'
+                     . str_replace('"', '""', (string)($m['status'] ?? '')) . '","'
+                     . str_replace('"', '""', $organizer) . "\"\n";
+            }
+
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment; filename="meetings-export-' . date('Y-m-d') . '.csv"');
+            echo $csv;
+            exit;
+        } catch (\Exception $e) {
+            \logger()->error('Meeting export error', ['error' => $e->getMessage()]);
+            $this->error('Failed to export meetings. Please try again.', 500);
         }
     }
 
@@ -284,8 +361,12 @@ class MeetingController extends BaseController
         $this->requireAuth();
 
         try {
-            $result = $this->meetingService->confirmAttendance($id);
-            $this->success($result, 'Attendance confirmed');
+            $invitation = $this->meetingService->confirmAttendance($id);
+            if (!$invitation) {
+                $this->error('Unable to accept meeting. Please try again.', 500);
+                return;
+            }
+            $this->success($invitation, 'Attendance confirmed');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
         } catch (\Exception $e) {
@@ -303,8 +384,12 @@ class MeetingController extends BaseController
         $this->requireAuth();
 
         try {
-            $result = $this->meetingService->declineAttendance($id);
-            $this->success($result, 'Attendance declined');
+            $invitation = $this->meetingService->declineAttendance($id);
+            if (!$invitation) {
+                $this->error('Unable to decline meeting. Please try again.', 500);
+                return;
+            }
+            $this->success($invitation, 'Attendance declined');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
         } catch (\Exception $e) {
@@ -341,4 +426,5 @@ class MeetingController extends BaseController
         }
     }
 }
+
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\Employee;
 
+use App\Controllers\BaseController;
+
 use App\Services\Contracts\EmployeeServiceInterface;
 use App\Services\EmployeeService;
 
@@ -349,7 +351,15 @@ class EmployeeController extends BaseController
             $uploadedFile = $_FILES['file'];
 
             // Validate file
-            $allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+            $allowedMimeTypes = [
+                'application/pdf' => 'pdf',
+                'image/jpeg' => 'jpg',
+                'image/jpg' => 'jpg',
+                'image/png' => 'png',
+                'application/msword' => 'doc',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+            ];
+            $allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
             $maxSize = 5 * 1024 * 1024; // 5MB
 
             if ($uploadedFile['size'] > $maxSize) {
@@ -357,15 +367,37 @@ class EmployeeController extends BaseController
                 return;
             }
 
-            // Create upload directory if it doesn't exist
-            $uploadDir = __DIR__ . '/../../../../storage/uploads/documents/';
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0755, true);
+            if ($uploadedFile['size'] === 0) {
+                $this->error('Uploaded file is empty', 400);
+                return;
             }
 
-            // Generate unique filename
-            $fileExtension = pathinfo($uploadedFile['name'], PATHINFO_EXTENSION);
-            $fileName = 'doc_' . time() . '_' . uniqid() . '.' . $fileExtension;
+            // Verify file extension
+            $fileExtension = strtolower(pathinfo($uploadedFile['name'], PATHINFO_EXTENSION));
+            if (!in_array($fileExtension, $allowedExtensions, true)) {
+                $this->error('Invalid file type. Allowed formats: ' . implode(', ', $allowedExtensions), 400);
+                return;
+            }
+
+            // Verify actual MIME type using finfo
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $uploadedFile['tmp_name']);
+            finfo_close($finfo);
+
+            if (!array_key_exists($mimeType, $allowedMimeTypes)) {
+                $this->error('Invalid file format. Uploaded file MIME type is not allowed.', 400);
+                return;
+            }
+
+            // Create private upload directory outside webroot
+            $uploadDir = STORAGE_PATH . '/uploads/documents/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0750, true);
+            }
+
+            // Generate cryptographically secure filename
+            $safeExtension = $allowedMimeTypes[$mimeType];
+            $fileName = 'doc_' . time() . '_' . bin2hex(random_bytes(8)) . '.' . $safeExtension;
             $filePath = $uploadDir . $fileName;
 
             if (!move_uploaded_file($uploadedFile['tmp_name'], $filePath)) {
@@ -377,8 +409,8 @@ class EmployeeController extends BaseController
             // Save document record to database
             $documentData = [
                 'employee_id' => (int)$employee['id'],
-                'document_name' => $documentName,
-                'category' => $category,
+                'document_name' => htmlspecialchars($documentName, ENT_QUOTES, 'UTF-8'),
+                'category' => htmlspecialchars($category, ENT_QUOTES, 'UTF-8'),
                 'file_name' => $fileName,
                 'uploaded_at' => date('Y-m-d H:i:s'),
             ];
@@ -398,13 +430,65 @@ class EmployeeController extends BaseController
                 ]
             );
 
-            $this->success(['id' => $documentId, 'message' => 'Document uploaded successfully']);
+            $this->success(['id' => $documentId, 'message' => 'Document uploaded successfully'], 'Document uploaded successfully', 201);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
         } catch (\Exception $e) {
             \logger()->error('Document upload error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             $this->error('Failed to upload document. Please try again.', 500);
         }
+    }
+
+    /**
+     * GET /api/profile/documents/{documentId} - Securely stream / view a profile document.
+     */
+    public function viewProfileDocumentAction(int $documentId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        $document = $this->employeeService->getDocumentById($documentId);
+        if (!$document) {
+            $this->notFound('Document not found');
+            return;
+        }
+
+        $employee = $this->employeeService->getEmployeeByUserId($userId);
+        $isOwner = $employee && ((int)$document['employee_id'] === (int)$employee['id']);
+        $hasHrPerm = $this->hasPermission('employees', 'view');
+
+        if (!$isOwner && !$hasHrPerm) {
+            $this->forbidden('You do not have permission to access this document');
+            return;
+        }
+
+        $filePath = STORAGE_PATH . '/uploads/documents/' . $document['file_name'];
+        if (!file_exists($filePath)) {
+            // Check legacy path fallback
+            $legacyPath = __DIR__ . '/../../public/uploads/employee_documents/' . $document['file_name'];
+            if (file_exists($legacyPath)) {
+                $filePath = $legacyPath;
+            } else {
+                $this->notFound('File not found on server');
+                return;
+            }
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $filePath) ?: 'application/octet-stream';
+        finfo_close($finfo);
+
+        header('Content-Type: ' . $mimeType);
+        header('Content-Disposition: inline; filename="' . basename($document['document_name'] ?? 'document') . '"');
+        header('Content-Length: ' . filesize($filePath));
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, max-age=3600');
+
+        readfile($filePath);
+        exit();
     }
 
     /**
@@ -464,6 +548,255 @@ class EmployeeController extends BaseController
     }
 
     /**
+     * POST /api/profile/profile-image - Upload the current user's profile picture.
+     */
+    public function uploadProfileImageAction(): void
+    {
+        $this->requirePermission('profile', 'edit');
+
+        try {
+            $userId = $this->getUserId();
+            if ($userId === 0) {
+                $this->unauthorized('Authentication required');
+            }
+
+            $employee = $this->employeeService->getEmployeeByUserId($userId);
+            if (!$employee) {
+                $this->notFound('Employee profile not found');
+            }
+
+            $this->handleProfileImageUpload((int)$employee['id']);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Profile image upload error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            $this->error('Failed to upload profile picture. Please try again.', 500);
+        }
+    }
+
+    /**
+     * POST /api/employees/{id}/profile-image - Upload a profile picture for a specific employee (HR).
+     */
+    public function uploadEmployeeProfileImageAction(int $id): void
+    {
+        $this->requirePermission('employees', 'edit');
+
+        try {
+            $employee = $this->employeeService->getEmployeeById($id);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+            }
+
+            $this->handleProfileImageUpload($id);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Employee profile image upload error', ['error' => $e->getMessage(), 'id' => $id]);
+            $this->error('Failed to upload profile picture. Please try again.', 500);
+        }
+    }
+
+    /**
+     * Handle the actual profile image file upload and database update.
+     */
+    private function handleProfileImageUpload(int $employeeId): void
+    {
+        if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
+            $this->error('Please select a valid image file to upload', 400);
+            return;
+        }
+
+        $uploadedFile = $_FILES['file'];
+
+        // Validate file type - only images allowed
+        $allowedMimeTypes = [
+            'image/jpeg' => 'jpg',
+            'image/jpg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+        ];
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        $maxSize = 5 * 1024 * 1024; // 5MB
+
+        if ($uploadedFile['size'] > $maxSize) {
+            $this->error('Image size exceeds 5MB limit', 400);
+            return;
+        }
+
+        if ($uploadedFile['size'] === 0) {
+            $this->error('Uploaded image is empty', 400);
+            return;
+        }
+
+        // Verify file extension
+        $fileExtension = strtolower(pathinfo($uploadedFile['name'], PATHINFO_EXTENSION));
+        if (!in_array($fileExtension, $allowedExtensions, true)) {
+            $this->error('Invalid file type. Allowed formats: ' . implode(', ', $allowedExtensions), 400);
+            return;
+        }
+
+        // Verify actual MIME type using finfo
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $uploadedFile['tmp_name']);
+        finfo_close($finfo);
+
+        if (!array_key_exists($mimeType, $allowedMimeTypes)) {
+            $this->error('Invalid image format. Uploaded file MIME type is not allowed.', 400);
+            return;
+        }
+
+        // Create upload directory in public webroot so images are accessible via URL
+        $uploadDir = __DIR__ . '/../../public/uploads/profile_images/';
+        if (!is_dir($uploadDir)) {
+            mkdir($uploadDir, 0777, true);
+        }
+
+        // Generate unique filename
+        $safeExtension = $allowedMimeTypes[$mimeType];
+        $fileName = 'profile_' . $employeeId . '_' . time() . '_' . bin2hex(random_bytes(8)) . '.' . $safeExtension;
+        $filePath = $uploadDir . $fileName;
+
+        if (!move_uploaded_file($uploadedFile['tmp_name'], $filePath)) {
+            \logger()->error('Failed to move uploaded profile image', ['temp' => $uploadedFile['tmp_name'], 'dest' => $filePath]);
+            $this->error('Failed to upload profile picture', 500);
+            return;
+        }
+
+        // Delete old profile image if it exists
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT profile_image_url FROM employees WHERE id = ?");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $old = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if ($old && !empty($old['profile_image_url'])) {
+            $oldPath = __DIR__ . '/../../public/' . $old['profile_image_url'];
+            if (file_exists($oldPath)) {
+                @unlink($oldPath);
+            }
+        }
+
+        // Store relative path in database
+        $relativePath = 'uploads/profile_images/' . $fileName;
+        $stmt = $db->prepare("UPDATE employees SET profile_image_url = ? WHERE id = ?");
+        $stmt->bind_param('si', $relativePath, $employeeId);
+        $stmt->execute();
+        $stmt->close();
+
+        // Audit: log profile image upload
+        \App\Services\AuditService::getInstance()->log(
+            \App\Services\AuditService::MODULE_EMPLOYEES,
+            \App\Services\AuditService::ACTION_UPDATE,
+            'Updated profile picture',
+            [
+                'target_type' => 'Employee',
+                'target_id' => $employeeId,
+                'target_name' => 'Employee #' . $employeeId,
+                'new_values' => ['profile_image_url' => $relativePath],
+            ]
+        );
+
+        $this->success(['profile_image_url' => $relativePath], 'Profile picture uploaded successfully');
+    }
+
+    /**
+     * GET /api/profile/profile-image - Stream the current user's profile picture.
+     */
+    public function profileImageAction(): void
+    {
+        $this->requirePermission('profile', 'view');
+
+        try {
+            $userId = $this->getUserId();
+            if ($userId === 0) {
+                $this->unauthorized('Authentication required');
+            }
+
+            $employee = $this->employeeService->getEmployeeByUserId($userId);
+            if (!$employee) {
+                $this->notFound('Employee profile not found');
+            }
+
+            $this->streamProfileImage((int)$employee['id']);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Profile image stream error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            $this->error('Failed to load profile picture. Please try again.', 500);
+        }
+    }
+
+    /**
+     * GET /api/employees/{id}/profile-image - Stream an employee's profile picture (HR).
+     */
+    public function employeeProfileImageAction(int $id): void
+    {
+        $this->requirePermission('employees', 'view');
+
+        try {
+            $employee = $this->employeeService->getEmployeeById($id);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+            }
+
+            $this->streamProfileImage($id);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Employee profile image stream error', ['error' => $e->getMessage(), 'id' => $id]);
+            $this->error('Failed to load profile picture. Please try again.', 500);
+        }
+    }
+
+    /**
+     * Stream a profile image file from public/uploads/profile_images/.
+     */
+    private function streamProfileImage(int $employeeId): void
+    {
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare("SELECT profile_image_url FROM employees WHERE id = ?");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $employee = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$employee || empty($employee['profile_image_url'])) {
+            http_response_code(404);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Profile picture not found']);
+            exit();
+        }
+
+        // Support both public-webroot path and storage-relative path
+        $filePath = __DIR__ . '/../../public/' . $employee['profile_image_url'];
+        if (!file_exists($filePath)) {
+            $storagePath = STORAGE_PATH . '/' . $employee['profile_image_url'];
+            if (file_exists($storagePath)) {
+                $filePath = $storagePath;
+            } else {
+                http_response_code(404);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'Profile picture file not found on server']);
+                exit();
+            }
+        }
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = finfo_file($finfo, $filePath) ?: 'application/octet-stream';
+        finfo_close($finfo);
+
+        header('Content-Type: ' . $mimeType);
+        header('Content-Length: ' . filesize($filePath));
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, max-age=3600');
+
+        readfile($filePath);
+        exit();
+    }
+
+    /**
      * GET /api/profile - Get the current user's profile.
      */
     public function profileAction(): void
@@ -484,6 +817,7 @@ class EmployeeController extends BaseController
 
             // Build profile data structure expected by the frontend
             $profile = [
+                'profile_image_url' => $employee['profile_image_url'] ?? null,
                 'personal' => [
                     'first_name' => $employee['first_name'] ?? '',
                     'last_name' => $employee['last_name'] ?? '',
@@ -544,8 +878,7 @@ class EmployeeController extends BaseController
             if (isset($data['personal']) && is_array($data['personal'])) {
                 $personal = $data['personal'];
                 $allowedPersonalFields = [
-                    'first_name', 'last_name', 'surname', 'email', 'phone',
-                    'national_id', 'gender', 'marital_status', 'address'
+                    'phone', 'address', 'marital_status'
                 ];
                 foreach ($allowedPersonalFields as $field) {
                     if (isset($personal[$field])) {
@@ -554,18 +887,8 @@ class EmployeeController extends BaseController
                 }
             }
 
-            // Handle employment info updates
-            if (isset($data['employment']) && is_array($data['employment'])) {
-                $employment = $data['employment'];
-                $allowedEmploymentFields = [
-                    'designation', 'employee_type', 'employee_status', 'employment_date'
-                ];
-                foreach ($allowedEmploymentFields as $field) {
-                    if (isset($employment[$field])) {
-                        $updateData[$field] = $employment[$field];
-                    }
-                }
-            }
+            // Note: Employment fields (designation, employee_type, employee_status, employment_date)
+            // cannot be modified via self-service /profile endpoint. They require HR administrator privileges.
 
             // Handle next of kin updates - pass array directly to service
             if (isset($data['next_of_kin'])) {
@@ -579,9 +902,10 @@ class EmployeeController extends BaseController
 
             if (empty($updateData)) {
                 $this->error('No valid fields to update', 400);
+                return;
             }
 
-            // Update the employee record (partial update, no full validation)
+            // Update the employee record (partial update)
             $result = $this->employeeService->updateEmployeeProfile((int)$employee['id'], $updateData);
 
             // Audit: log profile update
@@ -590,10 +914,8 @@ class EmployeeController extends BaseController
                 $auditDescription = 'Updated next of kin information';
             } elseif (isset($updateData['dependants'])) {
                 $auditDescription = 'Updated dependants';
-            } elseif (isset($updateData['personal'])) {
-                $auditDescription = 'Updated personal information';
-            } elseif (isset($updateData['employment'])) {
-                $auditDescription = 'Updated employment information';
+            } elseif (!empty($updateData)) {
+                $auditDescription = 'Updated personal contact information';
             }
 
             \App\Services\AuditService::getInstance()->log(
@@ -617,4 +939,5 @@ class EmployeeController extends BaseController
         }
     }
 }
+
 
