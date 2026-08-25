@@ -157,3 +157,14 @@ in `audit_logs` (module *Notifications*).
   updating `notification_logs` by provider message id (send status is stored now).
 * Legacy PHPUnit suites referencing `admin_hrdemo_test` need that DB provisioned
   to run (pre-existing; unrelated to this feature).
+* Benign CLI warnings from `vendor/thecodingmachine/safe`: two compile-time
+  notices ("resource"/"integer" pseudo-types) appear whenever its generated
+  wrappers load on PHP 8.0. They originate in `web-token/jwt-util-ecc` v2
+  (required for VAPID signing/payload encryption), which pins safe `^0.1.14`,
+  and are loaded eagerly via ~87 composer `files` entries. Purely cosmetic -
+  wrappers function correctly, web output is unaffected (display_errors off),
+  and bootstrap suppresses them around autoload. NEVER patch files under
+  `vendor/`; upgrading requires a coordinated web-token bump (risk not
+  justified by cosmetics). The `generator/` subfolder inside the package is an
+  inert dev-tool manifest that the v0.1.16 dist ships accidentally.
+
