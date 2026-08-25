@@ -406,7 +406,11 @@ class AttendanceController extends BaseController
 
             // ---- Validate Radius (BEFORE insert) ----
             if (!$radiusCheck['within']) {
-                $message = 'You are outside the allowed office radius. Please move closer to the office before clocking in.';
+                $message = 'You are about '
+                    . \App\Helpers\GeoLocation::formatDistanceMeters((float) $radiusCheck['distance'])
+                    . ' from the office. You must be within '
+                    . \App\Helpers\GeoLocation::formatDistanceMeters((float) ($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS))
+                    . ' of the office to clock in. Please move closer and try again.';
                 $this->json([
                     'success' => false,
                     'message' => $message,
@@ -620,7 +624,11 @@ class AttendanceController extends BaseController
 
             // ---- Validate Radius (BEFORE update) ----
             if (!$radiusCheck['within']) {
-                $message = 'You are outside the allowed office radius. Please move closer to the office before clocking out.';
+                $message = 'You are about '
+                    . \App\Helpers\GeoLocation::formatDistanceMeters((float) $radiusCheck['distance'])
+                    . ' from the office. You must be within '
+                    . \App\Helpers\GeoLocation::formatDistanceMeters((float) ($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS))
+                    . ' of the office to clock out. Please move closer and try again.';
                 $this->json([
                     'success' => false,
                     'message' => $message,
@@ -842,7 +850,7 @@ class AttendanceController extends BaseController
         // GPS/Wi-Fi). When the organisation allows it, coordinates become
         // optional and the record is stored unverified (lat/lng NULL).
         $unverifiedAllowed = (($data['location_status'] ?? '') === 'unavailable')
-            && env('ATTENDANCE_ALLOW_UNVERIFIED_LOCATION', true);
+            && env('ATTENDANCE_ALLOW_UNVERIFIED_LOCATION', false);
         if ($unverifiedAllowed) {
             return null;
         }

@@ -60,6 +60,31 @@ interface Analytics {
   leave: Record<string, any> | null
 }
 
+/**
+ * Great-circle distance between two coordinates, in whole metres (Haversine).
+ */
+const haversineMeters = (
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number => {
+  const R = 6371000
+  const rad = (d: number) => (d * Math.PI) / 180
+  const dLat = rad(lat2 - lat1)
+  const dLng = rad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2
+  return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(a))))
+}
+
+/** Human-friendly metres: "80 m" or "1.2 km". */
+const formatDistance = (meters: number): string =>
+  meters >= 1000
+    ? `${(meters / 1000).toFixed(meters >= 10000 ? 0 : 1)} km`
+    : `${Math.round(meters)} m`
+
 const Dashboard = () => {
   const navigate = useNavigate()
   const [stats, setStats] = useState<Stats>({
@@ -85,11 +110,19 @@ const Dashboard = () => {
   const [actionMessage, setActionMessage] = useState('')
   const [selectedOffice, setSelectedOffice] = useState('')
 
-  /** Set when the device cannot produce a location fix (desktops without GPS/Wi-Fi). */
+  /**
+   * Set when a fix could not be obtained at all, OR when a fix was
+   * obtained but placed the employee outside the office geofence.
+   * Carries everything needed to explain what went wrong, how far
+   * they are, and how much closer they need to be.
+   */
   const [locationFallback, setLocationFallback] = useState<{
     action: 'clock-in' | 'clock-out'
     code: string
     message: string
+    officeName?: string
+    requiredRadius?: number
+    measuredDistance?: number
   } | null>(null)
 
   /** Which action is actively acquiring a GPS/Wi-Fi fix right now. */
@@ -200,16 +233,14 @@ const Dashboard = () => {
   }
 
   /**
-   * Shared submit path for clock-in / clock-out.
-   *
-   * coords === null means the device could not produce a fix and the user
-   * chose to continue anyway: the request carries location_status
-   * 'unavailable' and the backend stores the record WITHOUT coordinates
-   * ("location not verified") when the organisation allows it.
+   * Shared submit path for clock-in / clock-out. A device fix is
+   * MANDATORY: the caller must resolve coordinates (startClock blocks
+   * submission when no fix or when outside the geofence) before this
+   * runs, and the backend independently re-validates the geofence.
    */
   const submitClock = async (
     action: 'clock-in' | 'clock-out',
-    coords: { lat: number; lng: number; accuracy: number } | null
+    coords: { lat: number; lng: number; accuracy: number }
   ) => {
     const inFlight = action === 'clock-in' ? clockInInFlight : clockOutInFlight
     const isBusy = action === 'clock-in' ? clockingIn : clockingOut
@@ -237,14 +268,10 @@ const Dashboard = () => {
 
       const body: Record<string, unknown> = {
         office_id: parseInt(selectedOffice),
-        // The backend skips geofence validation + stores NULL coordinates
-        // ONLY for this explicit flag (never silently).
-        location_status: coords ? 'gps' : 'unavailable',
-      }
-      if (coords) {
-        body.latitude = coords.lat
-        body.longitude = coords.lng
-        body.accuracy = coords.accuracy
+        location_status: 'gps',
+        latitude: coords.lat,
+        longitude: coords.lng,
+        accuracy: coords.accuracy,
       }
 
       const response = await api.post(
@@ -261,7 +288,20 @@ const Dashboard = () => {
         fetchStats()
       }
     } catch (error) {
-      setLocationError(getErrorMessage(error))
+      const resp: any = error.response?.data
+
+      if (resp?.code === 'OUTSIDE_RADIUS') {
+        // Server-authoritative rejection - show exactly how far off they are.
+        const measured = Number(resp.distance ?? 0)
+        const allowed = Number(resp.allowed_radius ?? 0)
+        setLocationError(
+          `You are about ${formatDistance(measured)} from the office. You must be within ` +
+            `${formatDistance(allowed)} to clock ${action === 'clock-in' ? 'in' : 'out'} - ` +
+            'please move closer and try again.'
+        )
+      } else {
+        setLocationError(getErrorMessage(error))
+      }
     } finally {
       clockInInFlight.current = false
       clockOutInFlight.current = false
@@ -290,6 +330,36 @@ const Dashboard = () => {
       if (!location.ok) {
         setLocationFallback({ action, code: location.code, message: location.message })
         return
+      }
+
+      // ---- Client-side geofence gate --------------------------------
+      // Resolve the selected office and measure the distance BEFORE
+      // submitting, so the employee immediately sees how far they are
+      // and how much closer they need to be - without a server round-trip.
+      const office = attendanceData.offices.find(o => o.id.toString() === selectedOffice)
+      if (office && office.geo_fence_radius > 0) {
+        const measured = haversineMeters(
+          location.lat,
+          location.lng,
+          office.latitude,
+          office.longitude
+        )
+        const allowed = office.geo_fence_radius
+
+        if (measured > allowed) {
+          setLocationFallback({
+            action,
+            code: 'OUTSIDE_RADIUS',
+            message:
+              `You are about ${formatDistance(measured)} from ${office.name}. You must be ` +
+              `within ${formatDistance(allowed)} of the office to clock ` +
+              `${action === 'clock-in' ? 'in' : 'out'}.`,
+            officeName: office.name,
+            requiredRadius: allowed,
+            measuredDistance: measured,
+          })
+          return
+        }
       }
 
       await submitClock(action, {
@@ -402,26 +472,38 @@ const Dashboard = () => {
 
           {locationFallback && !locationError && !locating && (
             <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-md">
-              <p className="text-sm font-medium">We tried hard, but could not get your location.</p>
-              <p className="text-xs mt-1">
-                {locationFallback.message} We attempted a GPS fix plus two network-based fixes over
-                roughly 35 seconds. This is common on desktop PCs without GPS - especially on
-                isolated office networks.
-              </p>
-              <p className="text-xs mt-1">
-                Your IP address will still be recorded for HR review. Records without a GPS fix are
-                marked <strong>location not verified</strong>.
-              </p>
+              {locationFallback.code === 'OUTSIDE_RADIUS' ? (
+                <>
+                  <p className="text-sm font-medium">📍 You are too far from the office.</p>
+                  <p className="text-sm mt-1">{locationFallback.message}</p>
+                  <p className="text-xs mt-1">
+                    Walk closer to <strong>{locationFallback.officeName}</strong> until you are
+                    inside the {formatDistance(locationFallback.requiredRadius ?? 0)} zone, then
+                    press <strong>Try Again</strong>.
+                  </p>
+                  <p className="text-xs mt-1 text-amber-700">
+                    Measured distance: {formatDistance(locationFallback.measuredDistance ?? 0)} ·
+                    Allowed: {formatDistance(locationFallback.requiredRadius ?? 0)}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-medium">We tried hard, but could not get your location.</p>
+                  <p className="text-xs mt-1">
+                    {locationFallback.message} We attempted a GPS fix plus two network-based fixes over
+                    roughly 35 seconds. This is common on desktop PCs without GPS - especially on
+                    isolated office networks.
+                  </p>
+                  <p className="text-xs mt-1">
+                    <strong>A location fix is required to clock in.</strong> Please move closer to the
+                    office, turn on Wi-Fi to help network positioning, or step outside for a clear GPS
+                    signal - then press <strong>Try Again</strong>.
+                  </p>
+                </>
+              )}
               <div className="flex flex-wrap gap-2 mt-3">
                 <Button size="sm" onClick={() => startClock(locationFallback.action)}>
                   Try Again
-                </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => submitClock(locationFallback.action, null)}
-                >
-                  Continue without location
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => setLocationFallback(null)}>
                   Cancel

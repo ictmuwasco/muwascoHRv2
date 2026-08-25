@@ -60,6 +60,19 @@ class GeoLocation
     }
 
     /**
+     * Human-friendly distance display: "80 m" or "1.2 km".
+     */
+    public static function formatDistanceMeters(float $meters): string
+    {
+        if ($meters >= 1000) {
+            return $meters >= 10000
+                ? round($meters / 1000) . ' km'
+                : round($meters / 1000, 1) . ' km';
+        }
+        return (string) round($meters) . ' m';
+    }
+
+    /**
      * Check if a location is within the allowed radius of an office.
      *
      * @param float $empLat Employee latitude
