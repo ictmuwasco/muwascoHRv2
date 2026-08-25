@@ -40,6 +40,14 @@
 # Disable directory browsing
 Options -Indexes
 
+# Service worker + manifest must never be served stale - browsers cache
+# them aggressively and a poisoned copy breaks push registration.
+<IfModule mod_headers.c>
+    <FilesMatch "^(sw\.js|manifest\.webmanifest)$">
+        Header set Cache-Control "no-cache, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
 # Protect sensitive files
 <FilesMatch "\.(env|log|sql|md|lock)$">
     <IfModule mod_authz_core.c>

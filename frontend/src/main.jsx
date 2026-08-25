@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import App from './App.jsx'
 import { ThemeProvider } from './context/ThemeContext'
-import { isPushSupported } from './utils/pushNotifications'
+import { isPushSupported, ensureServiceWorkerRegistered } from './utils/pushNotifications'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -19,13 +19,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 )
 
 // Service worker registration for Web Push attendance reminders.
-// Registered eagerly so a subscription survives page reloads; actual
-// permission is requested ONLY from the explicit settings UI.
+// Uses the resilient multi-location probe (validates JS content-type,
+// cache-busts) and fails silently here - errors are surfaced in the
+// Settings > Notifications UI when the employee explicitly enables.
 if (isPushSupported()) {
   window.addEventListener('load', () => {
-    const swUrl = new URL('sw.js', document.baseURI).href
-    navigator.serviceWorker.register(swUrl).catch(() => {
-      // Non-fatal: push simply stays unavailable; attendance keeps working.
-    })
+    ensureServiceWorkerRegistered().catch(() => { /* surfaced in Settings */ })
   })
 }
