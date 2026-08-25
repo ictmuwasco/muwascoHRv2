@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\Notification;
 
-use App\Helpers\AppTime;
 use App\Repositories\Contracts\NotificationLogRepositoryInterface;
 use App\Repositories\Contracts\NotificationPreferenceRepositoryInterface;
 use App\Services\AttendanceReminderEligibilityService;
