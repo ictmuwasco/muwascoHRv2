@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\HR;
 
+use App\Controllers\BaseController;
+
 use App\Services\HolidayService;
 
 /**
@@ -121,3 +123,4 @@ class HolidayController extends BaseController
         }
     }
 }
+

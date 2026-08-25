@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../utils/api'
-import { getCurrentPosition, isGeolocationSupported } from '../../utils/geolocation'
+import { requestLocation } from '../../utils/geolocation'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
 import { Users, CalendarCheck, Calendar, TrendingUp, Clock, FileText, Star, Bell } from 'lucide-react'
@@ -39,6 +39,10 @@ interface AttendanceData {
   has_clocked_in_today: boolean
   current_session: CurrentSession | null
   today_record: Record<string, any> | null
+  /** Employee's assigned office (State A). null when unassigned (State C). */
+  default_office: Office | null
+  /** 'default' = State A, 'alternative' = State B, 'manual' = State C */
+  office_mode: 'default' | 'alternative' | 'manual'
   offices: Office[]
 }
 
@@ -64,28 +68,41 @@ const Dashboard = () => {
     onLeave: 0,
     pendingApprovals: 0,
   })
-  
-  // Attendance state
+
+  // Attendance state - mirrors the backend payload (backend is source of truth)
   const [attendanceData, setAttendanceData] = useState<AttendanceData>({
     is_clocked_in: false,
     has_clocked_in_today: false,
     current_session: null,
     today_record: null,
+    default_office: null,
+    office_mode: 'manual',
     offices: []
   })
   const [clockingIn, setClockingIn] = useState(false)
   const [clockingOut, setClockingOut] = useState(false)
   const [locationError, setLocationError] = useState('')
+  const [actionMessage, setActionMessage] = useState('')
   const [selectedOffice, setSelectedOffice] = useState('')
-  
+
+  /** Set when the device cannot produce a location fix (desktops without GPS/Wi-Fi). */
+  const [locationFallback, setLocationFallback] = useState<{
+    action: 'clock-in' | 'clock-out'
+    code: string
+    message: string
+  } | null>(null)
+
+  /** Which action is actively acquiring a GPS/Wi-Fi fix right now. */
+  const [locating, setLocating] = useState<'clock-in' | 'clock-out' | null>(null)
+
   // Refs to prevent duplicate requests (state updates are async)
   const clockInInFlight = useRef(false)
   const clockOutInFlight = useRef(false)
-  
+
   // Notifications state
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
-  
+
   // Analytics state
   const [analytics, setAnalytics] = useState<Analytics>({
     attendance: null,
@@ -112,10 +129,28 @@ const Dashboard = () => {
   const fetchAttendanceDashboard = async () => {
     try {
       const response = await api.get('/attendance/dashboard')
-      setAttendanceData(response.data.data)
-      if (response.data.data.offices?.length > 0) {
-        setSelectedOffice(response.data.data.offices[0].id.toString())
+      // Explicit cast: response.data is untyped (any), which previously made
+      // the offices callback parameter implicitly-any below (TS error).
+      const data = response.data.data as AttendanceData
+      setAttendanceData(data)
+
+      // The backend decides which office is pre-selected.
+      // States A/B: the employee's assigned office. State C (no assignment):
+      // keep the current pick while still valid, else fall back to the first
+      // recognised office so the card never sits without a selection.
+      // Functional update avoids reading a stale selectedOffice closure.
+      const defaultId = data.default_office?.id
+      if (defaultId != null) {
+        setSelectedOffice(String(defaultId))
+        return
       }
+
+      setSelectedOffice((prev) => {
+        if (data.offices?.some((o: Office) => String(o.id) === prev)) {
+          return prev
+        }
+        return data.offices && data.offices.length > 0 ? String(data.offices[0].id) : prev
+      })
     } catch (error) {
       console.error('Failed to fetch attendance data:', error)
     }
@@ -164,82 +199,111 @@ const Dashboard = () => {
     return 'An unexpected error occurred. Please try again.'
   }
 
-  const handleClockIn = async () => {
-    // Prevent duplicate requests
-    if (clockInInFlight.current || clockingIn) return
-    clockInInFlight.current = true
-    setClockingIn(true)
+  /**
+   * Shared submit path for clock-in / clock-out.
+   *
+   * coords === null means the device could not produce a fix and the user
+   * chose to continue anyway: the request carries location_status
+   * 'unavailable' and the backend stores the record WITHOUT coordinates
+   * ("location not verified") when the organisation allows it.
+   */
+  const submitClock = async (
+    action: 'clock-in' | 'clock-out',
+    coords: { lat: number; lng: number; accuracy: number } | null
+  ) => {
+    const inFlight = action === 'clock-in' ? clockInInFlight : clockOutInFlight
+    const isBusy = action === 'clock-in' ? clockingIn : clockingOut
+    if (inFlight.current || isBusy) return
+
+    inFlight.current = true
+    setClockingIn(action === 'clock-in')
+    setClockingOut(action === 'clock-out')
     setLocationError('')
-    
+    setActionMessage('')
+    setLocationFallback(null)
+
     try {
-      // Step 1: Get employee location
-      if (!isGeolocationSupported()) {
-        setLocationError('Geolocation is not supported by this browser')
-        return
-      }
-      const location = await getCurrentPosition()
-      
-      // Step 2: Determine office
+      // Resolve the office first so an unselected office fails fast without
+      // ever prompting for GPS permission.
       const office = attendanceData.offices.find(o => o.id.toString() === selectedOffice)
       if (!office) {
-        setLocationError('Please select an office')
+        setLocationError(
+          attendanceData.office_mode === 'manual'
+            ? 'No default office is assigned to you - please select your current office.'
+            : 'Please select an office'
+        )
         return
       }
 
-      // Step 3-5: Send to backend for distance calc, radius validation, and insert
-      const response = await api.post('/attendance/clock-in', {
+      const body: Record<string, unknown> = {
         office_id: parseInt(selectedOffice),
-        latitude: location.lat,
-        longitude: location.lng,
-        accuracy: location.accuracy
-      })
+        // The backend skips geofence validation + stores NULL coordinates
+        // ONLY for this explicit flag (never silently).
+        location_status: coords ? 'gps' : 'unavailable',
+      }
+      if (coords) {
+        body.latitude = coords.lat
+        body.longitude = coords.lng
+        body.accuracy = coords.accuracy
+      }
+
+      const response = await api.post(
+        action === 'clock-in' ? '/attendance/clock-in' : '/attendance/clock-out',
+        body
+      )
 
       if (response.data.success) {
+        setActionMessage(
+          response.data.message ||
+            (action === 'clock-in' ? 'Clocked in successfully.' : 'Clocked out successfully.')
+        )
         fetchAttendanceDashboard()
         fetchStats()
       }
     } catch (error) {
       setLocationError(getErrorMessage(error))
     } finally {
-      setClockingIn(false)
       clockInInFlight.current = false
+      clockOutInFlight.current = false
+      setClockingIn(false)
+      setClockingOut(false)
     }
   }
 
-  const handleClockOut = async () => {
-    // Prevent duplicate requests
-    if (clockOutInFlight.current || clockingOut) return
-    clockOutInFlight.current = true
-    setClockingOut(true)
+  /**
+   * Entry point behind the Clock In / Clock Out buttons.
+   * Tries to obtain a device fix; when that fails (typical on desktops),
+   * surfaces a fallback panel instead of dead-ending with an error.
+   */
+  const startClock = async (action: 'clock-in' | 'clock-out') => {
+    const inFlight = action === 'clock-in' ? clockInInFlight : clockOutInFlight
+    const isBusy = action === 'clock-in' ? clockingIn : clockingOut
+    if (inFlight.current || isBusy || locating) return
+
     setLocationError('')
-    
+    setActionMessage('')
+    setLocationFallback(null)
+    setLocating(action)
+
     try {
-      // Step 1: Get employee location
-      if (!isGeolocationSupported()) {
-        setLocationError('Geolocation is not supported by this browser')
+      const location = await requestLocation()
+      if (!location.ok) {
+        setLocationFallback({ action, code: location.code, message: location.message })
         return
       }
-      const location = await getCurrentPosition()
-      
-      // Step 2-5: Send to backend for distance calc, radius validation, and update
-      const response = await api.post('/attendance/clock-out', {
-        office_id: parseInt(selectedOffice),
-        latitude: location.lat,
-        longitude: location.lng,
-        accuracy: location.accuracy
-      })
 
-      if (response.data.success) {
-        fetchAttendanceDashboard()
-        fetchStats()
-      }
-    } catch (error) {
-      setLocationError(getErrorMessage(error))
+      await submitClock(action, {
+        lat: location.lat,
+        lng: location.lng,
+        accuracy: location.accuracy,
+      })
     } finally {
-      setClockingOut(false)
-      clockOutInFlight.current = false
+      setLocating(null)
     }
   }
+
+  const handleClockIn = () => startClock('clock-in')
+  const handleClockOut = () => startClock('clock-out')
 
   const statCards = [
     {
@@ -323,10 +387,46 @@ const Dashboard = () => {
             <h3 className="text-lg font-semibold text-gray-900">Attendance</h3>
             {getStatusBadge()}
           </div>
-          
+
           {locationError && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
               {locationError}
+            </div>
+          )}
+
+          {actionMessage && !locationError && (
+            <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
+              {actionMessage}
+            </div>
+          )}
+
+          {locationFallback && !locationError && !locating && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-md">
+              <p className="text-sm font-medium">We tried hard, but could not get your location.</p>
+              <p className="text-xs mt-1">
+                {locationFallback.message} We attempted a GPS fix plus two network-based fixes over
+                roughly 35 seconds. This is common on desktop PCs without GPS - especially on
+                isolated office networks.
+              </p>
+              <p className="text-xs mt-1">
+                Your IP address will still be recorded for HR review. Records without a GPS fix are
+                marked <strong>location not verified</strong>.
+              </p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <Button size="sm" onClick={() => startClock(locationFallback.action)}>
+                  Try Again
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => submitClock(locationFallback.action, null)}
+                >
+                  Continue without location
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setLocationFallback(null)}>
+                  Cancel
+                </Button>
+              </div>
             </div>
           )}
 
@@ -346,6 +446,35 @@ const Dashboard = () => {
             </div>
           )}
 
+          {!attendanceData.is_clocked_in && attendanceData.today_record?.clock_out && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <p className="text-sm text-gray-700">
+                <strong>Clocked in at:</strong>{' '}
+                {new Date(attendanceData.today_record.clock_in).toLocaleTimeString()}
+              </p>
+              <p className="text-sm text-gray-700 mt-1">
+                <strong>Clocked out at:</strong>{' '}
+                {new Date(attendanceData.today_record.clock_out).toLocaleTimeString()}
+              </p>
+              <p className="text-sm text-gray-700 mt-1">
+                <strong>Location:</strong> {attendanceData.today_record.office_name}
+              </p>
+              {!!attendanceData.today_record.auto_clocked_out && (
+                <p className="text-xs text-gray-500 mt-1">
+                  This record was closed automatically at midnight.
+                </p>
+              )}
+            </div>
+          )}
+
+          {locating && (
+            <p className="flex items-center text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+              <span className="inline-block animate-spin rounded-full h-3 w-3 border-b-2 border-blue-700 mr-2"></span>
+              Getting your location - please allow the browser prompt if it appears. This can take
+              up to about 35 seconds on desktops; we keep trying until we get a fix.
+            </p>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -362,17 +491,27 @@ const Dashboard = () => {
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-gray-500">
+                {attendanceData.office_mode === 'manual'
+                  ? 'No default office assigned to you - please select your current office.'
+                  : `Default office: ${attendanceData.default_office?.name ?? ''} - you may clock in from any listed office.`}
+              </p>
             </div>
 
             <div className="flex items-end">
               {attendanceData.is_clocked_in ? (
                 <Button
                   onClick={handleClockOut}
-                  disabled={clockingOut}
+                  disabled={clockingOut || locating !== null || !selectedOffice}
                   variant="danger"
                   className="w-full"
                 >
-                  {clockingOut ? (
+                  {locating === 'clock-out' ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Getting your location...
+                    </>
+                  ) : clockingOut ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                       Clocking Out...
@@ -387,10 +526,20 @@ const Dashboard = () => {
               ) : (
                 <Button
                   onClick={handleClockIn}
-                  disabled={clockingIn || attendanceData.has_clocked_in_today}
+                  disabled={
+                    clockingIn ||
+                    locating !== null ||
+                    attendanceData.has_clocked_in_today ||
+                    !selectedOffice
+                  }
                   className="w-full"
                 >
-                  {clockingIn ? (
+                  {locating === 'clock-in' ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Getting your location...
+                    </>
+                  ) : clockingIn ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                       Clocking In...

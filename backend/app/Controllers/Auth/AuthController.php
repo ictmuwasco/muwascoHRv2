@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\Auth;
 
+use App\Controllers\BaseController;
+
 use App\Services\Contracts\AuthServiceInterface;
 use App\Services\AuthService;
 
@@ -196,3 +198,4 @@ class AuthController extends BaseController
         }
     }
 }
+

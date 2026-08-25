@@ -75,6 +75,72 @@ export const leaveService = {
     return response.data;
   },
 
+  // ─── Employee Leave Profile ────────────────────────────────────────
+
+  /**
+   * Get the list of employees the current user is allowed to view
+   * in the leave-profile selector.  Role-scoped by the backend.
+   */
+  getProfileEmployees: async (search?: string): Promise<ApiResponse<any[]>> => {
+    const params = search ? { search } : {};
+    const response = await apiClient.get<ApiResponse<any[]>>('/leave/profile/employees', { params });
+    return response.data;
+  },
+
+  /**
+   * Get the complete leave profile for an employee.
+   * @param employeeId  Employee record ID
+   * @param params      { financial_year_id?, status?, leave_type_id?, date_from?, date_to? }
+   */
+  getProfile: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>(`/leave/profile/${employeeId}`, { params });
+    return response.data;
+  },
+
+  /**
+   * Get leave balances for an employee in a financial year.
+   */
+  getProfileBalances: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>(`/leave/profile/${employeeId}/balances`, { params });
+    return response.data;
+  },
+
+  /**
+   * Get leave applications for an employee with optional filters.
+   */
+  getProfileApplications: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>(`/leave/profile/${employeeId}/applications`, { params });
+    return response.data;
+  },
+
+  /**
+   * Get the balance timeline (buildBalanceTimeline) for an employee.
+   */
+  getProfileTimeline: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>(`/leave/profile/${employeeId}/timeline`, { params });
+    return response.data;
+  },
+
+  /**
+   * Get summary statistics for an employee's leave account.
+   */
+  getProfileSummary: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>(`/leave/profile/${employeeId}/summary`, { params });
+    return response.data;
+  },
+
+  /**
+   * Export the employee leave account as CSV.
+   * Returns a Blob for download.
+   */
+  exportProfile: async (employeeId: number, params?: Record<string, any>): Promise<Blob> => {
+    const response = await apiClient.get(`/leave/profile/${employeeId}/export`, {
+      params: { ...params, format: 'csv' },
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
   // Leave Roster
   getRoster: async (params?: Record<string, any>): Promise<ApiResponse<any[]>> => {
     const response = await apiClient.get<ApiResponse<any[]>>('/leave/roster', { params });

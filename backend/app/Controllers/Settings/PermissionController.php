@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Controllers\Settings;
 
+use App\Controllers\BaseController;
+
 use App\Services\PermissionService;
 use App\Services\AuditService;
 
@@ -197,3 +199,4 @@ class PermissionController extends BaseController
         ], 'Roles retrieved successfully');
     }
 }
+

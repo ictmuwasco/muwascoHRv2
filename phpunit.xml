@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.0/phpunit.xsd"
+         bootstrap="backend/bootstrap.php"
+         colors="true"
+         cacheResultFile="backend/storage/cache/.phpunit.cache"
+         failOnRisky="true"
+         failOnWarning="true">
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>backend/tests/Unit</directory>
+            <!-- Standalone script-style test (run directly with php);
+                 it self-executes and exits, which would abort the suite. -->
+            <exclude>backend/tests/Unit/Services/AttendanceStatusResolutionTest.php</exclude>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>backend/tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <coverage>
+        <report>
+            <html outputDirectory="backend/storage/cache/coverage"/>
+        </report>
+    </coverage>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="DB_DATABASE" value="admin_hrdemo_test"/>
+        <env name="APP_DEBUG" value="true"/>
+    </php>
+</phpunit>

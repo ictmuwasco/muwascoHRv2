@@ -298,6 +298,20 @@ Located in `frontend/src/pages/`
   - Employee attendance view
 - **Dependencies**: `api` client, UI components, `lucide-react` icons
 
+#### Attendance Dashboard (`pages/attendance/AttendanceDashboard.jsx`)
+- **Purpose**: Organisation-wide attendance monitoring for HR/authorised management (route `/attendance/dashboard`; sidebar: Attendance → Attendance Dashboard)
+- **Features**:
+  - Interactive summary cards (Total Employees, Present, Absent, On Leave, Attendance Rate) — click a card to filter the table by that status
+  - Date presets (Today / Yesterday / Custom date) with holiday & non-working-day banners
+  - Department, status and employee search filters; server-side filtering + pagination
+  - "Employees Who Have Not Clocked In" panel (absent per immediate-absence policy) with contact info
+  - Daily attendance table: clock-in/out times, authoritative status badges, work hours, detail modal (profile + selected day + 30-day history)
+  - Department attendance breakdown (click to filter) and 7-day stacked trend chart
+  - CSV export of the filtered result set (`utils/csvUtils`)
+  - Auto refresh every 60 s for today's view (pausable, pauses when tab hidden), loading skeletons, empty/error states
+- **Backend**: `AttendanceDashboardService` computes every status/figure server-side (single source of truth); endpoints `GET /api/attendance/hr-dashboard` and `GET /api/attendance/hr-employee-history`
+- **Dependencies**: `api` client, UI components (Card/Table/Badge/Button/Input/Select/Modal), `utils/csvUtils`, `lucide-react` icons
+
 #### Appraisal (`Appraisal.tsx`)
 - **Purpose**: Manage employee appraisals
 - **Features**:

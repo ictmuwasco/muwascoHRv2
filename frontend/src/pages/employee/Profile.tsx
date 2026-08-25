@@ -1,13 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import apiClient from '../../api/client';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
-import { User, Briefcase, Users, FileText, Key, Save, Loader2, Plus, Trash2, Upload } from 'lucide-react';
+import { User, Briefcase, Users, FileText, Key, Save, Loader2, Plus, Trash2, Upload, Eye, Download, UserRound } from 'lucide-react';
 import type { EmployeeProfile } from '../../types';
+
+// Base URL for direct file access (authenticated via httpOnly cookie)
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+// Profile image URL helper - streams through the API (auth cookie is sent automatically)
+const getProfileImageUrl = (profileImageUrl?: string | null): string | null => {
+  if (!profileImageUrl) return null;
+  if (profileImageUrl.startsWith('http')) return profileImageUrl;
+  return `${API_BASE}/profile/profile-image?t=${Date.now()}`;
+};
 
 const Profile = () => {
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [profileImageUploading, setProfileImageUploading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('personal');
@@ -56,23 +68,20 @@ const Profile = () => {
   });
 
   // Documents state
-  const [documents, setDocuments] = useState<Array<{ id: number; name: string; type: string; uploaded_at: string }>>([]);
+  const [documents, setDocuments] = useState<Array<{ id: number; name: string; type: string; uploaded_at: string; document_name?: string; category?: string }>>([]);
   const [newDocument, setNewDocument] = useState<{ name: string; category: string; file: File | null }>({
     name: '',
     category: 'other',
     file: null,
   });
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
-  const fetchProfile = async () => {
+  const fetchProfile = useCallback(async () => {
     try {
       const response = await apiClient.get('/profile');
       const data = response.data.data;
       setProfile(data);
       if (data) {
+        setProfileImage(getProfileImageUrl(data.profile_image_url));
         setPersonal({
           first_name: data.personal?.first_name || '',
           last_name: data.personal?.last_name || '',
@@ -101,7 +110,7 @@ const Profile = () => {
           contact: nok?.contact || nok?.phone || '',
         });
         setDocuments(data.documents || []);
-        
+
         // Parse dependants (from separate table via dependants_data)
         if (data.dependants) {
           const parsed = Array.isArray(data.dependants) ? data.dependants : JSON.parse(data.dependants || '[]');
@@ -112,6 +121,48 @@ const Profile = () => {
       console.error('Failed to fetch profile:', error);
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProfile();
+  }, [fetchProfile]);
+
+  const handleProfileImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
+      setError('Please select a valid image file (JPG, PNG, GIF or WebP)');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image size exceeds 5MB limit');
+      return;
+    }
+
+    setProfileImageUploading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      await apiClient.post('/profile/profile-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setSuccess('Profile picture uploaded successfully');
+      // Refresh profile to get the latest profile_image_url
+      await fetchProfile();
+      // Force image refresh with cache-busting
+      setProfileImage(`${API_BASE}/profile/profile-image?t=${Date.now()}`);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || err?.response?.data?.message || 'Failed to upload profile picture');
+      console.error('Failed to upload profile picture:', err);
+    } finally {
+      setProfileImageUploading(false);
+      e.target.value = '';
     }
   };
 
@@ -284,6 +335,51 @@ const Profile = () => {
         <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
           {success}
         </div>
+      )}
+
+      {/* Profile Picture Card */}
+      {activeTab === 'personal' && profile && (
+        <Card title="Profile Picture">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="h-20 w-20 rounded-full bg-primary-600 flex items-center justify-center overflow-hidden shrink-0">
+              {profileImage ? (
+                <img
+                  src={profileImage}
+                  alt="Profile"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <UserRound className="h-10 w-10 text-white" />
+              )}
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-900">
+                {personal.first_name} {personal.last_name}
+              </p>
+              <p className="text-xs text-gray-500">Upload a professional photo (JPG, PNG, GIF or WebP, max 5MB)</p>
+              <label className="inline-flex items-center px-3 py-2 text-xs font-medium border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors">
+                {profileImageUploading ? (
+                  <>
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-3 w-3 mr-1" />
+                    Upload Picture
+                  </>
+                )}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  className="hidden"
+                  onChange={handleProfileImageChange}
+                  disabled={profileImageUploading}
+                />
+              </label>
+            </div>
+          </div>
+        </Card>
       )}
 
       {/* Personal Information */}
@@ -602,11 +698,28 @@ const Profile = () => {
                 documents.map((doc) => (
                   <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div>
-                      <p className="font-medium">{doc.name}</p>
-                      <p className="text-sm text-gray-500">{doc.type} - {doc.uploaded_at}</p>
+                      <p className="font-medium">{doc.name || doc.document_name}</p>
+                      <p className="text-sm text-gray-500">{doc.type || doc.category} · {doc.uploaded_at}</p>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Button size="sm" variant="outline">Download</Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(`${API_BASE}/profile/documents/${doc.id}/view`, '_blank')}
+                        title="View document"
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        View
+                      </Button>
+                      <a
+                        href={`${API_BASE}/profile/documents/${doc.id}`}
+                        download
+                        className="inline-flex items-center px-2 py-1 text-xs font-medium border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+                        title="Download document"
+                      >
+                        <Download className="h-3 w-3 mr-1" />
+                        Download
+                      </a>
                       <Button
                         size="sm"
                         variant="danger"

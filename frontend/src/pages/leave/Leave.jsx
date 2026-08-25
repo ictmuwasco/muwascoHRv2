@@ -5,7 +5,7 @@ import Card from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
-import { Plus } from 'lucide-react'
+import { Plus, User } from 'lucide-react'
 
 const Leave = () => {
   const navigate = useNavigate()
@@ -60,10 +60,16 @@ const Leave = () => {
           <h1 className="text-2xl font-bold text-gray-900">My Leave Applications</h1>
           <p className="text-gray-500">View your leave history</p>
         </div>
-        <Button onClick={() => navigate('/leave/apply')}>
-          <Plus className="h-4 w-4 mr-2" />
-          Apply Leave
-        </Button>
+        <div className="flex items-center space-x-3">
+          <Button variant="outline" onClick={() => navigate('/leave/profile')}>
+            <User className="h-4 w-4 mr-2" />
+            My Leave Profile
+          </Button>
+          <Button onClick={() => navigate('/leave/apply')}>
+            <Plus className="h-4 w-4 mr-2" />
+            Apply Leave
+          </Button>
+        </div>
       </div>
 
       <Card>
