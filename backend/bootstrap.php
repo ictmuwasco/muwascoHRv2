@@ -34,6 +34,16 @@ error_reporting($errorReportingBeforeAutoload & ~E_WARNING & ~E_DEPRECATED);
 require_once $autoloadPath;
 error_reporting($errorReportingBeforeAutoload);
 
+// Some vendored packages emit compile-time notices while their files are
+// included (e.g. thecodingmachine/safe pseudo-type hints on PHP 8.0). When
+// display_errors is on, those land in the output buffer opened above and
+// would otherwise be flushed BEFORE our JSON bodies - corrupting every API
+// response. Discard anything buffered so far; keep the buffer itself open
+// for later cleanup paths.
+if (ob_get_level() > 0 && ob_get_length() !== false && ob_get_length() > 0) {
+    ob_clean();
+}
+
 
 // Load .env via vlucas/phpdotenv (handles quoted values, comments, etc.)
 $envFile = BASE_PATH . '/.env';
