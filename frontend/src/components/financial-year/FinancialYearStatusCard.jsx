@@ -4,11 +4,11 @@ const FinancialYearStatusCard = ({ status }) => {
   if (!status) return null;
 
   const alertClass = {
-    success: 'bg-green-50 border-green-400 text-green-800',
-    danger: 'bg-red-50 border-red-400 text-red-800',
-    warning: 'bg-yellow-50 border-yellow-400 text-yellow-800',
-    info: 'bg-blue-50 border-blue-400 text-blue-800',
-  }[status.alert_class] || 'bg-gray-50 border-gray-400 text-gray-800';
+    success: 'bg-green-50 dark:bg-green-900/30 border-green-400 dark:border-green-700 text-green-800 dark:text-green-200',
+    danger: 'bg-red-50 dark:bg-red-900/30 border-red-400 dark:border-red-700 text-red-800 dark:text-red-200',
+    warning: 'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-400 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200',
+    info: 'bg-blue-50 dark:bg-blue-900/30 border-blue-400 dark:border-blue-700 text-blue-800 dark:text-blue-200',
+  }[status.alert_class] || 'bg-gray-50 dark:bg-slate-700 border-gray-400 dark:border-slate-500 text-gray-800 dark:text-gray-100';
 
   return (
     <div className={`rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-4 mb-6 ${alertClass}`}>
@@ -24,7 +24,7 @@ const FinancialYearStatusCard = ({ status }) => {
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 bg-white bg-opacity-50 border border-current rounded-md text-sm"
+                className="w-full px-3 py-2 bg-white bg-opacity-50 dark:bg-slate-900/40 border border-current rounded-md text-sm text-gray-900 dark:text-gray-100"
                 value={status.current_month}
                 readOnly
               />
@@ -35,7 +35,7 @@ const FinancialYearStatusCard = ({ status }) => {
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 bg-white bg-opacity-50 border border-current rounded-md text-sm"
+                className="w-full px-3 py-2 bg-white bg-opacity-50 dark:bg-slate-900/40 border border-current rounded-md text-sm text-gray-900 dark:text-gray-100"
                 value={status.current_date}
                 readOnly
               />
@@ -46,7 +46,7 @@ const FinancialYearStatusCard = ({ status }) => {
               </label>
               <input
                 type="text"
-                className="w-full px-3 py-2 bg-white bg-opacity-50 border border-current rounded-md text-sm"
+                className="w-full px-3 py-2 bg-white bg-opacity-50 dark:bg-slate-900/40 border border-current rounded-md text-sm text-gray-900 dark:text-gray-100"
                 value={
                   status.next_financial_year
                     ? `${status.next_financial_year.year_name} (${status.next_financial_year.start_date} to ${status.next_financial_year.end_date})`
