@@ -36,17 +36,17 @@ const RejectedTab = () => {
     if (!rows.length) {
       return (
         <tr>
-          <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+          <td colSpan={7} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
             No rejected or invalidated leaves on record.
           </td>
         </tr>
       )
     }
     return rows.map((row) => (
-      <tr key={row.id} className="border-t">
+      <tr key={row.id} className="border-t border-gray-200 dark:border-slate-700">
         <td className="px-4 py-2">
-          <div className="font-medium text-gray-900">{row.first_name} {row.last_name}</div>
-          <div className="text-xs text-gray-500">{row.emp_no || row.employee_id}</div>
+          <div className="font-medium text-gray-900 dark:text-gray-100">{row.first_name} {row.last_name}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">{row.emp_no || row.employee_id}</div>
         </td>
         <td className="px-4 py-2">{row.leave_type_name}</td>
         <td className="px-4 py-2 text-sm">
@@ -59,10 +59,10 @@ const RejectedTab = () => {
           </span>
         </td>
         <td className="px-4 py-2 text-sm">
-          <div className="text-gray-900">{row.approver_name || 'System'}</div>
-          <div className="text-xs text-gray-500">{formatDate(row.action_date)}</div>
+          <div className="text-gray-900 dark:text-gray-100">{row.approver_name || 'System'}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">{formatDate(row.action_date)}</div>
         </td>
-        <td className="px-4 py-2 text-sm text-gray-700">
+        <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
           {row.rejection_reason || row.invalidation_reason || '—'}
         </td>
       </tr>
@@ -74,14 +74,14 @@ const RejectedTab = () => {
   return (
     <Card>
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md mb-4">
+        <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md mb-4">
           {error}
         </div>
       )}
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
-            <tr className="text-left text-gray-600">
+            <tr className="text-left text-gray-600 dark:text-gray-400">
               <th className="px-4 py-2">Employee</th>
               <th className="px-4 py-2">Leave Type</th>
               <th className="px-4 py-2">Dates</th>

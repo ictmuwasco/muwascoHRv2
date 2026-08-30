@@ -491,7 +491,10 @@ class LeaveRosterController extends BaseController
                 $rosterId = (int) $existing['id'];
             } else {
                 $stmt = $db->prepare("INSERT INTO leave_roster (employee_id, financial_year_id, scheduled_month, scheduled_year, notes) VALUES (?, ?, ?, ?, ?)");
-                $stmt->bind_param('iisi', $employeeId, $fyId, $month, $year, $notes);
+                // Five placeholders -> five type chars (i i s i s). The previous
+                // 'iisi' miscount made every insert throw ArgumentCountError,
+                // which surfaced to users as a bare 500 "Failed to schedule leave".
+                $stmt->bind_param('iisis', $employeeId, $fyId, $month, $year, $notes);
                 $stmt->execute();
                 $rosterId = (int) $db->insert_id;
             }
@@ -518,13 +521,24 @@ class LeaveRosterController extends BaseController
                 $this->json(['success' => false, 'message' => 'Missing scheduled_month'], 400);
                 return;
             }
-            $stmt = $db->prepare("UPDATE leave_roster SET scheduled_month = ?, notes = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->bind_param('ssi', $month, $notes, $id);
-            $stmt->execute();
-            if (!$stmt->affected_rows) {
+            // Existence pre-check: mysqli reports *changed* rows by default, so
+            // saving identical values must not be misread as "entry not found".
+            $chk = $db->prepare("SELECT fy.start_date FROM leave_roster lr JOIN financial_years fy ON fy.id = lr.financial_year_id WHERE lr.id = ?");
+            $chk->bind_param('i', $id);
+            $chk->execute();
+            $existingRow = $chk->get_result()->fetch_assoc();
+            if (!$existingRow) {
                 $this->json(['success' => false, 'message' => 'Roster entry not found'], 404);
                 return;
             }
+
+            // Keep scheduled_year consistent with storeAction's month->year mapping.
+            $year = (int) date('Y', strtotime($existingRow['start_date']));
+            if (in_array($month, ['January', 'February', 'March', 'April', 'May', 'June'])) { $year++; }
+
+            $stmt = $db->prepare("UPDATE leave_roster SET scheduled_month = ?, scheduled_year = ?, notes = ?, updated_at = NOW() WHERE id = ?");
+            $stmt->bind_param('sisi', $month, $year, $notes, $id);
+            $stmt->execute();
             $this->json(['success' => true, 'message' => 'Schedule updated successfully']);
         } catch (\Throwable $e) {
             $this->logError('updateAction', $e);
