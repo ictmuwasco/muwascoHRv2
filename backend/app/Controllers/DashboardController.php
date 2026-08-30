@@ -480,4 +480,99 @@ class DashboardController extends BaseController
             'pending' => $pending,
         ]);
     }
+/**
+     * GET /api/dashboard/strategic-performance - Strategic & Performance
+     * overview dashboard computed from REAL database rows. Supports optional
+     * financial_year_id and department_id filters. Lower-level heads are
+     * scoped to their own department. No fabricated statistics.
+     */
+    public function strategicPerformanceAction(): void
+    {
+        $this->requirePermission('dashboard', 'view');
+        $scope = \App\Helpers\OrgScope::current();
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+
+        $params = [];
+        $types  = '';
+        $where  = '';
+
+        $filterDept = isset($_GET['department_id']) && $_GET['department_id'] !== ''
+            ? (int) $_GET['department_id'] : null;
+        if (!$scope['is_hr'] && !$scope['is_super_admin'] && !$scope['is_pme_or_audit']) {
+            $filterDept = $scope['department_id'] ?? null;
+        }
+        $filterFy = isset($_GET['financial_year_id']) && $_GET['financial_year_id'] !== ''
+            ? (int) $_GET['financial_year_id'] : null;
+
+        if ($filterDept !== null) {
+            $where = 'WHERE c.department_id = ?';
+            $params[] = $filterDept;
+            $types   .= 'i';
+        }
+        if ($filterFy !== null) {
+            $where = $where === '' ? 'WHERE c.financial_year_id = ?' : $where . ' AND c.financial_year_id = ?';
+            $params[] = $filterFy;
+            $types   .= 'i';
+        }
+
+        $cnt = function (string $sql, array $p = [], string $t = '') use ($db, $where, $params, $types): int {
+            $full = $p === [] ? $sql : $sql; // params handled below
+            $useParams = array_merge($params, $p);
+            $useTypes  = $types . $t;
+            $stmt = $db->prepare($full);
+            if (!$stmt) {
+                return 0;
+            }
+            if ($useParams) {
+                $stmt->bind_param($useTypes, ...$useParams);
+            }
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            return (int) ($row['c'] ?? 0);
+        };
+
+        $activeFy = null;
+        $fyRes = $db->query("SELECT id, year_name, start_date, end_date FROM financial_years WHERE is_active = 1 ORDER BY start_date DESC LIMIT 1");
+        if ($fyRes) {
+            $activeFy = $fyRes->fetch_assoc();
+        }
+
+        $activePlan = null;
+        $today = date('Y-m-d');
+        $planRes = $db->query(
+            "SELECT * FROM strategic_plan WHERE start_date <= '$today' AND end_date >= '$today' ORDER BY start_date DESC LIMIT 1"
+        );
+        if ($planRes && $planRes->num_rows > 0) {
+            $activePlan = $planRes->fetch_assoc();
+        } else {
+            $planRes = $db->query("SELECT * FROM strategic_plan ORDER BY start_date DESC LIMIT 1");
+            if ($planRes) {
+                $activePlan = $planRes->fetch_assoc();
+            }
+        }
+
+        // Department-scoped counts (join through performance_contracts where the
+        // underlying table does not itself carry department/financial year).
+        $contractSql   = "SELECT COUNT(*) AS c FROM performance_contracts c $where";
+        $workplanSql   = "SELECT COUNT(*) AS c FROM workplan_objectives w JOIN performance_contracts c ON w.performance_contract_id = c.id $where";
+        $kpiSql        = "SELECT COUNT(*) AS c FROM kpis k JOIN performance_contracts c ON k.performance_contract_id = c.id $where";
+
+        $this->success([
+            'active_financial_year' => $activeFy,
+            'active_strategic_plan' => $activePlan,
+            'filters_applied' => ['financial_year_id' => $filterFy, 'department_id' => $filterDept],
+            'totals' => [
+                'strategic_plans'       => $cnt('SELECT COUNT(*) AS c FROM strategic_plan'),
+                'strategic_goals'       => $cnt('SELECT COUNT(*) AS c FROM goals'),
+                'strategic_targets'     => $cnt('SELECT COUNT(*) AS c FROM strategic_targets'),
+                'departments_aligned'   => $cnt('SELECT COUNT(DISTINCT department_id) AS c FROM strategic_targets WHERE department_id IS NOT NULL'),
+                'performance_contracts' => $cnt($contractSql),
+                'workplan_objectives'   => $cnt($workplanSql),
+                'kpis'                  => $cnt($kpiSql),
+                'sectional_objectives'  => $cnt('SELECT COUNT(*) AS c FROM performance_indicators WHERE is_active = 1'),
+                'appraisals'            => $cnt('SELECT COUNT(*) AS c FROM employee_appraisals'),
+            ],
+        ]);
+    }
 }

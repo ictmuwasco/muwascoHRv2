@@ -120,6 +120,16 @@ class JsonResponse
     {
         http_response_code($statusCode);
         header('Content-Type: application/json');
+
+        // Correlation id on EVERY response so the SPA can bind errors,
+        // audit entries and support tickets to one traceable request.
+        try {
+            if (class_exists(\App\Services\ErrorTracking\RequestIdService::class)) {
+                \App\Services\ErrorTracking\RequestIdService::applyHeader();
+            }
+        } catch (\Throwable $ignored) {
+            // Observability must never break a response.
+        }
         
         // CORS configuration - must be specific origin when using credentials
         $origin = $_SERVER['HTTP_ORIGIN'] ?? '';

@@ -27,3 +27,35 @@ if (isPushSupported()) {
     ensureServiceWorkerRegistered().catch(() => { /* surfaced in Settings */ })
   })
 }
+
+// ---------------------------------------------------------------------------
+// Global client error capture - registers EVERY uncaught error with System
+// Monitoring: unhandled promise rejections + window.onerror style errors.
+// React render crashes are covered by ErrorBoundary's componentDidCatch;
+// failed API calls by the axios client + utils/api.js fetch wrappers.
+import('./utils/errorReporting').then(({ reportClientError }) => {
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = event?.reason
+    reportClientError({
+      kind: 'unhandled_rejection',
+      message: `Unhandled promise rejection: ${reason?.message || String(reason ?? '')}`.slice(0, 1000),
+      stack: typeof reason?.stack === 'string' ? reason.stack : undefined,
+      severity: 'MEDIUM',
+    })
+  })
+
+  window.addEventListener('error', (event) => {
+    // Resource-load failures on <script>/<img> have no error object detail
+    // beyond the target; still worth a LOW-severity breadcrumb.
+    const isResource = !event?.message && event?.target && event.target !== window
+    reportClientError({
+      kind: 'uncaught',
+      message: isResource
+        ? `Resource failed to load: ${event.target?.tagName} ${event.target?.src || event.target?.href || ''}`
+        : String(event?.message ?? 'Unknown window error'),
+      stack: typeof event?.error?.stack === 'string' ? event.error.stack : undefined,
+      severity: isResource ? 'LOW' : 'HIGH',
+    })
+  }, true) // capture phase so resource errors on media/script tags are caught too
+}).catch(() => { /* reporter unavailable - nothing else we can do */ })
+
