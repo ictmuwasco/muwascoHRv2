@@ -1,7 +1,64 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
-import { Menu, Bell, User, LogOut, Sun, Moon } from 'lucide-react'
+import { Menu, Bell, LogOut, Sun, Moon } from 'lucide-react'
+import apiClient from '../api/client'
+
+// Base URL for direct file access (auth cookie is sent automatically)
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
+
+/**
+ * Avatar for the signed-in user.
+ * Shows the profile photo uploaded on the Profile page (employees.profile_image_url,
+ * streamed through GET /profile/profile-image with the auth cookie). Falls back to
+ * an initials circle when the employee has no photo or the image fails to load.
+ */
+const UserAvatar = ({ user }) => {
+  const [imageUrl, setImageUrl] = useState(null)
+  const [imageFailed, setImageFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setImageUrl(null)
+    setImageFailed(false)
+    ;(async () => {
+      try {
+        const res = await apiClient.get('/profile')
+        const stored = res.data?.data?.profile_image_url
+        if (!cancelled && stored) {
+          // Same streaming URL the Profile page uses; cache-busted after re-upload.
+          setImageUrl(
+            stored.startsWith('http')
+              ? stored
+              : `${API_BASE}/profile/profile-image?t=${Date.now()}`
+          )
+        }
+      } catch {
+        // No employee record / not authorised — initials fallback is used.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
+  if (imageUrl && !imageFailed) {
+    return (
+      <img
+        src={imageUrl}
+        alt={`${user?.first_name ?? 'User'} ${user?.last_name ?? ''}`.trim()}
+        onError={() => setImageFailed(true)}
+        className="h-8 w-8 rounded-full object-cover border border-gray-200 dark:border-slate-600"
+      />
+    )
+  }
+
+  return (
+    <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white">
+      {user?.first_name?.[0] || 'U'}
+    </div>
+  )
+}
 
 const Header = ({ onToggleSidebar = () => {} }) => {
   const { user, logout } = useAuth()
@@ -12,8 +69,10 @@ const Header = ({ onToggleSidebar = () => {} }) => {
     await logout()
   }
 
+  // Sticky header - pinned to the viewport top while the page scrolls; stays in
+  // flow so it honours Layout's lg:pl-64 offset and floats above scrolled content.
   return (
-    <header className="bg-white dark:bg-slate-800 shadow-sm border-b dark:border-slate-700">
+    <header className="sticky top-0 z-40 bg-white dark:bg-slate-800 shadow-sm border-b dark:border-slate-700">
       <div className="flex items-center justify-between px-6 py-4">
         {/* Mobile menu button */}
         <button
@@ -50,9 +109,7 @@ const Header = ({ onToggleSidebar = () => {} }) => {
               onClick={() => setShowDropdown(!showDropdown)}
               className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-200"
             >
-              <div className="h-8 w-8 rounded-full bg-primary-600 flex items-center justify-center text-white">
-                {user?.first_name?.[0] || 'U'}
-              </div>
+              <UserAvatar user={user} />
               <span className="hidden md:block text-sm font-medium">
                 {user?.first_name} {user?.last_name}
               </span>
