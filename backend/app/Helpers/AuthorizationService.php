@@ -110,6 +110,17 @@ class AuthorizationService
             return $this->cachedOverrides[$key] === 'allow';
         }
 
+        // Priority 2.5: Self-Service Profile — any authenticated user may view
+        // and edit their OWN profile. This is fundamental self-service and must
+        // not depend on role_permissions seeding (a missing/un-granted row for
+        // 'profile:view' previously denied access → 403 on GET /api/profile).
+        // The profile controller resolves the record to $userId, so this can
+        // never expose another user's data. A USER-DENY override (checked above)
+        // still takes precedence, as does the super_admin branch in RBAC.
+        if ($module === 'profile' && $userId > 0) {
+            return true;
+        }
+
         // Priority 1 & 3: Super Admin or Role Permission (RBAC handles super_admin)
         $role = $_SESSION['user_role'] ?? '';
         if ($role === '') {
