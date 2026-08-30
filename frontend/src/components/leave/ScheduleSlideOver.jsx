@@ -27,6 +27,9 @@ const ScheduleSlideOver = ({
   financialYearId,
   financialYears = [],
   onSuccess,
+  /** Row (roster list / matrix / search result) used to prefill the form.
+   *  Carrying roster_id switches the slide-over into EDIT mode. */
+  initialEmployee = null,
 }) => {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -38,6 +41,25 @@ const ScheduleSlideOver = ({
   const [submitLoading, setSubmitLoading] = useState(false)
   const [error, setError] = useState('')
   const dropdownRef = useRef(null)
+
+  // Edit mode when prefilled from an existing roster entry.
+  const editId = initialEmployee?.roster_id || null
+
+  /** Adapt roster-list rows / search rows to one shape for display. */
+  const normalizeEmployee = (emp) =>
+    emp
+      ? {
+          id: emp.id ?? emp.employee_id,
+          employee_name:
+            emp.employee_name ??
+            [emp.first_name, emp.last_name].filter(Boolean).join(' ').trim() ??
+            '',
+          emp_code: emp.emp_code ?? '',
+          department_name: emp.department_name ?? '',
+          section_name: emp.section_name ?? '',
+          scheduled_month: emp.scheduled_month ?? null,
+        }
+      : null
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -97,12 +119,20 @@ const ScheduleSlideOver = ({
     setSubmitLoading(true)
     setError('')
     try {
-      await api.post('/leave/roster', {
-        employee_id: selectedEmployee.id,
-        financial_year_id: financialYearId,
-        scheduled_month: selectedMonth,
-        notes: notes.trim(),
-      })
+      // Edit mode targets the existing roster row (PUT); otherwise create.
+      if (editId) {
+        await api.put(`/leave/roster/${editId}`, {
+          scheduled_month: selectedMonth,
+          notes: notes.trim(),
+        })
+      } else {
+        await api.post('/leave/roster', {
+          employee_id: selectedEmployee.id,
+          financial_year_id: financialYearId,
+          scheduled_month: selectedMonth,
+          notes: notes.trim(),
+        })
+      }
       onSuccess && onSuccess()
       handleClose()
     } catch (err) {
@@ -124,6 +154,27 @@ const ScheduleSlideOver = ({
     onClose()
   }
 
+  // Prefill whenever the slide-over opens. A preselected employee skips the
+  // search step entirely; an existing roster entry also restores month/notes.
+  useEffect(() => {
+    if (!isOpen) return
+    if (initialEmployee) {
+      setSelectedEmployee(normalizeEmployee(initialEmployee))
+      setSelectedMonth(initialEmployee.scheduled_month ?? '')
+      setNotes(initialEmployee.notes ?? '')
+      setSearchTerm('')
+      setSearchResults([])
+      setShowDropdown(false)
+      setError('')
+    } else {
+      setSelectedEmployee(null)
+      setSelectedMonth('')
+      setNotes('')
+      setError('')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
+
   if (!isOpen) return null
 
   return (
@@ -136,7 +187,7 @@ const ScheduleSlideOver = ({
         {/* Header */}
         <div className="flex items-center justify-between h-14 border-b dark:border-slate-700 px-6 flex-shrink-0">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Schedule Annual Leave
+            {editId ? 'Edit Leave Schedule' : 'Schedule Annual Leave'}
           </h2>
           <button
             onClick={handleClose}
@@ -156,14 +207,16 @@ const ScheduleSlideOver = ({
             <div className="relative">
               <input
                 type="text"
-                placeholder="Search employee..."
+                placeholder={editId ? 'Employee locked while editing' : 'Search employee...'}
                 value={searchTerm}
+                disabled={!!editId}
                 onChange={(e) => {
+                  if (editId) return
                   setSearchTerm(e.target.value)
                   setShowDropdown(true)
                 }}
-                onFocus={() => setShowDropdown(true)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                onFocus={() => { if (!editId) setShowDropdown(true) }}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 dark:disabled:bg-slate-900/60 disabled:text-gray-500"
               />
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
             </div>
@@ -303,7 +356,7 @@ const ScheduleSlideOver = ({
             loading={submitLoading}
             disabled={!selectedEmployee || !selectedMonth}
           >
-            Schedule Leave
+            {editId ? 'Save Changes' : 'Schedule Leave'}
           </Button>
         </div>
       </div>

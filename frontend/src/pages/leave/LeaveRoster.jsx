@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Users, Download, Plus, RefreshCw, CalendarRange, LayoutGrid, List } from 'lucide-react'
 import api from '../../utils/api'
 import Card from '../../components/ui/Card'
@@ -15,7 +14,6 @@ import FilterBar from '../../components/leave/FilterBar'
 import { FY_MONTHS } from '../../constants/leaveConstants'
 
 const LeaveRoster = () => {
-  const navigate = useNavigate()
 
   // Data state
   const [rosterEntries, setRosterEntries] = useState([])
@@ -538,7 +536,7 @@ const LeaveRoster = () => {
         {viewMode === 'matrix' ? (
           <PlanningMatrix
             employees={filteredMatrixEmployees}
-            onEdit={(emp) => navigate(`/leave/roster/${emp.roster_id}/edit`)}
+            onEdit={handleScheduleClick}
             onDelete={handleDelete}
             onSchedule={handleScheduleClick}
           />
@@ -552,7 +550,7 @@ const LeaveRoster = () => {
               <>
                 <EmployeeRosterTable
                   employees={listViewEmployees}
-                  onEdit={(emp) => navigate(`/leave/roster/${emp.roster_id}/edit`)}
+                  onEdit={handleScheduleClick}
                   onDelete={handleDelete}
                   onSchedule={handleScheduleClick}
                   showLastUpdated={true}
@@ -596,7 +594,7 @@ const LeaveRoster = () => {
       {/* Schedule Slide-over (Spec #6) */}
       <ScheduleSlideOver
         isOpen={showScheduleModal}
-        onClose={() => setShowScheduleModal(false)}
+        onClose={() => { setShowScheduleModal(false); setSelectedEmployeeForSchedule(null) }}
         financialYearId={selectedFinancialYear}
         financialYears={financialYears}
         onSuccess={handleScheduleSuccess}
