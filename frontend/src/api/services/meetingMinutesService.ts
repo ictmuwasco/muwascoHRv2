@@ -112,6 +112,9 @@ export interface AttendanceRow {
   invitation_id?: number
   employee_id?: number
   name?: string
+  first_name?: string
+  last_name?: string
+  employee_number?: string
   designation?: string
   response_status?: string
   attendance_status?: string

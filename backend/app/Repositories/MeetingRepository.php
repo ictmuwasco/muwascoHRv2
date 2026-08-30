@@ -367,10 +367,16 @@ class MeetingRepository implements RepositoryInterface
             return null;
         }
 
-        // Get invitations
+        // Get invitations.
+        // NOTE: employees.employee_id is the employee NUMBER (string), so it
+        // MUST be aliased — a bare "e.employee_id" would clobber the integer
+        // mi.employee_id in the fetched rows and break every consumer that
+        // keys participants by employee id.
         $stmt = $this->conn->prepare("
             SELECT mi.*,
-                   e.first_name, e.last_name, e.employee_id, e.designation, e.email
+                   e.first_name, e.last_name, e.designation, e.email,
+                   e.employee_id AS employee_number,
+                   TRIM(CONCAT(COALESCE(e.first_name, ''), ' ', COALESCE(e.last_name, ''))) AS name
             FROM meeting_invitations mi
             LEFT JOIN employees e ON mi.employee_id = e.id
             WHERE mi.meeting_id = ?
