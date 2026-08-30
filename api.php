@@ -45,6 +45,7 @@ use App\Controllers\Settings\AuditLogController;
 use App\Controllers\HR\HolidayController;
 use App\Controllers\Settings\PermissionController;
 use App\Controllers\Meeting\MeetingController;
+use App\Controllers\Meeting\MeetingMinutesController;
 use App\Controllers\Reports\ReportsController as ReportController;
 use App\Controllers\Reports\AttendanceReportController;
 use App\Controllers\HR\AppraisalController;
@@ -489,6 +490,15 @@ $router->add('DELETE', '/meetings/{id}/participants/{employeeId}', MeetingContro
 $router->add('POST', '/meetings/{id}/confirm', MeetingController::class, 'confirm');
 $router->add('POST', '/meetings/{id}/decline', MeetingController::class, 'decline');
 $router->add('POST', '/meetings/{id}/attendance', MeetingController::class, 'markAttendance');
+
+// Meeting Minutes routes - structured minutes management
+$router->add('GET',  '/meetings/{id}/minutes/status',  MeetingMinutesController::class, 'status');
+$router->add('GET',  '/meetings/{id}/minutes/options', MeetingMinutesController::class, 'options');
+$router->add('POST', '/meetings/{id}/minutes',           MeetingMinutesController::class, 'create');
+$router->add('GET',  '/meetings/{id}/minutes',           MeetingMinutesController::class, 'view');
+$router->add('PUT',  '/meetings/{id}/minutes',           MeetingMinutesController::class, 'update');
+$router->add('POST', '/meetings/{id}/minutes/publish',   MeetingMinutesController::class, 'publish');
+$router->add('POST', '/meetings/{id}/minutes/reopen',    MeetingMinutesController::class, 'reopen');
 
 // Notification preferences (own settings)
 $router->add('GET', '/notification-preferences', \App\Controllers\Notifications\NotificationPreferencesController::class, 'index');
