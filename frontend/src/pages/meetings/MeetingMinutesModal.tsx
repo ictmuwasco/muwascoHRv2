@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import toast from 'react-hot-toast'
 import {
@@ -102,6 +102,13 @@ const catOf = (p: AttendanceRow): string => {
   return 'Not Marked'
 }
 
+/** Human-readable response value ("accepted" -> "Accepted"). */
+const humanize = (v?: string | null): string => {
+  if (!v) return '—'
+  const label = v.replace(/_/g, ' ')
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
 const selectCls = 'w-full px-3 py-2 border rounded-md bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500'
 const textareaCls = 'w-full px-3 py-2 border rounded-md bg-white dark:bg-slate-900 dark:text-slate-100 dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-y'
 
@@ -200,6 +207,28 @@ const MeetingMinutesModal = ({
   const canEdit = !!(minutesStatus?.can_edit_draft || minutesStatus?.can_create)
   const canPublish = !!minutesStatus?.can_publish
   const canReopen = !!minutesStatus?.can_reopen
+
+  // Employee-id -> name map from the options endpoint — used as a fallback
+  // when a participant row arrives without name fields.
+  const nameById = useMemo(() => {
+    const map = new Map<string, string>()
+    options.employees.forEach((e) => {
+      const full = `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim()
+      if (full) map.set(String(e.id), full)
+    })
+    return map
+  }, [options.employees])
+
+  /** Resolve a participant's display name (never shows a bare id when a name exists). */
+  const displayNameOf = (p: AttendanceRow): string => {
+    const direct = [p.first_name, p.last_name].filter(Boolean).join(' ').trim()
+    if (direct) return direct
+    if (p.name && p.name.trim()) return p.name.trim()
+    const fromOptions = nameById.get(String(p.employee_id))
+    if (fromOptions) return fromOptions
+    if (p.employee_number) return `#${p.employee_number}`
+    return `#${p.employee_id ?? '?'}`
+  }
 
   // ---- Form helpers ----
   const updateField = (key: keyof FormState, value: string | AgendaItemInput[] | DecisionItemInput[] | ActionItemInput[] | AobItemInput[]) => {
@@ -374,10 +403,10 @@ const MeetingMinutesModal = ({
                     </thead>
                     <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
                       {rows.map((p) => (
-                        <tr key={p.employee_id || p.invitation_id}>
-                          <td className="px-3 py-1 text-sm">{p.name || `#${p.employee_id}`}</td>
-                          <td className="px-3 py-1 text-sm">{p.response_status || '—'}</td>
-                          <td className="px-3 py-1 text-sm">{p.attendance_status || '—'}</td>
+                        <tr key={p.invitation_id ?? p.employee_id ?? p.employee_number}>
+                          <td className="px-3 py-1 text-sm font-medium text-gray-900 dark:text-gray-100">{displayNameOf(p)}</td>
+                          <td className="px-3 py-1 text-sm">{humanize(p.response_status)}</td>
+                          <td className="px-3 py-1 text-sm">{humanize(p.attendance_status)}</td>
                         </tr>
                       ))}
                     </tbody>
