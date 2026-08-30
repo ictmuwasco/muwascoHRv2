@@ -3,10 +3,32 @@ import api from '../utils/api'
 
 const AuthContext = createContext(null)
 
+/** One-time flag so we never spam the console on repeated fallbacks. */
+let warnedMissingProvider = false
+
 export const useAuth = () => {
   const context = useContext(AuthContext)
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider')
+    // Defensive fallback instead of throwing. A component mounted outside
+    // <AuthProvider> - or a transient Vite HMR module swap while the dev
+    // server hot-reloads edited files - previously crashed the entire tree
+    // with "useAuth must be used within an AuthProvider" (seen once from
+    // /leave/roster). Behaving as signed-out lets ProtectedRoute send the
+    // user to /login and every other consumer keep rendering safely.
+    if (!warnedMissingProvider) {
+      warnedMissingProvider = true
+      console.warn('useAuth called outside AuthProvider - using signed-out fallback.')
+    }
+    return {
+      user: null,
+      loading: false,
+      isAuthenticated: false,
+      login: async () => ({
+        success: false,
+        message: 'Authentication is unavailable. Please reload the page.',
+      }),
+      logout: async () => { localStorage.removeItem('user') },
+    }
   }
   return context
 }

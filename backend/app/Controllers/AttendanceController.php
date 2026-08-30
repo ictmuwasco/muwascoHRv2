@@ -8,6 +8,7 @@ use App\Helpers\GeoLocation;
 use App\Services\Contracts\AttendanceServiceInterface;
 use App\Repositories\Contracts\EmployeeRepositoryInterface;
 use App\Repositories\Contracts\OfficeRepositoryInterface;
+use App\Services\AuditService;
 
 /**
  * Attendance Controller - REST API for attendance management.
@@ -32,6 +33,63 @@ class AttendanceController extends BaseController
 
         $this->attendanceService->setAttendanceRepository(new \App\Repositories\AttendanceRepository());
         $this->attendanceService->setEmployeeRepository($this->employeeRepository);
+    }
+
+    /**
+     * Write an attendance-scoped audit-trail entry via the central AuditService.
+     *
+     * @param string $action      AuditService ACTION_* constant.
+     * @param string $status      AuditService STATUS_* constant.
+     * @param string $description Human-readable description.
+     * @param array  $options     Extra context (employee_id, office_id, lat/lng, …).
+     * @return int|null Audit-log row id, or null on failure.
+     */
+    protected function auditAttendance(string $action, string $status, string $description, array $options = []): ?int
+    {
+        return AuditService::getInstance()->log(
+            AuditService::MODULE_ATTENDANCE,
+            $action,
+            $description,
+            array_merge($options, ['status' => $status])
+        );
+    }
+
+    /**
+     * Audit dashboard view / filter / export actions. Background auto-refresh
+     * calls carry no audit signal and are deliberately not recorded to avoid
+     * flooding the audit trail with noise.
+     *
+     * @param string $auditAction 'view' | 'export' | '' (absent = background call)
+     * @param array  $params      Request parameters passed to getDashboard().
+     * @param array  $result      Dashboard result (employees/pagination).
+     */
+    private function auditDashboardView(string $auditAction, array $params, array $result): void
+    {
+        $isExport = $auditAction === 'export';
+        if (!$isExport && $auditAction !== 'view') {
+            return;
+        }
+
+        $this->auditAttendance(
+            $isExport ? AuditService::ACTION_EXPORT : AuditService::ACTION_VIEW,
+            AuditService::STATUS_SUCCESS,
+            $isExport ? 'Exported attendance dashboard (CSV)' : 'Viewed attendance dashboard',
+            [
+                'channel' => 'WEB',
+                'metadata' => [
+                    'date'          => $params['date'] ?? null,
+                    'department_id' => $params['department_id'] ?? null,
+                    'section_id'    => $params['section_id'] ?? null,
+                    'status'        => $params['status'] ?? null,
+                    'search'        => $params['search'] ?? null,
+                    'page'          => $params['page'] ?? null,
+                    'limit'         => $params['limit'] ?? null,
+                    'row_count'     => isset($result['employees']) ? count($result['employees']) : null,
+                    'total'         => $result['pagination']['total'] ?? null,
+                    'is_export'     => $isExport,
+                ],
+            ]
+        );
     }
 
     /**
@@ -490,6 +548,24 @@ class AttendanceController extends BaseController
                 $attendanceId = $db->insert('attendance', $record);
                 $db->commit();
                 $inTransaction = false;
+
+                // Audit: clock-in recorded successfully
+                $this->auditAttendance(
+                    AuditService::ACTION_CLOCK_IN,
+                    AuditService::STATUS_SUCCESS,
+                    'Employee clock-in recorded',
+                    [
+                        'employee_id'     => $employeeDbId,
+                        'office_id'       => $officeId,
+                        'office_name'     => $office['name'] ?? null,
+                        'latitude'        => $latitude,
+                        'longitude'       => $longitude,
+                        'location_source' => $hasCoordinates ? 'GPS' : 'UNVERIFIED',
+                        'target_type'     => 'Attendance',
+                        'target_id'       => (int) $attendanceId,
+                        'channel'         => 'WEB',
+                    ]
+                );
             } catch (\mysqli_sql_exception $e) {
                 if ($inTransaction) {
                     $db->rollback();
@@ -497,6 +573,24 @@ class AttendanceController extends BaseController
                 }
                 // 1062 / SQLSTATE 23000 = duplicate key -> a concurrent request won the race.
                 if ((int)$e->getCode() === 1062 || (string)$e->sqlstate === '23000') {
+                    // Audit: clock-in idempotency retry (concurrent request won the race)
+                    $this->auditAttendance(
+                        AuditService::ACTION_CLOCK_IN,
+                        AuditService::STATUS_SUCCESS,
+                        'Clock-in idempotency retry (already clocked in today)',
+                        [
+                            'employee_id'     => $employeeDbId,
+                            'office_id'       => $officeId,
+                            'office_name'     => $office['name'] ?? null,
+                            'latitude'        => $latitude,
+                            'longitude'       => $longitude,
+                            'location_source' => $hasCoordinates ? 'GPS' : 'UNVERIFIED',
+                            'target_type'     => 'Attendance',
+                            'metadata'        => ['idempotent' => true],
+                            'channel'         => 'WEB',
+                        ]
+                    );
+
                     $ref = $db->fetchOne(
                         "SELECT a.id, a.clock_in, a.clock_out, a.is_late, a.status,
                                 o.name AS office_name
@@ -528,6 +622,20 @@ class AttendanceController extends BaseController
                 'employee_id' => $employeeDbId,
                 'error' => $e->getMessage(),
             ]);
+
+            // Audit: clock-in failed
+            $this->auditAttendance(
+                AuditService::ACTION_CLOCK_IN,
+                AuditService::STATUS_FAILED,
+                'Clock-in failed: ' . $e->getMessage(),
+                [
+                    'employee_id'     => $employeeDbId,
+                    'office_id'       => $officeId,
+                    'target_type'     => 'Attendance',
+                    'metadata'        => ['error' => $e->getMessage()],
+                    'channel'         => 'WEB',
+                ]
+            );
             $this->error('Failed to record your clock-in. Please try again.', 500);
         }
 
@@ -629,6 +737,24 @@ class AttendanceController extends BaseController
                     . ' from the office. You must be within '
                     . \App\Helpers\GeoLocation::formatDistanceMeters((float) ($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS))
                     . ' of the office to clock out. Please move closer and try again.';
+
+                $this->auditAttendance(
+                    AuditService::ACTION_CLOCK_OUT,
+                    AuditService::STATUS_FAILED,
+                    'Clock-out denied: outside geofence radius',
+                    [
+                        'office_id'       => $officeId,
+                        'office_name'     => $office['name'] ?? null,
+                        'latitude'        => $latitude,
+                        'longitude'       => $longitude,
+                        'location_source' => $hasCoordinates ? 'GPS' : 'UNVERIFIED',
+                        'target_type'     => 'Attendance',
+                        'distance'        => $radiusCheck['distance'],
+                        'metadata'        => ['distance' => $radiusCheck['distance']],
+                        'channel'         => 'WEB',
+                    ]
+                );
+
                 $this->json([
                     'success' => false,
                     'message' => $message,
@@ -657,11 +783,40 @@ class AttendanceController extends BaseController
         if (!$session) {
             // No clock-in today (either absent, or yesterday's session was
             // reconciled overnight) -> cannot clock out.
+            $this->auditAttendance(
+                AuditService::ACTION_CLOCK_OUT,
+                AuditService::STATUS_DENIED,
+                'No active clock-in found for today. Please clock in first.',
+                [
+                    'employee_id'     => $employeeDbId,
+                    'office_name'     => $office['name'] ?? null,
+                    'target_type'     => 'Attendance',
+                    'metadata'        => ['code' => 'NOT_CLOCKED_IN'],
+                    'channel'         => 'WEB',
+                ]
+            );
             $this->error('No active clock-in found for today. Please clock in first.', 400, null, ['code' => 'NOT_CLOCKED_IN']);
         }
 
         // Idempotency: already clocked out earlier today (e.g. double-click).
         if (!empty($session['clock_out']) || (string)$session['status'] === 'clocked_out') {
+            $this->auditAttendance(
+                AuditService::ACTION_CLOCK_OUT,
+                AuditService::STATUS_SUCCESS,
+                'Clock-out idempotent retry (already clocked out today)',
+                [
+                    'employee_id'     => $employeeDbId,
+                    'office_id'       => $officeId,
+                    'office_name'     => $office['name'] ?? null,
+                    'latitude'        => $latitude,
+                    'longitude'       => $longitude,
+                    'location_source' => $hasCoordinates ? 'GPS' : 'UNVERIFIED',
+                    'target_type'     => 'Attendance',
+                    'target_id'       => (int) $session['id'],
+                    'metadata'        => ['idempotent' => true],
+                    'channel'         => 'WEB',
+                ]
+            );
             $this->json([
                 'success' => true,
                 'message' => 'You have already clocked out today.',
@@ -681,6 +836,23 @@ class AttendanceController extends BaseController
             'status' => 'clocked_out',
             'updated_at' => $now,
         ], 'id = ?', 'i', [(int)$session['id']]);
+
+        $this->auditAttendance(
+            AuditService::ACTION_CLOCK_OUT,
+            AuditService::STATUS_SUCCESS,
+            'Employee clock-out recorded',
+            [
+                'employee_id'     => $employeeDbId,
+                'office_id'       => $officeId,
+                'office_name'     => $office['name'] ?? null,
+                'latitude'        => $latitude,
+                'longitude'       => $longitude,
+                'location_source' => $hasCoordinates ? 'GPS' : 'UNVERIFIED',
+                'target_type'     => 'Attendance',
+                'target_id'       => (int) $session['id'],
+                'channel'         => 'WEB',
+            ]
+        );
 
         $this->json([
             'success' => true,
@@ -721,7 +893,8 @@ class AttendanceController extends BaseController
 
         try {
             $service = new \App\Services\AttendanceDashboardService();
-            $this->success($service->getDashboard([
+
+            $params = [
                 'date'          => $_GET['date'] ?? null,
                 'trend_days'    => isset($_GET['trend_days']) ? (int)$_GET['trend_days'] : 7,
                 'department_id' => (isset($_GET['department_id']) && $_GET['department_id'] !== '')
@@ -732,7 +905,15 @@ class AttendanceController extends BaseController
                 'search'        => $this->getSearchQuery(),
                 'page'          => max(1, (int)($_GET['page'] ?? 1)),
                 'limit'         => (int)($_GET['limit'] ?? 25),
-            ]));
+            ];
+
+            $result = $service->getDashboard($params);
+
+            // Record a user-initiated view / filter / export. Background
+            // auto-refresh calls omit the "audit" flag and are not logged.
+            $this->auditDashboardView($_GET['audit'] ?? '', $params, $result);
+
+            $this->success($result);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
         } catch (\Throwable $e) {
@@ -757,12 +938,30 @@ class AttendanceController extends BaseController
 
         try {
             $service = new \App\Services\AttendanceDashboardService();
-            $this->success($service->getEmployeeHistory(
+            $result = $service->getEmployeeHistory(
                 $employeeId,
                 (string)($_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'))),
                 (string)($_GET['end_date'] ?? date('Y-m-d')),
                 (int)($_GET['limit'] ?? 30)
-            ));
+            );
+
+            $this->auditAttendance(
+                AuditService::ACTION_VIEW,
+                AuditService::STATUS_SUCCESS,
+                'Viewed employee attendance history',
+                [
+                    'target_type' => 'Employee',
+                    'target_id'   => $employeeId,
+                    'channel'     => 'WEB',
+                    'metadata'    => [
+                        'employee_id' => $employeeId,
+                        'start_date'  => $_GET['start_date'] ?? null,
+                        'end_date'    => $_GET['end_date'] ?? null,
+                    ],
+                ]
+            );
+
+            $this->success($result);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 404);
         } catch (\Throwable $e) {

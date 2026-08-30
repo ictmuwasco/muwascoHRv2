@@ -33,6 +33,8 @@ class AuditService
      public const MODULE_HOLIDAYS        = 'Holidays';
      public const MODULE_REPORTS         = 'Reports';
      public const MODULE_MEETINGS        = 'Meetings';
+    public const MODULE_ATTENDANCE      = 'Attendance';
+    public const MODULE_PERFORMANCE     = 'Performance';
 
     // ---- Action constants (Phase 4) ----
     public const ACTION_LOGIN            = 'LOGIN';
@@ -54,9 +56,13 @@ class AuditService
     public const ACTION_DECLINE          = 'DECLINE';
     public const ACTION_CHECKIN          = 'CHECKIN';
      public const ACTION_CANCEL_MEETING   = 'CANCEL_MEETING';
+    public const ACTION_CLOCK_IN        = 'CLOCK_IN';
+    public const ACTION_CLOCK_OUT       = 'CLOCK_OUT';
+    public const ACTION_VIEW           = 'VIEW';
 
     public const STATUS_SUCCESS = 'SUCCESS';
     public const STATUS_FAILED  = 'FAILED';
+    public const STATUS_DENIED  = 'DENIED';
 
     /**
      * Field names that must never be persisted to the audit log.
@@ -114,6 +120,7 @@ class AuditService
                 'user_id'            => $user['id'],
                 'user_name_snapshot' => $user['name'],
                 'user_role_snapshot' => $user['role'],
+                'request_id'         => \App\Services\ErrorTracking\RequestIdService::current(),
                 'action'             => $action,
                 'module'             => $module,
                 'description'        => mb_substr($description, 0, 5000),
