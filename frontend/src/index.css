@@ -13,6 +13,31 @@
   .dark body {
     @apply bg-slate-900 text-slate-100;
   }
+  /* Make native controls (dropdown popups, date pickers, scrollbars, unstyled
+     inputs/textareas) follow the OS dark theme instead of staying white. */
+  .dark {
+    color-scheme: dark;
+  }
+}
+
+/*
+ * Dark-mode fallback for native <select> dropdowns. Declared inside the
+ * utilities layer on purpose: at equal layer, specificity decides -
+ * - beats single-class light utilities like ".bg-white" (0-1-0 < 0-1-1),
+ *   repairing dropdowns that were styled for light mode only;
+ * - loses to paired dark variants like ".dark:bg-slate-800" (0-1-1 < 0-2-0),
+ *   so dropdowns that already adapt to dark mode keep their own styling.
+ */
+@layer utilities {
+  .dark select {
+    background-color: #1e293b; /* slate-800 */
+    color: #f1f5f9;            /* slate-100 */
+  }
+  .dark select option,
+  .dark select optgroup {
+    background-color: #1e293b;
+    color: #f1f5f9;
+  }
 }
 
 @layer components {
