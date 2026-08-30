@@ -488,7 +488,51 @@ Get employees report.
 Get leave report.
 
 #### GET /reports/attendance
-Get attendance report.
+Get the legacy aggregated attendance report (summary + per-employee rows).
+Backward compatible; the Attendance Reports module uses the dedicated
+endpoints below instead.
+
+### Attendance Reports (analytics & reporting module)
+
+All endpoints below require the `reports:view` permission
+(`reports:export` for the CSV download) and respect the caller's
+organisational scope server-side. They share one filter contract:
+
+**Query Parameters:**
+- `from` / `to` (optional): Reporting period `YYYY-MM-DD`. Defaults to the
+  current month.
+- `department_id`, `office_id`, `employee_id`, `employee_type` (optional):
+  Organisational filters. Non-HR users are pinned to their own department.
+- `status` (optional): `present`, `late`, `missing`, `auto`, `absent`,
+  `on_leave` (single, or comma-separated for record-level statuses so
+  `late,missing` works). `absent` / `on_leave` are calendar-derived and
+  applied to the per-employee day counts.
+- `search` (optional, employees/records only): name / employee number /
+  department substring.
+- `page`, `per_page`, `sort`, `dir` (optional, employees only): server-side
+  pagination and sorting (sort column whitelisted; dir `asc` | `desc`).
+
+**Endpoints:**
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /reports/attendance/options` | Filter dropdown values (departments, offices, employee types, statuses) |
+| `GET /reports/attendance/summary` | KPI cards + compliance headline for the period |
+| `GET /reports/attendance/trends` | Attendance trend, auto-grouped daily / weekly / monthly |
+| `GET /reports/attendance/by-status` | Status distribution (present/late/missing/auto/on-leave/absent) |
+| `GET /reports/attendance/by-department` | Department attendance performance |
+| `GET /reports/attendance/late-arrivals` | Late arrival totals, repeat offenders, top departments |
+| `GET /reports/attendance/working-hours` | Working-hours totals, averages and trend |
+| `GET /reports/attendance/insights` | Dynamically computed insight bullets |
+| `GET /reports/attendance/compliance` | Compliance rate + per-bucket series + lowest buckets |
+| `GET /reports/attendance/employees` | Paginated per-employee attendance summary |
+| `GET /reports/attendance/records` | Drill-down daily attendance rows for one employee (`employee_id` required) |
+| `GET /reports/attendance/export` | CSV export honouring all active filters |
+
+Absence is never "employees minus records": per working day it is
+`expected - present - on-leave`, skipping weekends and public holidays
+(`holidays` table) and counting only active employees hired on or before
+each date.
 
 #### GET /reports/{type}/export/{format}
 Export report.
