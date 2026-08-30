@@ -9,7 +9,6 @@ import {
   Calendar,
   UserCog,
   Settings,
-  LogOut,
   User,
   Star,
   X,
@@ -20,12 +19,16 @@ import {
   PartyPopper,
   CalendarDays,
   CalendarRange,
-  BarChart3
+  BarChart3,
+  Target,
+  FileText,
+  CalendarClock,
+  FileBarChart2,
 } from 'lucide-react'
 import Logo from './Logo'
 
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const location = useLocation()
   const [expandedParent, setExpandedParent] = useState(null)
 
@@ -33,23 +36,37 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const role = (user?.role || '').toLowerCase()
   const canManageLeave = MANAGER_ROLES.includes(role)
 
+  // Strategy & Performance visibility mirrors the backend OrgScope::canViewAny()
+  // viewer roles so the menu only appears for users who can actually use it.
+  const STRATEGY_VIEWER_ROLES = [
+    'super_admin', 'hr_manager', 'dept_head', 'section_head',
+    'sub_section_head', 'manager', 'managing_director', 'officer'
+  ]
+  const canViewStrategy = STRATEGY_VIEWER_ROLES.includes(role)
+
   // Auto-expand the correct parent based on the current route.
   useEffect(() => {
     const path = location.pathname
     if (path.startsWith('/leave/roster') || path.startsWith('/leave/oversight')) {
       setExpandedParent('Roster')
+    } else if (path.startsWith('/leave/reports')) {
+      setExpandedParent('Reports')
     } else if (path.startsWith('/leave')) {
       setExpandedParent('LEAVE MANAGEMENT')
     } else if (path.startsWith('/meetings') || path.startsWith('/my-meetings')) {
       setExpandedParent('Meetings')
     } else if (path.startsWith('/attendance')) {
       setExpandedParent('Attendance')
-    } else if (path.startsWith('/financial_year') || path.startsWith('/consent_management') || path.startsWith('/holidays')) {
+    } else if (path.startsWith('/financial_year') || path.startsWith('/hr_admin') || path.startsWith('/consent_management') || path.startsWith('/holidays')) {
       setExpandedParent('HR Admin')
+    } else if (canViewStrategy && path.startsWith('/strategy')) {
+      setExpandedParent('Strategy & Performance')
+    } else if (path.startsWith('/reports')) {
+      setExpandedParent('Reports')
     } else {
       setExpandedParent(null)
     }
-  }, [location.pathname])
+  }, [location.pathname, canViewStrategy])
 
   const toggleParent = (name) => {
     setExpandedParent((prev) => (prev === name ? null : name))
@@ -65,6 +82,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       icon: UserCog,
       submenu: [
         { name: 'Financial Year', href: '/financial_year', icon: DollarSign },
+        { name: 'Appraisal Cycles', href: '/hr_admin/appraisal-cycles', icon: CalendarRange },
         { name: 'Consent Management', href: '/consent_management', icon: ClipboardList },
         { name: 'Holidays', href: '/holidays', icon: PartyPopper },
       ]
@@ -106,7 +124,28 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       ]
     },
     { name: 'Appraisal', href: '/appraisal', icon: Star },
-    { name: 'Settings', href: '/settings', icon: Settings },
+    ...(canViewStrategy
+      ? [{
+          name: 'Strategy & Performance',
+          icon: Target,
+          submenu: [
+            { name: 'Strategic Plan', href: '/strategy/strategic-plan', icon: Target },
+            { name: 'Performance Contracts', href: '/strategy/performance-contracts', icon: FileText },
+            { name: 'Workplans', href: '/strategy/workplans', icon: ClipboardList },
+            { name: 'Performance Reports', href: '/strategy/reports', icon: BarChart3 },
+          ],
+        }]
+      : []),
+    {
+      name: 'Reports',
+      icon: BarChart3,
+      submenu: [
+        { name: 'Employee Reports', href: '/reports', icon: Users },
+        { name: 'Attendance Reports', href: '/reports/attendance', icon: CalendarCheck },
+        { name: 'Leave Reports', href: '/leave/reports', icon: FileBarChart2 },
+      ]
+    },
+     { name: 'Settings', href: '/settings', icon: Settings },
   ]
 
   return (
@@ -204,32 +243,6 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
             )
           })}
         </nav>
-
-        {/* User info at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t dark:border-slate-700">
-          <NavLink
-            to="/profile"
-            onClick={onClose}
-            className="flex items-center space-x-3 mb-3 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-          >
-            <div className="h-10 w-10 rounded-full bg-primary-600 flex items-center justify-center text-white">
-              {user?.first_name?.[0] || 'U'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                {user?.first_name} {user?.last_name}
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
-            </div>
-          </NavLink>
-          <button
-            onClick={logout}
-            className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Logout
-          </button>
-        </div>
       </div>
     </>
   )
