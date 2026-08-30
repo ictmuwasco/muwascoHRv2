@@ -125,6 +125,10 @@ const AttendanceDashboard = () => {
         page,
         limit: PER_PAGE,
         trend_days: 7,
+        // User-initiated loads (initial, filter/page changes) are audited as
+        // "view". Background auto-refresh/refresh calls pass silent=true and
+        // therefore omit the flag so they are not written to the audit log.
+        audit: opts.silent ? undefined : 'view',
       }
       const response = await api.get('/attendance/hr-dashboard', { params })
       if (requestId !== requestIdRef.current) return // stale response
@@ -222,6 +226,9 @@ const AttendanceDashboard = () => {
           page: 1,
           limit: 200,
           trend_days: 1,
+          // Distinguish this client-side CSV export from a plain dashboard load
+          // so the backend can emit an ACTION_EXPORT audit record.
+          audit: 'export',
         },
       })
       const payload = response.data?.data
