@@ -1,3 +1,5 @@
+import { reportClientError, getRequestId, setRequestId } from './errorReporting';
+
 const API_URL = '/api';
 
 /**
@@ -101,6 +103,7 @@ export const apiFetch = async (endpoint, options = {}) => {
       headers,
       body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
       credentials,
+      'X-Request-ID': getRequestId(),
       signal,
       ...restOptions,
     }).finally(() => {
@@ -121,8 +124,21 @@ export const apiFetch = async (endpoint, options = {}) => {
   try {
     response = await send();
   } catch (err) {
-    throw err && err.name === 'AbortError' ? toTimeoutError() : err;
+    if (err && err.name === 'AbortError') throw toTimeoutError();
+    // Network failure - the request never reached the server. Mirrors the
+    // axios client so every page benefits from System Monitoring reports.
+    reportClientError({
+      kind: 'network',
+      message: `Network failure calling ${method.toUpperCase()} ${url}: ${err?.message || String(err)}`,
+      endpoint: url,
+      severity: 'HIGH',
+    });
+    throw err;
   }
+
+  // Adopt the server-authoritative correlation id for future calls/reports.
+  const requestIdHeader = response.headers?.get?.('x-request-id');
+  if (requestIdHeader) setRequestId(requestIdHeader);
 
   // Expired access-token cookie -> renew once, then replay the request.
   if (response.status === 401 && isRetriable) {
@@ -146,6 +162,22 @@ export const apiFetch = async (endpoint, options = {}) => {
   }
 
   if (!response.ok) {
+    // Register unexpected SERVER failures with System Monitoring - mirrors
+    // the axios client. 4xx is expected app behaviour (§34); only 5xx and
+    // unreachable networks get reported. The collector never reports itself.
+    if (response.status >= 500 && !url.includes('/system/client-errors')) {
+      reportClientError({
+        kind: 'api',
+        message: `API ${response.status} on ${method.toUpperCase()} ${url}: ${data?.message || 'Internal Server Error'}`,
+        stack: data?.error?.details ?? undefined,
+        endpoint: url,
+        status_code: response.status,
+        severity: 'HIGH',
+        extra: {
+          request_id: data?.error?.request_id ?? undefined,
+        },
+      });
+    }
     const message = data.error || data.message || `Request failed with status ${response.status}`;
     const error = new Error(message);
     error.response = { data, status: response.status, statusText: response.statusText };

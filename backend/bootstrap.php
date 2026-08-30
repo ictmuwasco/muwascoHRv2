@@ -95,14 +95,35 @@ set_error_handler(function ($severity, $message, $file, $line) {
 });
 
 set_exception_handler(function (\Throwable $e) {
+    // ---- 1. Centralized capture (fail-safe §28): tracker failures never
+    //         prevent the original error from being handled/logged.
+    $reference = null;
+    try {
+        $reference = \App\Services\ErrorTracking\ErrorTrackerService::getInstance()
+            ->captureThrowable($e, ['http_status' => 500]);
+    } catch (\Throwable $trackerFailure) {
+        error_log('[ErrorTracker] handler capture failed: ' . $trackerFailure->getMessage());
+    }
+
+    // ---- 2. Technical log (same file as before, now with correlation id) ---
+    $requestIdForLog = '-';
+    try {
+        if (class_exists(\App\Services\ErrorTracking\RequestIdService::class)) {
+            $requestIdForLog = \App\Services\ErrorTracking\RequestIdService::current();
+        }
+    } catch (\Throwable $ignored) {
+        // keep '-'
+    }
+
     $logFile = STORAGE_PATH . '/logs/error.log';
     $message = sprintf(
-        "[%s] %s: %s in %s:%d\nStack trace:\n%s\n\n",
+        "[%s] %s: %s in %s:%d\nRequest-ID: %s\nStack trace:\n%s\n\n",
         date('Y-m-d H:i:s'),
         get_class($e),
         $e->getMessage(),
         $e->getFile(),
         $e->getLine(),
+        $requestIdForLog,
         $e->getTraceAsString()
     );
     file_put_contents($logFile, $message, FILE_APPEND);
@@ -117,18 +138,45 @@ set_exception_handler(function (\Throwable $e) {
     $isApiRequest = (strpos($requestUri, '/api/') === 0)
         || (strpos($httpAccept, 'application/json') !== false);
 
+    $requestId = is_array($reference) ? ($reference['request_id'] ?? null) : null;
+
     if ($isApiRequest) {
+        // Standardized envelope (§12): no stack traces / SQL / paths in prod.
         http_response_code(500);
         header('Content-Type: application/json');
-        echo json_encode(['error' => env('APP_DEBUG', false) ? $e->getMessage() : 'Internal server error']);
+        if ($requestId) {
+            header('X-Request-ID: ' . $requestId);
+        }
+        echo json_encode([
+            'success' => false,
+            'message' => 'An unexpected error occurred.',
+            'error'   => [
+                'code'       => 'INTERNAL_SERVER_ERROR',
+                'request_id' => $requestId,
+                'reference'  => is_array($reference) ? ($reference['error_uuid'] ?? null) : null,
+                'details'    => env('APP_DEBUG', false) ? $e->getMessage() : null,
+            ],
+        ]);
     } elseif (env('APP_DEBUG', false)) {
         echo "<pre>";
         echo "Error: " . htmlspecialchars($e->getMessage()) . "\n";
         echo "File: " . $e->getFile() . ":" . $e->getLine() . "\n";
+        echo "Request: " . htmlspecialchars((string) $requestId) . "\n";
         echo "</pre>";
     } else {
         http_response_code(500);
-        echo json_encode(['error' => 'Internal server error']);
+        header('Content-Type: application/json');
+        if ($requestId) {
+            header('X-Request-ID: ' . $requestId);
+        }
+        echo json_encode([
+            'success' => false,
+            'message' => 'An unexpected error occurred.',
+            'error'   => [
+                'code'       => 'INTERNAL_SERVER_ERROR',
+                'request_id' => $requestId,
+            ],
+        ]);
     }
 });
 
@@ -312,3 +360,51 @@ function hasAllPermissions(array $permissions): bool
 {
     return \App\Helpers\Auth::getInstance()->hasAllPermissions($permissions);
 }
+
+// ===========================================================================
+// Observability / Error Tracking bootstrap (Phase 1 foundation).
+// Runs AFTER config()/db() helpers exist. Fail-safe by design: any throwable
+// raised here is swallowed - monitoring must never break the application.
+// ===========================================================================
+if (!function_exists('observability_initialize')) {
+    function observability_initialize(): void
+    {
+        // 1) Correlation id for every HTTP/CLI execution (adopts a validated
+        //    inbound X-Request-ID so SPA and backend share one trace id).
+        try {
+            \App\Services\ErrorTracking\RequestIdService::initialize();
+        } catch (\Throwable $e) {
+            error_log('[Observability] request-id init failed: ' . $e->getMessage());
+        }
+
+        // 2) Shutdown hooks: fatals bypass set_exception_handler, and slow
+        //    requests are measured here once per execution.
+        register_shutdown_function(function () {
+            $last = error_get_last();
+            if (is_array($last) && in_array((int) $last['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+                try {
+                    \App\Services\ErrorTracking\ErrorTrackerService::getInstance()->captureThrowable(
+                        new \ErrorException((string) $last['message'], 0, (int) $last['type'], (string) $last['file'], (int) $last['line']),
+                        ['http_status' => 500]
+                    );
+                } catch (\Throwable $inner) {
+                    error_log('[Observability] fatal capture failed: ' . $inner->getMessage());
+                }
+            }
+
+            try {
+                $durationMs = (microtime(true) - ($_SERVER['REQUEST_TIME_FLOAT'] ?? microtime(true))) * 1000;
+                \App\Services\ErrorTracking\ErrorTrackerService::getInstance()->recordPerformance($durationMs, [
+                    'endpoint'    => (string) ($_SERVER['REQUEST_URI'] ?? ''),
+                    'method'      => (string) ($_SERVER['REQUEST_METHOD'] ?? ''),
+                    'status_code' => http_response_code(),
+                    'memory_kb'   => (int) round(memory_get_peak_usage(true) / 1024),
+                ]);
+            } catch (\Throwable $inner) {
+                error_log('[Observability] perf record failed: ' . $inner->getMessage());
+            }
+        });
+    }
+}
+
+observability_initialize();
