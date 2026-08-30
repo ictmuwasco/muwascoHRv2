@@ -327,7 +327,7 @@ describe('AttendanceReport', () => {
     await renderComponent(<AttendanceReport />)
     await waitFor(() => textIncludes('Attendance Records', '5'))
     expect(textIncludes('Present', '3')).toBe(true)
-    expect(textIncludes('Absent Days', '2')).toBe(true)
+    expect(textIncludes('Absent People', '2')).toBe(true)
     expect(textIncludes('Late Arrivals', '2')).toBe(true)
     expect(textIncludes('Missing Clock-Outs', '1')).toBe(true)
     expect(textIncludes('Auto Clock-Outs', '1')).toBe(true)
