@@ -101,7 +101,54 @@ if (!function_exists('config')) {
                 'database' => 'muwasco',
                 'port' => 3306,
                 'charset' => 'utf8mb4'
-            ]
+            ],
+            // Observability layer - mirrors backend/config/observability.php
+            'observability.enabled'                     => true,
+            'observability.version'                     => '1.0.0',
+            'observability.git_commit'                  => null,
+            'observability.deployment_id'               => null,
+            'observability.request_id_header'           => 'X-Request-ID',
+            'observability.trust_incoming_request_id'   => true,
+            'observability.redaction_placeholder'       => '[REDACTED]',
+            'observability.sensitive_fields'            => [
+                'password', 'password_confirmation', 'current_password', 'new_password',
+                'old_password', 'passcode', 'pin',
+                'token', 'access_token', 'refresh_token', 'jwt', 'bearer', 'authorization',
+                'secret', 'client_secret', 'api_key', 'apikey', 'apikeysecret',
+                'cookie', 'session_id', 'csrf', 'csrf_token', '_token',
+                'private_key', 'privatekey', 'signature',
+                'card_number', 'cardnumber', 'cvv', 'cvc', 'ssn',
+                'vapid', 'p256dh', 'auth_keys', 'authkey',
+            ],
+            'observability.allowed_headers'             => [
+                'content-type', 'accept', 'origin', 'referer', 'x-request-id',
+                'x-csrftoken', 'accept-language',
+            ],
+            'observability.max_payload_depth'           => 4,
+            'observability.max_payload_items'           => 60,
+            'observability.max_string_length'           => 512,
+            'observability.max_stored_json_bytes'       => 8192,
+            'observability.stack_trace_limit'           => 40,
+            'observability.critical_exceptions'         => [
+                'mysqli_sql_exception', 'PDOException',
+                'RedisException', 'RedisClusterException',
+            ],
+            'observability.business_critical_modules'   => [
+                'Attendance', 'Leave', 'Payroll', 'Employees', 'Authentication',
+            ],
+            'observability.capture_client_http_errors'  => false,
+            'observability.performance.enabled'         => true,
+            'observability.performance.warning_ms'      => 2000,
+            'observability.performance.slow_ms'         => 4000,
+            'observability.performance.critical_ms'     => 8000,
+            'observability.notifications.notify_severities'      => ['CRITICAL'],
+            'observability.notifications.cooldown_minutes'       => 60,
+            'observability.notifications.spike_increase_percent' => 300,
+            'observability.notifications.spike_min_hourly'       => 5,
+            'observability.retention.occurrence_days'            => 90,
+            'observability.retention.performance_days'           => 30,
+            'observability.retention.client_days'                => 30,
+            'observability.retention.resolved_group_months'      => 12,
         ];
         
         return $config[$key] ?? $default;

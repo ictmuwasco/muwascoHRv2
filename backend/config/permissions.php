@@ -191,6 +191,17 @@ return [
                 ['key' => 'confirm',         'label' => 'Confirm Attendance', 'type' => 'action'],
             ],
         ],
+        'system_errors' => [
+            'key'     => 'system_errors',
+            'label'   => 'System Monitoring',
+            'actions' => [
+                ['key' => 'view',           'label' => 'View Dashboard',      'type' => 'page'],
+                ['key' => 'manage',         'label' => 'Manage Errors',       'type' => 'action'],
+                ['key' => 'assign',         'label' => 'Assign Errors',       'type' => 'action'],
+                ['key' => 'resolve',        'label' => 'Resolve Errors',      'type' => 'action'],
+                ['key' => 'view_sensitive', 'label' => 'View Technical Data', 'type' => 'action'],
+            ],
+        ],
     ],
 
     /**
