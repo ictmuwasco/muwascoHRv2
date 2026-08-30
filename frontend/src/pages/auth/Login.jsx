@@ -72,7 +72,7 @@ const Login = () => {
   }
 
   return (
-    <div className="min-h-screen w-full flex bg-slate-50">
+    <div className="min-h-screen w-full flex bg-slate-50 dark:bg-slate-900">
       {/* Left brand panel */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-gradient-to-br from-primary-700 via-primary-600 to-primary-800 text-white">
         {/* Decorative shapes */}
@@ -135,15 +135,15 @@ const Login = () => {
           <div className="lg:hidden mb-8 flex items-center gap-3">
             <Logo className="h-14 w-14" />
             <div>
-              <p className="text-xs text-slate-500">Welcome to</p>
-              <h1 className="text-base font-semibold text-slate-900">MUWASCO HR</h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Welcome to</p>
+              <h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">MUWASCO HR</h1>
             </div>
           </div>
 
           {/* Card wrapper */}
-          <div className="rounded-2xl border border-primary-600 bg-white shadow-md shadow-primary-600/80 p-6 sm:p-8">
+          <div className="rounded-2xl border border-primary-600 bg-white dark:bg-slate-800 shadow-md shadow-primary-600/80 p-6 sm:p-8">
             <div>
-              <h2 className="text-3xl font-bold text-slate-900">Sign in</h2>
+              <h2 className="text-3xl font-bold text-slate-900 dark:text-slate-100">Sign in</h2>
               <p className="mt-2 text-sm text-slate-500">
                 Enter your credentials to access the HR portal.
               </p>
@@ -152,7 +152,7 @@ const Login = () => {
             {error && (
               <div
                 role="alert"
-                className="mt-6 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                className="mt-6 flex items-start gap-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 px-4 py-3 text-sm text-red-700 dark:text-red-300"
               >
                 <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                 <span>{error}</span>
@@ -163,7 +163,7 @@ const Login = () => {
               <div>
                 <label
                   htmlFor="email"
-                  className="block text-sm font-medium text-slate-700 mb-1.5"
+                  className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5"
                 >
                   Email address
                 </label>
@@ -179,13 +179,13 @@ const Login = () => {
                     onBlur={() => setTouched((t) => ({ ...t, email: true }))}
                     aria-invalid={!!emailError}
                     aria-describedby={emailError ? 'email-error' : undefined}
-                    className={`w-full pl-10 pr-3 py-2.5 bg-white text-sm rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${emailError ? 'border-red-300' : 'border-slate-200'
+                    className={`w-full pl-10 pr-3 py-2.5 bg-white dark:bg-slate-900 text-sm dark:text-slate-100 rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${emailError ? 'border-red-300' : 'border-slate-200 dark:border-slate-600'
                       }`}
                     placeholder="you@muwasco.co.ke"
                   />
                 </div>
                 {emailError && (
-                  <p id="email-error" className="mt-1 text-xs text-red-600">
+                  <p id="email-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
                     {emailError}
                   </p>
                 )}
@@ -195,7 +195,7 @@ const Login = () => {
                 <div className="flex items-center justify-between mb-1.5">
                   <label
                     htmlFor="password"
-                    className="block text-sm font-medium text-slate-700"
+                    className="block text-sm font-medium text-slate-700 dark:text-slate-300"
                   >
                     Password
                   </label>
@@ -204,7 +204,7 @@ const Login = () => {
                     onClick={() => {
                       /* hook up forgot-password flow here */
                     }}
-                    className="text-xs font-medium text-primary-600 hover:text-primary-700"
+                    className="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
                   >
                     Forgot password?
                   </button>
@@ -221,7 +221,7 @@ const Login = () => {
                     onBlur={() => setTouched((t) => ({ ...t, password: true }))}
                     aria-invalid={!!passwordError}
                     aria-describedby={passwordError ? 'password-error' : undefined}
-                    className={`w-full pl-10 pr-10 py-2.5 bg-white text-sm rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${passwordError ? 'border-red-300' : 'border-slate-200'
+                    className={`w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900 text-sm dark:text-slate-100 rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${passwordError ? 'border-red-300' : 'border-slate-200 dark:border-slate-600'
                       }`}
                     placeholder="Enter your password"
                   />
@@ -229,7 +229,7 @@ const Login = () => {
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                   >
                     {showPassword ? (
                       <EyeOff className="h-5 w-5" />
@@ -239,13 +239,13 @@ const Login = () => {
                   </button>
                 </div>
                 {passwordError && (
-                  <p id="password-error" className="mt-1 text-xs text-red-600">
+                  <p id="password-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
                     {passwordError}
                   </p>
                 )}
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-slate-600 select-none cursor-pointer">
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 select-none cursor-pointer">
                 <input
                   type="checkbox"
                   checked={rememberMe}
@@ -275,7 +275,7 @@ const Login = () => {
             </form>
           </div>
 
-          <p className="mt-8 text-center text-xs text-slate-500">
+          <p className="mt-8 text-center text-xs text-slate-500 dark:text-slate-400">
             Need help signing in? Contact your HR administrator.
           </p>
         </div>

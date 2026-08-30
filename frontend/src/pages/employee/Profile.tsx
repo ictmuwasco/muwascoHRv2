@@ -3,6 +3,7 @@ import apiClient from '../../api/client';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
+import Modal from '../../components/ui/Modal';
 import { User, Briefcase, Users, FileText, Key, Save, Loader2, Plus, Trash2, Upload, Eye, Download, UserRound } from 'lucide-react';
 import type { EmployeeProfile } from '../../types';
 
@@ -49,12 +50,10 @@ const Profile = () => {
     employment_date: '',
   });
 
-  // Next of Kin form state
-  const [nextOfKin, setNextOfKin] = useState({
-    name: '',
-    relationship: '',
-    contact: '',
-  });
+  // Next of Kin list state - the backend stores MULTIPLE rows per employee
+  // (next_of_kin table), so records are added, listed and deleted individually.
+  const [nextOfKinList, setNextOfKinList] = useState<Array<{ id?: number; name: string; relationship: string; contact: string }>>([]);
+  const [nokForm, setNokForm] = useState({ name: '', relationship: '', contact: '' });
 
   // Dependants form state
   const [dependants, setDependants] = useState<Array<{ name: string; relationship: string; date_of_birth: string; gender: string; id_no: string; contact: string }>>([]);
@@ -74,6 +73,11 @@ const Profile = () => {
     category: 'other',
     file: null,
   });
+
+  // Popup (modal) toggles - opened by the Add buttons in the card headers.
+  const [nokModalOpen, setNokModalOpen] = useState(false);
+  const [depModalOpen, setDepModalOpen] = useState(false);
+  const [docModalOpen, setDocModalOpen] = useState(false);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -102,13 +106,20 @@ const Profile = () => {
           employee_status: data.employment?.employee_status || '',
           employment_date: data.employment?.employment_date || '',
         });
-        // Handle next_of_kin as array (from separate table) or single object
-        const nok = Array.isArray(data.next_of_kin) ? data.next_of_kin[0] : data.next_of_kin;
-        setNextOfKin({
-          name: nok?.name || '',
-          relationship: nok?.relationship || '',
-          contact: nok?.contact || nok?.phone || '',
-        });
+        // Next of kin comes back as an ARRAY (one row per record). Legacy
+        // shapes (single object or JSON string) are normalised defensively
+        // so nothing is silently dropped.
+        let nokRows: any = data.next_of_kin;
+        if (typeof nokRows === 'string') {
+          try { nokRows = JSON.parse(nokRows || '[]'); } catch { nokRows = []; }
+        }
+        if (!Array.isArray(nokRows)) nokRows = nokRows ? [nokRows] : [];
+        setNextOfKinList(nokRows.map((r: any) => ({
+          id: r?.id ?? undefined,
+          name: r?.name || '',
+          relationship: r?.relationship || '',
+          contact: r?.contact || r?.phone || '',
+        })));
         setDocuments(data.documents || []);
 
         // Parse dependants (from separate table via dependants_data)
@@ -166,25 +177,57 @@ const Profile = () => {
     }
   };
 
-  const handleNextOfKinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNokFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setNextOfKin((prev) => ({ ...prev, [name]: value }));
+    setNokForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleSaveNextOfKin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  /**
+   * Persist the COMPLETE next-of-kin list. The backend implements
+   * replace-all semantics, so the caller always sends every row it wants
+   * kept - then re-fetches so the table mirrors the database exactly.
+   */
+  const saveNextOfKinList = async (
+    list: Array<{ name: string; relationship: string; contact: string }>
+  ): Promise<boolean> => {
     setSaving(true);
     setError('');
     setSuccess('');
     try {
-      await apiClient.put('/profile', { next_of_kin: nextOfKin });
-      setSuccess('Next of kin information updated successfully');
+      await apiClient.put('/profile', { next_of_kin: list });
+      await fetchProfile(); // re-sync with the server copy (ids, ordering)
+      return true;
     } catch (err) {
       setError('Failed to update next of kin information');
       console.error('Failed to update next of kin:', err);
+      return false;
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleAddNextOfKin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nokForm.name.trim()) {
+      setError('Next of kin name is required');
+      return;
+    }
+    const ok = await saveNextOfKinList([...nextOfKinList, {
+      name: nokForm.name.trim(),
+      relationship: nokForm.relationship.trim(),
+      contact: nokForm.contact.trim(),
+    }]);
+    if (ok) {
+      setSuccess('Next of kin added successfully');
+      setNokForm({ name: '', relationship: '', contact: '' });
+      setNokModalOpen(false);
+    }
+  };
+
+  const handleDeleteNextOfKin = async (index: number) => {
+    if (!confirm('Remove this next of kin record?')) return;
+    const ok = await saveNextOfKinList(nextOfKinList.filter((_, i) => i !== index));
+    if (ok) setSuccess('Next of kin removed successfully');
   };
 
   const handleDependantChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -207,6 +250,10 @@ const Profile = () => {
       setDependants(updatedDependants);
       setDependantForm({ name: '', relationship: '', date_of_birth: '', gender: '', id_no: '', contact: '' });
       setSuccess('Dependant added successfully');
+      setDepModalOpen(false);
+      // Re-sync from the database so the visible list can never drift from
+      // what is stored (e.g., HR-seeded rows are always preserved).
+      await fetchProfile();
     } catch (err) {
       setError('Failed to add dependant');
       console.error('Failed to add dependant:', err);
@@ -225,6 +272,7 @@ const Profile = () => {
       await apiClient.put('/profile', { dependants: updatedDependants });
       setDependants(updatedDependants);
       setSuccess('Dependant deleted successfully');
+      await fetchProfile();
     } catch (err) {
       setError('Failed to delete dependant');
       console.error('Failed to delete dependant:', err);
@@ -260,6 +308,7 @@ const Profile = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setSuccess('Document uploaded successfully');
+      setDocModalOpen(false);
       setNewDocument({ name: '', category: 'other', file: null });
       fetchProfile();
     } catch (err) {
@@ -499,243 +548,133 @@ const Profile = () => {
         </Card>
       )}
 
-      {/* Next of Kin */}
+{/* Next of Kin */}
       {activeTab === 'next_of_kin' && profile && (
-        <Card title="Next of Kin">
-          <form onSubmit={handleSaveNextOfKin}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Name"
-                name="name"
-                value={nextOfKin.name}
-                onChange={handleNextOfKinChange}
-              />
-              <Input
-                label="Relationship"
-                name="relationship"
-                value={nextOfKin.relationship}
-                onChange={handleNextOfKinChange}
-              />
-              <Input
-                label="Contact"
-                name="contact"
-                value={nextOfKin.contact}
-                onChange={handleNextOfKinChange}
-              />
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Next of Kin Records ({nextOfKinList.length})</h3>
+            <Button size="sm" onClick={() => setNokModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />Add
+            </Button>
+          </div>
+          {nextOfKinList.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-900">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">#</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Name</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Relationship</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Contact</th>
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                  {nextOfKinList.map((nok, idx) => (
+                    <tr key={nok.id ?? idx} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{idx + 1}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{nok.name || '—'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{nok.relationship || '—'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{nok.contact || '—'}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Button variant="danger" size="sm" onClick={() => handleDeleteNextOfKin(idx)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div className="flex justify-end mt-4">
-              <Button type="submit" disabled={saving}>
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Saving...
-                  </> 
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Next of Kin
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400 text-center py-8">No next of kin on record yet.</p>
+          )}
         </Card>
       )}
 
-      {/* Dependants */}
+{/* Dependants */}
       {activeTab === 'dependants' && (
-        <div className="space-y-6">
-          <Card title="Add Dependant">
-            <form onSubmit={handleAddDependant} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Input
-                  label="Name"
-                  name="name"
-                  value={dependantForm.name}
-                  onChange={handleDependantChange}
-                  required
-                />
-                <Input
-                  label="Relationship"
-                  name="relationship"
-                  value={dependantForm.relationship}
-                  onChange={handleDependantChange}
-                />
-                <Input
-                  label="Date of Birth"
-                  name="date_of_birth"
-                  type="date"
-                  value={dependantForm.date_of_birth}
-                  onChange={handleDependantChange}
-                />
-                <Input
-                  label="Gender"
-                  name="gender"
-                  value={dependantForm.gender}
-                  onChange={handleDependantChange}
-                />
-                <Input
-                  label="ID Number"
-                  name="id_no"
-                  value={dependantForm.id_no}
-                  onChange={handleDependantChange}
-                />
-                <Input
-                  label="Contact"
-                  name="contact"
-                  value={dependantForm.contact}
-                  onChange={handleDependantChange}
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Adding...
-                    </> 
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Dependant
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </Card>
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">My Dependants ({dependants.length})</h3>
+            <Button size="sm" onClick={() => setDepModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />Add
+            </Button>
+          </div>
+          {dependants.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-900">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Name</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Relationship</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date of Birth</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Gender</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">ID Number</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Contact</th>
+                    <th className="px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+                  {dependants.map((dep, index) => (
+                    <tr key={(dep as any).id ?? index} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{dep.name || `Dependant ${index + 1}`}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{dep.relationship || '—'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{dep.date_of_birth || '—'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{dep.gender || '—'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{(dep as any).id_no || '—'}</td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{dep.contact || '—'}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Button variant="danger" size="sm" onClick={() => handleDeleteDependant(index)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-gray-500 dark:text-gray-400 text-center py-8">No dependants on record.</p>
+          )}
+        </Card>
+      )}
 
-          <Card title="My Dependants">
-            {dependants.length > 0 ? (
-              <div className="space-y-3">
-                {dependants.map((dep, index) => (
-                  <div key={index} className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{dep.name || `Dependant ${index + 1}`}</p>
-                      <p className="text-xs text-gray-500 mt-1">{dep.relationship || 'Relationship not specified'}</p>
-                      <p className="text-xs text-gray-500 mt-1">Date of Birth: {dep.date_of_birth || 'Not provided'}</p>
-                      {dep.gender && <p className="text-xs text-gray-500 mt-1">Gender: {dep.gender}</p>}
-                      {dep.id_no && <p className="text-xs text-gray-500 mt-1">ID No: {dep.id_no}</p>}
-                      {dep.contact && <p className="text-xs text-gray-500 mt-1">Contact: {dep.contact}</p>}
-                    </div>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleDeleteDependant(index)}
-                    >
+{/* Documents */}
+      {activeTab === 'documents' && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">My Documents ({documents.length})</h3>
+            <Button size="sm" onClick={() => setDocModalOpen(true)}>
+              <Plus className="h-4 w-4 mr-1" />Add
+            </Button>
+          </div>
+          <div className="space-y-3">
+            {documents.length > 0 ? (
+              documents.map((doc) => (
+                <div key={doc.id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-slate-700 rounded-lg">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{doc.name || doc.document_name}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{doc.type || doc.category} · {doc.uploaded_at}</p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button size="sm" variant="outline" onClick={() => window.open(`${API_BASE}/profile/documents/${doc.id}/view`, '_blank')} title="View document">
+                      <Eye className="h-3 w-3 mr-1" />View
+                    </Button>
+                    <a href={`${API_BASE}/profile/documents/${doc.id}`} download className="inline-flex items-center px-2 py-1 text-xs font-medium border border-gray-300 dark:border-slate-600 rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors">
+                      <Download className="h-3 w-3 mr-1" />Download
+                    </a>
+                    <Button size="sm" variant="danger" onClick={() => handleDeleteDocument(doc.id)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))
             ) : (
-              <p className="text-gray-500 text-center py-8">No dependants on record.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">No documents uploaded.</p>
             )}
-          </Card>
-        </div>
-      )}
-
-      {/* Documents */}
-      {activeTab === 'documents' && (
-        <div className="space-y-6">
-          <Card title="Upload Document">
-            <form onSubmit={handleUploadDocument} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Document Name"
-                  name="document_name"
-                  value={newDocument.name}
-                  onChange={(e) => setNewDocument((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="e.g. National ID, KRA PIN, Certificate"
-                />
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <select
-                    value={newDocument.category}
-                    onChange={(e) => setNewDocument((prev) => ({ ...prev, category: e.target.value }))}
-                    className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
-                    <option value="id">National ID</option>
-                    <option value="kra_pin">KRA PIN</option>
-                    <option value="certificate">Certificate</option>
-                    <option value="diploma">Diploma</option>
-                    <option value="professional">Professional</option>
-                    <option value="nssf">NSSF</option>
-                    <option value="sha">SHA</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">File</label>
-                  <input
-                    type="file"
-                    onChange={handleDocumentFileChange}
-                    className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" disabled={saving || !newDocument.file}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Uploading...
-                    </> 
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Document
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </Card>
-
-          <Card title="My Documents">
-            <div className="space-y-3">
-              {documents.length > 0 ? (
-                documents.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div>
-                      <p className="font-medium">{doc.name || doc.document_name}</p>
-                      <p className="text-sm text-gray-500">{doc.type || doc.category} · {doc.uploaded_at}</p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => window.open(`${API_BASE}/profile/documents/${doc.id}/view`, '_blank')}
-                        title="View document"
-                      >
-                        <Eye className="h-3 w-3 mr-1" />
-                        View
-                      </Button>
-                      <a
-                        href={`${API_BASE}/profile/documents/${doc.id}`}
-                        download
-                        className="inline-flex items-center px-2 py-1 text-xs font-medium border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
-                        title="Download document"
-                      >
-                        <Download className="h-3 w-3 mr-1" />
-                        Download
-                      </a>
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        onClick={() => handleDeleteDocument(doc.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-gray-500 text-center py-4">No documents uploaded</p>
-              )}
-            </div>
-          </Card>
-        </div>
+          </div>
+        </Card>
       )}
 
       {/* Password Change */}
@@ -749,6 +688,78 @@ const Profile = () => {
           </form>
         </Card>
       )}
+      {/* Add Next of Kin popup */}
+      <Modal isOpen={nokModalOpen} onClose={() => setNokModalOpen(false)} title="Add Next of Kin">
+        <form onSubmit={handleAddNextOfKin}>
+          <div className="grid grid-cols-1 gap-4">
+            <Input label="Name" name="name" value={nokForm.name} onChange={handleNokFormChange} required />
+            <Input label="Relationship" name="relationship" value={nokForm.relationship} onChange={handleNokFormChange} />
+            <Input label="Contact" name="contact" value={nokForm.contact} onChange={handleNokFormChange} />
+          </div>
+          <div className="flex items-center justify-end gap-2 mt-6">
+            <Button variant="outline" type="button" onClick={() => setNokModalOpen(false)} disabled={saving}>Cancel</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>) : (<><Plus className="h-4 w-4 mr-2" />Add Next of Kin</>)}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+      {/* Add Dependant popup */}
+      <Modal isOpen={depModalOpen} onClose={() => setDepModalOpen(false)} title="Add Dependant">
+        <form onSubmit={handleAddDependant} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input label="Name" name="name" value={dependantForm.name} onChange={handleDependantChange} required />
+            <Input label="Relationship" name="relationship" value={dependantForm.relationship} onChange={handleDependantChange} />
+            <Input label="Date of Birth" name="date_of_birth" type="date" value={dependantForm.date_of_birth} onChange={handleDependantChange} />
+            <Input label="Gender" name="gender" value={dependantForm.gender} onChange={handleDependantChange} />
+            <Input label="ID Number" name="id_no" value={dependantForm.id_no} onChange={handleDependantChange} />
+            <Input label="Contact" name="contact" value={dependantForm.contact} onChange={handleDependantChange} />
+          </div>
+          <div className="flex items-center justify-end gap-2 mt-2">
+            <Button variant="outline" type="button" onClick={() => setDepModalOpen(false)} disabled={saving}>Cancel</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding...</>) : (<><Plus className="h-4 w-4 mr-2" />Add Dependant</>)}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+      {/* Upload Document popup */}
+      <Modal isOpen={docModalOpen} onClose={() => setDocModalOpen(false)} title="Upload Document">
+        <form onSubmit={handleUploadDocument} className="space-y-4">
+          <Input label="Document Name" name="document_name" value={newDocument.name} onChange={(e) => setNewDocument((prev) => ({ ...prev, name: e.target.value }))} placeholder="e.g. National ID, KRA PIN, Certificate" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+            <select
+              value={newDocument.category}
+              onChange={(e) => setNewDocument((prev) => ({ ...prev, category: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="id">National ID</option>
+              <option value="kra_pin">KRA PIN</option>
+              <option value="certificate">Certificate</option>
+              <option value="diploma">Diploma</option>
+              <option value="professional">Professional</option>
+              <option value="nssf">NSSF</option>
+              <option value="sha">SHA</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">File</label>
+            <input
+              type="file"
+              onChange={handleDocumentFileChange}
+              className="w-full text-sm text-gray-700 dark:text-gray-200 file:mr-3 file:rounded-md file:border-0 file:bg-primary-50 file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-primary-100"
+            />
+          </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" type="button" onClick={() => setDocModalOpen(false)} disabled={saving}>Cancel</Button>
+            <Button type="submit" disabled={saving || !newDocument.file}>
+              {saving ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading...</>) : (<><Upload className="h-4 w-4 mr-2" />Upload Document</>)}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };
