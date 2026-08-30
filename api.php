@@ -32,6 +32,7 @@ use App\Controllers\Employee\EmployeeController;
 use App\Controllers\HR\DepartmentController;
 use App\Controllers\Leave\LeaveController;
 use App\Controllers\Leave\LeaveRosterController;
+use App\Controllers\Leave\LeaveReportController;
 use App\Controllers\AttendanceController;
 use App\Controllers\Employee\UserController;
 use App\Controllers\HR\SectionController;
@@ -45,10 +46,14 @@ use App\Controllers\HR\HolidayController;
 use App\Controllers\Settings\PermissionController;
 use App\Controllers\Meeting\MeetingController;
 use App\Controllers\Reports\ReportsController as ReportController;
+use App\Controllers\Reports\AttendanceReportController;
 use App\Controllers\HR\AppraisalController;
 use App\Controllers\HR\StrategicPlanController;
 use App\Controllers\HR\WorkplanController;
+use App\Controllers\HR\AppraisalCycleController;
 use App\Controllers\HR\KPIController;
+use App\Controllers\HR\PerformanceContractController;
+use App\Controllers\HR\SectionalObjectiveController;
 use App\Controllers\HR\PayrollController;
 use App\Controllers\HR\ComplaintController;
 use App\Controllers\Settings\SettingController;
@@ -270,6 +275,39 @@ $router->add('GET', '/reports/leave', ReportController::class, 'leave');
 $router->add('GET', '/reports/attendance', ReportController::class, 'attendance');
 $router->add('GET', '/reports/appraisal', ReportController::class, 'appraisal');
 $router->add('GET', '/reports/documentation', ReportController::class, 'documentation');
+
+// Leave Reports module - dedicated analytics + reporting endpoints.
+// Registered BEFORE the /reports/{type}/export/{format} wildcard so the
+// specific leave routes take precedence.
+$router->add('GET', '/reports/leave/options', LeaveReportController::class, 'options');
+$router->add('GET', '/reports/leave/summary', LeaveReportController::class, 'summary');
+$router->add('GET', '/reports/leave/trends', LeaveReportController::class, 'trends');
+$router->add('GET', '/reports/leave/by-type', LeaveReportController::class, 'byType');
+$router->add('GET', '/reports/leave/by-department', LeaveReportController::class, 'byDepartment');
+$router->add('GET', '/reports/leave/by-status', LeaveReportController::class, 'byStatus');
+$router->add('GET', '/reports/leave/duration', LeaveReportController::class, 'duration');
+$router->add('GET', '/reports/leave/insights', LeaveReportController::class, 'insights');
+$router->add('GET', '/reports/leave/records', LeaveReportController::class, 'records');
+$router->add('GET', '/reports/leave/export', LeaveReportController::class, 'export');
+
+// Attendance Reports module - dedicated analytics + reporting endpoints.
+// Registered BEFORE the /reports/{type}/export/{format} wildcard so the
+// specific attendance routes take precedence. The legacy aggregated endpoint
+// GET /reports/attendance (ReportsController::attendance) stays registered
+// above for backward compatibility.
+$router->add('GET', '/reports/attendance/options', AttendanceReportController::class, 'options');
+$router->add('GET', '/reports/attendance/summary', AttendanceReportController::class, 'summary');
+$router->add('GET', '/reports/attendance/trends', AttendanceReportController::class, 'trends');
+$router->add('GET', '/reports/attendance/by-status', AttendanceReportController::class, 'byStatus');
+$router->add('GET', '/reports/attendance/by-department', AttendanceReportController::class, 'byDepartment');
+$router->add('GET', '/reports/attendance/late-arrivals', AttendanceReportController::class, 'lateArrivals');
+$router->add('GET', '/reports/attendance/working-hours', AttendanceReportController::class, 'workingHours');
+$router->add('GET', '/reports/attendance/insights', AttendanceReportController::class, 'insights');
+$router->add('GET', '/reports/attendance/compliance', AttendanceReportController::class, 'compliance');
+$router->add('GET', '/reports/attendance/employees', AttendanceReportController::class, 'employees');
+$router->add('GET', '/reports/attendance/records', AttendanceReportController::class, 'records');
+$router->add('GET', '/reports/attendance/export', AttendanceReportController::class, 'export');
+
 $router->add('GET', '/reports/{type}/export/{format}', ReportController::class, 'export');
 
 // Payroll routes
@@ -311,24 +349,76 @@ $router->add('GET', '/appraisals/employee/{id}', AppraisalController::class, 'by
 $router->add('PUT', '/appraisals/{id}/submit', AppraisalController::class, 'submit');
 $router->add('PUT', '/appraisals/{id}/approve', AppraisalController::class, 'approve');
 
-// Strategic Plan routes
-$router->add('GET',    '/strategic-plans',          StrategicPlanController::class, 'index');
-$router->add('POST',   '/strategic-plans',          StrategicPlanController::class, 'store');
-$router->add('GET',    '/strategic-plans/{id}',     StrategicPlanController::class, 'show');
-$router->add('PUT',    '/strategic-plans/{id}',     StrategicPlanController::class, 'update');
-$router->add('DELETE', '/strategic-plans/{id}',     StrategicPlanController::class, 'destroy');
+// ========================================================================
+// Strategy & Performance module routes
+// (strategic_plan -> goals -> strategic_targets -> performance_contracts
+//  -> workplan_objectives -> kpis -> appraisals)
+// ========================================================================
 
-// Workplan routes
+// Strategic plans, goals and strategic targets
+$router->add('GET',    '/strategic-plans',              StrategicPlanController::class, 'index');
+$router->add('POST',   '/strategic-plans',              StrategicPlanController::class, 'store');
+$router->add('PUT',    '/strategic-plans/{id}',         StrategicPlanController::class, 'update');
+$router->add('DELETE', '/strategic-plans/{id}',         StrategicPlanController::class, 'destroy');
+$router->add('POST',   '/strategic-plans/{id}/goals',   StrategicPlanController::class, 'storeGoal');
+$router->add('PUT',    '/goals/{id}',                   StrategicPlanController::class, 'updateGoal');
+$router->add('DELETE', '/goals/{id}',                   StrategicPlanController::class, 'destroyGoal');
+$router->add('POST',   '/strategic-plans/{id}/targets', StrategicPlanController::class, 'storeTarget');
+$router->add('PUT',    '/targets/{id}',                 StrategicPlanController::class, 'updateTarget');
+$router->add('DELETE', '/targets/{id}',                 StrategicPlanController::class, 'destroyTarget');
+
+// Performance contracts
+$router->add('GET',    '/performance-contracts',        PerformanceContractController::class, 'index');
+$router->add('POST',   '/performance-contracts',        PerformanceContractController::class, 'store');
+$router->add('GET',    '/performance-contracts/{id}',   PerformanceContractController::class, 'show');
+$router->add('PUT',    '/performance-contracts/{id}',   PerformanceContractController::class, 'update');
+$router->add('DELETE', '/performance-contracts/{id}',   PerformanceContractController::class, 'destroy');
+
+// Appraisal cycles (quarterly quarters attached to every workplan activity).
+// Read: any authenticated user. Write: HR managers / super admins.
+$router->add('GET',    '/appraisal-cycles',          AppraisalCycleController::class, 'index');
+$router->add('POST',   '/appraisal-cycles',          AppraisalCycleController::class, 'store');
+$router->add('PUT',    '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'update');
+$router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'destroy');
+
+// Workplan objectives
 $router->add('GET',    '/strategic-plans/{id}/workplans', WorkplanController::class, 'index');
-$router->add('POST',   '/strategic-plans/{id}/workplans', WorkplanController::class, 'store');
-$router->add('PUT',    '/workplans/{id}',            WorkplanController::class, 'update');
-$router->add('DELETE', '/workplans/{id}',            WorkplanController::class, 'destroy');
+$router->add('GET',    '/workplans',                    WorkplanController::class, 'list');
+$router->add('POST',   '/workplans',                    WorkplanController::class, 'store');
+// Legacy-parity batch creation: one contract -> many activities (dept heads).
+$router->add('POST',   '/workplans/bulk',               WorkplanController::class, 'bulk');
+// Workplan extension routes (must be declared BEFORE the /workplans/{id} wildcard)
+$router->add('GET',    '/workplans/integrated-view',    WorkplanController::class, 'integratedView');
+$router->add('GET',    '/workplans/export',             WorkplanController::class, 'export');
+// Cascading workplan system: dashboard summary, downward cascade, lineage.
+$router->add('GET',    '/workplans/summary',            WorkplanController::class, 'summary');
+$router->add('GET',    '/workplans/section-sources',    WorkplanController::class, 'sectionSources');
+$router->add('POST',   '/workplans/{id}/cascade',       WorkplanController::class, 'cascade');
+$router->add('GET',    '/workplans/{id}/traceability',  WorkplanController::class, 'traceability');
+$router->add('GET',    '/workplans/{id}/progress-history', WorkplanController::class, 'progressHistory');
+$router->add('PUT',    '/workplans/{id}/progress',      WorkplanController::class, 'progressUpdate');
+$router->add('GET',    '/workplans/{id}/dependencies',  WorkplanController::class, 'dependencies');
+$router->add('GET',    '/workplans/{id}',               WorkplanController::class, 'show');
+$router->add('PUT',    '/workplans/{id}',               WorkplanController::class, 'update');
+$router->add('DELETE', '/workplans/{id}',               WorkplanController::class, 'destroy');
 
-// KPI routes
-$router->add('GET',    '/workplans/{id}/kpis',       KPIController::class, 'index');
-$router->add('POST',   '/workplans/{id}/kpis',       KPIController::class, 'store');
-$router->add('PUT',    '/kpis/{id}',                 KPIController::class, 'update');
-$router->add('DELETE', '/kpis/{id}',                 KPIController::class, 'destroy');
+// KPIs (linked to performance contracts)
+$router->add('GET',    '/contracts/{id}/kpis',          KPIController::class, 'index');
+$router->add('POST',   '/contracts/{id}/kpis',          KPIController::class, 'store');
+$router->add('GET',    '/kpis',                         KPIController::class, 'list');
+$router->add('PUT',    '/kpis/{id}',                    KPIController::class, 'update');
+$router->add('DELETE', '/kpis/{id}',                    KPIController::class, 'destroy');
+
+// Sectional objectives / KPIs (performance indicators)
+$router->add('GET',    '/sectional-objectives',         SectionalObjectiveController::class, 'index');
+$router->add('POST',   '/sectional-objectives',         SectionalObjectiveController::class, 'store');
+$router->add('GET',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'show');
+$router->add('PUT',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'update');
+$router->add('DELETE', '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'destroy');
+
+// Strategy & Performance dashboard + report endpoints
+$router->add('GET',    '/dashboard/strategic-performance', DashboardController::class, 'strategicPerformance');
+$router->add('GET',    '/reports/strategic-performance',   ReportController::class, 'strategicPerformance');
 
 // Payroll routes
 $router->add('GET',    '/payroll/periods',           PayrollController::class, 'periods');
@@ -414,5 +504,18 @@ $router->add('DELETE', '/push/subscribe', \App\Controllers\Notifications\PushSub
 $router->add('GET', '/admin/notifications/stats', \App\Controllers\Notifications\AdminNotificationController::class, 'stats');
 $router->add('GET', '/admin/notifications/audit/{employeeId}', \App\Controllers\Notifications\AdminNotificationController::class, 'audit');
 $router->add('POST', '/admin/notifications/test-send', \App\Controllers\Notifications\NotificationTestController::class, 'send');
+
+// ===========================================================================
+// System Monitoring / Error Tracking (RBAC module: system_errors)
+// Correlates with audit_logs via request_id. Literal paths MUST be
+// registered before the {uuid} wildcard route.
+// ===========================================================================
+$router->add('GET',  '/system/errors/stats',              \App\Controllers\System\MonitoringController::class, 'stats');
+$router->add('GET',  '/system/errors/groups',             \App\Controllers\System\MonitoringController::class, 'groups');
+$router->add('POST', '/system/errors/groups/{id}/manage', \App\Controllers\System\MonitoringController::class, 'manage');
+$router->add('GET',  '/system/errors/{uuid}',             \App\Controllers\System\MonitoringController::class, 'show');
+$router->add('POST', '/system/client-errors',             \App\Controllers\System\MonitoringController::class, 'clientError');
+$router->add('GET',  '/system/performance',               \App\Controllers\System\MonitoringController::class, 'performance');
+$router->add('GET',  '/system/health',                    \App\Controllers\System\MonitoringController::class, 'health');
 
 $router->dispatch();
