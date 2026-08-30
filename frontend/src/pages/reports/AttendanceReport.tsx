@@ -98,7 +98,7 @@ type Options = {
 }
 
 // ---- Constants -------------------------------------------------------------
-const PER_PAGE = 10
+const PER_PAGE = 50
 
 const STATUS_LABELS: Record<string, string> = {
   present: 'Present',
