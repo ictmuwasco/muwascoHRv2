@@ -74,3 +74,5 @@ phpunit.xml
 .DS_Store
 Thumbs.db
 *.log
+# Runtime security counters (rate limiting buckets)
+backend/storage/cache/rate-limits/

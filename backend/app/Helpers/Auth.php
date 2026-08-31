@@ -80,14 +80,11 @@ class Auth
         }
 
         try {
-            // Verify the JWT signature and expiry (firebase/php-jwt, HS256)
-            $decoded = \App\Helpers\JWT::getInstance()->validateToken($token);
+            // Verify the JWT signature, expiry, issuer AND token type
+            // (validateAccessToken rejects refresh tokens). Only HS256 is
+            // trusted; the token header can never select the algorithm.
+            $decoded = \App\Helpers\JWT::getInstance()->validateAccessToken($token);
             if ($decoded === null) {
-                return false;
-            }
-
-            // Must be an access token (refresh tokens must not authenticate)
-            if (!isset($decoded->type) || $decoded->type !== 'access') {
                 return false;
             }
 
@@ -95,10 +92,26 @@ class Auth
                 return false;
             }
 
-            // Restore session from the verified token
-            $_SESSION['user_id'] = (int)$decoded->sub;
-            $_SESSION['user_email'] = $decoded->email ?? '';
-            $_SESSION['user_role'] = $decoded->role ?? '';
+            // Account-status revalidation: a cryptographically valid token for
+            // a user who has since been disabled/deleted must NOT authenticate.
+            // Identity fields are refreshed from the database, not from the
+            // (possibly stale) token claims.
+            $user = \db()->fetchOne(
+                'SELECT id, email, role, first_name, last_name, is_active FROM users WHERE id = ?',
+                'i',
+                [(int) $decoded->sub]
+            );
+
+            if (!$user || (int) ($user['is_active'] ?? 0) !== 1) {
+                \logger()->warning('auth.token_rejected_inactive_account', ['user_id' => (int) $decoded->sub]);
+                return false;
+            }
+
+            // Restore session from the verified token + authoritative DB data
+            $_SESSION['user_id'] = (int) $user['id'];
+            $_SESSION['user_email'] = $user['email'] ?? '';
+            $_SESSION['user_role'] = $user['role'] ?? '';
+            $_SESSION['user_name'] = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
             $_SESSION['employee_id'] = $decoded->employee_id ?? null;
             $_SESSION['session_valid'] = true;
             $_SESSION['last_activity'] = time();

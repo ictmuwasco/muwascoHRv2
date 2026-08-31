@@ -38,8 +38,6 @@
       "backend/app/Services",
       "backend/app/Validators",
       "backend/app/Middleware",
-      "backend/app/Policies",
-      "backend/app/Gates",
       "backend/app/Responses"
     ]
   },

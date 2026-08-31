@@ -679,3 +679,39 @@ session_regenerate_id(true);
 5. Confirm `APP_DEBUG=false` hides stack traces in API error responses.
 6. Confirm an unauthenticated request to `/api/employees` returns 401.
 7. Run the existing test suite: `php backend/run_tests.php` (or `composer test`).
+
+---
+
+## 9. Phase 1 Security Stabilization - Implemented Fixes (2026-08-31)
+
+Phase 1 (Authentication, Security Hardening & System Stabilization) closed the
+following findings. The authoritative architecture reference is now
+`docs/AUTHENTICATION.md`.
+
+| # | Severity | Finding | Fix |
+|---|----------|---------|-----|
+| 1 | CRITICAL | Real DB password committed in `.env.example` and `backend/storage/backups/backup.sh`; default admin passwords committed in setup scripts | Credentials removed from all committed files; `php scripts/ci/secret_scan.php` added as a BLOCKING CI gate; credentials flagged for rotation |
+| 2 | CRITICAL | No global authentication gate - API auth depended on per-controller inline checks | `AuthenticationMiddleware::process()` wired into `api.php` as the single gate (public allowlist: login, client-error collector, consent status) |
+| 3 | CRITICAL | Brute-force limiter was a no-op (session-based counters + API closes sessions early) | File-backed, flock-atomic rate limiter keyed by action + IP + account identifier; storage failures fail open with logging |
+| 4 | HIGH | JWT secret fell back to publicly-known defaults (`your-jwt-secret-key-change-in-production`, `your-secret-key-here`) | Fail-safe enforcement: missing, <32 chars, or known-default secrets abort authentication. `config/config/jwt.php` fallback removed |
+| 5 | HIGH | Disabled/deleted users kept access for up to 1h (token claims trusted) | DB `is_active` revalidation on every request (gate) and on the JWT restore path; identity fields refreshed from DB, not token claims |
+| 6 | HIGH | Three dead middlewares; `BaseMiddleware` imported a non-existent interface (fatal on autoload) | Interface import fixed; `AuthenticationMiddleware` promoted to ACTIVE gate; `AuthMiddleware`/`AuthorizationMiddleware` documented as LEGACY |
+| 7 | HIGH | Password change / user disable / user delete left tokens usable | Refresh tokens revoked on logout, password change (self + admin), user disable, user delete; session id rotated on password change |
+| 8 | MEDIUM | Emails written to error logs during login (PII); account status leaked via distinct login errors | Debug logs removed (structured logger instead); uniform `Invalid credentials` message for unknown/inactive/wrong-password |
+| 9 | MEDIUM | Minimum password length was 3 characters (self-service paths) | Minimum raised to 8 (service + frontend Login.jsx); admin path already enforced 8 |
+| 10 | MEDIUM | `setup-database.bat` referenced a non-existent `laravel/` directory and printed default credentials | Rewritten for the actual stack; no credentials provisioned or printed |
+| 11 | MEDIUM | `AuthService::verifyToken()` was a null stub; CI had no phpunit config; secret-grep was advisory (`continue-on-error`) | `verifyToken()` implemented via `JWT::validateAccessToken()`; tracked `phpunit.xml.dist` added; `deploy.yml` gates made BLOCKING (syntax, secrets, tests) |
+| 12 | LOW | `SecurityMiddleware::run()` logged a debug line per request | Per-request debug log removed (headers/timeout/proxy checks retained) |
+
+Known-leaked credentials that MUST be rotated (they remain in Git history):
+
+* Database password committed in `.env.example` / `backup.sh` (value on record
+  in the Phase 1 report; also detected by `scripts/ci/secret_scan.php` as a
+  known leak). Rotate the DB account, then update `.env` on all hosts.
+* Default administrator passwords committed in setup scripts (both values
+  are recorded in the known-leak list inside `scripts/ci/secret_scan.php`).
+  If any account still uses one of these defaults, change it immediately.
+
+Remaining risks / planned work: see the Phase 1 final report (refresh-token
+issuance at login, composer.lock tracking for reproducible CI, and the Git
+history rewrite decision).

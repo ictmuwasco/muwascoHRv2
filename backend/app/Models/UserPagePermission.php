@@ -285,55 +285,50 @@ class UserPagePermission
 
     /**
      * Get all available module names from the application.
-     * Derived from the existing role_permissions table and application routes.
+     *
+     * Phase 2: DERIVED FROM THE PERMISSION CATALOG (backend/config/permissions.php)
+     * instead of a hand-maintained list. The catalog is the single source of
+     * truth; duplicating module keys here allowed drift (modules such as
+     * meetings / system_errors were grantable in some UI paths but absent in
+     * others).
      *
      * @return array Array of module names
      */
     public function getAllModules(): array
     {
-        return [
-            'dashboard',
-            'employees',
-            'departments',
-            'attendance',
-            'leave',
-            'reports',
-            'users',
-            'admin',
-            'audit',
-            'profile',
-            'performance',
-            'consent',
-            'permission_overrides',
-            'financial_year',
-            'holidays',
-        ];
+        return array_keys($this->catalogModules());
     }
 
     /**
-     * Get module display names.
+     * Get module display names (from the permission catalog).
      *
      * @return array Array of module => display_name
      */
     public function getModuleNames(): array
     {
-        return [
-            'dashboard'            => 'Dashboard',
-            'employees'            => 'Employees',
-            'departments'          => 'Departments',
-            'attendance'           => 'Attendance',
-            'leave'                => 'Leave Management',
-            'reports'              => 'Reports',
-            'users'                => 'User Management',
-            'admin'                => 'Admin',
-            'audit'                => 'Audit Trail',
-            'profile'              => 'Profile',
-            'performance'          => 'Performance Appraisal',
-            'consent'              => 'Consent',
-            'permission_overrides' => 'Permission Overrides',
-            'financial_year'       => 'Financial Year',
-            'holidays'             => 'Holidays',
-        ];
+        $names = [];
+        foreach ($this->catalogModules() as $key => $module) {
+            $names[$key] = (string)($module['label'] ?? $key);
+        }
+        return $names;
+    }
+
+    /**
+     * Load the module map of the permission catalog.
+     *
+     * @return array module key => module definition
+     */
+    private function catalogModules(): array
+    {
+        $catalog = null;
+        if (function_exists('config')) {
+            $catalog = config('permissions');
+        }
+        if (!is_array($catalog) || empty($catalog['modules'])) {
+            $path = __DIR__ . '/../../config/permissions.php';
+            $catalog = is_file($path) ? require $path : ['modules' => []];
+        }
+        return is_array($catalog['modules'] ?? null) ? $catalog['modules'] : [];
     }
 
     /**
