@@ -327,7 +327,7 @@ describe('AttendanceReport', () => {
     await renderComponent(<AttendanceReport />)
     await waitFor(() => textIncludes('Attendance Records', '5'))
     expect(textIncludes('Present', '3')).toBe(true)
-    expect(textIncludes('Absent Days', '2')).toBe(true)
+    expect(textIncludes('Absent People', '2')).toBe(true)
     expect(textIncludes('Late Arrivals', '2')).toBe(true)
     expect(textIncludes('Missing Clock-Outs', '1')).toBe(true)
     expect(textIncludes('Auto Clock-Outs', '1')).toBe(true)
@@ -357,7 +357,7 @@ describe('AttendanceReport', () => {
     const sumParams = lastCallParams('/reports/attendance/summary')
     expect(String(sumParams.from)).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     const empParams = lastCallParams('/reports/attendance/employees')
-    expect(empParams.per_page).toBe(10)
+    expect(empParams.per_page).toBe(50)
   })
 
   it('filters server-side when a KPI card is clicked and clears via Attendance Records', async () => {
