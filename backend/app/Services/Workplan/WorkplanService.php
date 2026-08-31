@@ -403,10 +403,6 @@ class WorkplanService
     /**
      * Build a display name from a users join row (first/last/surname).
      */
-
-    /**
-     * Build a display name from a users join row (first/last/surname).
-     */
     public function actorName(array $row): string
     {
         $parts = array_filter([
@@ -437,12 +433,6 @@ class WorkplanService
      * subsection assigned -> subsection, section assigned -> section,
      * department contract without a unit -> department, else organisation.
      */
-
-    /**
-     * Derives the cascade level for an activity from its assignment context:
-     * subsection assigned -> subsection, section assigned -> section,
-     * department contract without a unit -> department, else organisation.
-     */
     public function deriveLevel(?int $sectionId, ?int $subsectionId, int $contractId): string
     {
         if ($subsectionId !== null) {
@@ -453,10 +443,6 @@ class WorkplanService
         }
         return $contractId > 0 ? 'department' : 'organisation';
     }
-
-    /**
-     * Human-readable organisational unit label for dashboard headers.
-     */
 
     /**
      * Human-readable organisational unit label for dashboard headers.
@@ -486,11 +472,6 @@ class WorkplanService
         }
         return ucfirst(str_replace('_', ' ', (string) $scope['role']));
     }
-
-    /**
-     * Active employees the caller may assign work to: heads see the staff of
-     * their own unit; broad roles see everyone active.
-     */
 
     /**
      * Active employees the caller may assign work to: heads see the staff of
