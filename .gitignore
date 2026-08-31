@@ -44,6 +44,17 @@ Thumbs.db
 uploads/*
 !uploads/.gitkeep
 
+# ── Diagnostic / scratch scripts (generated during development/probing) ──────
+dump.js
+probe*.php
+probe_out.txt
+facts*.txt
+gather.ps1
+
+# ── Runtime uploads (user content) ───────────────────────────────────────────
+backend/app/public/uploads/
+backend/storage/uploads/
+
 # ── Archives & Backups ───────────────────────────────────────────────────────
 *.zip
 *.tar

@@ -6,7 +6,8 @@ import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import Tabs from '../../components/ui/Tabs'
 import Modal from '../../components/ui/Modal'
-import { CalendarCheck, Calendar, Clock, MapPin, Check, X, Hourglass, History, Users, FileText, User } from 'lucide-react'
+import MeetingMinutesModal, { MinutesMeetingInfo } from './MeetingMinutesModal'
+import { CalendarCheck, Calendar, Clock, MapPin, Check, X, Hourglass, History, Users, FileText, User, FileDown } from 'lucide-react'
 
 interface MeetingInvitation {
   id: number
@@ -68,7 +69,8 @@ const MyMeetings = () => {
   const [detailsModalOpen, setDetailsModalOpen] = useState(false)
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [detailsError, setDetailsError] = useState('')
-  const [selectedMeeting, setSelectedMeeting] = useState<MeetingDetails | null>(null)
+    const [selectedMeeting, setSelectedMeeting] = useState<MeetingDetails | null>(null)
+  const [minutesMeeting, setMinutesMeeting] = useState<MeetingDetails | null>(null)
 
   useEffect(() => {
     fetchMyMeetings()
@@ -563,6 +565,14 @@ const MyMeetings = () => {
               {getStatusBadge(selectedMeeting.status)}
             </div>
 
+            {selectedMeeting.status === 'completed' && (
+              <div>
+                <Button variant="outline" size="sm" onClick={() => setMinutesMeeting(selectedMeeting)}>
+                  <FileDown className="h-4 w-4 mr-1" /> View Minutes
+                </Button>
+              </div>
+            )}
+
             {/* Description */}
             {selectedMeeting.description && (
               <div>
@@ -622,7 +632,23 @@ const MyMeetings = () => {
             </div>
           </div>
         ) : null}
-      </Modal>
+            </Modal>
+
+      {minutesMeeting && (
+        <MeetingMinutesModal
+          meeting={{
+            id: minutesMeeting.id,
+            title: minutesMeeting.title,
+            meeting_date: minutesMeeting.meeting_date,
+            start_time: minutesMeeting.start_time,
+            end_time: minutesMeeting.end_time,
+            location: minutesMeeting.location,
+            status: minutesMeeting.status,
+          } as MinutesMeetingInfo}
+          onClose={() => setMinutesMeeting(null)}
+          onSaved={() => setMinutesMeeting(null)}
+        />
+      )}
     </div>
   )
 }

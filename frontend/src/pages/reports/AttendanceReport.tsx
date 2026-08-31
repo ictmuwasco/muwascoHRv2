@@ -41,10 +41,12 @@ type Summary = {
   total_hours: number
   avg_hours_per_day: number
   avg_hours_per_employee: number
+  
   expected_working_days: number
   present_days: number
   leave_days: number
   absent_days: number
+  absent_employees: number
   compliance_rate: number | null
 }
 
@@ -96,7 +98,7 @@ type Options = {
 }
 
 // ---- Constants -------------------------------------------------------------
-const PER_PAGE = 10
+const PER_PAGE = 50
 
 const STATUS_LABELS: Record<string, string> = {
   present: 'Present',
@@ -816,7 +818,7 @@ const AttendanceReport = () => {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <StatCard title="Attendance Records" value={summary.attendance_records} icon={FileText} variant="default" subtitle={`${summary.range_days} day(s) in range`} onClick={() => toggleStatus('')} selected={filters.status === ''} />
           <StatCard title="Present" value={summary.employees_with_records} icon={Users} variant="success" subtitle="Employees with records" onClick={() => toggleStatus('present')} selected={filters.status === 'present'} />
-          <StatCard title="Absent Days" value={summary.absent_days} icon={UserX} variant="danger" subtitle="Expected but not recorded" onClick={() => toggleStatus('absent')} selected={filters.status === 'absent'} />
+          <StatCard title="Absent People" value={summary.absent_employees ?? summary.absent_days} icon={UserX} variant="danger" subtitle={`Expected but not recorded (${summary.absent_days} absent day${summary.absent_days !== 1 ? 's' : ''})`} onClick={() => toggleStatus('absent')} selected={filters.status === 'absent'} />
           <StatCard title="On Leave" value={summary.leave_days} icon={CalendarDays} variant="info" subtitle="Approved leave days" onClick={() => toggleStatus('on_leave')} selected={filters.status === 'on_leave'} />
           <StatCard title="Late Arrivals" value={summary.late_arrivals} icon={Timer} variant="warning" subtitle="Clocked in after cutoff" onClick={() => toggleStatus('late')} selected={filters.status === 'late'} />
           <StatCard title="Missing Clock-Outs" value={summary.missing_clockouts} icon={AlertTriangle} variant="warning" subtitle="Requires review" onClick={() => toggleStatus('missing')} selected={filters.status === 'missing'} />

@@ -28,7 +28,7 @@ This is a complete enterprise modernization of the HR Management System, transfo
 ### Backend
 - PHP 8.0+
 - MySQL 8.0+
-- Composer
+- Custom autoloading (no Composer dependency)
 - JWT Authentication
 - Repository Pattern
 - Service Layer Pattern
@@ -43,9 +43,8 @@ This is a complete enterprise modernization of the HR Management System, transfo
 - Lucide React (icons)
 
 ### Testing
-- PHPUnit (backend)
+- PHPUnit-style custom suite, no Composer dependency (backend)
 - Vitest (frontend)
-- Mockery (mocking)
 
 ## Quick Start
 
@@ -53,9 +52,8 @@ See [SETUP.md](SETUP.md) for detailed setup instructions.
 
 ### Backend
 ```bash
-cd backend
-composer install
-php -S localhost:8000 -t public
+# See SETUP.md for the authoritative dev-server command (XAMPP + api.php entry point).
+# There is no composer install step — the backend has no composer.json.
 ```
 
 ### Frontend
@@ -160,22 +158,50 @@ Component → Service → API Client → Backend
 
 ### Backend Tests
 ```bash
-cd backend
-./vendor/bin/phpunit
+php backend/run_tests.php
 ```
 
 ### Frontend Tests
 ```bash
 cd frontend
-npm test
+npm run test
 ```
+
+See [testing.md](testing.md) for the full test map, coverage status and how to add tests.
 
 ## Documentation
 
-- [API Documentation](API_DOCUMENTATION.md) - Complete API reference
-- [Architecture](ARCHITECTURE.md) - System architecture and design patterns
-- [Setup Guide](SETUP.md) - Developer setup instructions
-- [Deployment Guide](DEPLOYMENT.md) - Production deployment guide
+Full index — see the [Documentation Map](#documentation-map) below for the complete, status-annotated list.
+
+## Documentation Map
+
+| Document | Status (audit 2026-08-31) |
+|---|---|
+| [API_REFERENCE.md](API_REFERENCE.md) | **NEW** — complete catalogue of all 270 routes |
+| [API_DOCUMENTATION.md](API_DOCUMENTATION.md) | kept — deep guide for core modules (auth, employees, attendance, leave, reports, errors) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | kept — still accurate |
+| [SETUP.md](SETUP.md) | kept |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | kept |
+| [SECURITY_AUDIT.md](SECURITY_AUDIT.md) | kept — canonical security reference |
+| [AUTHENTICATION_MIDDLEWARE_ANALYSIS.md](AUTHENTICATION_MIDDLEWARE_ANALYSIS.md) | kept — historical middleware analysis |
+| [NOTIFICATIONS.md](NOTIFICATIONS.md) | kept — push/SMS notifications |
+| [OBSERVABILITY.md](OBSERVABILITY.md) | kept — logging, audit, error tracking |
+| [PAGE_DOCUMENTATION.md](PAGE_DOCUMENTATION.md) | kept — frontend page inventory |
+| [meetings.md](meetings.md) | **new** — meetings, invitations, RSVP, attendance |
+| [meeting-minutes.md](meeting-minutes.md) | **NEW** — structured minutes, draft→publish lifecycle |
+| [attendance.md](attendance.md) | **NEW** — clock in/out, geofence, reminders, HR views |
+| [leave.md](leave.md) | **NEW** — applications, delegates, roster, balances |
+| [employees.md](employees.md) | **NEW** — employees, org tree, users & permissions |
+| [strategy-performance.md](strategy-performance.md) | **NEW** — plans, workplans, KPIs, contracts, appraisals |
+| [reports.md](reports.md) | **NEW** — attendance & leave reporting engines |
+| [complaints-consent.md](complaints-consent.md) | **NEW** — complaints register, versioned consent |
+| [payroll.md](payroll.md) | **NEW** — payroll register (status: minimal, see gaps) |
+| [database.md](database.md) | **NEW** — schema domains, all 37 migrations, relationships |
+| [testing.md](testing.md) | **NEW** — test suites, commands, coverage gaps |
+| [archive/](archive/) | Historical one-off fix logs |
+
+> Docs live in `/docs` (project root). There is **no** `/backend/docs` directory — the old convention pointing there is obsolete.
+
 
 ## Security Features
 

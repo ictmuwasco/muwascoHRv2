@@ -59,6 +59,14 @@ class AuditService
     public const ACTION_CLOCK_IN        = 'CLOCK_IN';
     public const ACTION_CLOCK_OUT       = 'CLOCK_OUT';
     public const ACTION_VIEW           = 'VIEW';
+    public const ACTION_PUBLISH         = 'PUBLISH';
+    public const ACTION_AMEND           = 'AMEND';
+    public const ACTION_REOPEN          = 'REOPEN';
+    public const ACTION_MINUTES_CREATED = 'MEETING_MINUTES_CREATED';
+    public const ACTION_MINUTES_UPDATED = 'MEETING_MINUTES_UPDATED';
+    public const ACTION_MINUTES_PUBLISHED = 'MEETING_MINUTES_PUBLISHED';
+    public const ACTION_MINUTES_VIEWED  = 'MEETING_MINUTES_VIEWED';
+    public const ACTION_MINUTES_REOPENED = 'MEETING_MINUTES_REOPENED';
 
     public const STATUS_SUCCESS = 'SUCCESS';
     public const STATUS_FAILED  = 'FAILED';

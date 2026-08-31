@@ -7,7 +7,8 @@ import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
-import { CalendarDays, Plus, Calendar, Clock, MapPin, Eye, Edit, Trash2, X } from 'lucide-react'
+import { CalendarDays, Plus, Calendar, Clock, MapPin, Eye, Edit, Trash2, X, FileText } from 'lucide-react'
+import MeetingMinutesModal, { MinutesMeetingInfo } from './MeetingMinutesModal'
 
 interface Meeting {
   id: number
@@ -20,8 +21,9 @@ interface Meeting {
   location: string
   status: string
   created_by: number
-  org_first_name: string
+    org_first_name: string
   org_last_name: string
+  minutes?: { exists: boolean; can_manage: boolean; can_view_published: boolean; status: string | null }
 }
 
 interface Pagination {
@@ -66,7 +68,8 @@ const CreateMeeting = () => {
   const [selectedEmployees, setSelectedEmployees] = useState<number[]>([])
   const [employees, setEmployees] = useState<any[]>([])
   const [employeeSearch, setEmployeeSearch] = useState('')
-  const [actionLoading, setActionLoading] = useState<number | null>(null)
+    const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [minutesMeeting, setMinutesMeeting] = useState<Meeting | null>(null)
 
   const loadMeetings = async (page = 1) => {
     setLoading(true)
@@ -314,9 +317,14 @@ const CreateMeeting = () => {
               <X className="h-4 w-4" />
             </button>
           )}
-          <button onClick={() => handleDelete(row.id)} disabled={actionLoading === row.id} className="p-1 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded" title="Delete Meeting">
+                    <button onClick={() => handleDelete(row.id)} disabled={actionLoading === row.id} className="p-1 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded" title="Delete Meeting">
             <Trash2 className="h-4 w-4" />
           </button>
+          {(row.minutes?.can_manage || row.status === 'completed') && (
+            <button onClick={() => setMinutesMeeting(row)} className="p-1 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 rounded" title="Add Minutes">
+                            <FileText className="h-4 w-4" />
+            </button>
+          )}
         </div>
       ),
     },
@@ -436,7 +444,26 @@ const CreateMeeting = () => {
             <Button type="submit" loading={saving}>{editingId ? 'Update Meeting' : 'Create Meeting'}</Button>
           </div>
         </form>
-      </Modal>
+            </Modal>
+
+      {minutesMeeting && (
+        <MeetingMinutesModal
+          meeting={{
+            id: minutesMeeting.id,
+            title: minutesMeeting.title,
+            meeting_date: minutesMeeting.meeting_date,
+            start_time: minutesMeeting.start_time,
+            end_time: minutesMeeting.end_time,
+            location: minutesMeeting.location,
+            status: minutesMeeting.status,
+          } as MinutesMeetingInfo}
+          onClose={() => setMinutesMeeting(null)}
+          onSaved={() => {
+            setMinutesMeeting(null)
+            loadMeetings(pagination.current_page)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Repositories\MeetingRepository;
+use App\Repositories\MeetingMinutesRepository;
 use App\Helpers\Auth;
 use InvalidArgumentException;
 
@@ -18,17 +19,87 @@ class MeetingService
 {
     private MeetingRepository $meetingRepository;
 
+        private ?MeetingMinutesRepository $minutesRepository = null;
+
     public function __construct()
     {
         $this->meetingRepository = new MeetingRepository();
+        $this->minutesRepository = new MeetingMinutesRepository();
     }
 
     /**
      * Get paginated list of meetings with optional filters.
+     * Each item is decorated with minutes flags for UI gating.
      */
     public function getAllMeetings(int $page = 1, int $perPage = 20, array $filters = []): array
     {
-        return $this->meetingRepository->paginate($page, $perPage, $filters);
+        $result = $this->meetingRepository->paginate($page, $perPage, $filters);
+        $result['data'] = $this->decorateList($result['data']);
+        return $result;
+    }
+
+    /**
+     * Decorate meeting list items with minutes access flags.
+     *
+     * Performance: the permission check is user-level so it runs ONCE, and
+     * minutes + invitation lookups are batched into two IN() queries —
+     * never per-meeting queries (no N+1 on the list endpoint).
+     */
+    private function decorateList(array $meetings): array
+    {
+        if (empty($meetings)) {
+            return $meetings;
+        }
+
+        $auth = \App\Helpers\Auth::getInstance();
+        $userId = $auth->id();
+        $employeeId = $userId ? $this->meetingRepository->getEmployeeIdByUserId($userId) : null;
+
+        $canManage = false;
+        if ($userId) {
+            $canManage = $auth->hasAnyPermission(array(
+                array('meetings' => 'minutes.create'),
+                array('meetings' => 'minutes.update'),
+                array('meetings' => 'minutes.publish'),
+                array('meetings' => 'minutes.amend'),
+            ));
+        }
+
+        $meetingIds = array();
+        foreach ($meetings as $m) {
+            $id = (int) ($m['id'] ?? 0);
+            if ($id > 0) {
+                $meetingIds[] = $id;
+            }
+        }
+
+        $minutesMap = $this->minutesRepository->getMinutesStatusByMeetingIds($meetingIds);
+        $invitationMap = ($employeeId !== null && $meetingIds !== array())
+            ? $this->minutesRepository->getInvitationByMeetingIds($meetingIds, $employeeId)
+            : array();
+
+        foreach ($meetings as $index => $m) {
+            $meetingId = (int) ($m['id'] ?? 0);
+            $minutes = $minutesMap[$meetingId] ?? null;
+
+            $canViewPublished = false;
+            if ($minutes !== null && ($minutes['status'] ?? '') === 'published' && $employeeId !== null) {
+                $invitation = $invitationMap[$meetingId] ?? null;
+                $canViewPublished = $invitation !== null
+                    && ($invitation['response_status'] ?? '') === 'accepted';
+            }
+
+            $meetings[$index]['minutes'] = array(
+                'exists'             => $minutes !== null,
+                'status'             => $minutes['status'] ?? null,
+                'version'            => $minutes['version'] ?? null,
+                'reference_number'   => $minutes['reference_number'] ?? null,
+                'can_manage'         => $canManage,
+                'can_view_published' => $canViewPublished,
+            );
+        }
+
+        return $meetings;
     }
 
     /**
@@ -75,7 +146,7 @@ class MeetingService
         // Map to the format expected by the frontend
         $mapped = [];
         foreach ($meetings as $meeting) {
-            $organizerName = $this->meetingRepository->getOrganizerName((int)$meeting['created_by']);
+                        $organizerName = $this->meetingRepository->getOrganizerName((int)$meeting['created_by']);
 
             $mapped[] = [
                 'id'               => (int)$meeting['id'],
@@ -103,6 +174,9 @@ class MeetingService
                 ],
                 'attendee_count'   => 0,
                 'total_invited'    => 0,
+                'minutes'          => $this->minutesRepository->getMeetingMinutesInfo(
+                    (int)$meeting['id'], $userId, $employeeId
+                ),
             ];
         }
 
