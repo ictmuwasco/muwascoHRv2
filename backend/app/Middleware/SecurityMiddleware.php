@@ -40,15 +40,9 @@ class SecurityMiddleware
         self::applySecurityHeaders();
         self::trustedProxyHeaderCheck();
         self::enforceSessionTimeout();
-
-        self::logSecurityEvent('security.bootstrap', 'debug', [
-            'method'  => $_SERVER['REQUEST_METHOD'] ?? 'GET',
-            'uri'     => $_SERVER['REQUEST_URI'] ?? '',
-            'user_id' => $_SESSION['user_id'] ?? null,
-        ]);
     }
 
-    /**
+        /**
      * Apply all security headers to the response.
      */
     public static function applySecurityHeaders(): void
@@ -70,6 +64,29 @@ class SecurityMiddleware
 
         // Permissions Policy
         header('Permissions-Policy: geolocation=(self), microphone=(), camera=()');
+    }
+
+    /**
+     * Apply CORS headers from the centralized config (backend/config/cors.php).
+     *
+     * Replaces the inline origin lists that were duplicated in api.php,
+     * BaseController::json() and AuthenticationMiddleware. Called once per
+     * request from api.php (and safe to call again for preflight).
+     */
+    public static function applyCorsHeaders(): void
+    {
+        $origin   = $_SERVER['HTTP_ORIGIN'] ?? '';
+        $allowed  = (array) \config('cors.allowed_origins', []);
+
+        if ($origin !== '' && in_array($origin, $allowed, true)) {
+            header('Access-Control-Allow-Origin: ' . $origin);
+            if ((bool) \config('cors.allow_credentials', true)) {
+                header('Access-Control-Allow-Credentials: true');
+            }
+        }
+
+        header('Access-Control-Allow-Methods: ' . \config('cors.allowed_methods', 'GET, POST, PUT, DELETE, OPTIONS'));
+        header('Access-Control-Allow-Headers: ' . \config('cors.allowed_headers', 'Content-Type, Authorization'));
     }
 
     /**
@@ -253,45 +270,98 @@ class SecurityMiddleware
                 'uri'    => $_SERVER['REQUEST_URI'] ?? '',
                 'ip'     => $_SERVER['REMOTE_ADDR'] ?? '',
             ]);
-            http_response_code(419);
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'CSRF token mismatch.']);
-            exit();
+                        \App\Helpers\ApiResponse::error(
+                'CSRF token mismatch.',
+                'CSRF_TOKEN_MISMATCH',
+                [],
+                419
+            );
         }
     }
 
     /**
-     * Check rate limit for an action.
+     * Filesystem root for rate-limit counters (Phase 1).
      *
-     * NOTE: Because bootstrap.php calls session_write_close() for API
-     * requests, per-session counters will not persist across requests.
-     * Migrate to a DB/Redis-backed store keyed by IP + action for production.
+     * Counters MUST persist across requests. The previous implementation used
+     * $_SESSION, but bootstrap.php closes the session early for API requests,
+     * which made brute-force protection a no-op: cookie-less attackers simply
+     * rotated session ids per request.
      */
-    public static function checkRateLimit(string $action, int $maxAttempts = 5, int $windowSeconds = 900): bool
+    public static function rateLimitStoragePath(): string
     {
-        $key = 'rate_limit_' . $action . '_' . ($_SERVER['REMOTE_ADDR'] ?? '');
+        return STORAGE_PATH . '/cache/rate-limits';
+    }
 
-        if (!isset($_SESSION[$key])) {
-            $_SESSION[$key] = [
-                'count' => 1,
-                'first_attempt' => time(),
-            ];
+    /**
+     * Path for one rate-limit bucket.
+     */
+    public static function rateLimitPath(string $key): string
+    {
+        return self::rateLimitStoragePath() . '/' . $key . '.json';
+    }
+
+    /**
+     * Bucket key: action + client IP + optional account identifier.
+     * The identifier is hashed so raw emails/ids never appear on disk.
+     */
+    public static function rateLimitKey(string $action, ?string $identifier): string
+    {
+        return hash('sha256', $action . '|' . ($_SERVER['REMOTE_ADDR'] ?? 'cli') . '|' . ($identifier ?? ''));
+    }
+
+    /**
+     * Check (and record) one attempt against a rate limit.
+     *
+     * File-backed and atomic (flock), keyed by action + IP + optional account
+     * identifier so both cookie-less attackers and credential stuffing against
+     * a single mailbox are throttled.
+     *
+     * Storage failures fail OPEN (request allowed) with an error log: a disk
+     * problem must never lock every legitimate user out of authentication.
+     */
+    public static function checkRateLimit(
+        string $action,
+        int $maxAttempts = 5,
+        int $windowSeconds = 900,
+        ?string $identifier = null
+    ): bool {
+        $dir = self::rateLimitStoragePath();
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        $path = self::rateLimitPath(self::rateLimitKey($action, $identifier));
+        $now = time();
+
+        $fh = @fopen($path, 'c+');
+        if ($fh === false) {
+            \logger()->error('Rate limit store unavailable - failing open', ['action' => $action]);
             return true;
         }
 
-        $data = $_SESSION[$key];
-
-        // Reset if window has expired
-        if (time() - $data['first_attempt'] > $windowSeconds) {
-            $_SESSION[$key] = [
-                'count' => 1,
-                'first_attempt' => time(),
-            ];
+        if (!flock($fh, LOCK_EX)) {
+            fclose($fh);
+            \logger()->error('Rate limit lock failed - failing open', ['action' => $action]);
             return true;
         }
 
-        // Check if max attempts exceeded
-        if ($data['count'] >= $maxAttempts) {
+        $raw = stream_get_contents($fh);
+        $data = json_decode((string) $raw, true);
+        if (!is_array($data) || !isset($data['count'], $data['first']) || ($now - (int) $data['first']) > $windowSeconds) {
+            $data = ['count' => 0, 'first' => $now];
+        }
+
+        $data['count'] = (int) $data['count'] + 1;
+        $data['first'] = (int) $data['first'];
+
+        ftruncate($fh, 0);
+        rewind($fh);
+        fwrite($fh, json_encode($data) ?: '{}');
+        fflush($fh);
+        flock($fh, LOCK_UN);
+        fclose($fh);
+
+        if ((int) $data['count'] > $maxAttempts) {
             \logger()->warning('Rate limit exceeded', [
                 'action' => $action,
                 'ip'     => $_SERVER['REMOTE_ADDR'] ?? '',
@@ -300,8 +370,24 @@ class SecurityMiddleware
             return false;
         }
 
-        $_SESSION[$key]['count']++;
+        if (random_int(1, 100) === 1) {
+            self::gcRateLimits($now);
+        }
+
         return true;
+    }
+
+    /**
+     * Opportunistic cleanup of rate-limit buckets older than one day.
+     */
+    private static function gcRateLimits(int $now): void
+    {
+        $files = glob(self::rateLimitStoragePath() . '/*.json') ?: [];
+        foreach ($files as $file) {
+            if (is_file($file) && ($now - (int) filemtime($file)) > 86400) {
+                @unlink($file);
+            }
+        }
     }
 
     /**
@@ -309,20 +395,31 @@ class SecurityMiddleware
      *
      * Exits with HTTP 429 + JSON when the rate limit is exhausted.
      * Call at the top of the action handler:
-     *   \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('login');
+     *   \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('login', 5, 900, $email);
+     *
+     * The optional identifier (email / user id) additionally throttles
+     * credential stuffing against a single account from rotating IPs. It is
+     * hashed before logging - raw identifiers never reach the log.
      */
-    public static function protectAgainstBruteForce(string $action, int $maxAttempts = 5, int $windowSeconds = 900): void
-    {
-        if (!self::checkRateLimit($action, $maxAttempts, $windowSeconds)) {
+    public static function protectAgainstBruteForce(
+        string $action,
+        int $maxAttempts = 5,
+        int $windowSeconds = 900,
+        ?string $identifier = null
+    ): void {
+        if (!self::checkRateLimit($action, $maxAttempts, $windowSeconds, $identifier)) {
             self::logSecurityEvent('auth.bruteforce_blocked', 'warning', [
-                'action'  => $action,
-                'user_id' => $_SESSION['user_id'] ?? null,
+                'action'          => $action,
+                'user_id'         => $_SESSION['user_id'] ?? null,
+                'identifier_hash' => $identifier !== null ? substr(hash('sha256', $identifier), 0, 12) : null,
             ]);
 
-            http_response_code(429);
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Too many attempts. Please try again later.']);
-            exit();
+            \App\Helpers\ApiResponse::error(
+                'Too many attempts. Please try again later.',
+                'RATE_LIMITED',
+                [],
+                429
+            );
         }
     }
 
@@ -368,13 +465,15 @@ class SecurityMiddleware
                 session_destroy();
             }
 
-            $uri = $_SERVER['REQUEST_URI'] ?? '';
+                        $uri = $_SERVER['REQUEST_URI'] ?? '';
             $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
             if (str_starts_with($uri, '/api') || str_contains($accept, 'application/json')) {
-                http_response_code(401);
-                header('Content-Type: application/json');
-                echo json_encode(['error' => 'Session expired. Please sign in again.']);
-                exit();
+                \App\Helpers\ApiResponse::error(
+                    'Session expired. Please sign in again.',
+                    'SESSION_EXPIRED',
+                    [],
+                    401
+                );
             }
 
             $_SESSION['flash_message'] = 'Your session has expired. Please sign in again.';
@@ -451,19 +550,23 @@ class SecurityMiddleware
             return [];
         }
 
-        if (strlen($raw) > $maxSize) {
-            http_response_code(400);
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Request body too large.']);
-            exit();
+                if (strlen($raw) > $maxSize) {
+            \App\Helpers\ApiResponse::error(
+                'Request body too large.',
+                'REQUEST_TOO_LARGE',
+                [],
+                400
+            );
         }
 
         $data = json_decode($raw, true, $maxDepth);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            http_response_code(400);
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Invalid JSON body.', 'detail' => json_last_error_msg()]);
-            exit();
+            \App\Helpers\ApiResponse::error(
+                'Invalid JSON body: ' . json_last_error_msg(),
+                'INVALID_JSON',
+                [],
+                400
+            );
         }
 
         return is_array($data) ? $data : [];

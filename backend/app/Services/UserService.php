@@ -82,6 +82,11 @@ class UserService implements UserServiceInterface
             $data['role'] = 'employee';
         }
 
+        // Business rule: role must be a valid catalog role, and creating an
+        // account WITH the super_admin role requires a super_admin actor.
+        $this->assertValidRole((string) $data['role']);
+        $this->assertAuthorizedRoleChange('', (string) $data['role']);
+
         // Business rule: Set default status if not provided
         if (empty($data['is_active'])) {
             $data['is_active'] = 1;
@@ -114,6 +119,17 @@ class UserService implements UserServiceInterface
             if (!$employee) {
                 throw new \InvalidArgumentException('Employee not found');
             }
+        }
+
+        // Business rule: role changes must be valid AND authorized (privilege
+        // escalation guard). A role in the payload means the caller is trying
+        // to change the account's role.
+        if (array_key_exists('role', $data)) {
+            $this->assertValidRole((string) ($data['role'] ?? ''));
+            $this->assertAuthorizedRoleChange(
+                (string) ($existingUser['role'] ?? ''),
+                (string) $data['role']
+            );
         }
 
         // Business rule: Normalize email
@@ -198,13 +214,78 @@ class UserService implements UserServiceInterface
             throw new \InvalidArgumentException('User not found');
         }
 
-        // Business rule: Validate role
-        $validRoles = ['admin', 'hr', 'manager', 'employee'];
-        if (!in_array($role, $validRoles)) {
-            throw new \InvalidArgumentException('Invalid user role');
-        }
+        // Business rule: role must be a valid catalog role and the change
+        // must be authorized (privilege escalation guard).
+        $this->assertValidRole($role);
+        $this->assertAuthorizedRoleChange((string) ($user['role'] ?? ''), $role);
 
         return $this->userRepository->updateRole($userId, $role);
+    }
+
+    /**
+     * Validate a role against the permission catalog ("roles" list).
+     * The catalog is the single source of truth for valid roles; legacy
+     * hand-maintained lists here drifted from it ('hr' never existed).
+     */
+    private function assertValidRole(string $role): void
+    {
+        $roles = $this->catalogRoles();
+        if (!in_array($role, $roles, true)) {
+            throw new \InvalidArgumentException('Invalid user role');
+        }
+    }
+
+    /**
+     * Privilege escalation guard for role assignment.
+     *
+     * Only a Super Administrator may assign or hold the super_admin role —
+     * this prevents a holder of the generic users:edit permission from
+     * elevating themselves or anyone else to full system control. The acting
+     * identity is taken from the authenticated session (never the payload).
+     */
+    private function assertAuthorizedRoleChange(string $currentRole, string $newRole): void
+    {
+        if ($newRole !== 'super_admin' && $newRole !== 'admin') {
+            return;
+        }
+
+        $actingUserId = (int) ($_SESSION['user_id'] ?? 0);
+        $actingRole = (string) ($_SESSION['user_role'] ?? '');
+
+        // Re-resolve from the database when the session does not identify the
+        // actor (e.g. CLI/worker contexts) — never trust a payload role.
+        if ($actingRole === '' && $actingUserId > 0) {
+            try {
+                $acting = db()->fetchOne('SELECT role FROM users WHERE id = ?', 'i', [$actingUserId]);
+                $actingRole = (string) ($acting['role'] ?? '');
+            } catch (\Throwable $e) {
+                $actingRole = '';
+            }
+        }
+
+        if ($actingRole === 'admin' || $actingRole === 'super_admin') {
+            return;
+        }
+
+        throw new \InvalidArgumentException('Only a Super Administrator can assign the Super Admin role');
+    }
+
+    /**
+     * Valid roles from the permission catalog.
+     *
+     * @return string[]
+     */
+    private function catalogRoles(): array
+    {
+        $catalog = null;
+        if (function_exists('config')) {
+            $catalog = config('permissions');
+        }
+        if (!is_array($catalog) || empty($catalog['roles'])) {
+            $path = __DIR__ . '/../../config/permissions.php';
+            $catalog = is_file($path) ? require $path : ['roles' => []];
+        }
+        return is_array($catalog['roles'] ?? null) ? $catalog['roles'] : [];
     }
 
     public function searchUsers(string $query, array $filters = [], int $page = 1, int $limit = 30): array

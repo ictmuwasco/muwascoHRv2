@@ -202,6 +202,92 @@ return [
                 ['key' => 'view_sensitive', 'label' => 'View Technical Data', 'type' => 'action'],
             ],
         ],
+
+        // Phase 2 consolidation: modules that were already enforced by
+        // controllers / route gates / seeds but were missing from the catalog
+        // (permission drift). Keeping them here makes the catalog the single
+        // source of truth and lets overrides + the sidebar use them safely.
+
+        'complaints' => [
+            'key'     => 'complaints',
+            'label'   => 'Complaints',
+            'actions' => [
+                // Triage/update of complaints (ComplaintController). Filing and
+                // listing one's OWN complaints is authenticated-only
+                // self-service (see config/authz_allowlist.php).
+                ['key' => 'view', 'label' => 'View / Triage', 'type' => 'page'],
+            ],
+        ],
+
+        'payroll' => [
+            'key'     => 'payroll',
+            'label'   => 'Payroll',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'notifications' => [
+            'key'     => 'notifications',
+            'label'   => 'Notifications Administration',
+            'actions' => [
+                // Admin/HR visibility into notification delivery.
+                // Personal notification preferences/push subscriptions are
+                // authenticated-only self-service.
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        // Strategy & Performance chain (seeded by migration 027):
+        // strategic_plan -> goals -> strategic_targets -> performance_contracts
+        // -> workplan_objectives -> kpis -> sectional objectives.
+        // Route gates mirror these; OrgScope narrows WHO within the permission.
+        'strategic_plan' => [
+            'key'     => 'strategic_plan',
+            'label'   => 'Strategic Plan',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'performance_contract' => [
+            'key'     => 'performance_contract',
+            'label'   => 'Performance Contracts',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'workplan' => [
+            'key'     => 'workplan',
+            'label'   => 'Workplans',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'kpi' => [
+            'key'     => 'kpi',
+            'label'   => 'KPIs',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'sectional_objective' => [
+            'key'     => 'sectional_objective',
+            'label'   => 'Sectional Objectives',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
     ],
 
     /**

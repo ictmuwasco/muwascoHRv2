@@ -23,6 +23,8 @@ export const useAuth = () => {
       user: null,
       loading: false,
       isAuthenticated: false,
+      can: () => false,
+      canAny: () => false,
       login: async () => ({
         success: false,
         message: 'Authentication is unavailable. Please reload the page.',
@@ -57,6 +59,27 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('user')
       }
     }
+
+    // Phase 2: refresh the effective permission set from the server when a
+    // session exists. The cached profile renders instantly, then /auth/user
+    // overwrites it with the authoritative user + permissions so sidebar /
+    // button visibility reflects recent permission changes. UX only — the
+    // backend still enforces authorization independently.
+    const refreshPermissions = async () => {
+      try {
+        const response = await api.get('/auth/user')
+        const freshUser = response?.data?.data ?? response?.data
+        if (freshUser && typeof freshUser === 'object' && freshUser.id) {
+          localStorage.setItem('user', JSON.stringify(freshUser))
+          setUser(freshUser)
+        }
+      } catch {
+        // Silent — a stale session cookie simply leaves the cached profile
+        // in place; ProtectedRoute / backend 401 handling will bounce the
+        // user to /login when a request actually fails.
+      }
+    }
+    refreshPermissions()
 
     setLoading(false)
   }, [])
@@ -143,12 +166,52 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  /**
+   * Centralized frontend authorization helper (Phase 2, §11–12).
+   *
+   * `can(module, action)` consults the EFFECTIVE permission strings the
+   * backend attached to /auth/login and /auth/user responses (already the
+   * result of super_admin policy + user overrides + role permissions +
+   * default deny). Returns a boolean suitable for menu/button/route
+   * visibility.
+   *
+   * SECURITY MODEL: this is UX convenience ONLY — it never replaces the
+   * backend. The API enforces authorization independently on every request,
+   * so a stale/incorrect cached value can at worst hide or show a button,
+   * never grant access.
+   *
+   * @param {string} module  catalog module key, e.g. 'leave'
+   * @param {string} action  catalog action key, e.g. 'approve'
+   * @returns {boolean}
+   */
+  const can = (module, action = 'view') => {
+    if (!user || !Array.isArray(user.permissions)) {
+      // No effective-permission set (e.g. stale localStorage from before
+      // Phase 2). Default deny for everyone except super_admin, whose
+      // documented policy is unlimited access — the backend declares it.
+      return !!user && (user.role === 'super_admin' || user.role === 'admin')
+    }
+    return user.permissions.includes(`${module}:${action}`)
+  }
+
+  /**
+   * True when the user holds ANY of the given "module:action" pairs.
+   * @param {Array<[string, string]>} pairs e.g. [['leave','approve'],['leave','manage']]
+   * @returns {boolean}
+   */
+  const canAny = (pairs) => {
+    if (!Array.isArray(pairs) || pairs.length === 0) return false
+    return pairs.some(([module, action]) => can(module, action))
+  }
+
   const value = {
     user,
     login,
     logout,
     loading,
-    isAuthenticated: !!user
+    isAuthenticated: !!user,
+    can,
+    canAny,
   }
 
   return (

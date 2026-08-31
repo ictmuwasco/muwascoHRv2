@@ -47,6 +47,8 @@ class AuditService
     public const ACTION_REJECT           = 'REJECT';
     public const ACTION_INVALIDATE       = 'INVALIDATE';
     public const ACTION_STATUS_CHANGE    = 'STATUS_CHANGE';
+    public const ACTION_PASSWORD_CHANGE  = 'PASSWORD_CHANGE';
+    public const ACTION_PASSWORD_RESET   = 'PASSWORD_RESET';
     public const ACTION_EXPORT           = 'EXPORT';
     public const ACTION_PERMISSION_CHANGE = 'PERMISSION_CHANGE';
     public const ACTION_CONSENT          = 'CONSENT';

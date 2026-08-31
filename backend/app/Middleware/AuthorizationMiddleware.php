@@ -5,90 +5,87 @@ declare(strict_types=1);
 namespace App\Middleware;
 
 use App\Helpers\Auth;
-use App\Helpers\Session;
 use App\Helpers\AuthorizationService;
 
 /**
- * Authorization Middleware
+ * Authorization Middleware — server-side route permission enforcement (Phase 2).
  *
- * Ensures the user has the required permissions before accessing the route.
+ * The required permission for an endpoint is defined EXCLUSIVELY by trusted
+ * server-side code: every route registered in the root api.php router carries
+ * its permission as "module:action" (or null = authenticated-only, with
+ * ownership/organizational scope enforced inside the controller). The router
+ * calls AuthorizationMiddleware::enforce() with that value BEFORE the
+ * controller runs.
+ *
+ * Security invariants:
+ *  - The request can NEVER define its own permission requirement. The legacy
+ *    behaviour of reading client-supplied permission parameters from
+ *    the request superglobals was a privilege-escalation hole and has been
+ *    removed.
+ *  - The permission is resolved through the single authorization engine
+ *    (AuthorizationService): super_admin policy + user overrides + role
+ *    permissions + default deny.
+ *  - This middleware runs ON TOP of the global authentication gate
+ *    (AuthenticationMiddleware::process) — a request reaching here is already
+ *    authenticated, so the authenticated user id is always available.
+ *  - Controllers keep their own requirePermission() checks as defense in
+ *    depth; this gate guarantees the route-level requirement is server-defined
+ *    and deterministic.
  */
 class AuthorizationMiddleware extends BaseMiddleware
 {
-    private Auth $auth;
-    private Session $session;
-    private AuthorizationService $authorizationService;
-
-    public function __construct()
+    /**
+     * Enforce a server-defined route permission ("module:action").
+     * Emits a JSON 403 and terminates the request when denied.
+     *
+     * @param string $permission e.g. "employees:view"
+     */
+    public static function enforce(string $permission): void
     {
-        $this->auth = Auth::getInstance();
-        $this->session = Session::getInstance();
-        $this->authorizationService = new AuthorizationService();
+        if (self::check($permission)) {
+            return;
+        }
+
+        \App\Helpers\ApiResponse::error(
+            'Forbidden - insufficient permissions for this action.',
+            'FORBIDDEN',
+            [],
+            403
+        );
     }
 
     /**
-     * Handle the incoming request.
+     * Testable check for a server-defined route permission.
+     *
+     * @param string $permission "module:action" (e.g. "employees:view")
+     */
+    public static function check(string $permission): bool
+    {
+        $parts = explode(':', $permission, 2);
+        if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
+            // A malformed server-side mapping is a development error — deny.
+            return false;
+        }
+
+        [$module, $action] = $parts;
+
+        // The authenticated user id (never a role string — roles are derived
+        // inside AuthorizationService from trusted context).
+        $userId = Auth::getInstance()->id();
+
+        return AuthorizationService::getInstance()->hasPermission($userId, $module, $action);
+    }
+
+    /**
+     * Pipeline entry (handle pattern) — kept for middleware-pipeline callers.
+     *
+     * Without a server-defined permission there is nothing to enforce here:
+     * route permissions are attached to the route definitions in api.php and
+     * enforced via enforce(). This class intentionally does NOT read any
+     * request parameters.
      */
     public function handle(callable $next): mixed
     {
-        $requiredPermission = $this->getRequiredPermission();
-        
-        if (!$requiredPermission) {
-            return $next();
-        }
-
-        $userId = $this->session->get('user_id');
-        $userRole = $this->session->get('user_role');
-
-        if (!$userId || !$userRole) {
-            if ($this->isApiRequest()) {
-                return $this->json(['error' => 'Unauthorized'], 403);
-            }
-            $this->redirect('login');
-        }
-
-        // Check if user has the required permission
-        if (!$this->authorizationService->hasPermission($userRole, $requiredPermission['resource'], $requiredPermission['action'])) {
-            if ($this->isApiRequest()) {
-                return $this->json(['error' => 'Forbidden - Insufficient permissions'], 403);
-            }
-
-            $_SESSION['flash_error'] = 'You do not have permission to access this resource.';
-            $this->redirect('dashboard');
-        }
-
         return $next();
-    }
-
-    /**
-     * Get the required permission from the request.
-     */
-    private function getRequiredPermission(): ?array
-    {
-        // Get permission from route attributes or query parameters
-        $resource = $_GET['permission_resource'] ?? $_POST['permission_resource'] ?? null;
-        $action = $_GET['permission_action'] ?? $_POST['permission_action'] ?? 'view';
-
-        if (!$resource) {
-            return null;
-        }
-
-        return [
-            'resource' => $resource,
-            'action' => $action,
-        ];
-    }
-
-    /**
-     * Check if the current request is an API request.
-     */
-    private function isApiRequest(): bool
-    {
-        $uri = $_SERVER['REQUEST_URI'] ?? '';
-        $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-
-        return str_starts_with($uri, '/api') || 
-               str_contains($accept, 'application/json') ||
-               isset($_SERVER['HTTP_X_REQUESTED_WITH']);
     }
 }

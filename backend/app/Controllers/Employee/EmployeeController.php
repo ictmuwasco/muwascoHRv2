@@ -83,7 +83,7 @@ class EmployeeController extends BaseController
     {
         $this->requirePermission('employees', 'create');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\EmployeeValidator());
 
         try {
             $employeeId = $this->employeeService->createEmployee($data);
@@ -109,7 +109,7 @@ class EmployeeController extends BaseController
     {
         $this->requirePermission('employees', 'edit');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\EmployeeValidator());
 
         try {
             $oldEmployee = $this->employeeService->getEmployeeById($id);
@@ -763,10 +763,7 @@ class EmployeeController extends BaseController
         $stmt->close();
 
         if (!$employee || empty($employee['profile_image_url'])) {
-            http_response_code(404);
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Profile picture not found']);
-            exit();
+            \App\Helpers\ApiResponse::error('Profile picture not found', 'NOT_FOUND', [], 404);
         }
 
         // Support both public-webroot path and storage-relative path
@@ -776,10 +773,7 @@ class EmployeeController extends BaseController
             if (file_exists($storagePath)) {
                 $filePath = $storagePath;
             } else {
-                http_response_code(404);
-                header('Content-Type: application/json');
-                echo json_encode(['error' => 'Profile picture file not found on server']);
-                exit();
+                \App\Helpers\ApiResponse::error('Profile picture file not found on server', 'NOT_FOUND', [], 404);
             }
         }
 

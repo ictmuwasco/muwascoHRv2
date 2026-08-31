@@ -19,3 +19,15 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# ------------------------------------------------------------------
+# Phase 1 security hardening (2026-08-31):
+# This directory hosts the LEGACY Laravel scaffold, which is NOT the
+# running application (the active API entry is the root api.php).
+# The legacy front controller must not be web-reachable: it performs
+# no authentication gating of its own. Remove this block only when the
+# legacy scaffold is retired (see docs/AUTHENTICATION.md).
+# ------------------------------------------------------------------
+<Files "index.php">
+    Require all denied
+</Files>
