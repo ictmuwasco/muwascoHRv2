@@ -12,16 +12,17 @@ namespace App\Controllers;
 class DashboardController extends BaseController
 {
     /**
-     * GET /api/dashboard - Get dashboard data with embedded auto clock-out.
-     * This endpoint also auto-clocks out employees from previous days.
+     * GET /api/dashboard - Get dashboard data and statistics.
+     *
+     * Phase 5: this endpoint is now strictly read-only. The previous
+     * "embedded auto clock-out" side effect (a mutating GET) was removed;
+     * missed clock-outs are handled exclusively by
+     * AttendanceCloseService via backend/cron/auto_clockout.php and the
+     * per-employee lazy reconcile in AttendanceController::dashboardAction.
      */
     public function indexAction(): void
     {
         $this->requirePermission('dashboard', 'view');
-
-        // Auto clock-out any open sessions from previous days
-        // This runs every time the dashboard is loaded, ensuring forgotten clock-outs are handled
-        $this->autoClockOutPreviousDays();
 
         $db = \db();
         $userId = $this->getUserId();
@@ -74,50 +75,6 @@ class DashboardController extends BaseController
         ];
 
         $this->success($data);
-    }
-
-    /**
-     * Auto clock-out employees who forgot to clock out from previous days.
-     * This is called automatically when the dashboard loads.
-     */
-    private function autoClockOutPreviousDays(): void
-    {
-        try {
-            $db = \db();
-
-            // Find all open sessions from previous days
-            $openSessions = $db->fetchAll(
-                "SELECT id, employee_id, clock_in
-                FROM attendance
-                WHERE clock_out IS NULL AND DATE(clock_in) < ?",
-                's',
-                [date('Y-m-d')]
-            );
-
-            if (!empty($openSessions)) {
-                // Batch-close at end of each employee's attendance day
-                // (Africa/Nairobi) and flag auto_clocked_out = 1 for HR
-                // reporting. Mirrors AttendanceController::reconcileStaleSession()
-                // and autoClockOutAction() so all three paths stay consistent.
-                $db->query(
-                    "UPDATE attendance
-                    SET clock_out = DATE_FORMAT(clock_in, '%Y-%m-%d 23:59:59'),
-                        status = 'auto_clocked_out',
-                        auto_clocked_out = 1,
-                        updated_at = NOW()
-                    WHERE clock_out IS NULL AND DATE(clock_in) < ?",
-                    's',
-                    [date('Y-m-d')]
-                );
-
-                \logger()->info('Auto clock-out completed', [
-                    'count' => count($openSessions),
-                    'employee_ids' => array_column($openSessions, 'employee_id')
-                ]);
-            }
-        } catch (\Throwable $e) {
-            \logger()->error('Auto clock-out failed', ['error' => $e->getMessage()]);
-        }
     }
 
     /**

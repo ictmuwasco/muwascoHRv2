@@ -754,7 +754,13 @@ class LeaveController extends BaseController
         if (($result['success'] ?? false)) {
             \App\Helpers\ApiResponse::success($result['data'] ?? null, $result['message'] ?? 'Operation successful', 200);
         } else {
-            \App\Helpers\ApiResponse::error($result['message'] ?? 'Request failed.', 'REQUEST_FAILED', isset($result['data']) && is_array($result['data']) ? $result['data'] : [], 400);
+            $isTransition = ($result['code'] ?? null) === 'INVALID_TRANSITION';
+            \App\Helpers\ApiResponse::error(
+                $result['message'] ?? 'Request failed.',
+                $isTransition ? 'INVALID_TRANSITION' : 'REQUEST_FAILED',
+                isset($result['data']) && is_array($result['data']) ? $result['data'] : [],
+                $isTransition ? 409 : 400
+            );
         }
     }
 
@@ -793,7 +799,13 @@ class LeaveController extends BaseController
         if (($result['success'] ?? false)) {
             \App\Helpers\ApiResponse::success($result['data'] ?? null, $result['message'] ?? 'Operation successful', 200);
         } else {
-            \App\Helpers\ApiResponse::error($result['message'] ?? 'Request failed.', 'REQUEST_FAILED', isset($result['data']) && is_array($result['data']) ? $result['data'] : [], 400);
+            $isTransition = ($result['code'] ?? null) === 'INVALID_TRANSITION';
+            \App\Helpers\ApiResponse::error(
+                $result['message'] ?? 'Request failed.',
+                $isTransition ? 'INVALID_TRANSITION' : 'REQUEST_FAILED',
+                isset($result['data']) && is_array($result['data']) ? $result['data'] : [],
+                $isTransition ? 409 : 400
+            );
         }
     }
 
@@ -832,7 +844,13 @@ class LeaveController extends BaseController
         if (($result['success'] ?? false)) {
             \App\Helpers\ApiResponse::success($result['data'] ?? null, $result['message'] ?? 'Operation successful', 200);
         } else {
-            \App\Helpers\ApiResponse::error($result['message'] ?? 'Request failed.', 'REQUEST_FAILED', isset($result['data']) && is_array($result['data']) ? $result['data'] : [], 400);
+            $isTransition = ($result['code'] ?? null) === 'INVALID_TRANSITION';
+            \App\Helpers\ApiResponse::error(
+                $result['message'] ?? 'Request failed.',
+                $isTransition ? 'INVALID_TRANSITION' : 'REQUEST_FAILED',
+                isset($result['data']) && is_array($result['data']) ? $result['data'] : [],
+                $isTransition ? 409 : 400
+            );
         }
     }
 
@@ -864,7 +882,13 @@ class LeaveController extends BaseController
         if (($result['success'] ?? false)) {
             \App\Helpers\ApiResponse::success($result['data'] ?? null, $result['message'] ?? 'Operation successful', 200);
         } else {
-            \App\Helpers\ApiResponse::error($result['message'] ?? 'Request failed.', 'REQUEST_FAILED', isset($result['data']) && is_array($result['data']) ? $result['data'] : [], 400);
+            $isTransition = ($result['code'] ?? null) === 'INVALID_TRANSITION';
+            \App\Helpers\ApiResponse::error(
+                $result['message'] ?? 'Request failed.',
+                $isTransition ? 'INVALID_TRANSITION' : 'REQUEST_FAILED',
+                isset($result['data']) && is_array($result['data']) ? $result['data'] : [],
+                $isTransition ? 409 : 400
+            );
         }
     }
 

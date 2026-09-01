@@ -6,6 +6,8 @@ namespace App\Services;
 
 use App\Helpers\Database;
 use App\Helpers\Auth;
+use App\Services\Leave\InvalidLeaveTransitionException;
+use App\Services\Leave\LeaveWorkflowRules;
 
 /**
  * LeaveApprovalService
@@ -132,6 +134,22 @@ class LeaveApprovalService
             return ['success' => false, 'message' => 'You are not authorised to approve this application'];
         }
 
+        // Phase 5 §6/§21: formal transition guard. Approve is only valid from
+        // a pending stage — repeat approvals (double-clicks, or the HR /
+        // super-admin bypass acting on an already-decided application) are
+        // blocked here so the balance ledger can NEVER be applied twice.
+        try {
+            LeaveWorkflowRules::assertCanDecide($app['status'], 'approve');
+        } catch (InvalidLeaveTransitionException $e) {
+            \logger()->warning('Leave decision blocked: invalid transition', [
+                'action' => 'approve',
+                'application_id' => $applicationId,
+                'current_status' => $app['status'],
+                'actor_user_id' => $userId,
+            ]);
+            return ['success' => false, 'message' => $e->getMessage(), 'code' => 'INVALID_TRANSITION'];
+        }
+
         $currentStatus = $app['status'];
         $nextStatus = $this->getNextStatus($currentStatus, $role, $app);
 
@@ -170,7 +188,12 @@ class LeaveApprovalService
             ];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave approval failed', [
+                'application_id' => $applicationId,
+                'actor_user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to process the approval. Please try again.'];
         }
     }
 
@@ -195,6 +218,21 @@ class LeaveApprovalService
             return ['success' => false, 'message' => 'You are not authorised to reject this application'];
         }
 
+        // Phase 5 §6: reject is only valid from a pending stage. Rejecting an
+        // already-approved application would desynchronise the status from
+        // the balances deducted at approval time.
+        try {
+            LeaveWorkflowRules::assertCanDecide($app['status'], 'reject');
+        } catch (InvalidLeaveTransitionException $e) {
+            \logger()->warning('Leave decision blocked: invalid transition', [
+                'action' => 'reject',
+                'application_id' => $applicationId,
+                'current_status' => $app['status'],
+                'actor_user_id' => $userId,
+            ]);
+            return ['success' => false, 'message' => $e->getMessage(), 'code' => 'INVALID_TRANSITION'];
+        }
+
         $this->db->begin_transaction();
         try {
             $stmt = $this->db->prepare("
@@ -213,7 +251,12 @@ class LeaveApprovalService
             return ['success' => true, 'message' => 'Leave application rejected', 'data' => ['status' => 'rejected']];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave rejection failed', [
+                'application_id' => $applicationId,
+                'actor_user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to process the rejection. Please try again.'];
         }
     }
 
@@ -232,6 +275,22 @@ class LeaveApprovalService
             return ['success' => false, 'message' => 'Application not found'];
         }
 
+        // Phase 5 §5/§6: invalidation is the formal REVERSAL path. Allowed
+        // from pending stages and from approved (which must restore the
+        // deducted balances); rejected/cancelled/invalidated are final.
+        $wasApproved = $app['status'] === LeaveWorkflowRules::STATUS_APPROVED;
+        try {
+            LeaveWorkflowRules::assertCanInvalidate($app['status']);
+        } catch (InvalidLeaveTransitionException $e) {
+            \logger()->warning('Leave decision blocked: invalid transition', [
+                'action' => 'invalidate',
+                'application_id' => $applicationId,
+                'current_status' => $app['status'],
+                'actor_user_id' => $userId,
+            ]);
+            return ['success' => false, 'message' => $e->getMessage(), 'code' => 'INVALID_TRANSITION'];
+        }
+
         $this->db->begin_transaction();
         try {
             $stmt = $this->db->prepare("
@@ -243,6 +302,12 @@ class LeaveApprovalService
             $stmt->execute();
             $stmt->close();
 
+            // Reversing a fully-approved application restores the balances
+            // that were deducted at approval time (mirror of the deduction).
+            if ($wasApproved) {
+                $this->reverseBalanceUpdates($applicationId, $app);
+            }
+
             $this->logHistory($applicationId, $userId, 'invalidated', $app, $reason);
 
             $this->db->commit();
@@ -250,7 +315,12 @@ class LeaveApprovalService
             return ['success' => true, 'message' => 'Leave application invalidated', 'data' => ['status' => 'invalidated']];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave invalidation failed', [
+                'application_id' => $applicationId,
+                'actor_user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to process the invalidation. Please try again.'];
         }
     }
 
@@ -302,7 +372,12 @@ class LeaveApprovalService
             return ['success' => true, 'message' => 'Leave application cancelled', 'data' => ['status' => 'cancelled']];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave cancellation failed', [
+                'application_id' => $applicationId,
+                'actor_user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to process the cancellation. Please try again.'];
         }
     }
 
@@ -522,6 +597,67 @@ class LeaveApprovalService
             $stmt = $this->db->prepare("
                 UPDATE employee_leave_balances
                 SET used_days = used_days + ?, remaining_days = remaining_days - ?
+                WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
+            ");
+            $stmt->bind_param('ddiii', $annualDays, $annualDays, $employeeId, $annualTypeId, $financialYearId);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+
+    /**
+     * Restore balances when a fully-approved application is invalidated
+     * (Phase 5 §5 reversal). Exact mirror of applyBalanceUpdates() with
+     * inverted deltas; runs inside the caller's transaction.
+     */
+    private function reverseBalanceUpdates(int $applicationId, array $app): void
+    {
+        $leaveTypeId = (int) $app['leave_type_id'];
+        $employeeId = (int) $app['employee_id'];
+        $financialYearId = (int) $app['financial_year_id'];
+        $primaryDays = (float) ($app['primary_days'] ?? 0);
+        $annualDays = (float) ($app['annual_days'] ?? 0);
+
+        // Claim a Day — remove the annual leave credit
+        if ($leaveTypeId === 9) {
+            $annualTypeId = $this->getAnnualLeaveTypeId();
+            $daysToAdd = (float) ($primaryDays > 0 ? $primaryDays : ($app['days_requested'] ?? 0));
+            $stmt = $this->db->prepare("
+                UPDATE employee_leave_balances
+                SET allocated_days = allocated_days - ?,
+                    accumulated_days = accumulated_days - ?,
+                    remaining_days = remaining_days - ?
+                WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
+            ");
+            $stmt->bind_param('dddiii', $daysToAdd, $daysToAdd, $daysToAdd, $employeeId, $annualTypeId, $financialYearId);
+            $stmt->execute();
+            $stmt->close();
+            return;
+        }
+
+        // Leave of Absence — no balance movement to reverse
+        if ($leaveTypeId === 8) {
+            return;
+        }
+
+        // Restore the primary balance deduction
+        if ($primaryDays > 0) {
+            $stmt = $this->db->prepare("
+                UPDATE employee_leave_balances
+                SET used_days = used_days - ?, remaining_days = remaining_days + ?
+                WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
+            ");
+            $stmt->bind_param('ddiii', $primaryDays, $primaryDays, $employeeId, $leaveTypeId, $financialYearId);
+            $stmt->execute();
+            $stmt->close();
+        }
+
+        // Restore the annual leave deduction
+        if ($annualDays > 0) {
+            $annualTypeId = $this->getAnnualLeaveTypeId();
+            $stmt = $this->db->prepare("
+                UPDATE employee_leave_balances
+                SET used_days = used_days - ?, remaining_days = remaining_days + ?
                 WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
             ");
             $stmt->bind_param('ddiii', $annualDays, $annualDays, $employeeId, $annualTypeId, $financialYearId);
