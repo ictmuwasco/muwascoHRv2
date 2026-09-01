@@ -8,7 +8,7 @@ points at the enforcing code/config; remaining items are operational.
 
 - [ ] `APP_ENV=production`, `APP_DEBUG=false` — verified via `.env.production.example`; `display_errors=0` enforced in `backend/bootstrap.php`.
 - [ ] `APP_KEY`/secrets are **not** in version control (`git check-ignore .env` → ignored; `scripts/ci/secret_scan.php` blocks CI otherwise).
-- [ ] **Rotate** any credential that ever appeared in Git history (known leaks: DB password `Jmwkah198`, admin defaults `ADMIN001`/`Admin@123` — see `scripts/ci/secret_scan.php` known-leak list). Values remain in history until a rewrite/amputation is approved.
+- [ ] **Rotate** any credential that ever appeared in Git history (known leaks: the DB password and the two admin defaults recorded in `scripts/ci/secret_scan.php` known-leak list). Values remain in history until a rewrite/amputation is approved.
 - [ ] `JWT_SECRET` is a unique ≥32-byte random value per environment (fail-safe refuses to run otherwise).
 - [ ] `LOG_LEVEL=info` (never `debug`).
 

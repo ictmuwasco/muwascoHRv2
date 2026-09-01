@@ -211,11 +211,13 @@ Severities: CRITICAL · HIGH · MEDIUM · LOW · INFORMATIONAL.
   surface, mass assignment, file security and policy configuration.
 ## 5. Remaining risks (accepted / deferred)
 
-1. **Git history secret rotation (operational).** The Phase 1 DB password
-   (`Jmwkah198`) and admin defaults (`ADMIN001`, `Admin@123`) remain in Git
-   history. **Action required:** rotate the production DB account and any
-   account still using a default admin password; approve history rewrite or
-   amputation. Live `.env` uses different dev values and the JWT secret is a
+1. **Git history secret rotation (operational).** The Phase 1 DB password and
+   the two admin default passwords (values on record in the `scripts/ci/secret_scan.php`
+   known-leak list and in `docs/SECURITY_AUDIT.md` §9) remain in Git history.
+   **Action required:** rotate the production DB account and any account still
+   using a default admin password; approve history rewrite or amputation. Live
+   `.env` uses different dev values and the JWT secret is a strong random, so
+   no *active* credential reuses the leaked values.
    strong random, so no *active* credential reuses the leaked values.
 2. **Legacy webroot documents.** Files under `backend/public/uploads/` are
    only reachable via authorized endpoints, but should be migrated to
