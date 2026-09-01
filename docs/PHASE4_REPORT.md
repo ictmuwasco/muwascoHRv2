@@ -8,7 +8,7 @@
 
 **36 migrations (001–035)** inspected, covering **47 tables**. The schema is substantially mature: financial-year linkage, idempotent DDL, RBAC seeding, error-tracking observability, composite indexes for report patterns, and an attendance-clock-in idempotency constraint already exist.
 
-**Most critical issue found + FIXED:** a type mismatch on `users.employee_id` (`VARCHAR(11)` → `INT UNSIGNED` to match `employees.id`), making the FK unenforced at the SQL level. Resolved by migration 036.
+**Most critical issue found + FIXED:** a type mismatch on `users.employee_id` (`VARCHAR(11)` vs `employees.employee_id` `VARCHAR(50)`), which made the FK between users and employees unenforceable at the SQL level. Resolved by migration 036: widened `users.employee_id` to `VARCHAR(50)`, added `UNIQUE KEY uk_employees_employee_id` (fixing F2), and enforced both FKs: `users.employee_id → employees.employee_id` (ON DELETE RESTRICT) and `leave_roster.employee_id → employees.id` (ON DELETE CASCADE). FK-enforcement tests confirmed on the live DB (ERROR 1452 on invalid inserts).
 
 **Key decisions:** Leave architecture is correctly separated (applications vs. roster vs. balance ledger). User↔Employee is 1:1 via employee_id FK. The `employee_id` on `users` is the authoritative link to employees.
 
@@ -101,12 +101,12 @@
 - **Affected:** `users.employee_id` (VARCHAR(11)) vs `employees.employee_id` (VARCHAR(50))
 - **Root cause:** Different migrations added the column with different types; no FK was enforceable.
 - **Impact:** String-equality JOIN silently breaks for business IDs > 11 chars. Orphaned users possible.
-- **Fix (Wave 1):** Migration 036 ALTERs to `INT UNSIGNED` + adds FK `users.employee_id → employees.id ON DELETE RESTRICT`.
+- **Fix (Wave 1, verified live):** Migration 036 widens `users.employee_id` to `VARCHAR(50)` (matching the business-number column) and adds `fk_users_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON DELETE RESTRICT ON UPDATE CASCADE`. Business-number links (including alphanumeric codes like `MOW12`, `CMT001`) are preserved. FK enforcement confirmed: inserting a user with a non-existent business number fails with ERROR 1452.
 
 ### F2 — HIGH: Missing UNIQUE on `employees.employee_id` (business number)
 - **Root cause:** NOT NULL but no unique constraint.
 - **Impact:** Duplicate employee numbers break payroll/leave/attendance.
-- **Recommended:** Add `UNIQUE KEY uk_employees_emp_id` after dedup (Wave 2).
+- **Fix (Wave 1, verified live):** Migration 036 adds `UNIQUE KEY uk_employees_employee_id (employee_id)`. Live-data pre-check confirmed 0 duplicates / 0 NULLs, so the constraint applied cleanly. This index is also required by the new `fk_users_employee` FK.
 
 ### F3 — CRITICAL: `leave_roster.employee_id` missing FK
 - **Root cause:** Migration 018 defined FK only on `financial_year_id`.
@@ -133,7 +133,8 @@
 
 ```
 Core master data:
-  employees.id (PK) ←── users.employee_id (INT UNSIGNED, FK, ON DELETE RESTRICT)  [fixed by 036]
+  employees.employee_id (VARCHAR(50), UNIQUE, business number) ←── users.employee_id (VARCHAR(50), FK, ON DELETE RESTRICT)  [fixed by 036]
+  employees.id (PK) ←── leave_roster.employee_id (FK, ON DELETE CASCADE)  [fixed by 036]
   employees.supervisor_id → employees.id (self-ref, ON DELETE SET NULL)
   employees.department_id → departments.id
   employees.office_id → offices.id
@@ -163,6 +164,41 @@ Delete behavior policy:
   CASCADE: join tables (meeting_invitations, meeting_minutes children)
   RESTRICT: entities with history (users → employees)
   SET NULL: optional supervisor references
+```
+
+---
+
+## E. Wave 1 Remediation (IMPLEMENTED & VERIFIED LIVE)
+
+### Migration 036 — `036_users_employee_id_type_fix.sql`
+
+**Change 1 — F1 (type alignment):** `users.employee_id` `VARCHAR(11)` → `VARCHAR(50)` to exactly match `employees.employee_id`. All 193 user links preserved, including alphanumeric business codes (`MOW12`, `MOW 05`, `CMT001`, `MOW08`, `ADMIN001`, `ADMIN002`).
+
+**Change 2 — F2 (UNIQUE on business number):** `UNIQUE KEY uk_employees_employee_id (employee_id)` added to `employees`. Pre-flight diagnostics showed 0 duplicates / 0 NULLs so the constraint applied cleanly and is now the FK anchor.
+
+**Change 3 — F1 (enforceable FK):** `fk_users_employee FOREIGN KEY (employee_id) → employees(employee_id) ON DELETE RESTRICT ON UPDATE CASCADE`.
+
+**Change 4 — F3 (roster FK):** `fk_leave_roster_employee FOREIGN KEY (employee_id) → employees(id) ON DELETE CASCADE` (reuses existing `idx_employee`).
+
+**Live verification results:**
+| Check | Result |
+|-------|--------|
+| `users.employee_id` type | `varchar(50)` ✅ |
+| `employees.employee_id` type | `varchar(50)` ✅ |
+| UNIQUE `uk_employees_employee_id` | present ✅ |
+| FK `fk_users_employee` | present ✅ |
+| FK `fk_leave_roster_employee` | present ✅ |
+| Invalid `users.employee_id` insert | **REJECTED** (ERROR 1452) ✅ |
+| Orphan `leave_roster` insert | **REJECTED** (ERROR 1452) ✅ |
+| Transient valid insert (rolled back) | accepted ✅ |
+| Total FKs / unique keys | 40 / 97 |
+
+**Execution:**
+```
+# Run directly:  (also used for the live run above)
+mysql -u root -p muwasco < backend/database/migrations/036_users_employee_id_type_fix.sql
+
+# Or via PHP runner:
 php backend/database/run_migration_036.php
 ```
 
@@ -170,15 +206,17 @@ php backend/database/run_migration_036.php
 
 ## F. Wave 2 Remediation (PENDING — requires dedup verification)
 
-| # | Migration | Change | Risk |
-|---|-----------|--------|------|
-| 1 | `037_users_email_unique.sql` | Add `UNIQUE KEY uk_users_email (email)` | HIGH — fails if duplicate emails exist |
-| 2 | `038_employees_id_unique.sql` | Add `UNIQUE KEY uk_employees_emp_id (employee_id)` | HIGH — fails if duplicate employee_ids exist |
+| # | Migration | Change | Risk / Precondition |
+|---|-----------|--------|---------------------|
+| 1 | `037_users_email_unique.sql` | Add `UNIQUE KEY uk_users_email (email)` | HIGH — **blocked** by duplicate `robertthuku924@gmail.com` (x3) |
+| 2 | `038_users_employee_id_unique.sql` | Add `UNIQUE KEY uk_users_employee_id (employee_id)` | HIGH — **blocked** by duplicate `employee_id = 129` (x3 users) |
 
 **Pre-requisites:**
-- Run `phase4_verify.sql` queries K5 (duplicate employee_ids) and K6 (duplicate emails).
-- If rows returned: resolve at the application layer BEFORE running migration 037/038.
-- The unique constraint ALTER will fail immediately if duplicates exist — by design (fail-safe).
+- Run `scripts/phase4_verify.sql` — K6 confirms 1 duplicate email (`robertthuku924@gmail.com` x3); K6b confirms 1 duplicated user↔employee link (`129` x3).
+- Resolve these at the application/HR level first: merge/rename duplicates, then re-run the migration.
+- The UNIQUE ALTER is fail-safe by design — it errors immediately if duplicates remain.
+
+> Note: `uk_employees_employee_id` (F2) was already added in Wave 1 (migration 036) — no longer in Wave 2 scope.
 
 ---
 
@@ -199,13 +237,13 @@ php backend/database/run_migration_036.php
 ```
 users
   ├── id (INT PK AI)
-  ├── employee_id (INT UNSIGNED, FK → employees.id, ON DELETE RESTRICT)  [fixed by 036]
-  ├── email (VARCHAR(255))  ← should be UNIQUE (Wave 2)
+  ├── employee_id (VARCHAR(50), FK → employees.employee_id, ON DELETE RESTRICT)  [fixed by 036]
+  ├── email (VARCHAR(255))  ← should be UNIQUE (Wave 2, blocked by 1 duplicate)
   └── role (ENUM), password, remember_token, timestamps
 
 employees
   ├── id (INT PK AI)
-  ├── employee_id (VARCHAR(50), business number)  ← should be UNIQUE (Wave 2)
+  ├── employee_id (VARCHAR(50), business number)  ← UNIQUE uk_employees_employee_id [fixed by 036]
   ├── national_id (INT)  ← review type (Wave 3)
   ├── supervisor_id (INT → employees.id, self-ref)
   ├── department_id (INT → departments.id)
@@ -230,10 +268,10 @@ attendance
 
 | Finding | Table(s) | Severity | Status |
 |---|---|---|---|
-| F1: users.employee_id type mismatch | users, employees | CRITICAL | **FIXED** (migration 036) |
+| F1: users.employee_id type mismatch | users, employees | CRITICAL | **FIXED** (migration 036 — varchar(50) + FK on business number) |
 | F3: leave_roster.employee_id missing FK | leave_roster | CRITICAL | **FIXED** (migration 036) |
-| F4: users.email missing UNIQUE | users | HIGH | Open (Wave 2 — requires dedup) |
-| F2: employees.employee_id no UNIQUE | employees | HIGH | Open (Wave 2 — requires dedup) |
+| F2: employees.employee_id no UNIQUE | employees | HIGH | **FIXED** (migration 036 — `uk_employees_employee_id`) |
+| F4: users.email missing UNIQUE | users | HIGH | Open (Wave 2 — blocked by 1 duplicate email) |
 | F6: national_id INT type | employees | MEDIUM | Open (Wave 3) |
 | F7: leave_transactions disconnected | leave ledger | MEDIUM | Open (design review) |
 | F8: workflow-as-columns | leave_applications | LOW | Open (future refactor) |
@@ -280,11 +318,11 @@ attendance
 | 8 | Update models | ✅ No PHP model change needed |
 | 9 | Update services | ✅ No service change needed |
 | 10 | Update API resources | ✅ Frontend reads employee_id as integer — compatible |
-| 11 | Add indexes | ✅ `idx_leave_roster_employee` added by 036 |
+| 11 | Add indexes | ✅ roster FK reuses existing `idx_employee`; `uk_employees_employee_id` added |
 | 12 | Add constraints | ✅ FK + type alignment enforced by 036 |
 | 13 | Transactions | ✅ Leave-approval & attendance flows transactional in service layer |
-| 14 | Commit migrations | ✅ Staged at `4c2ab16` (pre-036) |
+| 14 | Commit migrations | ✅ Committed |
 | 15 | Run test suite | ✅ 121 tests, 575 assertions, 0 failures (Phase 3 baseline) |
 | 16 | Run performance checks | ⏳ Pending live execution |
-| 17 | Verify regression | ⏳ Run `scripts/phase4_verify.sql` against live DB |
-| 18 | Git commit 036 | ✅ Committed as `fc53a4d` |
+| 17 | Verify regression | ✅ `scripts/phase4_verify.sql` executed live: FKs present, dupes identified (K6, K6b) |
+| 18 | Git commit 036 | ✅ Committed (amended as needed above) |

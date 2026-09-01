@@ -55,7 +55,10 @@ try {
         $dsn,
         $username,
         $password,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        [
+            PDO::ATTR_ERRMODE                => PDO::ERRMODE_EXCEPTION,
+            PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true, // required: runner mixes SELECT diagnostics with DDL
+        ]
     );
 } catch (PDOException $e) {
     fwrite(STDERR, "FATAL: Could not connect to MySQL: " . $e->getMessage() . "\n");
@@ -87,15 +90,18 @@ foreach ($parts as $line) {
 
     // If the buffer now ends with a complete statement, execute it
     if (rtrim($buffer) !== '' && substr(rtrim($buffer), -1) === ';') {
-        // Skip SELECT-only diagnostics from the error-counter check
         $stmt = rtrim($buffer);
-        $isSelect = (bool) preg_match('/^\s*SELECT\s+/i', $stmt);
 
         try {
-            $pdo->exec($stmt);
-            if (!$isSelect) {
-                // Non-SELECT (ALTER etc.) — count it
-            }
+            // query() returns a statement handle even for non-row-returning
+            // statements when buffered query mode is on; draining every
+            // rowset (including the PREPARE..EXECUTE no-op SELECT 1) leaves
+            // no unbuffered results behind for the next statement.
+            $st = $pdo->query($stmt);
+            do {
+                $st->fetchAll(PDO::FETCH_ASSOC);
+                $more = $st->nextRowset();
+            } while ($more);
             echo "  [OK] " . substr($stmt, 0, min(80, strlen($stmt))) . "\n";
             $executed++;
         } catch (PDOException $e) {
