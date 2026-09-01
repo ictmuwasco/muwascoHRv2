@@ -738,6 +738,63 @@ class SecurityMiddleware
         return is_array($data) ? $data : [];
     }
 
+/**
+     * Hardened headers for streaming stored files (Phase 7, P7-7).
+     *
+     * Uploaded HR documents may be attacker-influenced (document_name/file
+     * names are client-supplied at upload). When a stored file is later
+     * rendered by the browser, the only safe posture is to assume it could
+     * be hostile:
+     *
+     *   - Content-Security-Policy: sandbox — blocks script execution and
+     *     top-level navigation even if an uploaded HTML/SVG is ever served
+     *     inline. 'allow-same-origin' is deliberately NOT set so a malicious
+     *     document cannot reach authenticated API state.
+     *   - X-Content-Type-Options: nosniff — browsers never MIME-sniff.
+     *   - Content-Disposition — inline only for formats safe to preview in
+     *     the browser (PDF / images); anything else is forced to download.
+     *   - Cache-Control: private, no-store — sensitive HR documents must not
+     *     persist in shared browser/proxy caches.
+     *
+     * @param string $mime          Detected/stored MIME type.
+     * @param string $filename      Display filename (client-influenced;
+     *                              CRLF/quotes stripped to prevent header
+     *                              injection).
+     * @param bool   $forceDownload Always send Content-Disposition: attachment
+     *                              (preserves existing download-only flows).
+     */
+    public static function applyStreamHeaders(string $mime, string $filename, bool $forceDownload = false): void
+    {
+        foreach (self::streamHeaderMap($mime, $filename, $forceDownload) as $header) {
+            header($header);
+        }
+    }
+
+    /**
+     * Testable core of applyStreamHeaders(): returns the raw header lines.
+     *
+     * @return string[]
+     */
+    public static function streamHeaderMap(string $mime, string $filename, bool $forceDownload = false): array
+    {
+        $safeInline = !$forceDownload && in_array(strtolower($mime), [
+            'application/pdf',
+            'image/jpeg',
+            'image/png',
+            'image/gif',
+            'image/webp',
+        ], true);
+
+        $safeFilename = str_replace(['"', "\r", "\n"], '', basename($filename));
+
+        return [
+            'Content-Type: ' . $mime,
+            'Content-Security-Policy: sandbox',
+            'X-Content-Type-Options: nosniff',
+            'Cache-Control: private, no-store',
+            'Content-Disposition: ' . ($safeInline ? 'inline' : 'attachment') . '; filename="' . $safeFilename . '"',
+        ];
+    }
     /**
      * Validate file upload for security.
      */
