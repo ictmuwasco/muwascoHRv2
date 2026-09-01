@@ -75,7 +75,6 @@ const LeaveApplication = () => {
         
         // Second try: if only one employee, select it (likely the user themselves)
         if (empList.length === 1) {
-          console.log('Auto-selecting single employee:', empList[0])
           setEmployeeId(empList[0].id)
         }
       }
@@ -86,12 +85,9 @@ const LeaveApplication = () => {
 
   const loadDelegates = async () => {
     try {
-      console.log('=== Loading delegates for employeeId:', employeeId, '===')
       // Get eligible delegates based on logged-in user's role
       const response = await api.get('/leave/eligible-delegates')
-      console.log('API Response:', response.data)
       const delegateList = response.data.data || []
-      console.log('Delegates loaded:', delegateList)
       setDelegates(delegateList)
       
       // Auto-select first delegate if only one available
@@ -152,8 +148,6 @@ const LeaveApplication = () => {
     setError('')
     setSuccess('')
 
-    console.log('Submitting form with:', { employeeId, leaveTypeId, startDate, endDate, delegateEmpId, reason })
-
     if (eligibleDays <= 0) {
       setError('No eligible leave days. Please select a valid date range.')
       setLoading(false)
@@ -173,7 +167,6 @@ const LeaveApplication = () => {
 
     try {
       const response = await api.post('/leave/applications', formData)
-      console.log('Submit response:', response.data)
       setSuccess('Leave application submitted successfully!')
       setSubmitted(true)
       setTimeout(() => navigate('/leave'), 1500)
