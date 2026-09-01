@@ -21,6 +21,27 @@ class UserService implements UserServiceInterface
     private ?EmployeeRepositoryInterface $employeeRepository = null;
     private array $dependencies = [];
 
+    /**
+     * Fields a client may set on a user account (Phase 7, P7-8 mass-assignment
+     * guard). The repository builds INSERT/UPDATE column lists from array
+     * keys, so an unfiltered payload would let a caller write arbitrary
+     * users-table columns — e.g. session_token, login_identifier or
+     * last_activity (authentication state). Server-owned columns are set
+     * exclusively by dedicated code paths.
+     */
+    private const USER_WRITABLE_FIELDS = [
+        'email', 'first_name', 'last_name', 'surname', 'gender',
+        'designation', 'phone', 'address', 'employee_id', 'role', 'password',
+    ];
+
+    /**
+     * Keep only client-writable fields, silently dropping anything else.
+     */
+    private function filterWritable(array $data, array $allowed): array
+    {
+        return array_intersect_key($data, array_flip($allowed));
+    }
+
     public function setUserRepository(UserRepositoryInterface $repository): void
     {
         $this->userRepository = $repository;
@@ -53,6 +74,11 @@ class UserService implements UserServiceInterface
 
     public function createUser(array $data): int
     {
+        // Phase 7 (P7-8): mass-assignment guard. is_active is create-only —
+        // status changes on existing accounts must go through the audited
+        // toggle-status endpoint (which also revokes tokens on deactivation).
+        $data = $this->filterWritable($data, array_merge(self::USER_WRITABLE_FIELDS, ['is_active']));
+
         // Business rule: Validate user data
         $errors = $this->validateUserData($data);
         if (!empty($errors)) {
@@ -101,6 +127,11 @@ class UserService implements UserServiceInterface
 
     public function updateUser(int $id, array $data): bool
     {
+        // Phase 7 (P7-8): mass-assignment guard. is_active is NOT
+        // client-writable on update — account status changes must go through
+        // PUT /users/{id}/toggle-status (audited, revokes tokens on disable).
+        $data = $this->filterWritable($data, self::USER_WRITABLE_FIELDS);
+
         // Business rule: Check if user exists
         $existingUser = $this->userRepository->findById($id);
         if (!$existingUser) {
