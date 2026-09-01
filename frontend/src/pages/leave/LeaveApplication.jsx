@@ -37,7 +37,6 @@ const LeaveApplication = () => {
   }, [])
 
   useEffect(() => {
-    console.log('employeeId changed:', employeeId)
     if (employeeId) {
       loadDelegates()
     }
@@ -57,11 +56,9 @@ const LeaveApplication = () => {
 
   const loadEmployees = async () => {
     try {
-      console.log('Loading employees...')
       // Get eligible employees based on logged-in user's role
       const response = await api.get('/leave/eligible-employees')
       const empList = response.data.data || []
-      console.log('Employees loaded:', empList)
       setEmployees(empList)
       
       // Pre-fill with current user if available
@@ -70,7 +67,6 @@ const LeaveApplication = () => {
         // First try: match by user.employee_id
         if (user?.employee_id) {
           const currentUserEmp = empList.find(emp => emp.employee_id === user.employee_id)
-          console.log('Found current user employee:', currentUserEmp)
           if (currentUserEmp) {
             setEmployeeId(currentUserEmp.id)
             return

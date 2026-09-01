@@ -228,12 +228,14 @@ class LeaveController extends BaseController
             return;
         }
 
-        // Serve file securely
-        header('Content-Type: ' . $document['mime_type']);
-        header('Content-Disposition: inline; filename="' . basename($document['original_filename']) . '"');
+        // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
+        // PDF/images (business in-browser preview), attachment otherwise.
+        \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+            $document['mime_type'] ?? 'application/octet-stream',
+            $document['original_filename'] ?? 'document'
+        );
         header('Content-Length: ' . filesize($filePath));
-        header('X-Content-Type-Options: nosniff');
-        
+
         readfile($filePath);
         exit;
     }
