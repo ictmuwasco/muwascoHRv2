@@ -2,7 +2,11 @@ name: MUWASCO HR System - CI/CD Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'phase*/**'
   pull_request:
     branches: [main]
 
