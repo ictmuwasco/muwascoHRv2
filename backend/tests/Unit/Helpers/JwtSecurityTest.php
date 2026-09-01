@@ -88,9 +88,9 @@ class JwtSecurityTest extends TestCase
 
     public function test_short_secret_is_rejected(): void
     {
-        putenv('JWT_SECRET=too-short');
-        $_ENV['JWT_SECRET'] = 'too-short';
-        $_SERVER['JWT_SECRET'] = 'too-short';
+        putenv('JWT_SECRET=example-too-short');
+        $_ENV['JWT_SECRET'] = 'example-too-short';
+        $_SERVER['JWT_SECRET'] = 'example-too-short';
         JWT::resetInstance();
 
         $this->expectException(\RuntimeException::class);
