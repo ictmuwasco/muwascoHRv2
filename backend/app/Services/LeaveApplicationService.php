@@ -177,7 +177,11 @@ class LeaveApplicationService
             ];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave application submission failed', [
+                'employee_id' => $data['employee_id'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to submit your leave application. Please try again.'];
         }
     }
 

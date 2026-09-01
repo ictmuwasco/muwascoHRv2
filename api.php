@@ -247,10 +247,9 @@ $router->add('POST', '/attendance/clock-in', AttendanceController::class, 'clock
 $router->add('POST', '/attendance/clock-out', AttendanceController::class, 'clockOut');
 $router->add('POST', '/attendance/auto-clockout', AttendanceController::class, 'autoClockOut');
 $router->add('GET', '/attendance', AttendanceController::class, 'index', 'attendance:view');
-$router->add('POST', '/attendance', AttendanceController::class, 'store', 'attendance:manage');
-$router->add('GET', '/attendance/{id}', AttendanceController::class, 'show', 'attendance:manage');
-$router->add('PUT', '/attendance/{id}', AttendanceController::class, 'update', 'attendance:manage');
-$router->add('DELETE', '/attendance/{id}', AttendanceController::class, 'destroy', 'attendance:manage');
+// Phase 5: legacy store/show/update/destroy routes removed — the controller
+// never implemented those actions (they were latent 500s); attendance
+// administration is served by the HR dashboard + eligibility service paths.
 
 // Leave routes - only methods that exist in LeaveController.
 // Approval workflow decisions are additionally scope-checked by

@@ -6,12 +6,21 @@ namespace App\Controllers\Leave;
 
 use App\Controllers\BaseController;
 use App\Helpers\Database;
+use App\Services\Leave\InvalidRosterMonthException;
+use App\Services\Leave\LeaveRosterService;
+use App\Services\FinancialYearService;
 
 /**
  * LeaveRosterController
  *
  * Handles annual leave roster planning API endpoints.
  * Stores planned annual leave per employee per financial year.
+ *
+ * Phase 5: write operations (store/update/destroy) delegate to
+ * LeaveRosterService — the planning-only domain service that validates the
+ * July→June month calendar, derives scheduled_year, and audits changes.
+ * The roster NEVER touches leave balances or applications. Read endpoints
+ * remain thin, permission-gated queries.
  */
 class LeaveRosterController extends BaseController
 {
@@ -19,6 +28,13 @@ class LeaveRosterController extends BaseController
         'July', 'August', 'September', 'October', 'November', 'December',
         'January', 'February', 'March', 'April', 'May', 'June',
     ];
+
+    private ?LeaveRosterService $rosterService = null;
+
+    private function rosterService(): LeaveRosterService
+    {
+        return $this->rosterService ??= new LeaveRosterService();
+    }
 
     public function financialYearsAction(): void
     {
@@ -454,7 +470,6 @@ class LeaveRosterController extends BaseController
                 $this->json(['success' => false, 'message' => 'Unauthenticated'], 401);
                 return;
             }
-            $db = Database::getInstance()->getConnection();
             $body = $this->getJsonBody();
 
             $employeeId = (int) ($body['employee_id'] ?? 0);
@@ -467,39 +482,23 @@ class LeaveRosterController extends BaseController
                 return;
             }
 
-            $stmt = $db->prepare("SELECT start_date FROM financial_years WHERE id = ?");
-            $stmt->bind_param('i', $fyId);
-            $stmt->execute();
-            $fy = $stmt->get_result()->fetch_assoc();
-            if (!$fy) {
-                $this->json(['success' => false, 'message' => 'Invalid financial year'], 400);
+            // Phase 5: business rules live in LeaveRosterService (month
+            // validation, July→June year mapping, upsert, audit).
+            try {
+                $result = $this->rosterService()->schedule($employeeId, $fyId, $month, $notes);
+            } catch (InvalidRosterMonthException $e) {
+                $this->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                    'data' => ['allowed_months' => $e->context()['allowed'] ?? []],
+                ], 422);
+                return;
+            } catch (\InvalidArgumentException $e) {
+                $this->json(['success' => false, 'message' => $e->getMessage()], 400);
                 return;
             }
-            $year = (int) date('Y', strtotime($fy['start_date']));
-            if (in_array($month, ['January', 'February', 'March', 'April', 'May', 'June'])) { $year++; }
 
-            // Check existing
-            $stmt = $db->prepare("SELECT id FROM leave_roster WHERE employee_id = ? AND financial_year_id = ?");
-            $stmt->bind_param('ii', $employeeId, $fyId);
-            $stmt->execute();
-            $existing = $stmt->get_result()->fetch_assoc();
-
-            if ($existing) {
-                $stmt = $db->prepare("UPDATE leave_roster SET scheduled_month = ?, scheduled_year = ?, notes = ? WHERE id = ?");
-                $stmt->bind_param('sisi', $month, $year, $notes, $existing['id']);
-                $stmt->execute();
-                $rosterId = (int) $existing['id'];
-            } else {
-                $stmt = $db->prepare("INSERT INTO leave_roster (employee_id, financial_year_id, scheduled_month, scheduled_year, notes) VALUES (?, ?, ?, ?, ?)");
-                // Five placeholders -> five type chars (i i s i s). The previous
-                // 'iisi' miscount made every insert throw ArgumentCountError,
-                // which surfaced to users as a bare 500 "Failed to schedule leave".
-                $stmt->bind_param('iisis', $employeeId, $fyId, $month, $year, $notes);
-                $stmt->execute();
-                $rosterId = (int) $db->insert_id;
-            }
-
-            $this->json(['success' => true, 'message' => 'Leave scheduled successfully', 'data' => ['id' => $rosterId]], 201);
+            $this->json(['success' => true, 'message' => 'Leave scheduled successfully', 'data' => ['id' => $result['id']]], 201);
         } catch (\Throwable $e) {
             $this->logError('storeAction', $e);
             $this->json(['success' => false, 'message' => 'Failed to schedule leave'], 500);
@@ -521,24 +520,23 @@ class LeaveRosterController extends BaseController
                 $this->json(['success' => false, 'message' => 'Missing scheduled_month'], 400);
                 return;
             }
-            // Existence pre-check: mysqli reports *changed* rows by default, so
-            // saving identical values must not be misread as "entry not found".
-            $chk = $db->prepare("SELECT fy.start_date FROM leave_roster lr JOIN financial_years fy ON fy.id = lr.financial_year_id WHERE lr.id = ?");
-            $chk->bind_param('i', $id);
-            $chk->execute();
-            $existingRow = $chk->get_result()->fetch_assoc();
-            if (!$existingRow) {
-                $this->json(['success' => false, 'message' => 'Roster entry not found'], 404);
+
+            // Phase 5: business rules live in LeaveRosterService (existence
+            // pre-check, July→June year mapping, audit).
+            try {
+                $this->rosterService()->update($id, $month, $notes);
+            } catch (InvalidRosterMonthException $e) {
+                $this->json([
+                    'success' => false,
+                    'message' => $e->getMessage(),
+                    'data' => ['allowed_months' => $e->context()['allowed'] ?? []],
+                ], 422);
+                return;
+            } catch (\InvalidArgumentException $e) {
+                $this->json(['success' => false, 'message' => $e->getMessage()], 404);
                 return;
             }
 
-            // Keep scheduled_year consistent with storeAction's month->year mapping.
-            $year = (int) date('Y', strtotime($existingRow['start_date']));
-            if (in_array($month, ['January', 'February', 'March', 'April', 'May', 'June'])) { $year++; }
-
-            $stmt = $db->prepare("UPDATE leave_roster SET scheduled_month = ?, scheduled_year = ?, notes = ?, updated_at = NOW() WHERE id = ?");
-            $stmt->bind_param('sisi', $month, $year, $notes, $id);
-            $stmt->execute();
             $this->json(['success' => true, 'message' => 'Schedule updated successfully']);
         } catch (\Throwable $e) {
             $this->logError('updateAction', $e);
@@ -553,10 +551,15 @@ class LeaveRosterController extends BaseController
                 $this->json(['success' => false, 'message' => 'Unauthenticated'], 401);
                 return;
             }
-            $db = Database::getInstance()->getConnection();
-            $stmt = $db->prepare("DELETE FROM leave_roster WHERE id = ?");
-            $stmt->bind_param('i', $id);
-            $stmt->execute();
+
+            // Phase 5: existence check + audit live in LeaveRosterService.
+            try {
+                $this->rosterService()->delete($id);
+            } catch (\InvalidArgumentException $e) {
+                $this->json(['success' => false, 'message' => $e->getMessage()], 404);
+                return;
+            }
+
             $this->json(['success' => true, 'message' => 'Schedule entry removed']);
         } catch (\Throwable $e) {
             $this->logError('destroyAction', $e);
@@ -640,20 +643,9 @@ class LeaveRosterController extends BaseController
 
     private function defaultFyId(): int
     {
-        static $fyId = null;
-        if ($fyId !== null) { return $fyId; }
-        $db = Database::getInstance()->getConnection();
-        $stmt = $db->prepare("SELECT id FROM financial_years WHERE end_date >= CURDATE() ORDER BY id DESC LIMIT 1");
-        $stmt->execute();
-        $row = $stmt->get_result()->fetch_assoc();
-        $fyId = $row ? (int) $row['id'] : 0;
-        if ($fyId === 0) {
-            $stmt = $db->prepare("SELECT id FROM financial_years ORDER BY id DESC LIMIT 1");
-            $stmt->execute();
-            $row = $stmt->get_result()->fetch_assoc();
-            $fyId = $row ? (int) $row['id'] : 0;
-        }
-        return $fyId;
+        // Phase 5 §8: delegates to the single financial-year resolver.
+        // Behaviour preserved (latest not-yet-ended year, else latest id).
+        return (new FinancialYearService())->resolveCurrentFinancialYearId();
     }
 
     private function logError(string $action, \Throwable $e): void

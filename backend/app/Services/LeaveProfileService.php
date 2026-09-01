@@ -335,18 +335,10 @@ class LeaveProfileService
      */
     public function getCurrentFinancialYearId(): int
     {
-        $stmt = $this->db->prepare(
-            "SELECT id FROM financial_years WHERE end_date >= CURDATE() ORDER BY id DESC LIMIT 1"
-        );
-        $stmt->execute();
-        $result = $stmt->get_result()->fetch_assoc();
-        if ($result) {
-            return (int) $result['id'];
-        }
-        $stmt = $this->db->prepare("SELECT id FROM financial_years ORDER BY id DESC LIMIT 1");
-        $stmt->execute();
-        $result = $stmt->get_result()->fetch_assoc();
-        return $result ? (int) $result['id'] : 0;
+        // Phase 5 §8: delegates to the single financial-year resolver
+        // (FinancialYearService) so every module answers "current FY"
+        // identically. Behaviour preserved.
+        return (new FinancialYearService())->resolveCurrentFinancialYearId();
     }
 
     // ───────────────────────────────────────────────────────────────────
