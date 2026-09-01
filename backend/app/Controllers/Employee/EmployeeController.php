@@ -448,11 +448,13 @@ class EmployeeController extends BaseController
         $mimeType = finfo_file($finfo, $filePath) ?: 'application/octet-stream';
         finfo_close($finfo);
 
-        header('Content-Type: ' . $mimeType);
-        header('Content-Disposition: inline; filename="' . basename($document['document_name'] ?? 'document') . '"');
+        // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
+        // PDF/images (business in-browser preview), attachment otherwise.
+        \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+            $mimeType,
+            $document['document_name'] ?? 'document'
+        );
         header('Content-Length: ' . filesize($filePath));
-        header('X-Content-Type-Options: nosniff');
-        header('Cache-Control: private, max-age=3600');
 
         readfile($filePath);
         exit();
