@@ -73,7 +73,7 @@ class ApiRouter
 {
     private array $routes = [];
 
-    public function add(string $method, string $path, string $controller, string $action, ?string $permission = null): void
+    public function add(string $method, string $path, string $controller, string $action, ?string $permission = null, ?string $throttle = null): void
     {
         $this->routes[] = [
             'method' => strtoupper($method),
@@ -84,6 +84,14 @@ class ApiRouter
             // null = authenticated-only (self-service/ownership/scope logic
             // enforced inside the controller). NEVER taken from the request.
             'permission' => $permission,
+            // Phase 7: server-defined rate limit as "max:windowSeconds",
+            // enforced per authenticated user + client IP after the
+            // permission gate. null = no throttle. Sensitive routes
+            // (exports, identity/permission writes, uploads, approvals,
+            // clock) MUST declare one — governance list:
+            // backend/config/rate_limits.php, enforced by
+            // backend/tests/Unit/Authorization/RoutePermissionMapTest.php.
+            'throttle' => $throttle,
         ];
     }
 
@@ -116,6 +124,23 @@ class ApiRouter
                 // from the request. Denied requests never reach a controller.
                 if (!empty($route['permission'])) {
                     \App\Middleware\AuthorizationMiddleware::enforce($route['permission']);
+                }
+
+                // Phase 7: server-side rate limiting for sensitive routes.
+                // Runs AFTER the permission gate so unauthorized callers get
+                // 403 (not 429) and the bucket is only consumed by callers
+                // who could actually execute the action. Keyed per user + IP
+                // (see SecurityMiddleware::rateLimitKey) so one heavy
+                // operator never locks out colleagues.
+                if (!empty($route['throttle'])) {
+                    [$throttleMax, $throttleWindow] = array_map('intval', explode(':', $route['throttle'], 2));
+                    $throttleUser = isset($_SESSION['user_id']) ? (string) (int) $_SESSION['user_id'] : null;
+                    \App\Middleware\SecurityMiddleware::protectAgainstBruteForce(
+                        'route ' . $route['method'] . ' ' . $route['path'],
+                        $throttleMax,
+                        $throttleWindow,
+                        $throttleUser
+                    );
                 }
 
                 $controllerClass = $route['controller'];
@@ -196,10 +221,10 @@ $router->add('DELETE', '/holidays/{id}', HolidayController::class, 'destroy', 'h
 // Employee routes
 $router->add('GET', '/employees/search', EmployeeController::class, 'search', 'employees:view');
 $router->add('GET', '/employees', EmployeeController::class, 'index', 'employees:view');
-$router->add('POST', '/employees', EmployeeController::class, 'store', 'employees:create');
+$router->add('POST', '/employees', EmployeeController::class, 'store', 'employees:create', '30:300');
 $router->add('GET', '/employees/reference', EmployeeController::class, 'reference', 'employees:view');
 $router->add('GET', '/employees/{id}', EmployeeController::class, 'show', 'employees:view');
-$router->add('PUT', '/employees/{id}', EmployeeController::class, 'update', 'employees:edit');
+$router->add('PUT', '/employees/{id}', EmployeeController::class, 'update', 'employees:edit', '30:300');
 $router->add('DELETE', '/employees/{id}', EmployeeController::class, 'destroy', 'employees:delete');
 
 // Department routes (list is reference/filter data: authenticated-only;
@@ -227,12 +252,12 @@ $router->add('DELETE', '/subsections/{id}', SubsectionController::class, 'destro
 
 // User routes
 $router->add('GET', '/users', UserController::class, 'index', 'users:view');
-$router->add('POST', '/users', UserController::class, 'store', 'users:create');
+$router->add('POST', '/users', UserController::class, 'store', 'users:create', '30:300');
 $router->add('GET', '/users/{id}', UserController::class, 'show', 'users:view');
-$router->add('PUT', '/users/{id}', UserController::class, 'update', 'users:edit');
-$router->add('DELETE', '/users/{id}', UserController::class, 'destroy', 'users:delete');
-$router->add('PUT', '/users/{id}/toggle-status', UserController::class, 'toggleStatus', 'users:edit');
-$router->add('POST', '/users/{id}/change-password', UserController::class, 'changePassword', 'users:edit');
+$router->add('PUT', '/users/{id}', UserController::class, 'update', 'users:edit', '30:300');
+$router->add('DELETE', '/users/{id}', UserController::class, 'destroy', 'users:delete', '30:300');
+$router->add('PUT', '/users/{id}/toggle-status', UserController::class, 'toggleStatus', 'users:edit', '30:300');
+$router->add('POST', '/users/{id}/change-password', UserController::class, 'changePassword', 'users:edit', '10:900');
 
 // Attendance routes — clock-in/out are self-service (own record enforced in
 // the controller); record administration requires attendance:manage.
@@ -243,9 +268,9 @@ $router->add('GET', '/attendance/hr-dashboard', AttendanceController::class, 'hr
 $router->add('GET', '/attendance/hr-employee-history', AttendanceController::class, 'hrEmployeeHistory', 'attendance:view');
 $router->add('GET', '/attendance/my-records', AttendanceController::class, 'myRecords', 'attendance:view');
 $router->add('GET', '/attendance/employee/{id}', AttendanceController::class, 'byEmployee', 'attendance:view');
-$router->add('POST', '/attendance/clock-in', AttendanceController::class, 'clockIn');
-$router->add('POST', '/attendance/clock-out', AttendanceController::class, 'clockOut');
-$router->add('POST', '/attendance/auto-clockout', AttendanceController::class, 'autoClockOut');
+$router->add('POST', '/attendance/clock-in', AttendanceController::class, 'clockIn', null, '10:300');
+$router->add('POST', '/attendance/clock-out', AttendanceController::class, 'clockOut', null, '10:300');
+$router->add('POST', '/attendance/auto-clockout', AttendanceController::class, 'autoClockOut', null, '10:300');
 $router->add('GET', '/attendance', AttendanceController::class, 'index', 'attendance:view');
 // Phase 5: legacy store/show/update/destroy routes removed — the controller
 // never implemented those actions (they were latent 500s); attendance
@@ -264,10 +289,10 @@ $router->add('GET', '/leave/delegates', LeaveController::class, 'delegates', 'le
 $router->add('GET', '/leave/calculate', LeaveController::class, 'calculate', 'leave:view');
 $router->add('GET', '/leave/{id}/documents', LeaveController::class, 'listDocuments');
 $router->add('GET', '/leave/{id}/documents/{documentId}', LeaveController::class, 'viewDocument');
-$router->add('PUT', '/leave/{id}/approve', LeaveController::class, 'approve', 'leave:approve');
-$router->add('PUT', '/leave/{id}/reject', LeaveController::class, 'reject', 'leave:reject');
-$router->add('PUT', '/leave/{id}/invalidate', LeaveController::class, 'invalidate', 'leave:invalidate');
-$router->add('PUT', '/leave/{id}/cancel', LeaveController::class, 'cancel', 'leave:apply');
+$router->add('PUT', '/leave/{id}/approve', LeaveController::class, 'approve', 'leave:approve', '120:300');
+$router->add('PUT', '/leave/{id}/reject', LeaveController::class, 'reject', 'leave:reject', '120:300');
+$router->add('PUT', '/leave/{id}/invalidate', LeaveController::class, 'invalidate', 'leave:invalidate', '120:300');
+$router->add('PUT', '/leave/{id}/cancel', LeaveController::class, 'cancel', 'leave:apply', '120:300');
 
 // Employee Leave Profile routes - must be registered before /leave/{id} wildcard routes.
 // Profile reads are scope-checked per record by LeaveProfileService::canViewProfile().
@@ -277,7 +302,7 @@ $router->add('GET', '/leave/profile/{id}/balances', LeaveController::class, 'pro
 $router->add('GET', '/leave/profile/{id}/applications', LeaveController::class, 'profileApplications', 'leave:view');
 $router->add('GET', '/leave/profile/{id}/timeline', LeaveController::class, 'profileTimeline', 'leave:view');
 $router->add('GET', '/leave/profile/{id}/summary', LeaveController::class, 'profileSummary', 'leave:view');
-$router->add('GET', '/leave/profile/{id}/export', LeaveController::class, 'profileExport', 'leave:view');
+$router->add('GET', '/leave/profile/{id}/export', LeaveController::class, 'profileExport', 'leave:view', '20:300');
 
 // Leave Roster routes - static sub-resource routes must be registered before /leave/roster/{id}.
 // Roster planning is an approver/HR function: reads are leave:view, writes and
@@ -288,7 +313,7 @@ $router->add('GET', '/leave/roster/distribution', LeaveRosterController::class, 
 $router->add('GET', '/leave/roster/upcoming', LeaveRosterController::class, 'upcoming', 'leave:view');
 $router->add('GET', '/leave/roster/departments', LeaveRosterController::class, 'departments', 'leave:view');
 $router->add('GET', '/leave/roster/matrix', LeaveRosterController::class, 'matrix', 'leave:view');
-$router->add('GET', '/leave/roster/export', LeaveRosterController::class, 'export', 'leave:manage');
+$router->add('GET', '/leave/roster/export', LeaveRosterController::class, 'export', 'leave:manage', '20:300');
 $router->add('GET', '/leave/roster/employees', LeaveRosterController::class, 'employees', 'leave:view');
 $router->add('GET', '/leave/roster/financial-years', LeaveRosterController::class, 'financialYears', 'leave:view');
 $router->add('GET', '/leave/roster', LeaveRosterController::class, 'index', 'leave:view');
@@ -322,7 +347,7 @@ $router->add('GET', '/reports/leave/by-status', LeaveReportController::class, 'b
 $router->add('GET', '/reports/leave/duration', LeaveReportController::class, 'duration', 'reports:view');
 $router->add('GET', '/reports/leave/insights', LeaveReportController::class, 'insights', 'reports:view');
 $router->add('GET', '/reports/leave/records', LeaveReportController::class, 'records', 'reports:view');
-$router->add('GET', '/reports/leave/export', LeaveReportController::class, 'export', 'reports:export');
+$router->add('GET', '/reports/leave/export', LeaveReportController::class, 'export', 'reports:export', '20:300');
 
 // Attendance Reports module - dedicated analytics + reporting endpoints.
 // Registered BEFORE the /reports/{type}/export/{format} wildcard so the
@@ -340,9 +365,9 @@ $router->add('GET', '/reports/attendance/insights', AttendanceReportController::
 $router->add('GET', '/reports/attendance/compliance', AttendanceReportController::class, 'compliance', 'reports:view');
 $router->add('GET', '/reports/attendance/employees', AttendanceReportController::class, 'employees', 'reports:view');
 $router->add('GET', '/reports/attendance/records', AttendanceReportController::class, 'records', 'reports:view');
-$router->add('GET', '/reports/attendance/export', AttendanceReportController::class, 'export', 'reports:export');
+$router->add('GET', '/reports/attendance/export', AttendanceReportController::class, 'export', 'reports:export', '20:300');
 
-$router->add('GET', '/reports/{type}/export/{format}', ReportController::class, 'export', 'reports:export');
+$router->add('GET', '/reports/{type}/export/{format}', ReportController::class, 'export', 'reports:export', '20:300');
 
 // Payroll routes
 $router->add('GET', '/payroll/periods', PayrollController::class, 'periods', 'payroll:view');
@@ -370,7 +395,7 @@ $router->add('GET', '/consent/employees', ConsentController::class, 'employees',
 $router->add('GET', '/admin/financial-years', FinancialYearController::class, 'index', 'financial_year:view');
 $router->add('GET', '/admin/financial-years/status', FinancialYearController::class, 'status', 'financial_year:view');
 $router->add('POST', '/admin/financial-year/add', FinancialYearController::class, 'store', 'financial_year:create');
-$router->add('POST', '/admin/financial-year/allocate', FinancialYearController::class, 'allocateLeave', 'financial_year:edit');
+$router->add('POST', '/admin/financial-year/allocate', FinancialYearController::class, 'allocateLeave', 'financial_year:edit', '10:300');
 $router->add('GET', '/admin/financial-years/leave-types', FinancialYearController::class, 'leaveTypes', 'financial_year:view');
 $router->add('GET', '/admin/financial-years/employees', FinancialYearController::class, 'employees', 'financial_year:edit');
 
@@ -430,7 +455,7 @@ $router->add('POST',   '/workplans',                    WorkplanController::clas
 $router->add('POST',   '/workplans/bulk',               WorkplanController::class, 'bulk', 'workplan:manage');
 // Workplan extension routes (must be declared BEFORE the /workplans/{id} wildcard)
 $router->add('GET',    '/workplans/integrated-view',    WorkplanController::class, 'integratedView', 'workplan:view');
-$router->add('GET',    '/workplans/export',             WorkplanController::class, 'export', 'workplan:view');
+$router->add('GET',    '/workplans/export',             WorkplanController::class, 'export', 'workplan:view', '20:300');
 // Cascading workplan system: dashboard summary, downward cascade, lineage.
 $router->add('GET',    '/workplans/summary',            WorkplanController::class, 'summary', 'workplan:view');
 $router->add('GET',    '/workplans/section-sources',    WorkplanController::class, 'sectionSources', 'workplan:view');
@@ -484,7 +509,7 @@ $router->add('POST', '/notifications/read-all', NotificationController::class, '
 $router->add('GET', '/audit', AuditLogController::class, 'index', 'audit:view');
 $router->add('GET', '/audit/statistics', AuditLogController::class, 'statistics', 'audit:view');
 $router->add('GET', '/audit/filters', AuditLogController::class, 'filters', 'audit:view');
-$router->add('GET', '/audit/export', AuditLogController::class, 'export', 'audit:export');
+$router->add('GET', '/audit/export', AuditLogController::class, 'export', 'audit:export', '20:300');
 $router->add('GET', '/audit/{id}', AuditLogController::class, 'show', 'audit:view');
 $router->add('GET', '/audit-logs', AuditLogController::class, 'index', 'audit:view');
 
@@ -495,15 +520,15 @@ $router->add('PUT', '/settings', SettingController::class, 'update', 'admin:mana
 // Profile routes — self-service (own record enforced in the controller)
 $router->add('GET', '/profile', EmployeeController::class, 'profile', 'profile:view');
 $router->add('PUT', '/profile', EmployeeController::class, 'updateProfile', 'profile:edit');
-$router->add('POST', '/profile/documents', EmployeeController::class, 'uploadProfileDocument', 'profile:edit');
+$router->add('POST', '/profile/documents', EmployeeController::class, 'uploadProfileDocument', 'profile:edit', '20:300');
 $router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewProfileDocument');
 $router->add('GET', '/profile/documents/{id}/view', EmployeeController::class, 'viewProfileDocument');
 $router->add('DELETE', '/profile/documents/{id}', EmployeeController::class, 'deleteProfileDocument', 'profile:edit');
 
 // Profile picture routes
-$router->add('POST', '/profile/profile-image', EmployeeController::class, 'uploadProfileImage', 'profile:edit');
+$router->add('POST', '/profile/profile-image', EmployeeController::class, 'uploadProfileImage', 'profile:edit', '20:300');
 $router->add('GET', '/profile/profile-image', EmployeeController::class, 'profileImage', 'profile:view');
-$router->add('POST', '/employees/{id}/profile-image', EmployeeController::class, 'uploadEmployeeProfileImage', 'employees:edit');
+$router->add('POST', '/employees/{id}/profile-image', EmployeeController::class, 'uploadEmployeeProfileImage', 'employees:edit', '20:300');
 $router->add('GET', '/employees/{id}/profile-image', EmployeeController::class, 'employeeProfileImage', 'employees:view');
 
 // Permission routes - plain method names (permission administration itself
@@ -514,8 +539,8 @@ $router->add('GET', '/permissions/roles', PermissionController::class, 'roles', 
 $router->add('GET', '/permissions/users', PermissionController::class, 'users', 'permission_overrides:view');
 $router->add('GET', '/permissions/users/{id}', PermissionController::class, 'userPermissions', 'permission_overrides:view');
 $router->add('GET', '/permissions/overrides', PermissionController::class, 'overrides', 'permission_overrides:view');
-$router->add('POST', '/permissions/users/{id}/overrides', PermissionController::class, 'setOverride', 'permission_overrides:manage');
-$router->add('DELETE', '/permissions/users/{id}/overrides', PermissionController::class, 'removeOverride', 'permission_overrides:manage');
+$router->add('POST', '/permissions/users/{id}/overrides', PermissionController::class, 'setOverride', 'permission_overrides:manage', '30:300');
+$router->add('DELETE', '/permissions/users/{id}/overrides', PermissionController::class, 'removeOverride', 'permission_overrides:manage', '30:300');
 
 // Meeting routes - Laravel-style methods
 $router->add('GET', '/my-meetings', MeetingController::class, 'myMeetings', 'meetings:view');
