@@ -19,6 +19,7 @@ namespace App\Middleware;
  *   - addCsrfGuard()              - validate CSRF on state-changing requests
  *   - validateJsonBody()          - JSON structure + depth + size limits
  *   - secureCryptoHeaders()       - strengthened CSP + COOP/CORP headers
+ *   - enforceStateChangeOrigin()  - CSRF origin/Referer validation (Phase 7)
  *   - logSecurityEvent()          - centralized, PII-safe security logging
  *   - trustedProxyHeaderCheck()   - X-Forwarded-Proto behind trusted proxies
  */
@@ -39,6 +40,7 @@ class SecurityMiddleware
     {
         self::applySecurityHeaders();
         self::trustedProxyHeaderCheck();
+        self::enforceStateChangeOrigin();
         self::enforceSessionTimeout();
     }
 
@@ -277,6 +279,170 @@ class SecurityMiddleware
                 419
             );
         }
+    }
+
+    /**
+     * CSRF protection — Origin/Referer validation for state-changing requests.
+     *
+     * The SPA authenticates with an httpOnly access-token cookie. A malicious
+     * website can make a victim's browser send a cross-site POST/PUT/DELETE
+     * with those cookies attached (classic CSRF). SameSite=Lax cookies block
+     * most of those, but defense in depth requires verifying that
+     * state-changing requests genuinely originate from an approved origin:
+     *
+     *   - If the browser sent an Origin header, it must be in the CORS
+     *     allowlist (backend/config/cors.php) or be the API's own origin.
+     *   - Otherwise the Referer origin (if present) must pass the same check.
+     *   - Requests carrying neither header are non-browser clients (curl,
+     *     cron, mobile apps). Browsers ALWAYS attach Origin or Referer to
+     *     cross-site state-changing requests, so this does not weaken the
+     *     guard; and non-browser requests cannot be CSRFed because a third
+     *     party cannot force the victim's cookies onto them.
+     *
+     * Enabled by default; disable with CSRF_ORIGIN_ENFORCE=false for exotic
+     * deployments (see backend/docs/security/API_SECURITY.md).
+     *
+     * This intentionally reuses the CORS allowlist: the origins the SPA may
+     * call from are exactly the origins allowed to make credentialed
+     * state-changing calls.
+     */
+    public static function enforceStateChangeOrigin(): void
+    {
+        if (self::passesStateChangeOriginCheck()) {
+            return;
+        }
+
+        self::logSecurityEvent('CSRF origin check failed', 'warning', [
+            'method' => $_SERVER['REQUEST_METHOD'] ?? 'GET',
+            'uri'    => $_SERVER['REQUEST_URI'] ?? '',
+            'origin' => self::requestOriginCandidate() ?? '',
+        ]);
+
+        \App\Helpers\ApiResponse::error(
+            'Request origin is not allowed.',
+            'CSRF_ORIGIN_MISMATCH',
+            [],
+            403
+        );
+    }
+
+    /**
+     * Testable core of enforceStateChangeOrigin(): true when the request
+     * either is safe (GET/HEAD/OPTIONS), has enforcement disabled, carries
+     * no Origin/Referer (non-browser client), or presents an allowed origin.
+     */
+    public static function passesStateChangeOriginCheck(): bool
+    {
+        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+        if (in_array($method, ['GET', 'HEAD', 'OPTIONS'], true)) {
+            return true;
+        }
+
+        $enforce = strtolower(trim((string) \env('CSRF_ORIGIN_ENFORCE', 'true')));
+        if (in_array($enforce, ['0', 'false', 'off', 'no', ''], true)) {
+            return true;
+        }
+
+        $origin = self::requestOriginCandidate();
+        if ($origin === null) {
+            return true; // Non-browser client — see enforceStateChangeOrigin().
+        }
+
+        return self::isAllowedRequestOrigin($origin);
+    }
+
+    /**
+     * The origin candidate for this request: the Origin header, else the
+     * origin portion of the Referer header. Returns null when the browser
+     * sent neither.
+     */
+    private static function requestOriginCandidate(): ?string
+    {
+        $origin = trim((string) ($_SERVER['HTTP_ORIGIN'] ?? ''));
+        if ($origin !== '') {
+            return $origin;
+        }
+
+        $referer = trim((string) ($_SERVER['HTTP_REFERER'] ?? ''));
+        if ($referer !== '') {
+            $parts = parse_url($referer);
+            if (is_array($parts) && !empty($parts['host'])) {
+                $scheme = strtolower((string) ($parts['scheme'] ?? 'http'));
+                $port = isset($parts['port']) ? ':' . $parts['port'] : '';
+                return $scheme . '://' . strtolower((string) $parts['host']) . $port;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * True when the given origin is on the CORS allowlist or is the API's
+     * own origin (scheme://host[:port] of the request being handled).
+     */
+    private static function isAllowedRequestOrigin(string $origin): bool
+    {
+        $allowed = (array) \config('cors.allowed_origins', []);
+        if (in_array($origin, $allowed, true)) {
+            return true;
+        }
+
+        $self = self::selfOrigin();
+        if ($self === null) {
+            return false;
+        }
+
+        $originHost = self::originHostPort($origin);
+
+        return $originHost !== null && $originHost === self::originHostPort($self);
+    }
+
+    /**
+     * Origin of the request as the server sees it (Host header + scheme),
+     * falling back to APP_URL when Host is absent (CLI/testing contexts).
+     */
+    private static function selfOrigin(): ?string
+    {
+        $host = trim((string) ($_SERVER['HTTP_HOST'] ?? ''));
+        if ($host !== '') {
+            $scheme = self::isHttps() ? 'https' : 'http';
+            return $scheme . '://' . strtolower($host);
+        }
+
+        $parts = parse_url((string) \env('APP_URL', ''));
+        if (!is_array($parts) || empty($parts['host'])) {
+            return null;
+        }
+
+        $host = strtolower((string) $parts['host']);
+        if (!empty($parts['port'])) {
+            $host .= ':' . $parts['port'];
+        }
+
+        return strtolower((string) ($parts['scheme'] ?? 'http')) . '://' . $host;
+    }
+
+    /**
+     * Normalize "scheme://host[:port]" to "host:port" with default ports
+     * filled in, so http/https variants of the same host compare equal.
+     *
+     * Scheme equality is deliberately NOT required: behind reverse proxies
+     * the server-detected scheme can differ from the browser's. The
+     * host:port pair is the security boundary — a cross-site attacker page
+     * can never present the API's host in its Origin header.
+     */
+    private static function originHostPort(string $origin): ?string
+    {
+        $parts = parse_url($origin);
+        if (!is_array($parts) || empty($parts['host'])) {
+            return null;
+        }
+
+        $host = strtolower((string) $parts['host']);
+        $scheme = strtolower((string) ($parts['scheme'] ?? 'http'));
+        $port = $parts['port'] ?? (strcasecmp($scheme, 'https') === 0 ? 443 : 80);
+
+        return $host . ':' . $port;
     }
 
     /**
