@@ -172,7 +172,7 @@ Delete behavior policy:
 
 ### Migration 036 — `036_users_employee_id_type_fix.sql`
 
-**Change 1 — F1 (type alignment):** `users.employee_id` `VARCHAR(11)` → `VARCHAR(50)` to exactly match `employees.employee_id`. All 193 user links preserved, including alphanumeric business codes (`MOW12`, `MOW 05`, `CMT001`, `MOW08`, `ADMIN001`, `ADMIN002`).
+**Change 1 — F1 (type alignment):** `users.employee_id` `VARCHAR(11)` → `VARCHAR(50)` to exactly match `employees.employee_id`. All 193 user links preserved, including alphanumeric business codes (`MOW12`, `MOW 05`, `CMT001`, `MOW08`, and two `ADMIN*` account codes).
 
 **Change 2 — F2 (UNIQUE on business number):** `UNIQUE KEY uk_employees_employee_id (employee_id)` added to `employees`. Pre-flight diagnostics showed 0 duplicates / 0 NULLs so the constraint applied cleanly and is now the FK anchor.
 
