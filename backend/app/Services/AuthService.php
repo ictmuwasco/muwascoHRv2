@@ -22,6 +22,12 @@ class AuthService implements AuthServiceInterface
     private ?EmployeeRepositoryInterface $employeeRepository = null;
     private array $dependencies = [];
 
+    /** @var Hash|null Hash helper (declared to avoid PHP 8.2 dynamic-property deprecation) */
+    private ?Hash $hash = null;
+
+    /** @var Session|null Session helper (declared to avoid PHP 8.2 dynamic-property deprecation) */
+    private ?Session $session = null;
+
     public function __construct(
         UserRepositoryInterface $userRepository = null,
         Hash $hash = null,
