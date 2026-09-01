@@ -286,7 +286,7 @@ $router->add('GET', '/leave/eligible-employees', LeaveController::class, 'eligib
 $router->add('GET', '/leave/eligible-delegates', LeaveController::class, 'eligibleDelegates', 'leave:apply');
 $router->add('GET', '/leave/manage', LeaveController::class, 'manage', 'leave:manage');
 $router->add('GET', '/leave/delegates', LeaveController::class, 'delegates', 'leave:apply');
-$router->add('GET', '/leave/calculate', LeaveController::class, 'calculate', 'leave:view');
+$router->add('POST', '/leave/calculate', LeaveController::class, 'calculate', 'leave:view');
 $router->add('GET', '/leave/{id}/documents', LeaveController::class, 'listDocuments');
 $router->add('GET', '/leave/{id}/documents/{documentId}', LeaveController::class, 'viewDocument');
 $router->add('PUT', '/leave/{id}/approve', LeaveController::class, 'approve', 'leave:approve', '120:300');
