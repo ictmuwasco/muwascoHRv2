@@ -235,7 +235,7 @@ class RoutePermissionMapTest extends TestCase
     /**
      * Parse every $router->add(...) registration from api.php.
      *
-     * @return array<int, array{method:string, path:string, permission:?string, line:int}>
+     * @return array<int, array{method:string, path:string, permission:?string, throttle:?string, line:int}>
      */
     private function parseRoutes(): array
     {
@@ -250,6 +250,16 @@ class RoutePermissionMapTest extends TestCase
             if (!preg_match("/\\\$router->add\(\s*'([A-Z]+)'\s*,\s*'([^']+)'/", $line, $head)) {
                 continue;
             }
+            // Phase 7: strip an optional trailing throttle argument
+            // (", 'max:window'" or ", null, 'max:window'") so the permission
+            // regex below keeps matching routes that declare a throttle.
+            $throttle = null;
+            if (preg_match("/,\s*(?:null,\s*)?'(\d+:\d+)'\s*\)\s*;\s*$/", $line, $thr)) {
+                $throttle = $thr[1];
+                $line = (string) preg_replace("/,\s*(?:null,\s*)?'(\d+:\d+)'\s*\)\s*;\s*$/", ');', $line);
+            }
+
+
             $permission = null;
             if (preg_match("/,\s*'([a-z_]+:[a-z_]+)'\s*\)\s*;\s*$/", $line, $perm)) {
                 $permission = $perm[1];
@@ -258,12 +268,80 @@ class RoutePermissionMapTest extends TestCase
                 'method'     => $head[1],
                 'path'       => $head[2],
                 'permission' => $permission,
+                'throttle'   => $throttle,
                 'line'       => $i + 1,
             ];
         }
 
         return $routes;
     }
+
+    /**
+     * Phase 7 (P7-4): every route in the rate-limit governance list
+     * (backend/config/rate_limits.php) MUST declare a server-defined
+     * throttle in api.php. Keeps sensitive endpoints (exports, identity
+     * writes, privilege changes, uploads, approvals, clock) throttled even
+     * as new development adds or moves routes.
+     */
+    public function testSensitiveRoutesDeclareAThrottle(): void
+    {
+        $governance = require BASE_PATH . '/backend/config/rate_limits.php';
+
+        $throttles = [];
+        foreach ($this->routes as $route) {
+            if ($route['throttle'] !== null) {
+                $throttles[$route['method'] . ' ' . $route['path']] = $route['throttle'];
+            }
+        }
+
+        $missing = [];
+        foreach ($governance as $group => $entries) {
+            foreach ($entries as $entry) {
+                if (!isset($throttles[$entry])) {
+                    $missing[] = sprintf('%s (group: %s)', $entry, $group);
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $missing,
+            "Sensitive routes without server-defined throttle metadata:\n" . implode("\n", $missing)
+        );
+    }
+
+    /**
+     * Phase 7 (P7-4): throttle metadata must be "max:windowSeconds" with
+     * positive integers — a malformed value would silently disable the
+     * limit or lock the endpoint down entirely.
+     */
+    public function testThrottleMetadataFormatIsValid(): void
+    {
+        $invalid = [];
+        foreach ($this->routes as $route) {
+            if ($route['throttle'] === null) {
+                continue;
+            }
+
+            [$max, $window] = array_map('intval', explode(':', $route['throttle'], 2));
+            if (!preg_match('/^\d+:\d+$/', $route['throttle']) || $max < 1 || $window < 1) {
+                $invalid[] = sprintf(
+                    'line %d: %s %s -> %s',
+                    $route['line'],
+                    $route['method'],
+                    $route['path'],
+                    $route['throttle']
+                );
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $invalid,
+            'Invalid throttle metadata (expected "positive-int:positive-int")'
+        );
+    }
+
 
     /**
      * @return array<string, string> "METHOD /path" => group
