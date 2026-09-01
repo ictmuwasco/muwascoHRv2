@@ -263,7 +263,14 @@ class MeetingService
             $updateData['location'] = trim(strip_tags((string)$data['location']));
         }
         if (isset($data['status'])) {
-            $updateData['status'] = $data['status'];
+            // Phase 5 §14: lifecycle transitions are validated server-side.
+            $status = (string) $data['status'];
+            if (!MeetingRules::isValidStatus($status)) {
+                throw new InvalidArgumentException(
+                    'Invalid meeting status. Allowed: ' . implode(', ', MeetingRules::STATUSES)
+                );
+            }
+            $updateData['status'] = $status;
         }
 
         if (empty($updateData)) {
@@ -321,6 +328,22 @@ class MeetingService
             throw new InvalidArgumentException('Meeting not found');
         }
 
+        $meeting = $this->meetingRepository->findById($meetingId);
+
+        // Phase 5 §14: RSVP is only meaningful while the meeting is open.
+        if ($meeting && !MeetingRules::canRsvp((string) $meeting['status'])) {
+            throw new InvalidArgumentException(
+                'This meeting is ' . $meeting['status'] . '; responses are closed.'
+            );
+        }
+
+        // Phase 5 §15: employees may only respond to invitations that exist.
+        // updateInvitationResponse() would otherwise silently INSERT an
+        // hr_invited row for the caller — a self-invite path.
+        if (!$this->minutesRepository->getInvitation($meetingId, $employeeId)) {
+            throw new InvalidArgumentException('You are not invited to this meeting');
+        }
+
         $invitedBy = Auth::getInstance()->id();
         return $this->meetingRepository->updateInvitationResponse($meetingId, $employeeId, 'accepted', $invitedBy);
     }
@@ -346,6 +369,20 @@ class MeetingService
 
         if (!$this->meetingRepository->exists($meetingId)) {
             throw new InvalidArgumentException('Meeting not found');
+        }
+
+        $meeting = $this->meetingRepository->findById($meetingId);
+
+        // Phase 5 §14: RSVP is only meaningful while the meeting is open.
+        if ($meeting && !MeetingRules::canRsvp((string) $meeting['status'])) {
+            throw new InvalidArgumentException(
+                'This meeting is ' . $meeting['status'] . '; responses are closed.'
+            );
+        }
+
+        // Phase 5 §15: employees may only respond to invitations that exist.
+        if (!$this->minutesRepository->getInvitation($meetingId, $employeeId)) {
+            throw new InvalidArgumentException('You are not invited to this meeting');
         }
 
         $invitedBy = Auth::getInstance()->id();

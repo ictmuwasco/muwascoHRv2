@@ -10,10 +10,12 @@ declare(strict_types=1);
  *   status           = 'auto_clocked_out'
  *   auto_clocked_out = 1
  *
- * This is the scheduled safety net for employees who never reopen the app.
- * The identical closure also runs lazily per employee on every attendance
- * read/write via AttendanceController::reconcileStaleSession(), so state can
- * never go stale even if this job does not fire.
+ * Phase 5: this script is a thin CLI wrapper around
+ * Services\Attendance\AttendanceCloseService — the SINGLE implementation of
+ * the missed clock-out rule, shared with the per-employee lazy reconcile
+ * (AttendanceController::dashboardAction) and the manual ops trigger
+ * (POST /attendance/auto-clockout). The service is idempotent: repeated
+ * runs find nothing left to close, so "when did it run?" never matters.
  *
  * Windows Task Scheduler (daily 00:05):
  *   Program : C:\xampp\php\php.exe
@@ -26,40 +28,18 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../bootstrap.php';
 
-use App\Helpers\Database;
+use App\Services\Attendance\AttendanceCloseService;
 
 try {
-    $db = Database::getInstance();
+    $result = (new AttendanceCloseService())->closeStaleOpenSessions();
 
-    // Preview which sessions will be closed (for logging / dry insight)
-    $open = $db->fetchAll(
-        "SELECT id, employee_id, clock_in
-         FROM attendance
-         WHERE clock_out IS NULL AND DATE(clock_in) < ?",
-        's',
-        [date('Y-m-d')]
-    );
-
-    if (empty($open)) {
+    if ($result['closed'] === 0) {
         echo '[' . date('Y-m-d H:i:s') . "] No open sessions to close.\n";
         exit(0);
     }
 
-    // Single atomic statement - mirrors AttendanceController::reconcileStaleSession()
-    // and DashboardController::autoClockOutPreviousDays().
-    $db->query(
-        "UPDATE attendance
-           SET clock_out = DATE_FORMAT(clock_in, '%Y-%m-%d 23:59:59'),
-               status = 'auto_clocked_out',
-               auto_clocked_out = 1,
-               updated_at = NOW()
-         WHERE clock_out IS NULL AND DATE(clock_in) < ?",
-        's',
-        [date('Y-m-d')]
-    );
-
-    echo '[' . date('Y-m-d H:i:s') . '] Auto-closed ' . count($open) . ' session(s) for employee id(s): '
-        . implode(',', array_unique(array_column($open, 'employee_id'))) . "\n";
+    echo '[' . date('Y-m-d H:i:s') . '] Auto-closed ' . $result['closed'] . ' session(s) for employee id(s): '
+        . implode(',', $result['employee_ids']) . "\n";
     exit(0);
 } catch (\Throwable $e) {
     fwrite(STDERR, '[' . date('Y-m-d H:i:s') . '] ERROR: ' . $e->getMessage() . "\n");

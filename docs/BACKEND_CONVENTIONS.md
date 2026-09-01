@@ -131,3 +131,46 @@ eventual are sent after the transaction commits (or via the cron scripts in
 - Laravel-style vendor skeletons in `vendor/laravel` and
   `backend/app/Console` remain unused (documented in
   `backend/_legacy/README.md`); do not build on them.
+### 8.1 Phase 5 update (authoritative — supersedes the list above where they overlap)
+
+Resolved in Phase 5 (see `PHASE5_REPORT.md`):
+
+- Attendance clock-in/out logic extracted to `Services/Attendance/AttendanceClockService`;
+  missed-clock-out closing consolidated into `Services/Attendance/AttendanceCloseService`
+  (cron, ops endpoint and the per-employee lazy reconcile all delegate — do not re-implement).
+- `DashboardController` is read-only (the mutating GET auto-clock-out was removed).
+- Leave workflow transitions enforced by `Services/Leave/LeaveWorkflowRules`:
+  duplicate approvals blocked (409 `INVALID_TRANSITION`); invalidation of an
+  approved application restores balances.
+- Leave roster writes moved to `Services/Leave/LeaveRosterService` with
+  July→June month validation (422 `INVALID_ROSTER_MONTH`) and audit.
+- Financial-year resolution centralized: `FinancialYearService::
+  resolveCurrentFinancialYearId()` / `yearIdForDate()` — never write a new
+  "current FY" query.
+- Stale-schema artifacts removed: `Models/Attendance.php`,
+  `Services/AttendanceService.php` (+ interface), `Validators/AttendanceValidator.php`.
+- Meeting RSVP security: self-invite path closed (invitation must exist);
+  lifecycle/attendance statuses validated via `Services/MeetingRules`.
+
+New conventions introduced in Phase 5:
+
+- Pure business-rule classes (`*Rules`, static, no DB, unit-testable):
+  `Services/Leave/LeaveWorkflowRules`, `Services/MeetingRules`. Services
+  delegate state-transition decisions to them; controllers map results to
+  409/422 envelopes.
+- Domain exceptions live next to their domain
+  (`Services/Attendance/*Exception`, `Services/Leave/*Exception`) and carry
+  client-safe context; never leak `$e->getMessage()` into responses.
+
+Still open (deferred deliberately — tracked in `PHASE5_REPORT.md` §10):
+
+- Read-side SQL extraction: LeaveController (~400 ln), DashboardController
+  stats, LeaveRoster reads, ReportsController, MonitoringController,
+  EmployeeController uploads, strategic-performance cluster.
+- Leave allocation rules hardcoded in `FinancialYearService::getLeaveRules()`;
+  `getAnnualLeaveTypeId()` fallback `: 1`.
+- `App\Helpers\AuthorizationService` namespace move to `Services\Authorization`
+  (cosmetic; keep a compatibility alias).
+- `leave_applications.id` allocated via `MAX(id)+1` (concurrency collision risk).
+- Leave email templates have no send-site yet (recipient decision pending).
+

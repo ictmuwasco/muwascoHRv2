@@ -415,6 +415,16 @@ class MeetingController extends BaseController
             return;
         }
 
+        // Phase 5 §19: validate against the meeting_invitations ENUM
+        // (migration 017) instead of passing arbitrary strings to the DB.
+        if (!\App\Services\MeetingRules::isValidAttendanceStatus((string) $status)) {
+            $this->error(
+                'Invalid attendance status. Allowed: ' . implode(', ', \App\Services\MeetingRules::ATTENDANCE_STATUSES),
+                422
+            );
+            return;
+        }
+
         try {
             $result = $this->meetingService->markAttendance($id, $employeeId, $status);
             $this->success($result, 'Attendance marked successfully');
