@@ -2,13 +2,14 @@
   "name": "muwasco/hr-system",
   "description": "Murang'a Water and Sanitation Company - HR Management System",
   "type": "project",
+  "license": "proprietary",
   "require": {
     "php": ">=8.0",
-   "firebase/php-jwt": "6.11.1",
+    "firebase/php-jwt": "^6.11.1",
     "vlucas/phpdotenv": "^5.6",
     "phpmailer/phpmailer": "^6.9",
     "ramsey/uuid": "^4.7",
-    "tymon/jwt-auth": "2.0",
+    "tymon/jwt-auth": "^2.0",
     "minishlink/web-push": "^8.0"
   },
   "require-dev": {
