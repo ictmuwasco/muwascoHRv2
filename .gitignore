@@ -64,7 +64,8 @@ hrdemo.zip
 hrmuwasco.zip
 
 # ── Composer ────────────────────────────────────────────────────────────────
-composer.lock
+# composer.lock IS committed: deterministic CI/production installs
+# (regenerate deliberately via `composer update`; see Phase 5 report §10)
 
 # ── PHPUnit ─────────────────────────────────────────────────────────────────
 .phpunit.result.cache
