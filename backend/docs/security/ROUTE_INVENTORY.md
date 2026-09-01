@@ -66,7 +66,7 @@ for the per-entry rationale).
 | GET | `/leave/eligible-delegates` | leave:apply | — | leave:apply (RBAC: leave) |
 | GET | `/leave/manage` | leave:manage | — | leave:manage (RBAC: leave) |
 | GET | `/leave/delegates` | leave:apply | — | leave:apply (RBAC: leave) |
-| GET | `/leave/calculate` | leave:view | — | leave:view (RBAC: leave) |
+| POST | `/leave/calculate` | leave:view | — | leave:view (RBAC: leave) |
 | GET | `/leave/{id}/documents` | — | — | authenticated-only — allowlist group: mixed_scope |
 | GET | `/leave/{id}/documents/{documentId}` | — | — | authenticated-only — allowlist group: mixed_scope |
 | PUT | `/leave/{id}/approve` | leave:approve | 120:300 | leave:approve (RBAC: leave) |
