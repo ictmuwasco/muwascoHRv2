@@ -166,7 +166,7 @@ const LeaveApplication = () => {
     }
 
     try {
-      const response = await api.post('/leave/applications', formData)
+      const response = await api.post('/leave/apply', formData)
       setSuccess('Leave application submitted successfully!')
       setSubmitted(true)
       setTimeout(() => navigate('/leave'), 1500)
