@@ -77,6 +77,29 @@ class LeaveApplicationService
             }
         }
 
+        // Business rule: Backdating is only allowed for Sick (2), Study (5)
+        // and Claim a Day (9). All other leave types must start today or later.
+        $backdateAllowedTypes = [2, 5, 9];
+        if (!in_array($leaveTypeId, $backdateAllowedTypes, true) && $startDate < $today) {
+            return [
+                'success' => false,
+                'message' => 'Backdating is not allowed for this leave type. The start date must be today or later.',
+            ];
+        }
+
+        // Business rule: Except for Sick Leave (2), an employee cannot submit
+        // a new application while they have a pending application or are
+        // currently on an approved leave (today falls within the approved range).
+        if ($leaveTypeId !== 2) {
+            $activeBlock = $this->hasBlockingActiveLeave($employeeId, $today);
+            if ($activeBlock) {
+                return [
+                    'success' => false,
+                    'message' => 'You are currently on leave or have a pending leave application. You cannot submit a new application for this leave type. Sick leave can still be applied.',
+                ];
+            }
+        }
+
         // Calculate eligible days
         $eligibleDays = $this->calculationService->calculateEligibleDays($startDate, $endDate, $leaveType);
 
@@ -334,6 +357,34 @@ class LeaveApplicationService
             $overlaps[] = $row;
         }
         return $overlaps;
+    }
+
+    /**
+     * Check if the employee currently has a blocking active leave:
+     *   - any pending application, OR
+     *   - an approved application whose range covers today (currently on leave).
+     *
+     * Used to enforce "cannot apply while on leave or with a pending
+     * application" for all leave types except Sick Leave (2).
+     */
+    private function hasBlockingActiveLeave(int $employeeId, string $today): bool
+    {
+        $query = "
+            SELECT COUNT(*) AS cnt
+            FROM leave_applications
+            WHERE employee_id = ?
+              AND (
+                    status IN ('pending_subsection_head','pending_section_head','pending_dept_head','pending_managing_director','pending_hr','pending_hr_manager','pending_bod_chair','pending_manager','pending')
+                    OR (status = 'approved' AND start_date <= ? AND end_date >= ?)
+                  )
+        ";
+        $stmt = $this->db->prepare($query);
+        $stmt->bind_param('iss', $employeeId, $today, $today);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        return (int) ($row['cnt'] ?? 0) > 0;
     }
 
     /**

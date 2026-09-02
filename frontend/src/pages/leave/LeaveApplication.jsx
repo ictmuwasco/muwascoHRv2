@@ -1,10 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../utils/api'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
 import { Plus, FileText, Users as UsersIcon, Shield, Loader2 } from 'lucide-react'
+
+// Leave type IDs that allow backdating / past-date applications.
+// Study (5), Sick (2), and Claim-a-Day (9) can be applied for past dates
+// because they relate to work already performed or events that already occurred.
+// All other leave types must start on or after today.
+const ALLOW_BACKDATE_LEAVE_TYPES = [2, 5, 9]
+
+// Leave type IDs exempt from the "cannot apply while on leave / pending" rule.
+// Sick leave (2) is exempt because illness can occur regardless of existing
+// leave or pending applications — the employee must always be able to
+// report an illness.
+const EXEMPT_FROM_OVERLAP_CHECK = [2]
 
 const LeaveApplication = () => {
   const navigate = useNavigate()
@@ -30,6 +42,8 @@ const LeaveApplication = () => {
   const [delegates, setDelegates] = useState([])
   const [delegateEmpId, setDelegateEmpId] = useState('')
   const [employees, setEmployees] = useState([])
+  const [existingApplications, setExistingApplications] = useState([])
+  const [checkingConflict, setCheckingConflict] = useState(false)
 
   // Load employees and delegates on mount
   useEffect(() => {
@@ -45,6 +59,7 @@ const LeaveApplication = () => {
   useEffect(() => {
     if (employeeId) {
       loadLeaveTypes()
+      loadExistingApplications()
     }
   }, [employeeId])
 
@@ -53,6 +68,95 @@ const LeaveApplication = () => {
       calculatePreview()
     }
   }, [employeeId, leaveTypeId, startDate, endDate])
+
+  // Today's date in YYYY-MM-DD format (local timezone, for minDate on date pickers)
+  const today = useMemo(() => {
+    const d = new Date()
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  }, [])
+
+  // Leave types that allow backdating (past dates).
+  // Sick (2), Study (5), Claim-a-Day (9) can be backdated.
+  // All other types must start on or after today.
+  const canBackdate = ALLOW_BACKDATE_LEAVE_TYPES.includes(Number(leaveTypeId))
+
+  // The min date for the start date picker.
+  // Allows backdating only for exempted leave types.
+  const minStartDate = canBackdate ? '' : today
+
+  // When the leave type is changed, if the start date is before the new
+  // min date and backdating is not allowed, clear it.
+  useEffect(() => {
+    if (!canBackdate && startDate && startDate < today) {
+      setStartDate('')
+    }
+    if (!canBackdate && endDate && endDate < startDate) {
+      setEndDate('')
+    }
+  }, [leaveTypeId, startDate, endDate, canBackdate, today])
+
+  /**
+   * Fetch existing leave applications for the selected employee to check
+   * for active leaves or pending applications.
+   */
+  const loadExistingApplications = async () => {
+    if (!employeeId) {
+      setExistingApplications([])
+      return
+    }
+    try {
+      const response = await api.get(`/leave?employee_id=${employeeId}`)
+      setExistingApplications(response.data.data || [])
+    } catch (err) {
+      console.error('Failed to load existing leave applications:', err)
+      setExistingApplications([])
+    }
+  }
+
+  /**
+   * Check if the employee is currently on approved leave or has a pending
+   * application. For leave types NOT exempt from the overlap check, prevent
+   * new applications.
+   *
+   * @returns {string|null} Conflict message if blocked, null otherwise.
+   */
+  const checkLeaveConflict = () => {
+    const typeId = Number(leaveTypeId)
+    if (EXEMPT_FROM_OVERLAP_CHECK.includes(typeId)) return null
+
+    if (!employeeId) return null
+
+    const hasActiveOrPending = existingApplications.some((app) => {
+      const status = String(app.status || '').toLowerCase()
+      const start = new Date(app.start_date + 'T00:00:00')
+      const end = new Date(app.end_date + 'T00:00:00')
+      const newStart = startDate ? new Date(startDate + 'T00:00:00') : null
+      const newEnd = endDate ? new Date(endDate + 'T00:00:00') : null
+      const todayDate = new Date(today + 'T00:00:00')
+
+      // Any pending application blocks a new application regardless of dates.
+      const isPending = status === 'pending' || status.startsWith('pending')
+
+      // "On leave" = an approved application that overlaps the requested
+      // dates, or that covers today (currently on leave).
+      const isApproved = status === 'approved'
+      const overlapsRequested =
+        newStart && newEnd && newStart <= end && newEnd >= start
+      const coversToday = isApproved
+        ? start <= todayDate && todayDate <= end
+        : false
+
+      return isPending || (isApproved && (overlapsRequested || coversToday))
+    })
+
+    if (hasActiveOrPending) {
+      return 'You are currently on leave or have a pending leave application. You cannot submit a new application for this leave type. Sick leave can still be applied.'
+    }
+    return null
+  }
 
   const loadEmployees = async () => {
     try {
@@ -154,6 +258,15 @@ const LeaveApplication = () => {
       return
     }
 
+    // Business rule: cannot apply for most leave types while on leave or
+    // with a pending application. Sick leave is exempt.
+    const conflictMessage = checkLeaveConflict()
+    if (conflictMessage) {
+      setError(conflictMessage)
+      setLoading(false)
+      return
+    }
+
     const formData = new FormData()
     formData.append('employee_id', employeeId)
     formData.append('leave_type_id', leaveTypeId)
@@ -247,12 +360,25 @@ const LeaveApplication = () => {
               </select>
             </div>
 
+            {!EXEMPT_FROM_OVERLAP_CHECK.includes(Number(leaveTypeId)) && !canBackdate && startDate && startDate < today && (
+              <div className="bg-amber-50 border border-amber-400 text-amber-700 px-4 py-3 rounded-md">
+                Backdating is not allowed for this leave type. The start date must be today or later.
+              </div>
+            )}
+
+            {!EXEMPT_FROM_OVERLAP_CHECK.includes(Number(leaveTypeId)) && checkLeaveConflict() && (
+              <div className="bg-red-50 border border-red-400 text-red-700 px-4 py-3 rounded-md">
+                You are currently on leave or have a pending leave application. You cannot submit a new application for this leave type. Sick leave can still be applied.
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
+                min={minStartDate || undefined}
                 className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 required
               />
@@ -264,6 +390,7 @@ const LeaveApplication = () => {
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
+                min={startDate || undefined}
                 className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 required
               />
