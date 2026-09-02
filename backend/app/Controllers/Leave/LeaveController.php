@@ -978,6 +978,9 @@ class LeaveController extends BaseController
                 'counts_weekends'      => (int) $row['counts_weekends'],
                 'count_holidays'       => (int) $row['count_holidays'],
                 'deducted_from_annual' => (int) $row['deducted_from_annual'],
+                // Backend-owned leave-type business rules (LeaveTypePolicy),
+                // delivered so the frontend can mirror them for UX only.
+                'policy'               => \App\Services\Leave\LeaveTypePolicy::flags((int) $row['leave_type_id']),
             ];
         }
 

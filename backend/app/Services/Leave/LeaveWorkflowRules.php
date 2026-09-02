@@ -28,8 +28,17 @@ namespace App\Services\Leave;
  */
 final class LeaveWorkflowRules
 {
-    /** Statuses from which an approve/reject decision is still possible. */
+    /**
+     * Statuses from which an approve/reject decision is still possible.
+     *
+     * 'pending' is the column DEFAULT on leave_applications.status (legacy
+     * rows may carry it) — included so applications in that state remain
+     * decidable, cancellable and invalidatable. This constant is the SINGLE
+     * source of truth for "pending" everywhere: overlap detection, the
+     * pending-application block and cancel() all derive from it.
+     */
     public const PENDING_STATUSES = [
+        'pending',
         'pending_subsection_head',
         'pending_section_head',
         'pending_dept_head',
