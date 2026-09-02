@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import api from '../utils/api'
 
 const AuthContext = createContext(null)
@@ -39,7 +39,14 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  const fetchedUserRef = useRef(false)
+
   useEffect(() => {
+    // React StrictMode (development) double-invokes effects.
+    // Guard against the duplicate fetch so /auth/user is called once.
+    if (fetchedUserRef.current) return
+    fetchedUserRef.current = true
+
     // Check for existing session
     // The access token is now in an httpOnly cookie (set by the server),
     // so we only need to restore the cached user profile from localStorage.
