@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Helpers\Database;
 use App\Helpers\Auth;
 use App\Services\Leave\InvalidLeaveTransitionException;
+use App\Services\Leave\LeaveTypePolicy;
 use App\Services\Leave\LeaveWorkflowRules;
 
 /**
@@ -345,12 +346,12 @@ class LeaveApprovalService
             return ['success' => false, 'message' => 'Only the applicant can cancel this application'];
         }
 
-        // Can only cancel if still in a pending state
-        $pendingStatuses = [
-            'pending_subsection_head', 'pending_section_head', 'pending_dept_head',
-            'pending_managing_director', 'pending_hr', 'pending_bod_chair', 'pending_manager',
-        ];
-        if (!in_array($app['status'], $pendingStatuses, true)) {
+        // Can only cancel if still in a pending state. The pending set comes
+        // from the single source of truth (LeaveWorkflowRules) — the previous
+        // hand-written list silently omitted the 'pending' (column default)
+        // and 'pending_hr_manager' stages, making those applications
+        // impossible to cancel.
+        if (!LeaveWorkflowRules::isPending($app['status'])) {
             return ['success' => false, 'message' => 'Only pending applications can be cancelled'];
         }
 
@@ -558,7 +559,7 @@ class LeaveApprovalService
         $annualDays = (float) ($app['annual_days'] ?? 0);
 
         // Claim a Day — credit annual leave
-        if ($leaveTypeId === 9) {
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_CLAIM_A_DAY) {
             $annualTypeId = $this->getAnnualLeaveTypeId();
             $daysToAdd = (float) ($primaryDays > 0 ? $primaryDays : ($app['days_requested'] ?? 0));
             $stmt = $this->db->prepare("
@@ -575,7 +576,7 @@ class LeaveApprovalService
         }
 
         // Leave of Absence — no balance deduction
-        if ($leaveTypeId === 8) {
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_ABSENCE) {
             return;
         }
 
@@ -619,7 +620,7 @@ class LeaveApprovalService
         $annualDays = (float) ($app['annual_days'] ?? 0);
 
         // Claim a Day — remove the annual leave credit
-        if ($leaveTypeId === 9) {
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_CLAIM_A_DAY) {
             $annualTypeId = $this->getAnnualLeaveTypeId();
             $daysToAdd = (float) ($primaryDays > 0 ? $primaryDays : ($app['days_requested'] ?? 0));
             $stmt = $this->db->prepare("
@@ -636,7 +637,7 @@ class LeaveApprovalService
         }
 
         // Leave of Absence — no balance movement to reverse
-        if ($leaveTypeId === 8) {
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_ABSENCE) {
             return;
         }
 

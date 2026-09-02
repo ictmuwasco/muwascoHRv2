@@ -36,9 +36,17 @@ const EMPLOYEES = [
 const DELEGATES = [
   { id: 2, employee_id: 'EMP002', first_name: 'Jane', last_name: 'Doe', role: 'Officer' },
 ]
+// Leave-type policy flags exactly as the backend LeaveTypePolicy delivers
+// them on GET /leave/types (the form mirrors these for UX only).
+const policy = (allowsBackdate, exemptFromOverlapBlock, requiresDocument = false, requiredDocumentType = null) => ({
+  allows_backdate: allowsBackdate,
+  exempt_from_overlap_block: exemptFromOverlapBlock,
+  requires_document: requiresDocument,
+  required_document_type: requiredDocumentType,
+})
 const LEAVE_TYPES = [
-  { leave_type_id: 1, leave_type_name: 'Annual Leave', remaining_days: 20 },
-  { leave_type_id: 2, leave_type_name: 'Sick Leave', remaining_days: 10 },
+  { leave_type_id: 1, leave_type_name: 'Annual Leave', remaining_days: 20, policy: policy(false, false) },
+  { leave_type_id: 2, leave_type_name: 'Sick Leave', remaining_days: 10, policy: policy(true, true, true, 'medical_certificate') },
 ]
 const NO_ACTIVE = []
 
@@ -165,6 +173,64 @@ describe('LeaveApplication validation rules', () => {
     fillDates('2099-01-10', '2099-01-11')
     await waitFor(() => {
       expect(screen.queryByText(/currently on leave or have a pending leave application/i)).toBeNull()
+    })
+  })
+
+  it('warns about date overlap for Sick Leave even though it is exempt from the pending block', async () => {
+    const approved = [
+      { id: 11, start_date: '2099-01-05', end_date: '2099-01-15', status: 'approved' },
+    ]
+    await renderPage(approved)
+    selectLeaveType(2)
+    fillDates('2099-01-10', '2099-01-12')
+    await waitFor(() => {
+      expect(screen.getByText(/overlap an existing leave application/i)).toBeTruthy()
+    })
+  })
+
+  it('does not warn about overlap for Sick Leave when the dates do not intersect existing leave', async () => {
+    const approved = [
+      { id: 11, start_date: '2099-02-01', end_date: '2099-02-05', status: 'approved' },
+    ]
+    await renderPage(approved)
+    selectLeaveType(2)
+    fillDates('2099-01-10', '2099-01-12')
+    await waitFor(() => {
+      expect(screen.queryByText(/overlap an existing leave application/i)).toBeNull()
+    })
+  })
+
+  it('blocks submitting a sick-leave application that overlaps existing leave', async () => {
+    const approved = [
+      { id: 11, start_date: '2099-01-05', end_date: '2099-01-15', status: 'approved' },
+    ]
+    const { container } = await renderPage(approved)
+    selectLeaveType(2)
+    fillDates('2099-01-10', '2099-01-12')
+    // Wait for the eligible-days preview so the submit path is reachable.
+    await waitFor(() => {
+      expect(screen.getByText(/Eligible Leave Days/i)).toBeTruthy()
+    })
+    fireEvent.submit(container.querySelector('form'))
+    await waitFor(() => {
+      expect(screen.getAllByText(/overlap an existing leave application/i).length).toBeGreaterThan(0)
+    })
+    expect(api.post).not.toHaveBeenCalledWith('/leave/apply', expect.anything())
+  })
+
+  it('shows the medical document upload for Sick Leave from the backend policy flags', async () => {
+    await renderPage()
+    selectLeaveType(2)
+    await waitFor(() => {
+      expect(screen.getByText(/Medical Document \*/i)).toBeTruthy()
+    })
+  })
+
+  it('hides the document upload for Annual Leave (no document requirement)', async () => {
+    await renderPage()
+    selectLeaveType(1)
+    await waitFor(() => {
+      expect(screen.queryByText(/Medical Document \*/i)).toBeNull()
     })
   })
 })
