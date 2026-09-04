@@ -1,19 +1,9 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import type { ApiResponse } from '../types';
 import { getRequestId, setRequestId, reportClientError } from '../utils/errorReporting';
-
-// Provide a minimal ImportMeta.env typing for Vite variables to avoid
-// "Property 'env' does not exist on type 'ImportMeta'" TypeScript error
-declare global {
-  interface ImportMeta {
-    readonly env: {
-      readonly VITE_API_URL?: string;
-      // add other VITE_... vars here as needed
-    };
-  }
-}
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Single source of truth for the API base URL (VITE_API_URL — typed in
+// src/vite-env.d.ts, documented in .env.example).
+import { API_BASE_URL } from '../config/api';
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,

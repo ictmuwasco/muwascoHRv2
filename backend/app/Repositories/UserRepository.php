@@ -25,7 +25,8 @@ class UserRepository implements UserRepositoryInterface
     public function findById(int $id): ?array
     {
         $stmt = $this->conn->prepare("
-            SELECT u.*, e.employee_id, e.first_name, e.last_name
+            SELECT u.*, e.employee_id, e.first_name, e.last_name,
+                   e.designation AS employee_designation
             FROM users u
             LEFT JOIN employees e ON u.email = e.email
             WHERE u.id = ?
@@ -37,19 +38,25 @@ class UserRepository implements UserRepositoryInterface
         $user = $result->fetch_assoc();
         $stmt->close();
 
-        return $user ?: null;
+        return $user ? $this->withEmployeeDesignation($user) : null;
     }
 
     public function findAll(): array
     {
         $result = $this->conn->query("
-            SELECT u.*, e.employee_id, e.first_name, e.last_name
+            SELECT u.*, e.employee_id, e.first_name, e.last_name,
+                   e.designation AS employee_designation
             FROM users u
             LEFT JOIN employees e ON u.email = e.email
             ORDER BY u.created_at DESC
         ");
 
-        return $result->fetch_all(MYSQLI_ASSOC);
+        $users = $result->fetch_all(MYSQLI_ASSOC);
+        foreach ($users as $index => $user) {
+            $users[$index] = $this->withEmployeeDesignation($user);
+        }
+
+        return $users;
     }
 
     public function create(array $data): int
@@ -152,7 +159,8 @@ class UserRepository implements UserRepositoryInterface
     public function findByEmail(string $email): ?array
     {
         $stmt = $this->conn->prepare("
-            SELECT u.*, e.employee_id, e.first_name, e.last_name, e.employee_status
+            SELECT u.*, e.employee_id, e.first_name, e.last_name, e.employee_status,
+                   e.designation AS employee_designation
             FROM users u
             LEFT JOIN employees e ON u.email = e.email
             WHERE u.email = ?
@@ -164,14 +172,15 @@ class UserRepository implements UserRepositoryInterface
         $user = $result->fetch_assoc();
         $stmt->close();
 
-        return $user ?: null;
+        return $user ? $this->withEmployeeDesignation($user) : null;
     }
 
     public function findWithEmployee(int $id): ?array
     {
         $stmt = $this->conn->prepare("
             SELECT u.*, e.employee_id, e.first_name, e.last_name, 
-                   e.employee_status, e.department_id, e.section_id
+                   e.employee_status, e.department_id, e.section_id,
+                   e.designation AS employee_designation
             FROM users u
             LEFT JOIN employees e ON u.email = e.email
             WHERE u.id = ?
@@ -183,13 +192,14 @@ class UserRepository implements UserRepositoryInterface
         $user = $result->fetch_assoc();
         $stmt->close();
 
-        return $user ?: null;
+        return $user ? $this->withEmployeeDesignation($user) : null;
     }
 
     public function findByEmployeeId(string $employeeId): ?array
     {
         $stmt = $this->conn->prepare("
-            SELECT u.*, e.employee_id, e.first_name, e.last_name
+            SELECT u.*, e.employee_id, e.first_name, e.last_name,
+                   e.designation AS employee_designation
             FROM users u
             LEFT JOIN employees e ON u.employee_id = e.employee_id
             WHERE u.employee_id = ?
@@ -201,7 +211,7 @@ class UserRepository implements UserRepositoryInterface
         $user = $result->fetch_assoc();
         $stmt->close();
 
-        return $user ?: null;
+        return $user ? $this->withEmployeeDesignation($user) : null;
     }
 
     public function search(array $filters, int $page = 1, int $limit = 30): array
@@ -248,7 +258,8 @@ class UserRepository implements UserRepositoryInterface
 
         // Fetch users
         $query = "
-            SELECT u.*, e.employee_id, e.first_name, e.last_name, e.employee_status
+            SELECT u.*, e.employee_id, e.first_name, e.last_name, e.employee_status,
+                   e.designation AS employee_designation
             FROM users u
             LEFT JOIN employees e ON u.email = e.email
             WHERE {$whereClause}
@@ -265,6 +276,10 @@ class UserRepository implements UserRepositoryInterface
         $stmt->execute();
         $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
+
+        foreach ($users as $index => $user) {
+            $users[$index] = $this->withEmployeeDesignation($user);
+        }
 
         return [
             'data' => $users,
@@ -335,7 +350,8 @@ class UserRepository implements UserRepositoryInterface
     public function getByRole(string $role): array
     {
         $stmt = $this->conn->prepare("
-            SELECT u.*, e.employee_id, e.first_name, e.last_name
+            SELECT u.*, e.employee_id, e.first_name, e.last_name,
+                   e.designation AS employee_designation
             FROM users u
             LEFT JOIN employees e ON u.email = e.email
             WHERE u.role = ?
@@ -347,7 +363,28 @@ class UserRepository implements UserRepositoryInterface
         $users = $result->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
 
+        foreach ($users as $index => $user) {
+            $users[$index] = $this->withEmployeeDesignation($user);
+        }
+
         return $users;
+    }
+
+    /**
+     * Prefer the employee record's official designation (employees.designation)
+     * over the user-account copy (users.designation) so auth / user responses
+     * always reflect the HR source of truth. `employee_designation` is a
+     * temporary SELECT alias merged here and stripped before returning.
+     */
+    private function withEmployeeDesignation(array $user): array
+    {
+        $employeeDesignation = $user['employee_designation'] ?? '';
+        if (is_string($employeeDesignation) && trim($employeeDesignation) !== '') {
+            $user['designation'] = $employeeDesignation;
+        }
+        unset($user['employee_designation']);
+
+        return $user;
     }
 
     public function createUser(array $data): int

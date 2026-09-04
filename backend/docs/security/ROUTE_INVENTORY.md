@@ -170,9 +170,9 @@ for the per-entry rationale).
 | PUT | `/performance-contracts/{id}` | performance_contract:manage | — | performance_contract:manage (RBAC: performance_contract) |
 | DELETE | `/performance-contracts/{id}` | performance_contract:manage | — | performance_contract:manage (RBAC: performance_contract) |
 | GET | `/appraisal-cycles` | — | — | authenticated-only — allowlist group: reference_data |
-| POST | `/appraisal-cycles` | performance:manage | — | performance:manage (RBAC: performance) |
-| PUT | `/appraisal-cycles/{id}` | performance:manage | — | performance:manage (RBAC: performance) |
-| DELETE | `/appraisal-cycles/{id}` | performance:manage | — | performance:manage (RBAC: performance) |
+| POST | `/appraisal-cycles` | performance:cycles | — | performance:cycles (RBAC: performance) — migration 039 |
+| PUT | `/appraisal-cycles/{id}` | performance:cycles | — | performance:cycles (RBAC: performance) — migration 039 |
+| DELETE | `/appraisal-cycles/{id}` | performance:cycles | — | performance:cycles (RBAC: performance) — migration 039 |
 | GET | `/strategic-plans/{id}/workplans` | workplan:view | — | workplan:view (RBAC: workplan) |
 | GET | `/workplans` | workplan:view | — | workplan:view (RBAC: workplan) |
 | POST | `/workplans` | workplan:manage | — | workplan:manage (RBAC: workplan) |

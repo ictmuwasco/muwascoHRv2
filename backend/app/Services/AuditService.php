@@ -35,6 +35,8 @@ class AuditService
      public const MODULE_MEETINGS        = 'Meetings';
     public const MODULE_ATTENDANCE      = 'Attendance';
     public const MODULE_PERFORMANCE     = 'Performance';
+    public const MODULE_DELEGATIONS     = 'Delegations';
+
 
     // ---- Action constants (Phase 4) ----
     public const ACTION_LOGIN            = 'LOGIN';
@@ -61,9 +63,13 @@ class AuditService
     public const ACTION_CLOCK_IN        = 'CLOCK_IN';
     public const ACTION_CLOCK_OUT       = 'CLOCK_OUT';
     public const ACTION_VIEW           = 'VIEW';
+    public const ACTION_ACCESS_DENIED  = 'ACCESS_DENIED';
     public const ACTION_PUBLISH         = 'PUBLISH';
     public const ACTION_AMEND           = 'AMEND';
     public const ACTION_REOPEN          = 'REOPEN';
+    public const ACTION_DELEGATION_CANCELLED = 'DELEGATION_CANCELLED';
+    public const ACTION_DELEGATION_EXPIRED   = 'DELEGATION_EXPIRED';
+
     public const ACTION_MINUTES_CREATED = 'MEETING_MINUTES_CREATED';
     public const ACTION_MINUTES_UPDATED = 'MEETING_MINUTES_UPDATED';
     public const ACTION_MINUTES_PUBLISHED = 'MEETING_MINUTES_PUBLISHED';

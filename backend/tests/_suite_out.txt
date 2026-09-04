@@ -1,0 +1,30 @@
+﻿=== Attendance Status Resolution Tests ===
+
+--- Clocked-in records ---
+Γ£ô In-progress session today is PRESENT
+Γ£ô Late arrival is LATE even while session open
+Γ£ô Completed session is CLOCKED_OUT
+Γ£ô Late arrival keeps LATE after clock-out
+
+--- Session edge cases ---
+Γ£ô Midnight auto-close flag yields AUTO_CLOCKED_OUT
+Γ£ô Legacy auto_clocked_out status value also recognised
+Γ£ô Past-day open session (defensive) is MISSING_CLOCK_OUT
+
+--- Approved leave ---
+Γ£ô Approved leave with no clock-in is ON_LEAVE (never absent)
+Γ£ô Approved leave wins even if a stray record exists
+
+--- Calendar rules ---
+Γ£ô Public holiday is HOLIDAY
+Γ£ô Holiday outranks approved leave
+Γ£ô Holiday outranks an existing attendance record
+Γ£ô Saturday/Sunday is NON_WORKING_DAY (no absence)
+
+--- Missing clock-in ---
+Γ£ô Expected employee with no record is ABSENT immediately (today)
+Γ£ô Expected employee with no record is ABSENT on past dates
+Γ£ô NOT_CLOCKED_IN never occurs while grace policy disabled
+
+=== Results: 0 passed, 0 failed ===
+

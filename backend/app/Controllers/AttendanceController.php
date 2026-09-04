@@ -372,6 +372,10 @@ class AttendanceController extends BaseController
      * Phase 5: now reads through AttendanceRepository directly — the stale
      * AttendanceService layer (which targeted a schema that no longer exists)
      * was retired. The employee-existence rule is preserved.
+     *
+     * DATA SCOPE: the target employee must be inside the caller's attendance
+     * scope — own records for officers/employees, own unit for heads,
+     * org-wide for HR/super admin/MD (IDOR guard, §23).
      */
     public function byEmployeeAction(int $employeeId): void
     {
@@ -380,8 +384,18 @@ class AttendanceController extends BaseController
         $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
         $endDate = $_GET['end_date'] ?? date('Y-m-d');
 
-        if (!$this->employeeRepository->findById($employeeId)) {
+        $target = $this->employeeRepository->findById($employeeId);
+        if (!$target) {
             $this->error('Employee not found', 400);
+            return;
+        }
+
+        if (!\App\Helpers\OrgScope::attendanceEmployeeAllowed(
+            \App\Helpers\OrgScope::current(),
+            $this->resolveOwnEmployeeDbId(),
+            $target
+        )) {
+            $this->error("You are not authorised to view this employee's attendance.", 403);
             return;
         }
 
@@ -390,7 +404,42 @@ class AttendanceController extends BaseController
     }
 
     /**
-     * GET /api/attendance - Get all attendance records.
+     * The caller's own employees.id (DB PK), or null when the session user has
+     * no employee profile. Feeds the attendance data-scope helpers.
+     */
+    private function resolveOwnEmployeeDbId(): ?int
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            return null;
+        }
+        $employee = $this->employeeRepository->findByUserId($userId);
+        return $employee ? (int) $employee['id'] : null;
+    }
+
+    /**
+     * Column map used by OrgScope::attendanceWhere() for the standard
+     * attendance + employees join used across these read endpoints.
+     */
+    private function attendanceColumnMap(): array
+    {
+        return [
+            'employee_id'   => 'a.employee_id',
+            'department_id' => 'e.department_id',
+            'section_id'    => 'e.section_id',
+            'subsection_id' => 'e.subsection_id',
+        ];
+    }
+
+    /**
+     * GET /api/attendance - Get attendance records.
+     *
+     * DATA SCOPE (Phase: role/page/permission restriction): officers and
+     * employees see ONLY their own records; heads are pinned to their own
+     * organisational unit (department/section/subsection); HR, super admin
+     * and the Managing Director see organisation-wide. The scope is derived
+     * exclusively from the authenticated session/employee record — request
+     * parameters can never widen it.
      */
     public function indexAction(): void
     {
@@ -398,8 +447,13 @@ class AttendanceController extends BaseController
 
         $db = \db();
 
-        $records = $db->fetchAll(
-            "SELECT a.*, e.first_name, e.last_name, d.name as department, o.name as office_name,
+        [$scopeWhere, $scopeParams] = \App\Helpers\OrgScope::attendanceWhere(
+            \App\Helpers\OrgScope::current(),
+            $this->resolveOwnEmployeeDbId(),
+            $this->attendanceColumnMap()
+        );
+
+        $sql = "SELECT a.*, e.first_name, e.last_name, d.name as department, o.name as office_name,
              DATE(a.clock_in) as date,
              TIME(a.clock_in) as clock_in_time,
              TIME(a.clock_out) as clock_out_time
@@ -407,9 +461,13 @@ class AttendanceController extends BaseController
              JOIN employees e ON a.employee_id = e.id
              LEFT JOIN departments d ON e.department_id = d.id
              LEFT JOIN offices o ON a.office_id = o.id
+             WHERE {$scopeWhere}
              ORDER BY a.clock_in DESC
-             LIMIT 500"
-        );
+             LIMIT 500";
+
+        $records = $scopeParams
+            ? $db->fetchAll($sql, str_repeat('i', count($scopeParams)), $scopeParams)
+            : $db->fetchAll($sql);
 
         // Format the data for the frontend
         $formattedRecords = array_map(function($record) {
@@ -444,6 +502,9 @@ class AttendanceController extends BaseController
 
     /**
      * GET /api/attendance/today - Get today's attendance.
+     *
+     * DATA SCOPE: same pinning as indexAction() — own records for officers,
+     * own unit for heads, org-wide only for HR/super admin/MD.
      */
     public function todayAction(): void
     {
@@ -452,18 +513,25 @@ class AttendanceController extends BaseController
         $db = \db();
         $today = date('Y-m-d');
 
-        $records = $db->fetchAll(
-            "SELECT a.*, e.first_name, e.last_name, d.name as department, o.name as office_name
+        [$scopeWhere, $scopeParams] = \App\Helpers\OrgScope::attendanceWhere(
+            \App\Helpers\OrgScope::current(),
+            $this->resolveOwnEmployeeDbId(),
+            $this->attendanceColumnMap()
+        );
+
+        $sql = "SELECT a.*, e.first_name, e.last_name, d.name as department, o.name as office_name
              FROM attendance a
              JOIN employees e ON a.employee_id = e.id
              LEFT JOIN departments d ON e.department_id = d.id
              LEFT JOIN offices o ON a.office_id = o.id
-             WHERE DATE(a.clock_in) = ?
+             WHERE DATE(a.clock_in) = ? AND {$scopeWhere}
              ORDER BY a.clock_in DESC
-             LIMIT 50",
-            's',
-            [$today]
-        );
+             LIMIT 50";
+
+        $types  = 's' . str_repeat('i', count($scopeParams));
+        $params = array_merge([$today], $scopeParams);
+
+        $records = $db->fetchAll($sql, $types, $params);
 
         $stats = [
             'total' => count($records),
@@ -488,10 +556,18 @@ class AttendanceController extends BaseController
      * NOTE: distinct from /attendance/dashboard, which is the per-employee
      * clock-in card state endpoint.
      *
+     * Authorization + DATA SCOPE (Phase: role/page/permission restriction):
+     *   - requires attendance:manage (org monitoring is an administrative
+     *     function — plain officers/employees are rejected);
+     *   - unit-scoped heads get their department/section/subsection filters
+     *     CLAMPED server-side to their own organisational unit: client-
+     *     submitted department_id/section_id values are ignored, never
+     *     trusted.
+     *
      * Parameters:
      *   date           Y-m-d            (default today)
-     *   department_id  int              scope: summary+rows
-     *   section_id     int              scope: summary+rows
+     *   department_id  int              scope: summary+rows (clamped for heads)
+     *   section_id     int              scope: summary+rows (clamped for heads)
      *   status         STATUS constant  row filter
      *   search         string           name / staff no row filter
      *   page, limit    pagination of the employee table
@@ -499,9 +575,18 @@ class AttendanceController extends BaseController
      */
     public function hrDashboardAction(): void
     {
-        $this->requirePermission('attendance', 'view');
+        $this->requirePermission('attendance', 'manage');
 
         try {
+            $scope = \App\Helpers\OrgScope::current();
+
+            // Own-scope callers (officers/employees) must never enumerate the
+            // roster through the monitoring dashboard.
+            if (\App\Helpers\OrgScope::attendanceReadMode($scope) === \App\Helpers\OrgScope::ATTENDANCE_SCOPE_OWN) {
+                $this->error('You are not authorised to view the attendance monitoring dashboard.', 403);
+                return;
+            }
+
             $service = new \App\Services\AttendanceDashboardService();
 
             $params = [
@@ -511,11 +596,29 @@ class AttendanceController extends BaseController
                                     ? (int)$_GET['department_id'] : null,
                 'section_id'    => (isset($_GET['section_id']) && $_GET['section_id'] !== '')
                                     ? (int)$_GET['section_id'] : null,
+                'subsection_id' => (isset($_GET['subsection_id']) && $_GET['subsection_id'] !== '')
+                                    ? (int)$_GET['subsection_id'] : null,
                 'status'        => $_GET['status'] ?? null,
                 'search'        => $this->getSearchQuery(),
                 'page'          => max(1, (int)($_GET['page'] ?? 1)),
                 'limit'         => (int)($_GET['limit'] ?? 25),
             ];
+
+            // DATA SCOPE clamp for heads — server-resolved unit only.
+            if (\App\Helpers\OrgScope::attendanceReadMode($scope) === \App\Helpers\OrgScope::ATTENDANCE_SCOPE_UNIT) {
+                if (empty($scope['department_id'])) {
+                    // Unit could not be resolved — deny rather than expose
+                    // organisation-wide monitoring data.
+                    $this->error('Your organisational unit could not be resolved.', 403);
+                    return;
+                }
+                $params['department_id'] = (int) $scope['department_id'];
+                $params['section_id'] = (!empty($scope['is_section_head']) || !empty($scope['is_sub_section_head']))
+                    && !empty($scope['section_id'])
+                    ? (int) $scope['section_id'] : null;
+                $params['subsection_id'] = !empty($scope['is_sub_section_head']) && !empty($scope['subsection_id'])
+                    ? (int) $scope['subsection_id'] : null;
+            }
 
             $result = $service->getDashboard($params);
 
@@ -536,6 +639,10 @@ class AttendanceController extends BaseController
      * GET /api/attendance/hr-employee-history - Employee profile + recent history
      * for the dashboard detail modal. Uses the live schema directly because the
      * legacy /attendance/employee/{id} path relies on retired repository SQL.
+     *
+     * DATA SCOPE: the target employee must be inside the caller's attendance
+     * scope — own records for officers/employees, own unit for heads,
+     * org-wide for HR/super admin/MD (IDOR guard, §23).
      */
     public function hrEmployeeHistoryAction(): void
     {
@@ -544,6 +651,21 @@ class AttendanceController extends BaseController
         $employeeId = (int)($_GET['employee_id'] ?? 0);
         if ($employeeId <= 0) {
             $this->error('employee_id is required', 400);
+        }
+
+        $target = $this->employeeRepository->findById($employeeId);
+        if (!$target) {
+            $this->error('Employee not found', 404);
+            return;
+        }
+
+        if (!\App\Helpers\OrgScope::attendanceEmployeeAllowed(
+            \App\Helpers\OrgScope::current(),
+            $this->resolveOwnEmployeeDbId(),
+            $target
+        )) {
+            $this->error("You are not authorised to view this employee's attendance history.", 403);
+            return;
         }
 
         try {

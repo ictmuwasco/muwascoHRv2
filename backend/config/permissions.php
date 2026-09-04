@@ -75,6 +75,26 @@ return [
                 ['key' => 'reject',     'label' => 'Reject',      'type' => 'action'],
                 ['key' => 'invalidate', 'label' => 'Invalidate',  'type' => 'action'],
                 ['key' => 'manage',     'label' => 'Manage',      'type' => 'action'],
+                // Phase 10: dedicated page permission for the Roster group
+                // (Leave Roster + Leave Oversight). Previously coupled to
+                // leave:manage, which heads need for scoped Leave Management
+                // but which must NOT imply Roster access (HR-only module).
+                ['key' => 'roster',     'label' => 'Leave Roster / Oversight', 'type' => 'page'],
+            ],
+        ],
+
+        'delegations' => [
+            'key'     => 'delegations',
+            'label'   => 'Delegations (Acting Authority)',
+            'actions' => [
+                // Temporary Delegation / Acting Authority module. view drives
+                // page visibility for everyone (self-service "My Delegations");
+                // create is supervisory-only; approve is the HR workflow;
+                // cancel is delegator/HR. Seeded by migration 040.
+                ['key' => 'view',    'label' => 'View',    'type' => 'page'],
+                ['key' => 'create',  'label' => 'Create',  'type' => 'action'],
+                ['key' => 'approve', 'label' => 'Approve', 'type' => 'action'],
+                ['key' => 'cancel',  'label' => 'Cancel',  'type' => 'action'],
             ],
         ],
 
@@ -134,6 +154,14 @@ return [
             'actions' => [
                 ['key' => 'view',   'label' => 'View',   'type' => 'page'],
                 ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+                // Phase 11 (migration 039): dedicated page permission for the
+                // HR Admin "Appraisal Cycles" page. Decoupled from
+                // performance:view (the standalone Appraisal page, which heads
+                // keep) and performance:manage (appraisal create/submit/
+                // approve, which heads also keep) so the HR Admin sidebar
+                // group can be restricted to hr_manager / managing_director /
+                // super_admin without breaking the heads' appraisal workflow.
+                ['key' => 'cycles', 'label' => 'Appraisal Cycles', 'type' => 'page'],
             ],
         ],
 
@@ -152,6 +180,27 @@ return [
             'actions' => [
                 ['key' => 'view',   'label' => 'View',   'type' => 'page'],
                 ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        // Settings module (Phase: Role/Page/Permission restriction enhancement).
+        // The whole /settings page is a protected module: 'view' gates the page
+        // shell, each remaining action gates ONE tab. Defaults (migration 038):
+        // every action is super_admin-only EXCEPT 'notifications', which is the
+        // self-service own-preferences tab seeded to all roles. All of these
+        // remain overridable per user via permission_overrides.
+        'settings' => [
+            'key'     => 'settings',
+            'label'   => 'Settings',
+            'actions' => [
+                ['key' => 'view',         'label' => 'Access Settings',        'type' => 'page'],
+                ['key' => 'profile',      'label' => 'Profile Tab',            'type' => 'action'],
+                ['key' => 'notifications','label' => 'Notifications Tab (self)','type' => 'action'],
+                ['key' => 'security',     'label' => 'Security Tab',           'type' => 'action'],
+                ['key' => 'audit',        'label' => 'Audit Tab',              'type' => 'action'],
+                ['key' => 'users',        'label' => 'User Management Tab',    'type' => 'action'],
+                ['key' => 'permissions',  'label' => 'Permissions Tab',        'type' => 'action'],
+                ['key' => 'monitoring',   'label' => 'System Monitor Tab',     'type' => 'action'],
             ],
         ],
 
@@ -180,7 +229,8 @@ return [
             'key'     => 'meetings',
             'label'   => 'Meetings',
             'actions' => [
-                ['key' => 'view',            'label' => 'View',             'type' => 'page'],
+                ['key' => 'view',            'label' => 'View (My Meetings)', 'type' => 'page'],
+                ['key' => 'dashboard',       'label' => 'Meetings Dashboard (org-wide)', 'type' => 'page'],
                 ['key' => 'create',          'label' => 'Create',           'type' => 'action'],
                 ['key' => 'edit',            'label' => 'Edit',             'type' => 'action'],
                 ['key' => 'delete',          'label' => 'Delete',           'type' => 'action'],

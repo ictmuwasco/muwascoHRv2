@@ -207,8 +207,10 @@ class LeaveProfileService
         // Resolve the current user's employee record ID
         $currentEmployeeRecordId = $this->resolveEmployeeRecordId($currentUser['employee_id'] ?? null);
 
-        // Officers can only view their own profile
-        if ($role === 'officer') {
+        // Officers / Employees / Managers / BOD Chair can only view their own
+        // profile (all roles may open the Leave Profile page — §4 + Phase 6
+        // follow-up: permissions seeded for manager/bod_chairman too).
+        if (in_array($role, ['officer', 'employee', 'manager', 'bod_chairman'], true)) {
             return $currentEmployeeRecordId == $targetEmployeeId;
         }
 

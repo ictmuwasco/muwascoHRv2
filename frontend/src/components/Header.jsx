@@ -3,9 +3,9 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { Menu, Bell, LogOut, Sun, Moon } from 'lucide-react'
 import apiClient from '../api/client'
-
-// Base URL for direct file access (auth cookie is sent automatically)
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+// Base URL for direct file access (auth cookie is sent automatically) —
+// centralized in src/config/api.ts so every consumer shares VITE_API_URL.
+import { API_BASE_URL as API_BASE } from '../config/api'
 
 /**
  * Avatar for the signed-in user.
@@ -65,6 +65,11 @@ const Header = ({ onToggleSidebar = () => {} }) => {
   const { theme, toggleTheme } = useTheme()
   const [showDropdown, setShowDropdown] = useState(false)
 
+  // Official job designation from the employees table. Right after login the
+  // full employee row arrives under user.employee; /auth/user refreshes return
+  // it as the flat designation (UserRepository prefers employees.designation).
+  const designation = user?.designation || user?.employee?.designation || ''
+
   const handleLogout = async () => {
     await logout()
   }
@@ -110,15 +115,30 @@ const Header = ({ onToggleSidebar = () => {} }) => {
               className="flex items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-200"
             >
               <UserAvatar user={user} />
-              <span className="hidden md:block text-sm font-medium">
-                {user?.first_name} {user?.last_name}
+              <span className="hidden md:flex flex-col items-start leading-tight">
+                <span className="text-sm font-medium truncate max-w-[160px]">
+                  {user?.first_name} {user?.last_name}
+                </span>
+                {designation && (
+                  <span
+                    className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[160px]"
+                    title={designation}
+                  >
+                    {designation}
+                  </span>
+                )}
               </span>
             </button>
 
             {showDropdown && (
               <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-800 rounded-md shadow-lg py-1 z-50 border dark:border-slate-700">
                 <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 border-b dark:border-slate-700">
-                  <p className="font-medium text-gray-900 dark:text-gray-100">{user?.first_name} {user?.last_name}</p>
+                  <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{user?.first_name} {user?.last_name}</p>
+                  {designation && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate" title={designation}>
+                      {designation}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
                 </div>
                 <button
