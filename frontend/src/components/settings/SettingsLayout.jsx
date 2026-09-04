@@ -1,7 +1,5 @@
-import { NavLink, Outlet, Navigate } from 'react-router-dom'
-import Card from '../ui/Card'
+﻿import { NavLink, Outlet, Navigate } from 'react-router-dom'
 import {
-  Settings as SettingsIcon,
   FileText,
   Users as UsersIcon,
   Shield,
@@ -9,34 +7,84 @@ import {
   Bell,
   Lock,
   Activity,
+  ShieldAlert,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { SETTINGS_TABS, parsePermission, firstPermittedRoute } from '../../config/pagePermissions'
 
-// System Monitoring is technical - restrict the tab to admin-level roles.
-const MONITORING_ROLES = ['super_admin', 'hr_manager']
+/**
+ * Settings module layout (Phase: Role, Page & Permission restriction).
+ *
+ * The whole /settings page is a PROTECTED MODULE (Section 27): the page shell
+ * and every tab carry their own "settings:<tab>" permission from the central
+ * Page Permission Registry. Tabs render only when the user holds the
+ * corresponding effective permission; a user with no settings permissions at
+ * all sees the Access Denied screen.
+ *
+ * This replaces the previous hardcoded MONITORING_ROLES role array — the
+ * centralized effective-permission check (Section 26) is the single source.
+ *
+ * SECURITY MODEL: UX only. The underlying APIs (users, audit, permission
+ * overrides, monitoring, admin) are permission-gated server-side on every
+ * request; hiding a tab never protects data by itself.
+ *
+ * Place: frontend/src/components/settings/SettingsLayout.jsx
+ */
+const TAB_ICONS = {
+  profile: <User className="h-4 w-4" />,
+  notifications: <Bell className="h-4 w-4" />,
+  security: <Lock className="h-4 w-4" />,
+  audit: <FileText className="h-4 w-4" />,
+  users: <UsersIcon className="h-4 w-4" />,
+  permissions: <Shield className="h-4 w-4" />,
+  monitoring: <Activity className="h-4 w-4" />, 
+}
 
-const baseTabs = [
-  { id: 'profile',      name: 'Profile',      icon: <User className="h-4 w-4" />,          href: '/settings/profile' },
-  { id: 'notifications',name: 'Notifications',icon: <Bell className="h-4 w-4" />,           href: '/settings/notifications' },
-  { id: 'security',     name: 'Security',     icon: <Lock className="h-4 w-4" />,           href: '/settings/security' },
-  { id: 'audit',        name: 'Audit',        icon: <FileText className="h-4 w-4" />,       href: '/settings/audit' },
-  { id: 'users',        name: 'Users',        icon: <UsersIcon className="h-4 w-4" />,      href: '/settings/users' },
-  { id: 'permissions',  name: 'Permissions',  icon: <Shield className="h-4 w-4" />,         href: '/settings/permissions' },
-]
+/**
+ * Index route for /settings: land the user on the first settings tab they
+ * may open; if they hold no settings permissions at all, bounce to the
+ * first permitted route (never a redirect loop).
+ */
+export function SettingsIndexRedirect() {
+  const { can } = useAuth()
+  const allowed = SETTINGS_TABS.filter((tab) => {
+    const [module, action] = parsePermission(tab.permission)
+    return can(module, action)
+  })
 
-const monitoringTab = { id: 'monitoring', name: 'System Monitor', icon: <Activity className="h-4 w-4" />, href: '/settings/monitoring' }
+  if (allowed.length === 0) {
+    return <Navigate to={firstPermittedRoute(can)} replace />
+  }
+  return <Navigate to={`/settings/${allowed[0].id}`} replace />
+}
 
 const SettingsLayout = () => {
-  // RBAC-driven tab visibility (§31): only technical roles see monitoring.
-  let tabs = baseTabs
-  try {
-    const auth = useAuth()
-    const role = String(auth?.user?.role ?? '')
-    if (MONITORING_ROLES.includes(role)) {
-      tabs = [...baseTabs, monitoringTab]
-    }
-  } catch {
-    tabs = baseTabs
+  const { can } = useAuth()
+
+  // Permission-driven tab visibility (replaces the hardcoded role list).
+  const tabs = SETTINGS_TABS.filter((tab) => {
+    const [module, action] = parsePermission(tab.permission)
+    return can(module, action)
+  })
+
+  // Complete Settings lockdown (e.g. Officer/Sub-section Head/Section Head/
+  // Department Head/HR Manager/Managing Director by default): fail fast with
+  // the standard Access Denied screen. The individual tab guards would also
+  // catch this, but the layout is the right place for the module shell.
+  if (tabs.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="text-center py-12">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+            <ShieldAlert className="h-8 w-8 text-red-600 dark:text-red-400" />
+          </div>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Access denied</h1>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Your account does not have permission to open any Settings area.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -46,13 +94,13 @@ const SettingsLayout = () => {
         <p className="text-gray-500 dark:text-gray-400">Manage your account, users, and system configuration</p>
       </div>
 
-      {/* Horizontal tab nav */}
+      {/* Horizontal tab nav - only permitted tabs are rendered. */}
       <div className="border-b border-gray-200 dark:border-slate-700 overflow-x-auto scrollbar-thin">
         <nav className="-mb-px flex space-x-1 sm:space-x-8" aria-label="Settings tabs">
           {tabs.map((tab) => (
             <NavLink
               key={tab.id}
-              to={tab.href}
+              to={`/settings/${tab.id}`}
               className={({ isActive }) =>
                 `flex items-center space-x-1 sm:space-x-2 py-3 px-2 sm:px-1 border-b-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
                   isActive
@@ -61,7 +109,7 @@ const SettingsLayout = () => {
                 }`
               }
             >
-              {tab.icon}
+              {TAB_ICONS[tab.id]}
               <span className="hidden xs:inline">{tab.name}</span>
               <span className="xs:hidden">{tab.name.split(' ')[0]}</span>
             </NavLink>
@@ -69,10 +117,10 @@ const SettingsLayout = () => {
         </nav>
       </div>
 
+      {/* The tab routes are individually permission-guarded in App.jsx. */}
       <Outlet />
     </div>
   )
 }
 
 export default SettingsLayout
-

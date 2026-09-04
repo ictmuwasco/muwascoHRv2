@@ -23,9 +23,10 @@ type FormState =
  * year) that every workplan activity at every level attaches itself to.
  */
 export default function AppraisalCycles() {
-  const { user } = useAuth();
-  const role = (user?.role || '').toLowerCase();
-  const canManage = role === 'hr_manager' || role === 'super_admin';
+  // Centralized effective-permission check (matches the API gate
+  // performance:manage) — no hardcoded role arrays.
+  const { can } = useAuth();
+  const canManage = can('performance', 'manage');
 
   const [cycles, setCycles] = useState<AppraisalCycle[]>([]);
   const [financialYears, setFinancialYears] = useState<FinancialYearRef[]>([]);

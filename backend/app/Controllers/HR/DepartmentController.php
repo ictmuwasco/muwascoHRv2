@@ -87,7 +87,7 @@ class DepartmentController extends BaseController
     {
         $this->requirePermission('departments', 'create');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\DepartmentValidator());
 
         try {
             $departmentId = $this->departmentService->createDepartment($data);
@@ -113,7 +113,7 @@ class DepartmentController extends BaseController
     {
         $this->requirePermission('departments', 'edit');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\DepartmentValidator());
 
         try {
             $oldDept = $this->departmentService->getDepartmentById($id);

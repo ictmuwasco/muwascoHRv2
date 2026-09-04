@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, NavLink, Outlet, useOutletContext } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import api from '../../utils/api'
@@ -11,17 +11,6 @@ const TABS = [
   { id: 'approved', name: 'Approved', icon: <CheckCircle className="h-4 w-4" />, href: '/leave/manage/approved' },
   { id: 'rejected', name: 'Rejected', icon: <X className="h-4 w-4" />,           href: '/leave/manage/rejected' },
 ]
-
-export const MANAGER_ROLES = [
-  'sub_section_head', 'section_head', 'dept_head',
-  'managing_director', 'hr_manager', 'super_admin',
-  'bod_chair', 'bod_chairman',
-]
-
-export const isManager = (user) => {
-  const r = (user?.role || '').toLowerCase()
-  return MANAGER_ROLES.includes(r)
-}
 
 const fetchCounts = async () => {
   try {
@@ -37,8 +26,8 @@ const fetchCounts = async () => {
 
 const ManageLeaveLayout = () => {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const isManagerRole = useMemo(() => isManager(user), [user])
+  const { can } = useAuth()
+  const isManagerRole = can('leave', 'manage')
 
   const [counts, setCounts] = useState({ pending: 0, approved: 0, rejected: 0 })
   const [pageRole, setPageRole] = useState('')

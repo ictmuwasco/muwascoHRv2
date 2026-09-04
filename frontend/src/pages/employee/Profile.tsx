@@ -7,8 +7,9 @@ import Modal from '../../components/ui/Modal';
 import { User, Briefcase, Users, FileText, Key, Save, Loader2, Plus, Trash2, Upload, Eye, Download, UserRound } from 'lucide-react';
 import type { EmployeeProfile } from '../../types';
 
-// Base URL for direct file access (authenticated via httpOnly cookie)
-const API_BASE = import.meta.env.VITE_API_URL || '/api';
+// Base URL for direct file access (authenticated via httpOnly cookie) —
+// centralized in src/config/api.ts so every consumer shares VITE_API_URL.
+import { API_BASE_URL as API_BASE } from '../../config/api';
 
 // Profile image URL helper - streams through the API (auth cookie is sent automatically)
 const getProfileImageUrl = (profileImageUrl?: string | null): string | null => {

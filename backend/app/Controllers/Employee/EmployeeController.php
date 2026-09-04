@@ -83,7 +83,7 @@ class EmployeeController extends BaseController
     {
         $this->requirePermission('employees', 'create');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\EmployeeValidator());
 
         try {
             $employeeId = $this->employeeService->createEmployee($data);
@@ -109,7 +109,7 @@ class EmployeeController extends BaseController
     {
         $this->requirePermission('employees', 'edit');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\EmployeeValidator());
 
         try {
             $oldEmployee = $this->employeeService->getEmployeeById($id);
@@ -230,58 +230,25 @@ class EmployeeController extends BaseController
 
     /**
      * POST /api/employees/documents - Upload a document for an employee.
+     *
+     * REMOVED (Phase 7 security remediation, finding P7-1):
+     * The previous implementation of this action accepted uploads with NO
+     * extension allowlist, NO MIME verification and NO size limit, and stored
+     * the raw file inside the web-executable directory
+     * backend/public/uploads/employee_documents/ (mkdir 0777). Any future
+     * route registration pointing at it would become remote code execution.
+     *
+     * The authorized upload paths are:
+     *   - POST /api/profile/documents      → uploadProfileDocument()
+     *     (extension allowlist + finfo MIME check + 5MB cap + random filename
+     *      + private STORAGE_PATH storage + audit log)
+     *   - POST /api/profile/profile-image  → uploadProfileImage()
+     *
+     * Legacy files in backend/public/uploads/ are no longer directly
+     * web-accessible (denied by backend/public/uploads/.htaccess) and are
+     * served exclusively through the authorized streaming endpoint
+     * GET /api/profile/documents/{id}.
      */
-    public function uploadDocumentAction(): void
-    {
-        $this->requirePermission('employees', 'edit');
-
-        try {
-            $employeeId = (int)($_POST['employee_id'] ?? 0);
-            $documentName = $_POST['document_name'] ?? '';
-            $category = $_POST['category'] ?? 'other';
-
-            if ($employeeId <= 0) {
-                $this->error('Employee ID is required', 400);
-                return;
-            }
-
-            if (empty($documentName)) {
-                $this->error('Document name is required', 400);
-                return;
-            }
-
-            if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-                $this->error('Please select a valid file to upload', 400);
-                return;
-            }
-
-            $uploadDir = __DIR__ . '/../../public/uploads/employee_documents/';
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0777, true);
-            }
-
-            $fileName = uniqid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $_FILES['file']['name']);
-            $destination = $uploadDir . $fileName;
-
-            if (!move_uploaded_file($_FILES['file']['tmp_name'], $destination)) {
-                $this->error('Failed to save uploaded file', 500);
-                return;
-            }
-
-            // Insert into employee_documents table
-            $db = \App\Helpers\Database::getInstance()->getConnection();
-            $stmt = $db->prepare("INSERT INTO employee_documents (employee_id, document_name, category, file_name) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param('isss', $employeeId, $documentName, $category, $fileName);
-            $stmt->execute();
-            $docId = (int)$db->insert_id;
-            $stmt->close();
-
-            $this->success(['id' => $docId, 'file_name' => $fileName], 'Document uploaded successfully', 201);
-        } catch (\Exception $e) {
-            \logger()->error('Document upload error', ['error' => $e->getMessage()]);
-            $this->error('Failed to upload document. Please try again.', 500);
-        }
-    }
 
     /**
      * DELETE /api/employees/documents/{id} - Delete an employee document.
@@ -481,11 +448,13 @@ class EmployeeController extends BaseController
         $mimeType = finfo_file($finfo, $filePath) ?: 'application/octet-stream';
         finfo_close($finfo);
 
-        header('Content-Type: ' . $mimeType);
-        header('Content-Disposition: inline; filename="' . basename($document['document_name'] ?? 'document') . '"');
+        // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
+        // PDF/images (business in-browser preview), attachment otherwise.
+        \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+            $mimeType,
+            $document['document_name'] ?? 'document'
+        );
         header('Content-Length: ' . filesize($filePath));
-        header('X-Content-Type-Options: nosniff');
-        header('Cache-Control: private, max-age=3600');
 
         readfile($filePath);
         exit();
@@ -763,10 +732,7 @@ class EmployeeController extends BaseController
         $stmt->close();
 
         if (!$employee || empty($employee['profile_image_url'])) {
-            http_response_code(404);
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Profile picture not found']);
-            exit();
+            \App\Helpers\ApiResponse::error('Profile picture not found', 'NOT_FOUND', [], 404);
         }
 
         // Support both public-webroot path and storage-relative path
@@ -776,10 +742,7 @@ class EmployeeController extends BaseController
             if (file_exists($storagePath)) {
                 $filePath = $storagePath;
             } else {
-                http_response_code(404);
-                header('Content-Type: application/json');
-                echo json_encode(['error' => 'Profile picture file not found on server']);
-                exit();
+                \App\Helpers\ApiResponse::error('Profile picture file not found on server', 'NOT_FOUND', [], 404);
             }
         }
 

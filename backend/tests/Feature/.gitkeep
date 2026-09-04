@@ -1,0 +1,4 @@
+# This file ensures the Feature test suite directory exists in CI.
+# The phpunit.xml.dist declares a "Feature" testsuite pointing here.
+# Git does not track empty directories, so without this file the CI
+# PHPUnit run crashes with: "Test directory .../tests/Feature not found".

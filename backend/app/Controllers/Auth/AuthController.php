@@ -34,21 +34,33 @@ class AuthController extends BaseController
      */
     public function loginAction(): void
     {
-        // Security: Rate-limit login attempts (F-06)
-        \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('login');
-
         try {
             $data = $this->getJsonBody();
             
-            $email = $data['email'] ?? '';
-            $password = $data['password'] ?? '';
-            $rememberMe = $data['remember_me'] ?? false;
+            $email = is_string($data['email'] ?? null) ? trim($data['email']) : '';
+            $password = is_string($data['password'] ?? null) ? $data['password'] : '';
+            $rememberMe = (bool) ($data['remember_me'] ?? false);
 
             if (empty($email) || empty($password)) {
                 $this->error('Email and password are required', 400);
             }
 
+            // Security: rate-limit login attempts per IP AND per account (F-06).
+            // The file-backed store persists even though the session is closed
+            // for API requests; the account identifier throttles credential
+            // stuffing against one mailbox from rotating IPs.
+            \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('login', 5, 900, $email);
+
             $result = $this->authService->login($email, $password, $rememberMe);
+
+            // Attach the effective permission set for the frontend permission
+            // context (sidebar visibility / button rendering). UX only — the
+            // backend enforces authorization independently on every request.
+            if (isset($result['user']['id'])) {
+                $result['user']['permissions'] = \App\Helpers\AuthorizationService::getInstance()
+                    ->getEffectivePermissionStrings((int) $result['user']['id']);
+                $result['user']['active_delegations'] = $this->activeDelegationsFor((int) $result['user']['id']);
+            }
 
             \App\Services\AuditService::getInstance()->log(
                 \App\Services\AuditService::MODULE_AUTH,
@@ -98,6 +110,14 @@ class AuthController extends BaseController
             
             // Only attempt logout if user is authenticated
             if ($userId > 0) {
+                // Security: revoke every refresh token issued for this user so
+                // no new access tokens can be minted after logout (F-07).
+                try {
+                    \App\Helpers\JWT::getInstance()->revokeAllTokens($userId);
+                } catch (\Throwable $revokeError) {
+                    \logger()->warning('Refresh token revocation failed on logout', ['user_id' => $userId, 'error' => $revokeError->getMessage()]);
+                }
+
                 \App\Services\AuditService::getInstance()->log(
                     \App\Services\AuditService::MODULE_AUTH,
                     \App\Services\AuditService::ACTION_LOGOUT,
@@ -150,10 +170,21 @@ class AuthController extends BaseController
         try {
             $userId = $this->getAuthUserId();
             $user = $this->authService->getUserById($userId);
-            
+
             if (!$user) {
                 $this->notFound('User not found');
             }
+
+            // Effective permission set for the frontend permission context
+            // (sidebar visibility, button rendering, route guards). UX only —
+            // the backend enforces authorization independently per request.
+            $user['permissions'] = \App\Helpers\AuthorizationService::getInstance()
+                ->getEffectivePermissionStrings($userId);
+
+            // Active delegations (Temporary Delegation / Acting Authority) so
+            // the frontend can show the acting-delegate banner immediately and
+            // refresh it on every permission poll.
+            $user['active_delegations'] = $this->activeDelegationsFor($userId);
 
             $this->success($user);
         } catch (\Exception $e) {
@@ -163,15 +194,37 @@ class AuthController extends BaseController
     }
 
     /**
+     * Active delegations for the frontend acting-delegate banner. Best-effort:
+     * a delegation lookup failure must never break the auth payload.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function activeDelegationsFor(int $userId): array
+    {
+        if ($userId <= 0) {
+            return [];
+        }
+        try {
+            return \App\Services\DelegationService::getInstance()->activeForUser($userId);
+        } catch (\Throwable $e) {
+            \logger()->warning('Active delegation lookup failed', ['user_id' => $userId, 'error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
      * POST /api/auth/change-password - Change user password.
      */
     public function changePasswordAction(): void
     {
-        // Security: Rate-limit password change attempts (F-06)
-        \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('change_password');
-
         try {
             $userId = $this->getAuthUserId();
+            if ($userId <= 0) {
+                $this->error('Authentication required', 401);
+            }
+
+            // Security: rate-limit password change attempts per account (F-06)
+            \App\Middleware\SecurityMiddleware::protectAgainstBruteForce('change_password', 5, 900, (string) $userId);
             $data = $this->getJsonBody();
             
             $currentPassword = $data['current_password'] ?? '';
@@ -187,8 +240,28 @@ class AuthController extends BaseController
                 $this->error('Current password is incorrect', 401);
             }
 
-            // Update password
+            // Update password (also revokes refresh tokens + enforces policy)
             $this->authService->updatePassword($userId, $newPassword);
+
+            // Security: invalidate remaining token material and rotate the
+            // current session id so other devices/sessions must re-authenticate.
+            try {
+                \App\Helpers\JWT::getInstance()->revokeAllTokens($userId);
+            } catch (\Throwable $revokeError) {
+                \logger()->warning('Refresh token revocation failed on password change', ['user_id' => $userId, 'error' => $revokeError->getMessage()]);
+            }
+
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                session_regenerate_id(true);
+            }
+
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_AUTH,
+                \App\Services\AuditService::ACTION_PASSWORD_CHANGE,
+                'User changed their password',
+                ['status' => \App\Services\AuditService::STATUS_SUCCESS, 'target_type' => 'User', 'target_id' => $userId]
+            );
+
             $this->success(null, 'Password changed successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Helpers\Database;
+use App\Services\Leave\LeaveTypePolicy;
 
 /**
  * LeaveDocumentService
@@ -40,7 +41,8 @@ class LeaveDocumentService
      */
     public function requiresDocument(int $leaveTypeId): bool
     {
-        return in_array($leaveTypeId, [2, 5], true); // 2 = Sick Leave, 5 = Study Leave
+        // Requirement owned by LeaveTypePolicy (single source of truth).
+        return LeaveTypePolicy::requiresDocument($leaveTypeId);
     }
 
     /**
@@ -48,13 +50,7 @@ class LeaveDocumentService
      */
     public function getRequiredDocumentType(int $leaveTypeId): ?string
     {
-        if ($leaveTypeId === 2) {
-            return 'medical_certificate';
-        }
-        if ($leaveTypeId === 5) {
-            return 'study_document';
-        }
-        return null;
+        return LeaveTypePolicy::documentType($leaveTypeId);
     }
 
     /**
