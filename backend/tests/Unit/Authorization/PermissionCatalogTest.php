@@ -30,7 +30,10 @@ class PermissionCatalogTest extends TestCase
     public function testCatalogDefinesModules(): void
     {
         $this->assertArrayHasKey('modules', $this->catalog);
-        $this->assertCount(25, $this->catalog['modules'], 'Catalog module count changed - review this test');
+        // 25 modules through Phase 2; +1 'settings' module (Phase: Role, Page &
+        // Permission restriction — the protected Settings module with per-tab
+        // actions). Review the diff when this changes.
+        $this->assertCount(26, $this->catalog['modules'], 'Catalog module count changed - review this test');
     }
 
     public function testEveryModuleDefinesKeyLabelAndActions(): void
@@ -157,20 +160,38 @@ class PermissionCatalogTest extends TestCase
         }
 
         // Every module with a controller-level requirePermission() call.
+        // NOTE (Phase: Role, Page & Permission restriction): 'users' and
+        // 'permission_overrides' are now granted to super_admin ONLY by
+        // default (migration 038 revoked the hr_manager seeds) — Settings
+        // lockdown per the default role matrix. They remain overridable per
+        // user via explicit allow overrides, so they are exempt from the
+        // "operational role" requirement below.
         $enforced = [
             'dashboard', 'employees', 'departments', 'attendance', 'leave', 'reports',
-            'users', 'admin', 'audit', 'performance', 'consent', 'permission_overrides',
+            'admin', 'audit', 'performance', 'consent',
             'financial_year', 'holidays', 'system_errors', 'complaints', 'payroll',
             'notifications', 'strategic_plan', 'performance_contract', 'workplan',
             'kpi', 'sectional_objective', 'meetings',
         ];
 
-        $missing = array_diff($enforced, array_keys($seeded));
+        $superAdminOnly = ['users', 'permission_overrides', 'admin'];
+
+        $missing = array_diff(array_diff($enforced, $superAdminOnly), array_keys($seeded));
         $this->assertSame(
             [],
             array_values($missing),
             'Modules enforced by controllers but granted to no operational role: ' . implode(', ', $missing)
         );
+
+        // Super-admin-only modules stay enforced by the catalog even though no
+        // operational role holds them by default (Settings lockdown, §27).
+        foreach ($superAdminOnly as $module) {
+            $this->assertArrayHasKey(
+                $module,
+                $this->catalog['modules'],
+                "Super-admin-only module '$module' must remain defined in the catalog"
+            );
+        }
     }
 
     /**

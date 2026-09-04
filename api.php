@@ -22,6 +22,7 @@ use App\Controllers\HR\DepartmentController;
 use App\Controllers\Leave\LeaveController;
 use App\Controllers\Leave\LeaveRosterController;
 use App\Controllers\Leave\LeaveReportController;
+use App\Controllers\Leave\DelegationController;
 use App\Controllers\AttendanceController;
 use App\Controllers\Employee\UserController;
 use App\Controllers\HR\SectionController;
@@ -264,7 +265,10 @@ $router->add('POST', '/users/{id}/change-password', UserController::class, 'chan
 $router->add('GET', '/attendance/today', AttendanceController::class, 'today', 'attendance:view');
 $router->add('GET', '/attendance/dashboard', AttendanceController::class, 'dashboard', 'attendance:view');
 // HR attendance monitoring dashboard + employee history (before /attendance/{id} wildcard)
-$router->add('GET', '/attendance/hr-dashboard', AttendanceController::class, 'hrDashboard', 'attendance:view');
+// Org attendance monitoring is an administrative function: it requires
+// attendance:manage (officers/employees hold only attendance:view). Data
+// scope is additionally clamped server-side for unit-scoped heads.
+$router->add('GET', '/attendance/hr-dashboard', AttendanceController::class, 'hrDashboard', 'attendance:manage');
 $router->add('GET', '/attendance/hr-employee-history', AttendanceController::class, 'hrEmployeeHistory', 'attendance:view');
 $router->add('GET', '/attendance/my-records', AttendanceController::class, 'myRecords', 'attendance:view');
 $router->add('GET', '/attendance/employee/{id}', AttendanceController::class, 'byEmployee', 'attendance:view');
@@ -294,6 +298,18 @@ $router->add('PUT', '/leave/{id}/reject', LeaveController::class, 'reject', 'lea
 $router->add('PUT', '/leave/{id}/invalidate', LeaveController::class, 'invalidate', 'leave:invalidate', '120:300');
 $router->add('PUT', '/leave/{id}/cancel', LeaveController::class, 'cancel', 'leave:apply', '120:300');
 
+// Delegations / Acting Authority routes - explicit, time-bound, scope-aware
+// transfer of a supervisor's approval authority (DelegationService).
+// Static sub-resource paths are registered BEFORE the /delegations wildcard
+// would matter (no bare {id} GET route exists, so ordering is safe).
+$router->add('GET', '/delegations/eligible-delegates', DelegationController::class, 'eligibleDelegates', 'delegations:create', '60:300');
+$router->add('GET', '/delegations/delegatable-permissions', DelegationController::class, 'delegatablePermissions', 'delegations:create', '60:300');
+$router->add('GET', '/delegations', DelegationController::class, 'index', 'delegations:view');
+$router->add('POST', '/delegations', DelegationController::class, 'store', 'delegations:create', '20:300');
+$router->add('PUT', '/delegations/{id}/approve', DelegationController::class, 'approve', 'delegations:approve', '60:300');
+$router->add('PUT', '/delegations/{id}/reject', DelegationController::class, 'reject', 'delegations:approve', '60:300');
+$router->add('PUT', '/delegations/{id}/cancel', DelegationController::class, 'cancel', 'delegations:cancel', '60:300');
+
 // Employee Leave Profile routes - must be registered before /leave/{id} wildcard routes.
 // Profile reads are scope-checked per record by LeaveProfileService::canViewProfile().
 $router->add('GET', '/leave/profile/employees', LeaveController::class, 'profileEmployees', 'leave:view');
@@ -305,21 +321,26 @@ $router->add('GET', '/leave/profile/{id}/summary', LeaveController::class, 'prof
 $router->add('GET', '/leave/profile/{id}/export', LeaveController::class, 'profileExport', 'leave:view', '20:300');
 
 // Leave Roster routes - static sub-resource routes must be registered before /leave/roster/{id}.
-// Roster planning is an approver/HR function: reads are leave:view, writes and
-// the bulk export require leave:manage (previously these endpoints had NO
-// permission gate at all — only the global authentication gate).
-$router->add('GET', '/leave/roster/stats', LeaveRosterController::class, 'stats', 'leave:view');
-$router->add('GET', '/leave/roster/distribution', LeaveRosterController::class, 'distribution', 'leave:view');
-$router->add('GET', '/leave/roster/upcoming', LeaveRosterController::class, 'upcoming', 'leave:view');
-$router->add('GET', '/leave/roster/departments', LeaveRosterController::class, 'departments', 'leave:view');
-$router->add('GET', '/leave/roster/matrix', LeaveRosterController::class, 'matrix', 'leave:view');
-$router->add('GET', '/leave/roster/export', LeaveRosterController::class, 'export', 'leave:manage', '20:300');
-$router->add('GET', '/leave/roster/employees', LeaveRosterController::class, 'employees', 'leave:view');
+// Roster planning is an approver/HR function (§33 page matrix): the roster
+// shows OTHER employees' planned leave, so officers/employees (who hold only
+// leave:view) must NOT read it. Every read therefore requires leave:manage —
+// the same gate as writes. (Previously reads were leave:view, which let an
+// officer fetch the org-wide roster directly.)
+$router->add('GET', '/leave/roster/stats', LeaveRosterController::class, 'stats', 'leave:roster');
+$router->add('GET', '/leave/roster/distribution', LeaveRosterController::class, 'distribution', 'leave:roster');
+$router->add('GET', '/leave/roster/upcoming', LeaveRosterController::class, 'upcoming', 'leave:roster');
+$router->add('GET', '/leave/roster/departments', LeaveRosterController::class, 'departments', 'leave:roster');
+$router->add('GET', '/leave/roster/matrix', LeaveRosterController::class, 'matrix', 'leave:roster');
+$router->add('GET', '/leave/roster/export', LeaveRosterController::class, 'export', 'leave:roster', '20:300');
+$router->add('GET', '/leave/roster/employees', LeaveRosterController::class, 'employees', 'leave:roster');
+// Financial years is non-sensitive reference data (FY id + name) and is also
+// consumed by the Leave Profile page (FY selector), which is open to every
+// role with leave:view — so it stays at leave:view.
 $router->add('GET', '/leave/roster/financial-years', LeaveRosterController::class, 'financialYears', 'leave:view');
-$router->add('GET', '/leave/roster', LeaveRosterController::class, 'index', 'leave:view');
-$router->add('POST', '/leave/roster', LeaveRosterController::class, 'store', 'leave:manage');
-$router->add('PUT', '/leave/roster/{id}', LeaveRosterController::class, 'update', 'leave:manage');
-$router->add('DELETE', '/leave/roster/{id}', LeaveRosterController::class, 'destroy', 'leave:manage');
+$router->add('GET', '/leave/roster', LeaveRosterController::class, 'index', 'leave:roster');
+$router->add('POST', '/leave/roster', LeaveRosterController::class, 'store', 'leave:roster');
+$router->add('PUT', '/leave/roster/{id}', LeaveRosterController::class, 'update', 'leave:roster');
+$router->add('DELETE', '/leave/roster/{id}', LeaveRosterController::class, 'destroy', 'leave:roster');
 
 // Dashboard routes
 $router->add('GET', '/dashboard', DashboardController::class, 'index', 'dashboard:view');
@@ -439,12 +460,16 @@ $router->add('PUT',    '/performance-contracts/{id}',   PerformanceContractContr
 $router->add('DELETE', '/performance-contracts/{id}',   PerformanceContractController::class, 'destroy', 'performance_contract:manage');
 
 // Appraisal cycles (quarterly quarters attached to every workplan activity).
-// Read: any authenticated user. Write: HR managers / super admins
-// (AppraisalCycleController::canManage -> performance:manage).
+// Read: any authenticated user — heads' workplan quarter pickers consume the
+// minimal read-only payload (AppraisalCycleController::index).
+// Write: the dedicated performance:cycles page permission (migration 039) —
+// hr_manager / managing_director / super_admin only (HR Admin function).
+// Heads keep performance:manage for the appraisal create/submit/approve
+// workflow but must not configure cycles.
 $router->add('GET',    '/appraisal-cycles',          AppraisalCycleController::class, 'index');
-$router->add('POST',   '/appraisal-cycles',          AppraisalCycleController::class, 'store', 'performance:manage');
-$router->add('PUT',    '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'update', 'performance:manage');
-$router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'destroy', 'performance:manage');
+$router->add('POST',   '/appraisal-cycles',          AppraisalCycleController::class, 'store', 'performance:cycles');
+$router->add('PUT',    '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'update', 'performance:cycles');
+$router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'destroy', 'performance:cycles');
 
 // Workplan objectives — reads mirror the seeded workplan:view; all writes are
 // OrgScope-managed (organizational scope logic in the controllers).
@@ -544,9 +569,13 @@ $router->add('DELETE', '/permissions/users/{id}/overrides', PermissionController
 
 // Meeting routes - Laravel-style methods
 $router->add('GET', '/my-meetings', MeetingController::class, 'myMeetings', 'meetings:view');
-$router->add('GET', '/meetings', MeetingController::class, 'index', 'meetings:view');
-$router->add('GET', '/meetings/stats', MeetingController::class, 'stats', 'meetings:view');
-$router->add('GET', '/meetings/eligible-employees', MeetingController::class, 'eligibleEmployees', 'meetings:view');
+// Org-wide index is scoped server-side in indexAction(): holders of
+// meetings:dashboard (hr_manager/managing_director/super_admin + overrides)
+// see every meeting; every other meetings:create caller (e.g. dept_head) sees
+// only the meetings they organized. Personal invites → /my-meetings.
+$router->add('GET', '/meetings', MeetingController::class, 'index', 'meetings:create');
+$router->add('GET', '/meetings/stats', MeetingController::class, 'stats', 'meetings:dashboard');
+$router->add('GET', '/meetings/eligible-employees', MeetingController::class, 'eligibleEmployees', 'meetings:create');
 $router->add('POST', '/meetings', MeetingController::class, 'store', 'meetings:create');
 $router->add('GET', '/meetings/{id}', MeetingController::class, 'show', 'meetings:view');
 $router->add('PUT', '/meetings/{id}', MeetingController::class, 'update', 'meetings:edit');

@@ -59,6 +59,7 @@ class AuthController extends BaseController
             if (isset($result['user']['id'])) {
                 $result['user']['permissions'] = \App\Helpers\AuthorizationService::getInstance()
                     ->getEffectivePermissionStrings((int) $result['user']['id']);
+                $result['user']['active_delegations'] = $this->activeDelegationsFor((int) $result['user']['id']);
             }
 
             \App\Services\AuditService::getInstance()->log(
@@ -180,10 +181,34 @@ class AuthController extends BaseController
             $user['permissions'] = \App\Helpers\AuthorizationService::getInstance()
                 ->getEffectivePermissionStrings($userId);
 
+            // Active delegations (Temporary Delegation / Acting Authority) so
+            // the frontend can show the acting-delegate banner immediately and
+            // refresh it on every permission poll.
+            $user['active_delegations'] = $this->activeDelegationsFor($userId);
+
             $this->success($user);
         } catch (\Exception $e) {
             \logger()->error('Get user error', ['error' => $e->getMessage()]);
             $this->error('Failed to get user information.', 500);
+        }
+    }
+
+    /**
+     * Active delegations for the frontend acting-delegate banner. Best-effort:
+     * a delegation lookup failure must never break the auth payload.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function activeDelegationsFor(int $userId): array
+    {
+        if ($userId <= 0) {
+            return [];
+        }
+        try {
+            return \App\Services\DelegationService::getInstance()->activeForUser($userId);
+        } catch (\Throwable $e) {
+            \logger()->warning('Active delegation lookup failed', ['user_id' => $userId, 'error' => $e->getMessage()]);
+            return [];
         }
     }
 

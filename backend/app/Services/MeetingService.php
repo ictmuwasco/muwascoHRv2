@@ -30,10 +30,14 @@ class MeetingService
     /**
      * Get paginated list of meetings with optional filters.
      * Each item is decorated with minutes flags for UI gating.
+     *
+     * When $ownerUserId is provided the list is restricted to meetings the
+     * given user created (data scope for organizers who do NOT hold the
+     * org-wide meetings:dashboard permission). null = org-wide list.
      */
-    public function getAllMeetings(int $page = 1, int $perPage = 20, array $filters = []): array
+    public function getAllMeetings(int $page = 1, int $perPage = 20, array $filters = [], ?int $ownerUserId = null): array
     {
-        $result = $this->meetingRepository->paginate($page, $perPage, $filters);
+        $result = $this->meetingRepository->paginate($page, $perPage, $filters, $ownerUserId);
         $result['data'] = $this->decorateList($result['data']);
         return $result;
     }
