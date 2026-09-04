@@ -6,6 +6,7 @@ namespace App\Helpers;
 
 use App\Helpers\RBAC;
 use App\Models\UserPagePermission;
+use App\Services\DelegationService;
 
 /**
  * AuthorizationService - Hybrid Authorization System (THE single authorization engine)
@@ -14,14 +15,18 @@ use App\Models\UserPagePermission;
  * 1. Role-Based Access Control (RBAC) — role_permissions table
  * 2. User-Specific Permission Overrides — user_page_permissions table
  *
- * Authorization Hierarchy (Priority Order — authoritative as of Phase 2):
+ * Authorization Hierarchy (Priority Order — authoritative as of Phase 2,
+ * extended by the Temporary Delegation / Acting Authority phase):
  *   1. Unauthenticated / unknown user        → DENY
  *   2. SUPER ADMIN (role resolved from
  *      trusted context)                      → ALLOW (never overridden, never denied)
  *   3. Explicit User Override (allow/deny)   → ALLOW / DENY
  *   4. Self-service own-profile exception    → ALLOW
  *   5. Role Permission                       → ALLOW / DENY
- *   6. No rule matched                       → DEFAULT DENY
+ *   6. ACTIVE DELEGATION snapshot            → ALLOW (explicit, time-bound,
+ *                                              scope-aware; can never override
+ *                                              an explicit deny above)
+ *   7. No rule matched                       → DEFAULT DENY
  *
  * Super Admin policy: the super_admin role always has full access. Overrides
  * can never restrict a super_admin — the administration UI refuses to create
@@ -158,7 +163,40 @@ class AuthorizationService
         }
 
         // Priority 5: Role Permission → ALLOW / DENY (RBAC default-denies)
-        return $this->rbac->hasPermission($role, $module, $action);
+        if ($this->rbac->hasPermission($role, $module, $action)) {
+            return true;
+        }
+
+        // Priority 6: ACTIVE DELEGATION (Temporary Delegation / Acting Authority).
+        // An explicit, HR-approved, time-bound delegation may grant ONLY the
+        // permission strings snapshotted on the delegation row. It can never
+        // override an explicit user 'deny' override (Priority 3 above), can
+        // never grant the super_admin policy (Priority 2), and can never
+        // touch non-delegatable modules — DelegationService re-checks the
+        // blacklist at resolution time (defence in depth).
+        if ($this->delegationAllows($userId, $module, $action)) {
+            return true;
+        }
+
+        // Priority 7: Default DENY
+        return false;
+    }
+
+    /**
+     * Delegation-aware permission check (Priority 6). Isolated in its own
+     * method with a Throwable guard so a delegation infrastructure problem
+     * can never crash the authorization engine — the engine falls back to
+     * the default deny, which is the safe direction.
+     */
+    private function delegationAllows(int $userId, string $module, string $action): bool
+    {
+        try {
+            return DelegationService::getInstance()
+                ->permissionAllowedByDelegation($userId, $module, $action);
+        } catch (\Throwable $e) {
+            error_log('[AuthorizationService] delegation check failed: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /**
@@ -572,6 +610,20 @@ class AuthorizationService
                     $out[] = $module['key'] . ':' . $action['key'];
                 }
             }
+        }
+
+        // Active delegations (Temporary Delegation / Acting Authority): append
+        // ONLY the snapshotted, time-valid permission strings so sidebar
+        // visibility, route guards and action buttons mirror hasPermission()'s
+        // Priority 6. UX only — the backend re-enforces on every request.
+        try {
+            foreach (DelegationService::getInstance()->activePermissionStrings($userId) as $delegatedKey) {
+                if (!in_array($delegatedKey, $out, true)) {
+                    $out[] = $delegatedKey;
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[AuthorizationService] delegated permission strings failed: ' . $e->getMessage());
         }
 
         return $out;

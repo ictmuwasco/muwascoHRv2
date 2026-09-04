@@ -30,6 +30,7 @@ export const useAuth = () => {
         message: 'Authentication is unavailable. Please reload the page.',
       }),
       logout: async () => { localStorage.removeItem('user') },
+      refreshPermissions: async () => {},
     }
   }
   return context
@@ -40,6 +41,35 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   const fetchedUserRef = useRef(false)
+  const refreshingRef = useRef(false)
+
+  /**
+   * Refresh the effective permission set from the server (§31). Single-flight:
+   * concurrent callers (focus handler + interval + 403 handler) share one
+   * in-flight request. The cached profile/permissions render instantly, then
+   * /auth/user overwrites them with the authoritative set so sidebar, routes
+   * and buttons reflect recent permission changes without a manual reload or
+   * clearing browser storage. UX ONLY — the backend enforces authorization
+   * independently on every request.
+   */
+  const refreshPermissions = async () => {
+    if (refreshingRef.current) return
+    refreshingRef.current = true
+    try {
+      const response = await api.get('/auth/user')
+      const freshUser = response?.data?.data ?? response?.data
+      if (freshUser && typeof freshUser === 'object' && freshUser.id) {
+        localStorage.setItem('user', JSON.stringify(freshUser))
+        setUser(freshUser)
+      }
+    } catch {
+      // Silent — a stale session cookie simply leaves the cached profile in
+      // place; ProtectedRoute / backend 401 handling bounces the user to
+      // /login when a request actually fails.
+    } finally {
+      refreshingRef.current = false
+    }
+  }
 
   useEffect(() => {
     // React StrictMode (development) double-invokes effects.
@@ -67,28 +97,27 @@ export const AuthProvider = ({ children }) => {
       }
     }
 
-    // Phase 2: refresh the effective permission set from the server when a
-    // session exists. The cached profile renders instantly, then /auth/user
-    // overwrites it with the authoritative user + permissions so sidebar /
-    // button visibility reflects recent permission changes. UX only — the
-    // backend still enforces authorization independently.
-    const refreshPermissions = async () => {
-      try {
-        const response = await api.get('/auth/user')
-        const freshUser = response?.data?.data ?? response?.data
-        if (freshUser && typeof freshUser === 'object' && freshUser.id) {
-          localStorage.setItem('user', JSON.stringify(freshUser))
-          setUser(freshUser)
-        }
-      } catch {
-        // Silent — a stale session cookie simply leaves the cached profile
-        // in place; ProtectedRoute / backend 401 handling will bounce the
-        // user to /login when a request actually fails.
-      }
-    }
+    // §31: keep the effective permission set fresh without manual reloads.
+    //  - on mount (authoritative overwrite of the cached profile)
+    //  - on window focus / visibility change (returning to the tab)
+    //  - on a 5-minute interval (long-lived sessions pick up admin changes)
     refreshPermissions()
 
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshPermissions()
+    }
+    const onFocus = () => refreshPermissions()
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    const interval = window.setInterval(refreshPermissions, 5 * 60 * 1000)
+
     setLoading(false)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+      window.clearInterval(interval)
+    }
   }, [])
 
   const login = async (email, password) => {
@@ -219,6 +248,7 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: !!user,
     can,
     canAny,
+    refreshPermissions,
   }
 
   return (

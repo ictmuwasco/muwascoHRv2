@@ -169,7 +169,8 @@ No rule?                     → DEFAULT DENY
 
 ### 7.2 Override administration rules
 
-Only holders of `permission_overrides:view` / `permission_overrides:manage` (seeded to `super_admin` + `hr_manager`) can view/manage overrides — enforced at the **route** level and in the service.
+Only holders of `permission_overrides:view` / `permission_overrides:manage` can view/manage overrides — enforced at the **route** level and in the service.
+**Default (migration 038):** `super_admin` only. `hr_manager` had these revoked (explicit `is_granted = 0` rows) so HR settings/permission administration is locked down per the default role matrix (§2 of the Phase 6 report). Any role can be restored per-user through an explicit allow override.
 
 - **No one may override their own permissions** (`PermissionService` rejects actor == target) — privilege escalation guard (F-08 fixed).
 - **Super admin targets are protected** — no override rows may be written.
@@ -217,6 +218,7 @@ $router->add('GET', '/employees', EmployeeController::class, 'index', [], 'emplo
 | `/leave` (applications) | GET/POST | `leave:view` / `leave:apply` | own records |
 | `/leave/{id}/approve|reject` | POST | `leave:approve` / `leave:reject` | approval scope (workflow) + IDOR check |
 | `/leave/manage` | GET | `leave:manage` | approval scope |
+| `/leave/roster/**` | GET/POST/PUT/DELETE | `leave:roster` (Phase 10: dedicated HR-only permission; `/leave/roster/financial-years` stays `leave:view` for self-service pages) | HR-wide |
 | `/reports/...` | GET | `reports:view` | scope-aware |
 | `/permissions/roles` | GET | `permission_overrides:view` | n/a |
 | `/permissions/users/{id}` | GET | `permission_overrides:view` | target user |
@@ -308,3 +310,134 @@ Run: `php vendor/bin/phpunit --testsuite Unit --filter Authorization`
 - `ErrorTrackerFailSafeTest` (pre-existing) fails on the current branch due to singleton error-tracker state; **unrelated to authorization** — tracked separately.
 - The Laravel scaffold in `backend/routes/` and `Gate.php` are documented removal candidates under Phase 3 (backend architecture).
 - Data-scope policies continue to be extended module by module (they share `OrgScope` / per-module policies but are applied progressively).
+
+---
+
+## 17. Phase 6 — Role, Page & Permission Restriction System
+
+The **default role access matrix** documented in this phase (requirements Section 4)
+is applied deterministically by migration  38_role_permission_matrix.sql
+(re-runnable — 
+un_migration_038.php always reconciles to the current matrix),
+and locked by ackend/tests/Unit/Authorization/RolePermissionMatrixTest.php.
+
+Highlights on top of everything above:
+
+- **Settings lockdown (Section 27):** the whole settings module is a protected
+  module. settings:view and every administrative tab action
+  (settings:profile|security|audit|users|permissions|monitoring) are seeded to
+  **super_admin only**. The self-service **settings:notifications** tab is the
+  sole exception and is seeded to **ALL roles** (own preferences only — the
+  underlying APIs are authenticated-only self-service).
+- **Settings API closure:** the system settings endpoints are gated dmin:view /
+  dmin:manage. Migration 038 revoked the hr_manager seeds for dmin:*,
+  permission_overrides:* and users:* (explicit 0 rows) so HR can no longer
+  read/mutate system settings or administer permissions/users directly, closing
+  the previous Settings-API bypass. Permissions remain per-user overridable.
+- **Officer/Employee pruning (Section 4):** non-manager roles hold only
+  dashboard, profile, ttendance [own], leave [apply+view],
+  meetings [view+confirm] + settings:notifications. Everything else is absent
+  -> default deny.
+- **Roster/Oversight (Phase 10):** /leave/roster/** requires the dedicated
+  **leave:roster** permission (no longer coupled to leave:manage, which heads
+  need for scoped Leave Management). Sidebar, page registry and backend route
+  gates all enforce the same permission.
+- **Attendance data scope:** ttendance:view opens the page; *which* records a
+  caller sees is decided by OrgScope::attendanceWhere() /
+  ttendanceEmployeeAllowed() — own (officer/employee), own unit (heads),
+  org-wide (HR/super admin/MD). The target identity is always derived from the
+  session, never request data.
+- **Permission refresh (Section 31):** AuthContext refreshes /auth/user
+  permissions on mount, window focus / tab visibility, a 5-minute interval, and
+  exposes 
+efreshPermissions() for callers that hit a 403.
+- **Auditing (Section 32):** denied attempts against the settings /
+  permission_overrides modules are written to the audit trail with who/what/
+  when (path only — never query strings or payloads).
+- **Hardcoded role checks removed (Section 26):** isManager()/MANAGER_ROLES,
+  FULL_FILTER_ROLES, 
+ole === 'hr_manager' etc. were replaced by centralized
+  can(module, action) checks in ManageLeaveLayout, LeaveProfile,
+  AppraisalCycles and the Sidebar. The frontend Page Permission Registry
+  (rontend/src/config/pagePermissions.jsx) is the single source for URLs ->
+  required permissions, consumed by routes, sidebar and the Settings layout.
+
+The full audit, the default matrix, per-role restrictions and the API-bypass
+test results are in **docs/PHASE6_RBAC_AUDIT_REPORT.md**.
+
+### 17.1 Follow-up: Leave Profile for all roles + Meetings Dashboard senior-only
+
+- **Leave Profile page (/leave/profile) is open to every role** (leave:view).
+  manager and bod_chairman were granted leave:view/apply; the page is linked in
+  the sidebar for both the manager and non-manager Leave branches. Data scope
+  stays server-side: non-manager roles see only their OWN record
+  (LeaveProfileService::canViewProfile), heads see their unit, HR/MD/super
+  admin see anyone.
+- **Meetings Dashboard (/meetings + /meetings/stats) is restricted to
+  meetings:dashboard** - a new catalog action seeded to hr_manager,
+  managing_director and super_admin only. Personal invitations remain at
+  /my-meetings (meetings:view) for every invited role. /meetings/create and
+  /meetings/eligible-employees are gated meetings:create.
+
+### 17.2 Phase 10 — Employees / Roster / Reports are HR-only modules
+
+Business-rule correction: Employees, Roster and Reports are restricted HR
+administrative modules. Default baseline:
+
+| Module     | Officer | Sub-section Head | Section Head | Dept Head | HR Manager | Managing Director | Super Admin |
+|------------|---------|------------------|--------------|-----------|------------|-------------------|-------------|
+| Employees  | DENY    | DENY             | DENY         | DENY      | ALLOW      | DENY              | ALLOW       |
+| Roster     | DENY    | DENY             | DENY         | DENY      | ALLOW      | DENY              | ALLOW       |
+| Reports    | DENY    | DENY             | DENY         | DENY      | ALLOW      | ALLOW (see 17.3)  | ALLOW       |
+
+- The legacy migration-004 employees/reports seeds for the three head roles and
+  the Phase-6 MD reconciliation grants are flipped to explicit
+  `is_granted = 0` rows (migration 038 section 8) so the permission UI shows
+  "role default: denied" and an authorized override can still re-grant them
+  per user.
+- **Roster decoupling:** a new `leave:roster` catalog action now gates the
+  roster APIs, the `/leave/roster` + `/leave/oversight` page registry entries
+  and the sidebar Roster group. Heads keep `leave:manage` (scoped Leave
+  Management) but no longer inherit Roster access. `hr_manager` and
+  `super_admin` are the only seeded grants.
+- **HR Admin vs HR Manager:** there is no distinct `hr_admin` role in this
+  system — the "HR Admin" sidebar group (Financial Year, Appraisal Cycles,
+  Consent, Holidays) is a module group, and the "HR Admin" persona maps 1:1
+  onto `hr_manager` (legacy `admin` normalizes to `super_admin`). Both share
+  one operational baseline, differentiated only through the permission
+  override system.
+- Organizational heads keep their management modules (scoped Attendance
+  oversight, Leave Management, Workplans, Strategy) — page access remains
+  separate from data scope, which stays OrgScope-enforced server-side.
+- Locked by `RolePermissionMatrixTest` (officer/heads/MD denials; HR/super
+  admin allows) and the migration runner verification checks.
+
+### 17.3 Phase 11 - HR Admin group + Attendance Dashboard HR-only; Reports re-granted to MD
+
+Business-rule update (migration `039_hr_restricted_modules.sql`): the **HR
+Admin** sidebar group (Financial Year, Appraisal Cycles, Consent Management,
+Holidays), the **Attendance Dashboard** (`/attendance/dashboard`) and the
+**Reports** module are restricted to **hr_manager, managing_director and
+super_admin**.
+
+- `attendance:manage` and `financial_year:view/create/edit` are revoked from
+  sub_section_head / section_head / dept_head (explicit 0 rows). Heads keep
+  `attendance:view` (unit-scoped Attendance Records), `leave:manage` (scoped
+  Leave Management), `performance:view` (standalone Appraisal page) and
+  `performance:manage` (appraisal create/submit/approve).
+- **Appraisal Cycles** is keyed on the dedicated **`performance:cycles`** page
+  permission (same pattern as `leave:roster` / `meetings:dashboard`): the HR
+  Admin page + `POST/PUT/DELETE /appraisal-cycles` require it, seeded to
+  hr_manager / managing_director / super_admin only. `GET /appraisal-cycles`
+  stays authenticated-only - the heads' workplan quarter pickers consume the
+  minimal read-only payload (`AppraisalCycleController::index`).
+- **Reports** was re-granted to the **Managing Director**
+  (`reports:view` + `reports:export`) - the MD remains an oversight consumer;
+  the three head roles stay denied.
+- Active per-user **allow overrides** for the restricted permissions held by
+  users outside the three roles are deactivated (rows kept with `active = 0`
+  for the audit trail) - overrides outrank role defaults in the
+  AuthorizationService hierarchy, so a stale grant would otherwise leak an
+  HR-restricted page back to a head.
+- Locked by `RolePermissionMatrixTest` (Phase 11 assertions) and
+  `backend/database/run_migration_039.php` verification checks.

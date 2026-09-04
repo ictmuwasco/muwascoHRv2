@@ -14,31 +14,7 @@ import EmployeeRosterTable from '../../components/leave/EmployeeRosterTable'
 import FilterBar from '../../components/leave/FilterBar'
 import { FY_MONTHS } from '../../constants/leaveConstants'
 
-/**
- * LeaveOversight — Executive Dashboard / Analytics
- *
- * Spec points covered:
- *  #8  Oversight page is the "Executive" screen
- *  #9  Recommended Oversight Layout
- *  #10 Proper Coverage Progress Bar
- *  #11 Monthly Distribution as main chart
- *  #12 Planning Attention (not fake rules)
- *  #13 Upcoming Leave card
- *  #14 Not Scheduled is an action
- *  #15 Scheduled card is interactive
- *  #16 Department/Section Analytics
- *  #17 Department Planning Status table
- *  #18 Employee table is clear
- *  #19 Planning Matrix view
- *  #22 Info banner
- *  #23 Color strategy
- *  #25 Unified filter bar
- *  #26 Active filter chips
- *  #27 CSV export reflects current view
- *  #28 Mobile design
- *  #29 Final visual hierarchy
- *  #30 Backend logic unchanged
- */
+
 const LeaveOversight = () => {
   // Data state
   const [stats, setStats] = useState(null)

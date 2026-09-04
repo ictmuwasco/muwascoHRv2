@@ -225,7 +225,7 @@ class AuthorizationServiceTest extends TestCase
 
         // Regression: the acting user's session role must never authorize a
         // DIFFERENT user id. An hr_manager actor inspects an officer target:
-        // hr managers hold users:view, officers do not.
+        // hr managers hold employees:view, officers do not (migration 038).
         $actorId = $this->createTestUser('hr_manager');
         $targetId = $this->createTestUser('officer');
 
@@ -233,9 +233,9 @@ class AuthorizationServiceTest extends TestCase
         $_SESSION['user_role'] = 'hr_manager';
         $service = \App\Helpers\AuthorizationService::getInstance();
 
-        $this->assertTrue($service->hasPermission($actorId, 'users', 'view'), 'Actor (hr_manager) holds users:view');
+        $this->assertTrue($service->hasPermission($actorId, 'employees', 'view'), 'Actor (hr_manager) holds employees:view');
         $this->assertFalse(
-            $service->hasPermission($targetId, 'users', 'view'),
+            $service->hasPermission($targetId, 'employees', 'view'),
             'Target (officer) must be evaluated with the TARGET role from the database'
         );
     }
@@ -279,14 +279,17 @@ class AuthorizationServiceTest extends TestCase
         $service = \App\Helpers\AuthorizationService::getInstance();
         $this->assertFalse($service->isPermissionManager(), 'Officers must not manage permission overrides');
 
+        // Phase (role/page/permission restriction): permission administration
+        // is super_admin-only by default — migration 038 revoked the hr_manager
+        // seeds. An explicit user grant is still honoured (single engine).
         $hrId = $this->createTestUser('hr_manager');
         $_SESSION['user_id'] = $hrId;
         $_SESSION['user_role'] = 'hr_manager';
         $this->resetEngine();
         $service = \App\Helpers\AuthorizationService::getInstance();
-        $this->assertTrue(
+        $this->assertFalse(
             $service->isPermissionManager(),
-            'permission_overrides:manage (seeded to hr_manager) is the single rule'
+            'permission_overrides:manage must NOT be a hr_manager default (migration 038)'
         );
 
         // An explicit user grant is honoured as well (single engine).

@@ -1,6 +1,12 @@
 import { reportClientError, getRequestId, setRequestId } from './errorReporting';
+// Single source of truth for the API base URL (VITE_API_URL at build time,
+// defaulting to '/api' — see .env.example and src/config/api.ts). Importing
+// the shared constant means a production deployment repoints the entire SPA
+// — axios client, fetch wrapper, error collector and asset URLs — with one
+// environment variable instead of this module's hardcoded '/api'.
+import { API_BASE_URL } from '../config/api';
 
-const API_URL = '/api';
+const API_URL = API_BASE_URL;
 
 /**
  * Default request timeout (ms). Prevents hung GPS lookups or a stalled
@@ -98,12 +104,16 @@ export const apiFetch = async (endpoint, options = {}) => {
     const signal = callerSignal || controller.signal;
     const timer = controller ? setTimeout(() => controller.abort(), timeout) : null;
 
+    // X-Request-ID MUST ride inside the headers object — passing it as a
+    // bare fetch() option is silently ignored, which previously stripped
+    // the correlation id from every fetch-wrapper request (the axios client
+    // and the error collector were unaffected). Minted per attempt so a
+    // refresh-replay keeps sharing the same traceable request id.
     return fetch(`${API_URL}${url}`, {
       method,
-      headers,
+      headers: { ...headers, 'X-Request-ID': getRequestId() },
       body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
       credentials,
-      'X-Request-ID': getRequestId(),
       signal,
       ...restOptions,
     }).finally(() => {
