@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+// Phase 2 instrumentation: capture the raw bootstrap start so the shutdown
+// report can attribute full bootstrap cost. Plain superglobal — the
+// PerfTiming class cannot be autoloaded this early.
+if (!isset($GLOBALS['_perf_bootstrap_start'])) {
+    $GLOBALS['_perf_bootstrap_start'] = microtime(true);
+}
+
 ob_start();
 
 
@@ -408,3 +415,7 @@ if (!function_exists('observability_initialize')) {
 }
 
 observability_initialize();
+
+// Phase 2 instrumentation: start a fresh measuring context for this
+// execution (HTTP request or CLI job). No-op when disabled.
+\App\Helpers\PerfTiming::reset();

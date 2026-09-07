@@ -103,4 +103,21 @@ return [
         'GET /leave/{id}/documents',            // own leave application documents
         'GET /leave/{id}/documents/{documentId}',
     ],
+
+    /**
+     * AI ASSISTANT (Phase 4/6) — every authenticated employee may use the HR
+     * assistant. There is deliberately NO 'ai' permission module: the
+     * assistant is a read-only lens over data the caller is ALREADY entitled
+     * to see, and every underlying retrieval is re-authorized by the existing
+     * service layer (Phase 5 controlled tools). What is owner-scoped here is
+     * enforced in AiConversationService via user_id filtering — a foreign or
+     * unknown conversation id answers 404 (no existence oracle). The assistant
+     * can never execute HR writes (Phase 10 policy).
+     */
+    'ai_assistant' => [
+        'POST /ai/chat',                     // own conversations only
+        'GET /ai/conversations/{id}',        // own conversation restore
+        'POST /ai/conversations/{id}/clear', // own conversation clear
+        'POST /ai/feedback',                 // feedback on own assistant messages
+    ],
 ];
