@@ -30,10 +30,12 @@ class PermissionCatalogTest extends TestCase
     public function testCatalogDefinesModules(): void
     {
         $this->assertArrayHasKey('modules', $this->catalog);
-        // 25 modules through Phase 2; +1 'settings' module (Phase: Role, Page &
-        // Permission restriction — the protected Settings module with per-tab
-        // actions). Review the diff when this changes.
-        $this->assertCount(26, $this->catalog['modules'], 'Catalog module count changed - review this test');
+        // 25 modules through Phase 2; +1 'settings' module (Role, Page &
+        // Permission restriction phase); +1 'delegations' module (RBAC
+        // delegation / acting-authority phase — delegation management is
+        // permission-gated like every other admin surface). Review the diff
+        // when this changes.
+        $this->assertCount(27, $this->catalog['modules'], 'Catalog module count changed - review this test');
     }
 
     public function testEveryModuleDefinesKeyLabelAndActions(): void

@@ -239,6 +239,20 @@ return [
                 ['key' => 'view_attendance', 'label' => 'View Attendance',  'type' => 'action'],
                 ['key' => 'export',          'label' => 'Export',           'type' => 'action'],
                 ['key' => 'confirm',         'label' => 'Confirm Attendance', 'type' => 'action'],
+
+                // Meeting minutes lifecycle. Migration 034_meeting_minutes.sql
+                // seeds role_permissions with these action keys and
+                // MeetingMinutesService resolves them (hybrid RBAC +
+                // per-user overrides) for minutes visibility and management —
+                // they were missing from the catalog (drift caught by
+                // PermissionCatalogTest::testRolePermissionRowsStayInsideTheCatalog).
+                // Route gates use meetings:view / meetings:manage; the
+                // minutes actions refine access inside the service.
+                ['key' => 'minutes.view',    'label' => 'View Minutes',    'type' => 'action'],
+                ['key' => 'minutes.create',  'label' => 'Create Minutes',  'type' => 'action'],
+                ['key' => 'minutes.update',  'label' => 'Update Minutes',  'type' => 'action'],
+                ['key' => 'minutes.publish', 'label' => 'Publish Minutes', 'type' => 'action'],
+                ['key' => 'minutes.amend',   'label' => 'Amend Minutes',   'type' => 'action'],
             ],
         ],
         'system_errors' => [
