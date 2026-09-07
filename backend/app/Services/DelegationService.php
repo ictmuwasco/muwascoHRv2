@@ -937,18 +937,29 @@ class DelegationService
         if ($scopeType === 'organization') {
             return 'Organization-wide';
         }
+        if ($scopeId <= 0) {
+            return ucfirst($scopeType);
+        }
         try {
-            $table = ['department' => 'departments', 'section' => 'sections', 'subsection' => 'subsections'][$scopeType] ?? null;
-            if ($table === null || $scopeId <= 0) {
+            // Table names cannot be bound parameters, so each whitelisted
+            // scope type gets its own fully static prepared statement
+            // (SqlInjectionSurfaceTest invariant: mysqli must only ever
+            // receive static SQL — no interpolation, no concatenation).
+            $stmt = match ($scopeType) {
+                'department' => $this->db->prepare('SELECT name FROM departments WHERE id = ?'),
+                'section'    => $this->db->prepare('SELECT name FROM sections WHERE id = ?'),
+                'subsection' => $this->db->prepare('SELECT name FROM subsections WHERE id = ?'),
+                default      => null,
+            };
+            if ($stmt === null) {
                 return ucfirst($scopeType);
             }
-            $res = $this->db->query("SELECT name FROM `{$table}` WHERE id = {$scopeId}");
-            if ($res) {
-                $row = $res->fetch_assoc();
-                $res->close();
-                if ($row && !empty($row['name'])) {
-                    return (string) $row['name'];
-                }
+            $stmt->bind_param('i', $scopeId);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if ($row && !empty($row['name'])) {
+                return (string) $row['name'];
             }
         } catch (\Throwable $e) {
             error_log('[DelegationService] scope label failed: ' . $e->getMessage());

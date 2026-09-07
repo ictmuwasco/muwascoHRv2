@@ -211,21 +211,37 @@ class DelegationWorkflowTest extends TestCase
             $this->markTestSkipped('Database unavailable');
         }
 
-        $employee = $this->firstActiveEmployeeInSection();
-        if ($employee === null) {
+        $applicant = $this->firstActiveEmployeeInSection();
+        if ($applicant === null) {
             $this->markTestSkipped('No active employee with a section available');
         }
 
-        $delegateId = $this->createTestUser('officer', $employee['employee_id']);
-        $this->insertDelegation($delegateId, 'section_head', 'section', (int) $employee['section_id'], 'approved', ['leave:approve']);
+        // The delegate user must link to a DIFFERENT person than the
+        // applicant: pointing it at the applicant's own record trips the
+        // self-approval guard (§32) — that path is covered by
+        // testDelegateCannotDecideOwnApplication. Use a second active
+        // employee from the SAME section so the section-scoped delegation
+        // covers the applicant.
+        $delegateEmployee = $this->anotherActiveEmployeeInSection(
+            (int) $applicant['section_id'],
+            (int) $applicant['id']
+        );
+        if ($delegateEmployee === null) {
+            $this->markTestSkipped(
+                'No second active employee in section ' . $applicant['section_id'] . ' available'
+            );
+        }
+
+        $delegateId = $this->createTestUser('officer', $delegateEmployee['employee_id']);
+        $this->insertDelegation($delegateId, 'section_head', 'section', (int) $delegateEmployee['section_id'], 'approved', ['leave:approve']);
 
         $service = \App\Services\DelegationService::getInstance();
 
         $delegation = $service->canActAsLeaveApprover(
             $delegateId,
             'pending_section_head',
-            ['employee_id' => (int) $employee['id'], 'status' => 'pending_section_head'],
-            ['subsection_id' => $employee['subsection_id'], 'section_id' => $employee['section_id'], 'department_id' => $employee['department_id']]
+            ['employee_id' => (int) $applicant['id'], 'status' => 'pending_section_head'],
+            ['subsection_id' => $applicant['subsection_id'], 'section_id' => $applicant['section_id'], 'department_id' => $applicant['department_id']]
         );
 
         $this->assertNotNull($delegation, 'An in-scope, active, role-matching delegation must authorize the stage');
@@ -482,6 +498,33 @@ class DelegationWorkflowTest extends TestCase
         }
         $row = $res->fetch_assoc();
         $res->close();
+        return $row ?: null;
+    }
+
+    /**
+     * A second active employee in the SAME section (id <> $excludeEmployeeId),
+     * used as the delegate's employee identity so the delegate is a different
+     * person from the applicant (self-approval guard, §32).
+     */
+    private function anotherActiveEmployeeInSection(int $sectionId, int $excludeEmployeeId): ?array
+    {
+        $conn = $this->conn();
+        if ($conn === null) {
+            return null;
+        }
+        $stmt = $conn->prepare(
+            "SELECT id, employee_id, section_id, subsection_id, department_id
+             FROM employees
+             WHERE employee_status = 'active' AND section_id = ? AND id <> ?
+             LIMIT 1"
+        );
+        if (!$stmt) {
+            return null;
+        }
+        $stmt->bind_param('ii', $sectionId, $excludeEmployeeId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
         return $row ?: null;
     }
 
