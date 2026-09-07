@@ -109,4 +109,17 @@ return [
     'allocation' => [
         'POST /admin/financial-year/allocate',
     ],
+
+    /**
+     * AI assistant (Phase 4/6). Each chat turn triggers a live provider
+     * completion — slow and potentially costly, so bounded per user+IP.
+     * Conversation clear and feedback are cheap writes but still bounded.
+     * Read-only conversation restore (GET /ai/conversations/{id}) is
+     * unthrottled — it is an owner-scoped indexed read.
+     */
+    'ai_assistant' => [
+        'POST /ai/chat',
+        'POST /ai/conversations/{id}/clear',
+        'POST /ai/feedback',
+    ],
 ];

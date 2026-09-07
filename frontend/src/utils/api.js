@@ -14,6 +14,63 @@ const API_URL = API_BASE_URL;
  */
 const DEFAULT_TIMEOUT_MS = 30000;
 
+// ---------------------------------------------------------------------------
+// Passive round-trip timing observer (Phase 2 instrumentation)
+//
+// Every response that reaches this wrapper is measured with a monotonic clock
+// and the aggregate (count, mean, p95, max) is exposed for diagnostics. This
+// NEVER reads request bodies, headers or response payloads — only the elapsed
+// wall-time between send and first-byte/body-read is recorded, keyed by the
+// endpoint path so the Phase 2 report can attribute frontend round-trips to
+// the same endpoints the backend breakdown covers.
+//
+// Metrics are intentionally kept in-memory (no network calls, no new API
+// usage) and are safe to leave enabled: no PII, no query strings, no ids.
+// ---------------------------------------------------------------------------
+const PERF_ENABLED =
+  typeof performance !== 'undefined' &&
+  typeof performance.now === 'function';
+
+/** @type {Map<string, number[]>} endpoint path -> round-trip ms samples */
+const perfSamples = new Map();
+
+function samplePerf(endpointPath, startedAt) {
+  if (!PERF_ENABLED) return
+  try {
+    const elapsed = performance.now() - startedAt
+    if (elapsed < 0) return
+    const samples = perfSamples.get(endpointPath) || []
+    samples.push(elapsed)
+    // Cap samples per endpoint so a long-lived tab never grows unbounded.
+    if (samples.length > 500) samples.shift()
+    perfSamples.set(endpointPath, samples)
+  } catch {
+    /* observability must never break the request path */
+  }
+}
+
+/** p95 of a sorted copy; null when empty. */
+function percentile(sortedSamples, p) {
+  if (sortedSamples.length === 0) return null
+  const idx = Math.min(sortedSamples.length - 1, Math.max(0, Math.ceil((p / 100) * sortedSamples.length) - 1))
+  return Math.round(sortedSamples[idx] * 10) / 10
+}
+
+/** Aggregate round-trip timing report for the Phase 2 deliverables. */
+export function getPerfTimingReport() {
+  const out = {}
+  perfSamples.forEach((samples, path) => {
+    const sorted = [...samples].sort((a, b) => a - b)
+    const sum = sorted.reduce((acc, v) => acc + v, 0)
+    out[path] = {
+      sample_count: sorted.length,
+      mean_ms: Math.round((sum / sorted.length) * 10) / 10,
+      p95_ms: percentile(sorted, 95),
+      max_ms: Math.round(sorted[sorted.length - 1] * 10) / 10,
+    }
+  })
+  return out
+}
 /**
  * Endpoints that must never trigger the automatic refresh-retry loop
  * (otherwise a failed login/logout would be silently replayed).
@@ -34,11 +91,16 @@ let refreshPromise = null;
 const refreshSession = () => {
   if (!refreshPromise) {
     refreshPromise = (async () => {
+      // Bounded: a hung renewal must never stall the replay chain (or the
+      // caller's spinner) indefinitely.
+      const refreshController = new AbortController();
+      const refreshTimer = setTimeout(() => refreshController.abort(), 15000);
       const response = await fetch(`${API_URL}/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-      });
+        signal: refreshController.signal,
+      }).finally(() => clearTimeout(refreshTimer));
       if (!response.ok) {
         throw new Error(`Token refresh failed (${response.status})`);
       }
@@ -98,11 +160,24 @@ export const apiFetch = async (endpoint, options = {}) => {
   const isRetriable = !NON_RETRIABLE_PATHS.some((path) => endpoint.startsWith(path));
 
   // One request attempt, wrapped in an abort-based timeout so a hung GPS or
-  // network call can never block the UI indefinitely.
+  // network call can never block the UI indefinitely. The timeout ALWAYS
+  // applies — even when the caller passes its own signal (previously the
+  // timer was skipped for caller signals, leaving long AI/chat requests
+  // without any client-side cap and the UI spinning forever). A caller
+  // signal is CHAINED: caller abort => this request aborts too.
   const send = () => {
-    const controller = callerSignal ? null : new AbortController();
-    const signal = callerSignal || controller.signal;
-    const timer = controller ? setTimeout(() => controller.abort(), timeout) : null;
+    const controller = new AbortController();
+    let onCallerAbort = null;
+    if (callerSignal) {
+      if (callerSignal.aborted) {
+        controller.abort();
+      } else {
+        onCallerAbort = () => controller.abort();
+        callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+      }
+    }
+    const timer = setTimeout(() => controller.abort(), timeout);
+    const perfStart = performance.now();
 
     // X-Request-ID MUST ride inside the headers object — passing it as a
     // bare fetch() option is silently ignored, which previously stripped
@@ -114,10 +189,18 @@ export const apiFetch = async (endpoint, options = {}) => {
       headers: { ...headers, 'X-Request-ID': getRequestId() },
       body: body !== undefined ? (isFormData ? body : JSON.stringify(body)) : undefined,
       credentials,
-      signal,
+      signal: controller.signal,
       ...restOptions,
+    }).then((response) => {
+      // Passive round-trip timing (Phase 2): keyed by the endpoint path
+      // only — never body, headers, query string or ids.
+      samplePerf(url.split('?')[0], perfStart);
+      return response;
     }).finally(() => {
-      if (timer) clearTimeout(timer);
+      clearTimeout(timer);
+      if (onCallerAbort && callerSignal) {
+        callerSignal.removeEventListener('abort', onCallerAbort);
+      }
     });
   };
 

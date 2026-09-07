@@ -6,11 +6,6 @@ import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
 import { Plus, FileText, Users as UsersIcon, Shield, Loader2 } from 'lucide-react'
 
-// Leave-type business rules (backdating, overlap-block exemption, document
-// requirements) are owned by the backend LeaveTypePolicy and delivered per
-// leave type via GET /leave/types as `policy` on each row. This form only
-// mirrors them for UX — the backend remains the authority.
-
 const LeaveApplication = () => {
   const navigate = useNavigate()
   const { user } = useAuth()

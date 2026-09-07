@@ -229,7 +229,42 @@ final class ErrorTrackerService
             return;
         }
 
-        if ($durationMs < (int) ($perf['warning_ms'] ?? 2000)) {
+        $breakdown = \App\Helpers\PerfTiming::report();
+
+        // Always-on structured breakdown line (counts + durations only — never
+        // SQL, payloads, headers or tokens). Gated by sample_all so fast
+        // endpoints can be profiled during Phase 2 without logging every
+        // request indefinitely.
+        $sampleAll = (bool) ($perf['sample_all'] ?? false);
+        $warningMs = (int) ($perf['warning_ms'] ?? 2000);
+        if ($sampleAll || $durationMs >= $warningMs) {
+            try {
+                \logger()->info('perf.request_breakdown', [
+                    'request_id'        => $context['request_id'] ?? RequestIdService::current(),
+                    'endpoint'          => mb_substr((string) ($context['endpoint'] ?? ''), 0, 255),
+                    'method'            => mb_substr((string) ($context['method'] ?? ''), 0, 10),
+                    'status_code'       => isset($context['status_code']) ? (int) $context['status_code'] : null,
+                    'duration_ms'       => (int) round($durationMs),
+                    'bootstrap_ms'      => $breakdown['bootstrap_ms'],
+                    'gate_ms'           => $breakdown['gate_ms'],
+                    'route_ms'          => $breakdown['route_ms'],
+                    'controller_ms'     => $breakdown['controller_ms'],
+                    'authorization_ms'  => $breakdown['authorization_ms'],
+                    'serialization_ms'  => $breakdown['serialization_ms'],
+                    'db_query_count'    => $breakdown['query_count'],
+                    'db_query_ms'       => $breakdown['query_ms'],
+                    'db_max_query_ms'   => $breakdown['max_query_ms'],
+                    'ai_provider_ms'    => $breakdown['ai_provider_ms'],
+                    'ai_provider_calls' => $breakdown['ai_provider_calls'],
+                    'ai_tool_calls'     => $breakdown['ai_tool_calls'],
+                    'memory_kb'         => $breakdown['peak_memory_kb'],
+                ]);
+            } catch (\Throwable $e) {
+                error_log('[ErrorTracker] perf breakdown log failed: ' . $e->getMessage());
+            }
+        }
+
+        if ($durationMs < $warningMs) {
             return;
         }
 
@@ -237,7 +272,7 @@ final class ErrorTrackerService
             $slowMs     = (int) ($perf['slow_ms'] ?? 4000);
             $criticalMs = (int) ($perf['critical_ms'] ?? 8000);
 
-            db()->insert('performance_events', [
+            $row = [
                 'request_id'          => $context['request_id'] ?? RequestIdService::current(),
                 'endpoint'            => mb_substr((string) ($context['endpoint'] ?? ''), 0, 255) ?: null,
                 'http_method'         => mb_substr((string) ($context['method'] ?? ''), 0, 10) ?: null,
@@ -250,12 +285,54 @@ final class ErrorTrackerService
                 'environment'         => (string) \config('app.env', 'production'),
                 'application_version' => (string) \config('observability.version', ''),
                 'created_at'          => date('Y-m-d H:i:s'),
-            ]);
+                // Phase 2 breakdown columns (added by migration 042).
+                'query_count'         => $breakdown['query_count'],
+                'query_ms'            => $breakdown['query_ms'],
+                'max_query_ms'        => $breakdown['max_query_ms'],
+                'auth_ms'             => $breakdown['gate_ms'],
+                'authorization_ms'    => $breakdown['authorization_ms'],
+                'controller_ms'       => $breakdown['controller_ms'],
+                'serialization_ms'    => $breakdown['serialization_ms'],
+                'ai_provider_ms'      => $breakdown['ai_provider_ms'],
+                'ai_provider_calls'   => $breakdown['ai_provider_calls'],
+                'ai_tool_calls'       => $breakdown['ai_tool_calls'],
+                'external_http_ms'    => $breakdown['external_http_ms'],
+            ];
+
+            try {
+                db()->insert('performance_events', $row);
+            } catch (\Throwable $e) {
+                // Migration 042 not applied yet — retry with the pre-migration
+                // column set so monitoring keeps working during rollout.
+                db()->insert('performance_events', self::withoutBreakdownColumns($row));
+            }
         } catch (\Throwable $e) {
             error_log('[ErrorTracker] performance record failed: ' . $e->getMessage());
         }
     }
 
+    /**
+     * Strip the Phase 2 breakdown keys (returns a new array; PHP arrays are
+     * passed by value) for databases where migration 042 is not applied yet.
+     */
+    private function withoutBreakdownColumns(array $row): array
+    {
+        foreach (self::BREAKDOWN_COLUMNS as $column) {
+            unset($row[$column]);
+        }
+        return $row;
+    }
+
+/** Columns added to performance_events by migration 042 (stripped on
+     *  legacy-database fallback so monitoring never breaks during rollout). */
+    private const BREAKDOWN_COLUMNS = [
+        'query_count', 'query_ms', 'max_query_ms', 'auth_ms',
+        'authorization_ms', 'controller_ms', 'serialization_ms',
+        'ai_provider_ms', 'ai_provider_calls', 'ai_tool_calls',
+        'external_http_ms',
+    ];
+
+    /** Columns of application_errors an occurrence row may populate. */
     /** Columns of application_errors an occurrence row may populate. */
     private const OCCURRENCE_COLUMNS = [
         'error_uuid', 'error_group_id', 'fingerprint', 'fingerprint_hash',
