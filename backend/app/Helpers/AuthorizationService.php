@@ -110,7 +110,21 @@ class AuthorizationService
      * @param string $action Action (e.g., 'view', 'export', 'create')
      * @return bool True if access is granted
      */
+/**
+     * Public entry — hybrid authorization check, wrapped with Phase 2
+     * instrumentation. The timing is metadata-only (permission resolution
+     * latency); neither the decision inputs nor their outcomes are logged.
+     */
     public function hasPermission(?int $userId, string $module, string $action): bool
+    {
+        $start = microtime(true);
+        try {
+            return $this->hasPermissionInternal($userId, $module, $action);
+        } finally {
+            PerfTiming::accumulate('authorization', (microtime(true) - $start) * 1000.0);
+        }
+    }
+    private function hasPermissionInternal(?int $userId, string $module, string $action): bool
     {
         if ($userId === null) {
             $userId = (int)($_SESSION['user_id'] ?? 0);

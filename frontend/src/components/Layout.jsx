@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import DelegateBanner from './DelegateBanner'
+import AiAssistantWidget from './ai/AiAssistantWidget'
 
 const Layout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -24,6 +25,9 @@ const Layout = () => {
           <Outlet />
         </main>
       </div>
+      {/* Floating AI assistant (Phase 6): bottom-right launcher + chat popup.
+          Read-only by design; the backend authorises every answer. */}
+      <AiAssistantWidget />
     </div>
   )
 }

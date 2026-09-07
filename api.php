@@ -5,6 +5,10 @@ declare(strict_types=1);
 // Load the application bootstrap (autoload, env, config, logger, etc.)
 require_once __DIR__ . '/backend/bootstrap.php';
 
+// Phase 2 instrumentation: mark the end of the bootstrap phase so the
+// shutdown report can attribute bootstrap cost (metadata only — no payloads).
+\App\Helpers\PerfTiming::mark('bootstrap_end');
+
 // Apply centralized CORS policy from backend/config/cors.php.
 // Must run before the OPTIONS preflight short-circuit so preflight
 // responses carry the correct Access-Control-* headers.
@@ -63,9 +67,11 @@ use App\Controllers\Settings\SettingController;
 // is on the explicit public allowlist. Controllers keep their fine-grained
 // permission checks (requirePermission) on top of this gate.
 // ===========================================================================
+\App\Helpers\PerfTiming::mark('gate_start');
 \App\Middleware\SecurityMiddleware::applyCorsHeaders();
 \App\Middleware\SecurityMiddleware::run();
 \App\Middleware\AuthenticationMiddleware::process();
+\App\Helpers\PerfTiming::mark('gate_end');
 
 /**
  * Simple Router
@@ -148,6 +154,12 @@ class ApiRouter
                 $action = $route['action'];
                 
                 $controller = new $controllerClass();
+                
+                // Phase 2 instrumentation: mark the start of controller work.
+                // No end mark is needed — controllers terminate the request via
+                // ApiResponse (exit), and the shutdown report measures this
+                // phase to shutdown time.
+                \App\Helpers\PerfTiming::mark('controller_start');
                 
                 // Try the Action-suffixed method first, then the plain method name
                 $actionMethod = $action . 'Action';
@@ -630,5 +642,17 @@ $router->add('GET',  '/system/errors/{uuid}',             \App\Controllers\Syste
 $router->add('POST', '/system/client-errors',             \App\Controllers\System\MonitoringController::class, 'clientError');
 $router->add('GET',  '/system/performance',               \App\Controllers\System\MonitoringController::class, 'performance', 'system_errors:view');
 $router->add('GET',  '/system/health',                    \App\Controllers\System\MonitoringController::class, 'health', 'system_errors:view');
+
+// ===========================================================================
+// AI Assistant (Phase 4/6) — authenticated-only (allowlist group ai_assistant);
+// strict owner scoping inside AiConversationService (user_id on every row).
+// The assistant is a READ-ONLY lens over data the caller already has the right
+// to see; it never executes HR writes (Phase 10 policy). Chat is throttled
+// because every turn triggers a live provider completion.
+// ===========================================================================
+$router->add('POST', '/ai/chat', \App\Controllers\AI\AiAssistantController::class, 'chat', null, '30:300');
+$router->add('GET', '/ai/conversations/{id}', \App\Controllers\AI\AiAssistantController::class, 'show');
+$router->add('POST', '/ai/conversations/{id}/clear', \App\Controllers\AI\AiAssistantController::class, 'clear', null, '30:300');
+$router->add('POST', '/ai/feedback', \App\Controllers\AI\AiAssistantController::class, 'feedback', null, '60:300');
 
 $router->dispatch();

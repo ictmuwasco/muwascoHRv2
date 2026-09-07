@@ -36,7 +36,20 @@ class AuditService
     public const MODULE_ATTENDANCE      = 'Attendance';
     public const MODULE_PERFORMANCE     = 'Performance';
     public const MODULE_DELEGATIONS     = 'Delegations';
+    /**
+     * AI assistance layer (Phase 4+). Every AI conversation read, message,
+     * clear and feedback writes an audit row in this module. Conversation
+     * content is NEVER copied into audit metadata — only ids, counts and
+     * truncated first-line previews.
+     */
+    public const MODULE_AI = 'AI';
 
+    // ---- AI actions (Phase 4+) ----
+    public const ACTION_AI_CHAT           = 'AI_CHAT';
+    public const ACTION_AI_VIEWED_HISTORY = 'AI_HISTORY_VIEWED';
+    public const ACTION_AI_CLEARED        = 'AI_CONVERSATION_CLEARED';
+    public const ACTION_AI_FEEDBACK       = 'AI_FEEDBACK';
+    public const ACTION_AI_TOOL_DENIED    = 'AI_TOOL_DENIED';
 
     // ---- Action constants (Phase 4) ----
     public const ACTION_LOGIN            = 'LOGIN';

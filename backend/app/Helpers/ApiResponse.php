@@ -44,11 +44,15 @@ class ApiResponse
         header('X-Content-Type-Options: nosniff');
         self::sendRequestIdHeader();
 
+        // Serialization latency is captured (metadata only — the envelope
+        // payload itself is never logged) for the Phase 2 perf breakdown.
+        $start = microtime(true);
         echo json_encode([
             'success' => true,
             'message' => $message,
             'data'    => $data,
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        PerfTiming::accumulate('serialization', (microtime(true) - $start) * 1000.0);
         exit;
     }
 
@@ -70,6 +74,9 @@ class ApiResponse
         header('X-Content-Type-Options: nosniff');
         self::sendRequestIdHeader();
 
+        // Serialization latency is captured (metadata only — the envelope
+        // payload itself is never logged) for the Phase 2 perf breakdown.
+        $start = microtime(true);
         echo json_encode([
             'success' => false,
             'message' => $message,
@@ -80,6 +87,7 @@ class ApiResponse
                 'details'    => $details,
             ],
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        PerfTiming::accumulate('serialization', (microtime(true) - $start) * 1000.0);
         exit;
     }
 

@@ -74,7 +74,16 @@ return [
     // Performance thresholds (milliseconds) ---------------------------------
     'performance' => [
         'enabled'     => (bool) env('OBSERVABILITY_PERF_ENABLED', true),
-        // Only requests at/above warning_ms are persisted (keeps the table small).
+        // Phase 2: master switch for the per-request instrumentation
+        // (PerfTiming + instrumented mysqli wrapper). Counter-only, no
+        // payloads — safe to leave on.
+        'instrumented' => (bool) env('OBSERVABILITY_PERF_INSTRUMENTED', true),
+        // When true EVERY request writes a compact perf.request_breakdown
+        // log line (not just requests at/above warning_ms). Use during
+        // profiling phases; leave off in steady state to limit log volume.
+        'sample_all'  => (bool) env('OBSERVABILITY_PERF_SAMPLE_ALL', false),
+        // Only requests at/above warning_ms are persisted to
+        // performance_events (keeps the table small).
         'warning_ms'  => (int) env('OBSERVABILITY_PERF_WARN_MS', 2000),
         'slow_ms'     => (int) env('OBSERVABILITY_PERF_SLOW_MS', 4000),
         'critical_ms' => (int) env('OBSERVABILITY_PERF_CRITICAL_MS', 8000),
