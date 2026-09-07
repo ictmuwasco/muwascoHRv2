@@ -45,6 +45,10 @@ uploads/*
 !uploads/.gitkeep
 
 # ── Diagnostic / scratch scripts (generated during development/probing) ──────
+# Laravel app (the new authoritative backend)
+!laravel/phpunit.xml
+!laravel/.env.example
+
 dump.js
 probe*.php
 probe_out.txt
@@ -70,6 +74,7 @@ hrmuwasco.zip
 # ── PHPUnit ─────────────────────────────────────────────────────────────────
 .phpunit.result.cache
 phpunit.xml
+!laravel/phpunit.xml
 
 # ── OS Files ────────────────────────────────────────────────────────────────
 .DS_Store
