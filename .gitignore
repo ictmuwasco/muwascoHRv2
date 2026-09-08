@@ -86,3 +86,5 @@ backend/storage/cache/rate-limits/
 # E2E / scratch probe artifacts (never commit runtime outputs)
 backend/storage/*.out
 backend/storage/*.err
+laravel/test_*.txt
+laravel/check_db.php

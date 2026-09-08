@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -31,4 +32,19 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // Render AuthenticationException as the standard API envelope.
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthenticated',
+                    'data'    => null,
+                    'errors'  => [
+                        'code'       => 'AUTH_NOT_AUTHENTICATED',
+                        'request_id' => $request->headers->get('X-Request-Id') ?: (string) $request->attributes->get('request_id'),
+                    ],
+                ], 401);
+            }
+        });
     })->create();
