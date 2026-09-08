@@ -3,7 +3,10 @@
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          colors="true"
->
+         cacheDirectory=".phpunit.cache"
+         executionOrder="depends,defects"
+         beStrictAboutOutputDuringTests="true"
+         beStrictAboutTestsThatDoNotTestAnything="true">
     <testsuites>
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
@@ -17,7 +20,7 @@
             <directory>app</directory>
         </include>
     </source>
-        <php>
+    <php>
         <env name="APP_ENV" value="testing"/>
         <env name="APP_KEY" value="base64:zfbcqbs0uDmrCPE/dY+okwFmb6DuyJPyj9af8HmLVQE="/>
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
@@ -34,6 +37,8 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <env name="SESSION_DOMAIN" value="localhost"/>
+        <env name="SANCTUM_STATEFUL_DOMAINS" value="localhost,127.0.0.1,::1"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

@@ -15,8 +15,8 @@ return [
     |
     */
 
-    'defaults' => [
-        'guard' => env('AUTH_GUARD', 'web'),
+        'defaults' => [
+        'guard' => env('AUTH_GUARD', 'api'),
         'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
     ],
 
@@ -37,9 +37,14 @@ return [
     |
     */
 
-    'guards' => [
+        'guards' => [
         'web' => [
             'driver' => 'session',
+            'provider' => 'users',
+        ],
+        // L2: Sanctum API guard — cookie-based SPA auth for /api/v1/**
+        'api' => [
+            'driver' => 'sanctum',
             'provider' => 'users',
         ],
     ],
