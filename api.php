@@ -52,6 +52,7 @@ use App\Controllers\HR\SectionalObjectiveController;
 use App\Controllers\HR\PayrollController;
 use App\Controllers\HR\ComplaintController;
 use App\Controllers\Settings\SettingController;
+use App\Controllers\System\QueryLogController;
 
 // ===========================================================================
 // Global security + authentication gate (Phase 1 consolidation).
@@ -79,10 +80,27 @@ use App\Controllers\Settings\SettingController;
 class ApiRouter
 {
     private array $routes = [];
+    private ?\App\Container\Container $container;
+
+    /**
+     * Static registry of every registered route (mirrors $this->routes for
+     * all ApiRouter instances). The security dashboard enumerates it so the
+     * endpoint security matrix ALWAYS covers the full API surface — including
+     * routes added later — instead of a hand-maintained list.
+     */
+    private static ?array $registry = null;
+
+    /** Route definition currently being dispatched (permission/throttle context). */
+    private static ?array $currentRoute = null;
+
+    public function __construct()
+    {
+        $this->container = \App\Container\Container::getInstance();
+    }
 
     public function add(string $method, string $path, string $controller, string $action, ?string $permission = null, ?string $throttle = null): void
     {
-        $this->routes[] = [
+        $route = [
             'method' => strtoupper($method),
             'path' => $path,
             'controller' => $controller,
@@ -100,6 +118,28 @@ class ApiRouter
             // backend/tests/Unit/Authorization/RoutePermissionMapTest.php.
             'throttle' => $throttle,
         ];
+        $this->routes[] = $route;
+        self::$registry[] = $route;
+    }
+
+    /**
+     * Every registered route — the authoritative endpoint inventory used by
+     * the /security/endpoints dashboard API. Static so it survives across
+     * router instances and is readable outside the dispatch cycle.
+     */
+    public static function getRouteRegistry(): array
+    {
+        return self::$registry ?? [];
+    }
+
+    /**
+     * The route definition currently being dispatched, or null before/outside
+     * dispatch. Lets lower layers (controller-level 403s) attach the
+     * server-defined permission to security events without re-parsing routes.
+     */
+    public static function currentRoute(): ?array
+    {
+        return self::$currentRoute;
     }
 
     public function dispatch(): void
@@ -125,6 +165,10 @@ class ApiRouter
 
             if (preg_match($pattern, $path, $matches)) {
                 array_shift($matches);
+
+                // Expose the matched route definition (permission/throttle) to
+                // lower layers for security-event context before enforcement.
+                self::$currentRoute = $route;
 
                 // Server-side authorization gate (Phase 2): the required
                 // permission comes from the route definition above — never
@@ -153,7 +197,8 @@ class ApiRouter
                 $controllerClass = $route['controller'];
                 $action = $route['action'];
                 
-                $controller = new $controllerClass();
+                // Use DI container to instantiate controller with dependencies
+                $controller = $this->container->get($controllerClass);
                 
                 // Phase 2 instrumentation: mark the start of controller work.
                 // No end mark is needed — controllers terminate the request via
@@ -654,5 +699,53 @@ $router->add('POST', '/ai/chat', \App\Controllers\AI\AiAssistantController::clas
 $router->add('GET', '/ai/conversations/{id}', \App\Controllers\AI\AiAssistantController::class, 'show');
 $router->add('POST', '/ai/conversations/{id}/clear', \App\Controllers\AI\AiAssistantController::class, 'clear', null, '30:300');
 $router->add('POST', '/ai/feedback', \App\Controllers\AI\AiAssistantController::class, 'feedback', null, '60:300');
+
+// ============================================================================
+// Query Performance Monitoring (system:view permission)
+// ============================================================================
+$router->add('GET', '/system/query-log/statistics', QueryLogController::class, 'statistics', 'system:view');
+$router->add('GET', '/system/query-log/slow', QueryLogController::class, 'slow', 'system:view');
+$router->add('GET', '/system/query-log', QueryLogController::class, 'index', 'system:view');
+$router->add('POST', '/system/query-log/reset', QueryLogController::class, 'reset', 'system:view');
+
+// ============================================================================
+// Database Seeder Management (system:view permission)
+// ============================================================================
+$router->add('GET', '/system/seeders', \App\Controllers\System\SeederController::class, 'index', 'system:view');
+$router->add('POST', '/system/seeders/run', \App\Controllers\System\SeederController::class, 'runAll', 'system:view');
+$router->add('POST', '/system/seeders/run/{name}', \App\Controllers\System\SeederController::class, 'run', 'system:view');
+$router->add('POST', '/system/seeders/truncate/{table}', \App\Controllers\System\SeederController::class, 'truncate', 'system:view');
+$router->add('GET', '/system/seeders/status/{table}', \App\Controllers\System\SeederController::class, 'status', 'system:view');
+
+// ============================================================================
+// Security Operations & AI-Assisted Threat Detection (Phase 5)
+// Centralized security monitoring, intrusion detection, and incident response.
+// All routes require security:view (read) or security:investigate/security:manage (write).
+// ============================================================================
+use App\Controllers\Security\SecurityDashboardController;
+use App\Controllers\Security\SecurityAdminController;
+
+// Dashboard read APIs
+$router->add('GET', '/security/overview', SecurityDashboardController::class, 'overview', 'security:view');
+$router->add('GET', '/security/events', SecurityDashboardController::class, 'events', 'security:view', '60:300');
+$router->add('GET', '/security/events/{id}', SecurityDashboardController::class, 'eventDetail', 'security:view');
+$router->add('GET', '/security/incidents', SecurityDashboardController::class, 'incidents', 'security:view', '60:300');
+$router->add('GET', '/security/incidents/{id}', SecurityDashboardController::class, 'incidentDetail', 'security:view');
+$router->add('GET', '/security/threats', SecurityDashboardController::class, 'threats', 'security:view');
+$router->add('GET', '/security/posture', SecurityDashboardController::class, 'posture', 'security:view');
+$router->add('GET', '/security/endpoints', SecurityDashboardController::class, 'endpoints', 'security:view');
+$router->add('GET', '/security/activity/{userId}', SecurityDashboardController::class, 'userActivity', 'security:investigate');
+$router->add('GET', '/security/vulnerabilities', SecurityDashboardController::class, 'vulnerabilities', 'security:view');
+$router->add('GET', '/security/ai/threats', SecurityDashboardController::class, 'aiThreats', 'security:investigate');
+$router->add('POST', '/security/ai/analyze', SecurityDashboardController::class, 'aiAnalyze', 'security:investigate', '60:300');
+$router->add('POST', '/security/ai/copilot', SecurityDashboardController::class, 'aiCopilot', 'security:investigate', '30:300');
+
+// Admin write APIs (incident management)
+$router->add('POST', '/security/incidents/{id}/resolve', SecurityAdminController::class, 'resolveIncident', 'security:manage', '30:300');
+$router->add('POST', '/security/incidents/{id}/false-positive', SecurityAdminController::class, 'falsePositive', 'security:manage', '30:300');
+$router->add('POST', '/security/incidents/{id}/investigate', SecurityAdminController::class, 'investigate', 'security:investigate', '30:300');
+$router->add('POST', '/security/incidents/{id}/contain', SecurityAdminController::class, 'contain', 'security:manage', '30:300');
+
+
 
 $router->dispatch();

@@ -33,9 +33,11 @@ class PermissionCatalogTest extends TestCase
         // 25 modules through Phase 2; +1 'settings' module (Role, Page &
         // Permission restriction phase); +1 'delegations' module (RBAC
         // delegation / acting-authority phase — delegation management is
-        // permission-gated like every other admin surface). Review the diff
+        // permission-gated like every other admin surface); +1 'system' module
+        // (query log, error monitoring, system administration); +1 'security'
+        // module (Security Operations dashboard & AI copilot). Review the diff
         // when this changes.
-        $this->assertCount(27, $this->catalog['modules'], 'Catalog module count changed - review this test');
+        $this->assertCount(29, $this->catalog['modules'], 'Catalog module count changed - review this test');
     }
 
     public function testEveryModuleDefinesKeyLabelAndActions(): void

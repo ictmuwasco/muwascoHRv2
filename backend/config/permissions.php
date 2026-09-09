@@ -352,6 +352,25 @@ return [
                 ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
             ],
         ],
+
+        // System administration (query log, error monitoring, etc.)
+        'system' => [
+            'key'     => 'system',
+            'label'   => 'System Administration',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+        'security' => [
+            'key'     => 'security',
+            'label'   => 'Security Operations',
+            'actions' => [
+                ['key' => 'view',       'label' => 'View',       'type' => 'page'],
+                ['key' => 'investigate', 'label' => 'Investigate', 'type' => 'action'],
+                ['key' => 'manage',     'label' => 'Manage',     'type' => 'action'],
+            ],
+        ],
     ],
 
     /**

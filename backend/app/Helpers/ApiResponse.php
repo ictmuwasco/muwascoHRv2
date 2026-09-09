@@ -120,6 +120,52 @@ class ApiResponse
     }
 
     /**
+     * Echo a paginated success envelope.
+     *
+     * @param array  $items      The items for the current page.
+     * @param int    $total      Total number of items across all pages.
+     * @param int    $page       Current page number.
+     * @param int    $perPage    Items per page.
+     * @param string $message    Human-readable status message.
+     */
+    public static function paginated(array $items, int $total, int $page, int $perPage, string $message = 'Success'): void
+    {
+        $totalPages = (int) ceil($total / $perPage);
+        
+        self::success([
+            'items' => $items,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'total_pages' => $totalPages,
+                'has_next_page' => $page < $totalPages,
+                'has_previous_page' => $page > 1,
+            ],
+        ], $message);
+    }
+
+    /**
+     * Echo a created (201) success envelope.
+     */
+    public static function created($data = null, string $message = 'Resource created successfully'): void
+    {
+        self::success($data, $message, 201);
+    }
+
+    /**
+     * Echo a no-content (204) success envelope.
+     */
+    public static function noContent(string $message = 'No content'): void
+    {
+        self::clearOutputBuffers();
+        http_response_code(204);
+        header('X-Content-Type-Options: nosniff');
+        self::sendRequestIdHeader();
+        exit;
+    }
+
+    /**
      * The current request correlation id, or null if unavailable.
      */
     protected static function currentRequestId(): ?string

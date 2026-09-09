@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, cleanup } from '@testing-library/react'
 import DelegateBanner from '../../components/DelegateBanner'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -11,7 +11,7 @@ let mockUser = { id: 42, active_delegations: [] }
 vi.mock('../../context/AuthContext', () => ({
   useAuth: () => ({
     user: mockUser,
-    can: (module, action) => false,
+    can: () => false,
     canAny: () => false,
   }),
 }))
