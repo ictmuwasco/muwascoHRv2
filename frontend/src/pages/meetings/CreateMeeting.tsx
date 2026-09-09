@@ -134,7 +134,7 @@ const CreateMeeting = () => {
     if (id) {
       loadMeetingForEdit(Number(id))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [id])
 
   const openCreateModal = () => {
