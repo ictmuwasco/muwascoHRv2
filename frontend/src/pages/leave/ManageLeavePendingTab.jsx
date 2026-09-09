@@ -18,7 +18,7 @@ const PendingTab = () => {
 
   useEffect(() => {
     fetchRows()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [offset])
 
   const fetchRows = async () => {

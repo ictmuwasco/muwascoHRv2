@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext'
 import api from '../../utils/api'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
-import { Plus, FileText, Users as UsersIcon, Shield, Loader2 } from 'lucide-react'
 
 const LeaveApplication = () => {
   const navigate = useNavigate()
@@ -26,12 +25,10 @@ const LeaveApplication = () => {
   const [unpaidDays, setUnpaidDays] = useState(0)
   const [calendarDays, setCalendarDays] = useState(0)
   const [leaveTypes, setLeaveTypes] = useState([])
-  const [balances, setBalances] = useState({})
   const [delegates, setDelegates] = useState([])
   const [delegateEmpId, setDelegateEmpId] = useState('')
   const [employees, setEmployees] = useState([])
   const [existingApplications, setExistingApplications] = useState([])
-  const [checkingConflict, setCheckingConflict] = useState(false)
 
   // Load employees and delegates on mount
   useEffect(() => {
@@ -319,7 +316,7 @@ const LeaveApplication = () => {
     }
 
     try {
-      const response = await api.post('/leave/apply', formData)
+      await api.post('/leave/apply', formData)
       setSuccess('Leave application submitted successfully!')
       setSubmitted(true)
       setTimeout(() => navigate('/leave'), 1500)
