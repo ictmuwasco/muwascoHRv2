@@ -19,7 +19,7 @@ import {
   XCircle,
   FileText,
   AlertTriangle,
-  Info,
+
   Layers,
   ArrowUp,
   TrendingDown,
