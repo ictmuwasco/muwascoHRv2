@@ -23,7 +23,7 @@ class UserSeeder extends Seeder
         $this->seed('users', [
             'employee_id' => 1,
             'email' => 'admin@muwasco.org',
-            'password' => Hash::make('Admin@123'),
+            'password' => Hash::make($_ENV['SEED_ADMIN_PASSWORD'] ?? 'ChangeMe!'.random_int(1000, 9999)),
             'role' => 'admin',
             'is_active' => 1,
             'created_at' => date('Y-m-d H:i:s'),
@@ -34,7 +34,7 @@ class UserSeeder extends Seeder
         $this->seed('users', [
             'employee_id' => 2,
             'email' => 'hr.manager@muwasco.org',
-            'password' => Hash::make('Hr@123456'),
+            'password' => Hash::make($_ENV['SEED_HR_PASSWORD'] ?? 'ChangeMe!'.random_int(1000, 9999)),
             'role' => 'hr_manager',
             'is_active' => 1,
             'created_at' => date('Y-m-d H:i:s'),
@@ -45,7 +45,7 @@ class UserSeeder extends Seeder
         $this->seed('users', [
             'employee_id' => 3,
             'email' => 'dept.head@muwasco.org',
-            'password' => Hash::make('Dept@123456'),
+            'password' => Hash::make($_ENV['SEED_DEPT_PASSWORD'] ?? 'ChangeMe!'.random_int(1000, 9999)),
             'role' => 'department_head',
             'is_active' => 1,
             'created_at' => date('Y-m-d H:i:s'),
@@ -56,7 +56,7 @@ class UserSeeder extends Seeder
         $this->seed('users', [
             'employee_id' => 4,
             'email' => 'employee@muwasco.org',
-            'password' => Hash::make('Emp@123456'),
+            'password' => Hash::make($_ENV['SEED_EMP_PASSWORD'] ?? 'ChangeMe!'.random_int(1000, 9999)),
             'role' => 'employee',
             'is_active' => 1,
             'created_at' => date('Y-m-d H:i:s'),
@@ -82,7 +82,7 @@ class UserSeeder extends Seeder
             $this->seed('users', [
                 'employee_id' => $i,
                 'email' => "user{$i}@{$domain}",
-                'password' => Hash::make('Password@123'),
+                'password' => Hash::make($_ENV['SEED_TEST_PASSWORD'] ?? 'ChangeMe!'.random_int(1000, 9999)),
                 'role' => $role,
                 'is_active' => rand(0, 10) > 2 ? 1 : 0, // 80% active
                 'created_at' => date('Y-m-d H:i:s', strtotime("-".rand(1, 365)." days")),
