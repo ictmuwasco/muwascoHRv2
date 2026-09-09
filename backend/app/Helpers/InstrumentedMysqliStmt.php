@@ -13,10 +13,7 @@ namespace App\Helpers;
  * the same logical query and flushed exactly once — at get_result(), or at
  * close() for statements that never fetch (INSERT/UPDATE/DELETE).
  *
- * PHP 8.0 compatibility note: mysqli_stmt::execute() takes ZERO arguments in
- * PHP 8.0 (the ?array $params overload is 8.1+), so the override mirrors the
- * 8.0 signature. The constructor-prepared statement pattern was verified with
- * a live-connection probe on PHP 8.0.30.
+ * Compatibility: supports both PHP 8.0 (no params) and PHP 8.1+ (?array $params).
  */
 final class InstrumentedMysqliStmt extends \mysqli_stmt
 {
@@ -36,10 +33,10 @@ final class InstrumentedMysqliStmt extends \mysqli_stmt
         parent::__construct($link, $query);
     }
 
-    public function execute(): bool
+    public function execute(?array $params = null): bool
     {
         $start                = microtime(true);
-        $result               = parent::execute();
+        $result               = parent::execute($params);
         $this->pendingMs     += (microtime(true) - $start) * 1000.0;
         $this->issued         = true;
         return $result;
