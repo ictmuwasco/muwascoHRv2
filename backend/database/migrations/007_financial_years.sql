@@ -45,6 +45,6 @@ CREATE TABLE IF NOT EXISTS employee_leave_balances (
     
     -- Indexes for faster lookups
     INDEX idx_employee (employee_id),
-    INDEX idx_financial_year (financial_year_year_id),
+    INDEX idx_financial_year (financial_year_id),
     INDEX idx_leave_type (leave_type_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
