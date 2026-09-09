@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Helpers\Database;
+use App\Services\Leave\LeaveTypePolicy;
+use App\Services\Leave\LeaveWorkflowRules;
 
 /**
  * LeaveApplicationService
@@ -65,10 +67,10 @@ class LeaveApplicationService
             return ['success' => false, 'message' => 'Invalid leave type.'];
         }
 
-        // Business rule: Claim a Day (id 9) must be for past or current dates only.
+        // Business rule: Claim a Day must be for past or current dates only.
         // It credits annual leave for a day actually worked, so a future date is nonsense.
         $today = date('Y-m-d');
-        if ($leaveTypeId === 9) {
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_CLAIM_A_DAY) {
             if ($startDate > $today || $endDate > $today) {
                 return [
                     'success' => false,
@@ -77,17 +79,27 @@ class LeaveApplicationService
             }
         }
 
+        // Business rule: Backdating is only allowed for Sick, Study and
+        // Claim a Day (see LeaveTypePolicy::allowsBackdate()). All other
+        // leave types must start today or later.
+        if (!LeaveTypePolicy::allowsBackdate($leaveTypeId) && $startDate < $today) {
+            return [
+                'success' => false,
+                'message' => 'Backdating is not allowed for this leave type. The start date must be today or later.',
+            ];
+        }
+
         // Calculate eligible days
         $eligibleDays = $this->calculationService->calculateEligibleDays($startDate, $endDate, $leaveType);
 
-        // Business rule: Annual Leave (id 1) requires a minimum of 15 days.
+        // Business rule: Annual Leave requires a minimum of 15 days.
         // Legacy behaviour: redirect the user to Short Leave instead.
-        if ($leaveTypeId === 1 && $eligibleDays > 0 && $eligibleDays < 15) {
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_ANNUAL && $eligibleDays > 0 && $eligibleDays < 15) {
             return [
                 'success' => false,
                 'message' => "Annual leave requires at least 15 days ({$eligibleDays} requested). Please apply for Short Leave instead.",
                 'eligible_days' => $eligibleDays,
-                'suggested_leave_type_id' => 6,
+                'suggested_leave_type_id' => LeaveTypePolicy::TYPE_SHORT,
             ];
         }
 
@@ -100,23 +112,10 @@ class LeaveApplicationService
             ];
         }
 
-        // Calculate deduction
-        $deductionPlan = $this->calculationService->calculateDeductionFromBalances($employeeId, $leaveTypeId, $eligibleDays);
-        if (!$deductionPlan['is_valid']) {
-            return ['success' => false, 'message' => implode(' ', $deductionPlan['warnings'])];
-        }
-
         // Document requirement
         if ($this->documentService->requiresDocument($leaveTypeId)) {
             if (!$file || $file['error'] !== UPLOAD_ERR_OK) {
-                $requiredType = $this->documentService->getRequiredDocumentType($leaveTypeId);
-                if ($leaveTypeId === 2) {
-                    return ['success' => false, 'message' => 'A supporting medical document is required for Sick Leave.'];
-                }
-                if ($leaveTypeId === 5) {
-                    return ['success' => false, 'message' => 'A supporting document such as a timetable is required for Study Leave.'];
-                }
-                return ['success' => false, 'message' => 'Supporting document required.'];
+                return ['success' => false, 'message' => LeaveTypePolicy::documentMessage($leaveTypeId)];
             }
 
             $validation = $this->documentService->validateDocument($file);
@@ -125,23 +124,57 @@ class LeaveApplicationService
             }
         }
 
-        // Overlap validation
-        $overlaps = $this->hasOverlappingLeave($employeeId, $startDate, $endDate);
-        if (!empty($overlaps)) {
-            $dates = array_map(function ($l) {
-                return date('M d, Y', strtotime($l['start_date'])) . ' to ' . date('M d, Y', strtotime($l['end_date']));
-            }, $overlaps);
-            return ['success' => false, 'message' => 'Date conflict with: ' . implode('; ', $dates)];
-        }
-
-        // Determine workflow
-        $initialStatus = $this->workflowService->determineInitialWorkflowStatus($employeeId, $userId);
-        $managers = $this->workflowService->getManagers($employeeId);
-
-        // Atomic transaction
+        // Atomic transaction: the mutable-state consistency checks (pending/
+        // on-leave block, balance sufficiency, date overlap) run INSIDE the
+        // transaction after serialising concurrent submissions per employee
+        // with a locking read, so two simultaneous requests can never both
+        // pass the checks and both write.
         $this->db->begin_transaction();
 
         try {
+            // Serialisation point: lock the employee row. Concurrent
+            // submissions for the same employee queue here and each
+            // transaction re-reads balances/overlaps only after the
+            // previous one committed.
+            $lockStmt = $this->db->prepare("SELECT id FROM employees WHERE id = ? FOR UPDATE");
+            $lockStmt->bind_param('i', $employeeId);
+            $lockStmt->execute();
+            $lockStmt->close();
+
+            // Business rule: Except for Sick Leave, an employee cannot submit
+            // a new application while they have a pending application or are
+            // currently on an approved leave (today falls within the range).
+            if (!LeaveTypePolicy::exemptFromOverlapBlock($leaveTypeId)) {
+                $activeBlock = $this->hasBlockingActiveLeave($employeeId, $today);
+                if ($activeBlock) {
+                    $this->db->rollback();
+                    return [
+                        'success' => false,
+                        'message' => 'You are currently on leave or have a pending leave application. You cannot submit a new application for this leave type. Sick leave can still be applied.',
+                    ];
+                }
+            }
+
+            // Balance sufficiency (re-read under the lock)
+            $deductionPlan = $this->calculationService->calculateDeductionFromBalances($employeeId, $leaveTypeId, $eligibleDays);
+            if (!$deductionPlan['is_valid']) {
+                $this->db->rollback();
+                return ['success' => false, 'message' => implode(' ', $deductionPlan['warnings'])];
+            }
+
+            // Date-overlap validation (re-read under the lock)
+            $overlaps = $this->hasOverlappingLeave($employeeId, $startDate, $endDate);
+            if (!empty($overlaps)) {
+                $dates = array_map(function ($l) {
+                    return date('M d, Y', strtotime($l['start_date'])) . ' to ' . date('M d, Y', strtotime($l['end_date']));
+                }, $overlaps);
+                $this->db->rollback();
+                return ['success' => false, 'message' => 'Date conflict with: ' . implode('; ', $dates)];
+            }
+            // Determine workflow (initial status + approver chain)
+            $initialStatus = $this->workflowService->determineInitialWorkflowStatus($employeeId, $userId);
+            $managers = $this->workflowService->getManagers($employeeId);
+
             // Insert application
             $applicationId = $this->insertApplication($data, $leaveTypeId, $startDate, $endDate, $eligibleDays, $reason, $initialStatus, $userId, $managers, $deductionPlan, $delegateEmpId);
 
@@ -177,7 +210,11 @@ class LeaveApplicationService
             ];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave application submission failed', [
+                'employee_id' => $data['employee_id'] ?? null,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to submit your leave application. Please try again.'];
         }
     }
 
@@ -189,13 +226,11 @@ class LeaveApplicationService
         $employeeId = (int) $data['employee_id'];
         $fyId = $this->getCurrentFinancialYearId();
 
-        $nextId = (int) $this->db->query("SELECT COALESCE(MAX(id),0)+1 as next_id FROM leave_applications")->fetch_assoc()['next_id'];
-
         $stmt = $this->db->prepare("
             INSERT INTO leave_applications
-                (id, employee_id, leave_type_id, financial_year_id, start_date, end_date, days_requested, reason, status, applied_at,
+                (employee_id, leave_type_id, financial_year_id, start_date, end_date, days_requested, reason, status, applied_at,
                  subsection_head_emp_id, section_head_emp_id, dept_head_emp_id, delegate_emp_id, primary_days, annual_days, applied_by_user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $primaryDays = (int) $deductionPlan['primary_deduction'];
@@ -207,8 +242,7 @@ class LeaveApplicationService
         $deptHeadEmpId       = $managers['dept_head_emp_id'] ?? null;
 
         $stmt->bind_param(
-            'iiiississiiiiiii',
-            $nextId,
+            'iiissisiiiiiii',
             $employeeId,
             $leaveTypeId,
             $fyId,
@@ -227,7 +261,12 @@ class LeaveApplicationService
         );
         $stmt->execute();
 
-        return $nextId;
+        // AUTO_INCREMENT primary key — never compute MAX(id)+1 manually
+        // (a non-locking snapshot that serialises/duplicates under concurrency).
+        $applicationId = (int) $stmt->insert_id;
+        $stmt->close();
+
+        return $applicationId;
     }
 
     /**
@@ -310,19 +349,33 @@ class LeaveApplicationService
      */
     private function hasOverlappingLeave(int $employeeId, string $startDate, string $endDate): array
     {
+        // Any non-final application blocks the requested range: every pending
+        // workflow stage plus approved. Final states (rejected, cancelled,
+        // invalidated) never block. The status list comes from the single
+        // source of truth (LeaveWorkflowRules) — the previous hand-written
+        // list silently missed the 'pending', 'pending_manager' and
+        // 'pending_hr_manager' stages. The inclusive interval predicate
+        // covers partial overlaps, contained ranges and containing ranges;
+        // adjacent (touching) ranges do not overlap.
+        $statuses = array_merge(
+            LeaveWorkflowRules::PENDING_STATUSES,
+            [LeaveWorkflowRules::STATUS_APPROVED]
+        );
+        $statusList = implode(',', array_map(
+            fn (string $status): string => "'" . $this->db->real_escape_string($status) . "'",
+            $statuses
+        ));
+
         $query = "
             SELECT id, start_date, end_date, status, leave_type_id
             FROM leave_applications
             WHERE employee_id = ?
-              AND ((start_date <= ? AND end_date >= ?)
-                OR (start_date BETWEEN ? AND ?)
-                OR (end_date BETWEEN ? AND ?)
-                OR (? BETWEEN start_date AND end_date)
-                OR (? BETWEEN start_date AND end_date))
-              AND status IN ('pending_subsection_head','pending_section_head','pending_dept_head','pending_managing_director','pending_hr','pending_bod_chair','approved')
+              AND start_date <= ?
+              AND end_date >= ?
+              AND status IN ({$statusList})
         ";
         $stmt = $this->db->prepare($query);
-        $stmt->bind_param('issssssss', $employeeId, $endDate, $startDate, $startDate, $endDate, $startDate, $endDate, $startDate, $endDate);
+        $stmt->bind_param('iss', $employeeId, $endDate, $startDate);
         $stmt->execute();
         $result = $stmt->get_result();
         $overlaps = [];
@@ -330,6 +383,40 @@ class LeaveApplicationService
             $overlaps[] = $row;
         }
         return $overlaps;
+    }
+
+    /**
+     * Check if the employee currently has a blocking active leave:
+     *   - any pending application, OR
+     *   - an approved application whose range covers today (currently on leave).
+     *
+     * Used to enforce "cannot apply while on leave or with a pending
+     * application" for all leave types except Sick Leave (see
+     * LeaveTypePolicy::exemptFromOverlapBlock()).
+     */
+    private function hasBlockingActiveLeave(int $employeeId, string $today): bool
+    {
+        $statusList = implode(',', array_map(
+            fn (string $status): string => "'" . $this->db->real_escape_string($status) . "'",
+            LeaveWorkflowRules::PENDING_STATUSES
+        ));
+
+        $query = "
+            SELECT COUNT(*) AS cnt
+            FROM leave_applications
+            WHERE employee_id = ?
+              AND (
+                    status IN ({$statusList})
+                    OR (status = 'approved' AND start_date <= ? AND end_date >= ?)
+                  )
+        ";
+        $stmt = $this->db->prepare($query);
+        $stmt->bind_param('iss', $employeeId, $today, $today);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        return (int) ($row['cnt'] ?? 0) > 0;
     }
 
     /**

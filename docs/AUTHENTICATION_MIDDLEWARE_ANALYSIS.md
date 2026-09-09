@@ -364,3 +364,19 @@ The application has a solid security foundation with multiple middleware layers 
 4. **Flexibility** - Add JWT revocation for better session management
 
 The proposed enhancements to `SecurityMiddleware.php` should be implemented incrementally, starting with logging and rate limiting, followed by suspicious activity detection and nonce-based CSP.
+---
+
+## Phase 1 Final Classification (2026-08-31)
+
+The consolidation described above has been IMPLEMENTED. Final state:
+
+| Middleware | Classification | Detail |
+|------------|----------------|--------|
+| `AuthenticationMiddleware` | **ACTIVE** | Upgraded into the single global authentication gate. Wired once in `api.php` (`SecurityMiddleware::run()` + `AuthenticationMiddleware::process()`). Enforces the public-route allowlist, session/JWT authentication and DB account-status revalidation. |
+| `SecurityMiddleware` | **ACTIVE** | `run()` invoked from `api.php` for headers/trusted-proxy/session-timeout; `protectAgainstBruteForce()` is now a file-backed (flock-atomic) limiter keyed by IP + account identifier. |
+| `BaseMiddleware` | ACTIVE (fixed) | The broken `App\Middleware\Contracts\MiddlewareInterface` import (interface does not exist) was repaired to the real `App\Middleware\MiddlewareInterface`. |
+| `AuthMiddleware` | LEGACY | Never referenced. Retained for legacy PHP pages; removal candidate once no page includes it. Do not extend. |
+| `AuthorizationMiddleware` | LEGACY | Never referenced; client-supplied `permission_resource` parameters are an anti-pattern. Authorization lives in controllers via `requirePermission()`. Removal candidate. |
+| Laravel scaffold (`backend/bootstrap/app.php`, `backend/routes/routes/api.php`, `jwt.auth` alias) | LEGACY | Not the running router. The active router is the root `api.php`. Documented for eventual removal. |
+
+The authoritative request flow is documented in `docs/AUTHENTICATION.md`.

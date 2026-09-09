@@ -8,6 +8,8 @@ use App\Controllers\BaseController;
 
 use App\Services\Contracts\EmployeeServiceInterface;
 use App\Services\EmployeeService;
+use App\Services\Security\EmployeePolicy;
+use App\Services\Security\SecurityEventService;
 
 /**
  * Employee Controller - REST API for employee management.
@@ -19,17 +21,13 @@ class EmployeeController extends BaseController
 {
     private EmployeeServiceInterface $employeeService;
 
-    public function __construct()
+    /**
+     * Constructor with dependency injection.
+     * The DI container automatically resolves EmployeeServiceInterface.
+     */
+    public function __construct(EmployeeServiceInterface $employeeService)
     {
-        // Dependency injection - services are injected via setter methods
-        $this->employeeService = new EmployeeService();
-        
-        // Set repository dependencies
-        $this->employeeService->setEmployeeRepository(new \App\Repositories\EmployeeRepository());
-        $this->employeeService->setDepartmentRepository(new \App\Repositories\DepartmentRepository());
-        $this->employeeService->setSectionRepository(new \App\Repositories\SectionRepository());
-        $this->employeeService->setOfficeRepository(new \App\Repositories\OfficeRepository());
-        $this->employeeService->setUserRepository(new \App\Repositories\UserRepository());
+        $this->employeeService = $employeeService;
     }
 
     /**
@@ -57,7 +55,7 @@ class EmployeeController extends BaseController
     /**
      * GET /api/employees/{id} - Get a single employee.
      */
-    public function showAction(int $id): void
+        public function showAction(int $id): void
     {
         $this->requirePermission('employees', 'view');
 
@@ -65,6 +63,28 @@ class EmployeeController extends BaseController
             $employee = $this->employeeService->getEmployeeById($id);
             if (!$employee) {
                 $this->notFound('Employee not found');
+            }
+
+            // OBJECT-LEVEL AUTHORIZATION (IDOR/BOLA protection)
+            // The permission check above verifies the user CAN view employees,
+            // but this check verifies they can view THIS specific employee.
+            if (!\App\Services\Security\EmployeePolicy::canView($this->getAuthUserId(), $employee)) {
+                // Log the security event before denying
+                \App\Services\Security\SecurityEventService::getInstance()->record(
+                    \App\Services\Security\SecurityEventService::UNAUTHORIZED_OBJECT_ACCESS,
+                    \App\Services\Security\SecurityEventService::SEVERITY_HIGH,
+                    65,
+                    [
+                        'user_id' => $this->getAuthUserId(),
+                        'resource_type' => 'employee',
+                        'resource_id' => $id,
+                        'response_status' => 403,
+                        'action_taken' => \App\Services\Security\SecurityEventService::ACTION_DENIED,
+                        'description' => "Unauthorized access attempt to employee#{$id}",
+                        'route' => $_SERVER['REQUEST_URI'] ?? null,
+                    ]
+                );
+                $this->forbidden('You are not authorized to view this employee');
             }
 
             $this->success($employee);
@@ -83,7 +103,7 @@ class EmployeeController extends BaseController
     {
         $this->requirePermission('employees', 'create');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\EmployeeValidator());
 
         try {
             $employeeId = $this->employeeService->createEmployee($data);
@@ -109,7 +129,7 @@ class EmployeeController extends BaseController
     {
         $this->requirePermission('employees', 'edit');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\EmployeeValidator());
 
         try {
             $oldEmployee = $this->employeeService->getEmployeeById($id);
@@ -230,58 +250,25 @@ class EmployeeController extends BaseController
 
     /**
      * POST /api/employees/documents - Upload a document for an employee.
+     *
+     * REMOVED (Phase 7 security remediation, finding P7-1):
+     * The previous implementation of this action accepted uploads with NO
+     * extension allowlist, NO MIME verification and NO size limit, and stored
+     * the raw file inside the web-executable directory
+     * backend/public/uploads/employee_documents/ (mkdir 0777). Any future
+     * route registration pointing at it would become remote code execution.
+     *
+     * The authorized upload paths are:
+     *   - POST /api/profile/documents      → uploadProfileDocument()
+     *     (extension allowlist + finfo MIME check + 5MB cap + random filename
+     *      + private STORAGE_PATH storage + audit log)
+     *   - POST /api/profile/profile-image  → uploadProfileImage()
+     *
+     * Legacy files in backend/public/uploads/ are no longer directly
+     * web-accessible (denied by backend/public/uploads/.htaccess) and are
+     * served exclusively through the authorized streaming endpoint
+     * GET /api/profile/documents/{id}.
      */
-    public function uploadDocumentAction(): void
-    {
-        $this->requirePermission('employees', 'edit');
-
-        try {
-            $employeeId = (int)($_POST['employee_id'] ?? 0);
-            $documentName = $_POST['document_name'] ?? '';
-            $category = $_POST['category'] ?? 'other';
-
-            if ($employeeId <= 0) {
-                $this->error('Employee ID is required', 400);
-                return;
-            }
-
-            if (empty($documentName)) {
-                $this->error('Document name is required', 400);
-                return;
-            }
-
-            if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-                $this->error('Please select a valid file to upload', 400);
-                return;
-            }
-
-            $uploadDir = __DIR__ . '/../../public/uploads/employee_documents/';
-            if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0777, true);
-            }
-
-            $fileName = uniqid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '', $_FILES['file']['name']);
-            $destination = $uploadDir . $fileName;
-
-            if (!move_uploaded_file($_FILES['file']['tmp_name'], $destination)) {
-                $this->error('Failed to save uploaded file', 500);
-                return;
-            }
-
-            // Insert into employee_documents table
-            $db = \App\Helpers\Database::getInstance()->getConnection();
-            $stmt = $db->prepare("INSERT INTO employee_documents (employee_id, document_name, category, file_name) VALUES (?, ?, ?, ?)");
-            $stmt->bind_param('isss', $employeeId, $documentName, $category, $fileName);
-            $stmt->execute();
-            $docId = (int)$db->insert_id;
-            $stmt->close();
-
-            $this->success(['id' => $docId, 'file_name' => $fileName], 'Document uploaded successfully', 201);
-        } catch (\Exception $e) {
-            \logger()->error('Document upload error', ['error' => $e->getMessage()]);
-            $this->error('Failed to upload document. Please try again.', 500);
-        }
-    }
 
     /**
      * DELETE /api/employees/documents/{id} - Delete an employee document.
@@ -481,11 +468,13 @@ class EmployeeController extends BaseController
         $mimeType = finfo_file($finfo, $filePath) ?: 'application/octet-stream';
         finfo_close($finfo);
 
-        header('Content-Type: ' . $mimeType);
-        header('Content-Disposition: inline; filename="' . basename($document['document_name'] ?? 'document') . '"');
+        // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
+        // PDF/images (business in-browser preview), attachment otherwise.
+        \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+            $mimeType,
+            $document['document_name'] ?? 'document'
+        );
         header('Content-Length: ' . filesize($filePath));
-        header('X-Content-Type-Options: nosniff');
-        header('Cache-Control: private, max-age=3600');
 
         readfile($filePath);
         exit();
@@ -585,6 +574,27 @@ class EmployeeController extends BaseController
             $employee = $this->employeeService->getEmployeeById($id);
             if (!$employee) {
                 $this->notFound('Employee not found');
+            }
+
+            // OBJECT-LEVEL AUTHORIZATION (IDOR/BOLA protection) — matches
+            // updateAction(): only HR/admin may modify another employee's
+            // profile image; everyone else is denied and the attempt recorded.
+            if (!EmployeePolicy::canEdit($this->getAuthUserId(), $employee)) {
+                SecurityEventService::getInstance()->record(
+                    SecurityEventService::UNAUTHORIZED_OBJECT_ACCESS,
+                    SecurityEventService::SEVERITY_MEDIUM,
+                    65,
+                    [
+                        'user_id' => $this->getAuthUserId(),
+                        'resource_type' => 'employee',
+                        'resource_id' => $id,
+                        'response_status' => 403,
+                        'action_taken' => SecurityEventService::ACTION_DENIED,
+                        'description' => "Unauthorized profile image edit attempt for employee#{$id}",
+                        'route' => $_SERVER['REQUEST_URI'] ?? null,
+                    ]
+                );
+                $this->forbidden('You are not authorized to edit this employee');
             }
 
             $this->handleProfileImageUpload($id);
@@ -741,6 +751,28 @@ class EmployeeController extends BaseController
                 $this->notFound('Employee not found');
             }
 
+            // OBJECT-LEVEL AUTHORIZATION (IDOR/BOLA protection) — mirrors
+            // showAction(): the permission gate above verifies the caller can
+            // view employees at all, but this verifies they can view THIS
+            // specific employee's profile image (dept heads, HR scope, etc.).
+            if (!EmployeePolicy::canView($this->getAuthUserId(), $employee)) {
+                SecurityEventService::getInstance()->record(
+                    SecurityEventService::UNAUTHORIZED_OBJECT_ACCESS,
+                    SecurityEventService::SEVERITY_MEDIUM,
+                    60,
+                    [
+                        'user_id' => $this->getAuthUserId(),
+                        'resource_type' => 'employee',
+                        'resource_id' => $id,
+                        'response_status' => 403,
+                        'action_taken' => SecurityEventService::ACTION_DENIED,
+                        'description' => "Unauthorized access attempt to employee#{$id} profile image",
+                        'route' => $_SERVER['REQUEST_URI'] ?? null,
+                    ]
+                );
+                $this->forbidden('You are not authorized to view this employee');
+            }
+
             $this->streamProfileImage($id);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -763,10 +795,7 @@ class EmployeeController extends BaseController
         $stmt->close();
 
         if (!$employee || empty($employee['profile_image_url'])) {
-            http_response_code(404);
-            header('Content-Type: application/json');
-            echo json_encode(['error' => 'Profile picture not found']);
-            exit();
+            \App\Helpers\ApiResponse::error('Profile picture not found', 'NOT_FOUND', [], 404);
         }
 
         // Support both public-webroot path and storage-relative path
@@ -776,10 +805,7 @@ class EmployeeController extends BaseController
             if (file_exists($storagePath)) {
                 $filePath = $storagePath;
             } else {
-                http_response_code(404);
-                header('Content-Type: application/json');
-                echo json_encode(['error' => 'Profile picture file not found on server']);
-                exit();
+                \App\Helpers\ApiResponse::error('Profile picture file not found on server', 'NOT_FOUND', [], 404);
             }
         }
 

@@ -146,6 +146,7 @@ class AttendanceDashboardService
      *   trend_days    int
      *   department_id int|null
      *   section_id    int|null
+     *   subsection_id int|null     server-side scope clamp (sub-section heads)
      *   status        string|null  filter rows by computed status
      *   search        string       name / staff no match
      *   page          int
@@ -159,6 +160,7 @@ class AttendanceDashboardService
         $trendDays = max(1, min(31, (int)($params['trend_days'] ?? 7)));
         $departmentId = isset($params['department_id']) ? (int)$params['department_id'] : null;
         $sectionId = isset($params['section_id']) && $params['section_id'] ? (int)$params['section_id'] : null;
+        $subsectionId = isset($params['subsection_id']) && $params['subsection_id'] ? (int)$params['subsection_id'] : null;
         $statusFilter = strtoupper(trim((string)($params['status'] ?? '')));
         $search = trim((string)($params['search'] ?? ''));
         $page = max(1, (int)($params['page'] ?? 1));
@@ -170,7 +172,7 @@ class AttendanceDashboardService
         $isNonWorkingDay = $this->isWeekend($date);
 
         // ---- Batched data (no N+1: three queries total for the day) ----
-        $rows = $this->getRosterRows($date, $departmentId, $sectionId);
+        $rows = $this->getRosterRows($date, $departmentId, $sectionId, $subsectionId);
         $leaves = $this->getApprovedLeavesOnDate($date);
 
         // ---- Compute authoritative statuses ----
@@ -264,12 +266,13 @@ class AttendanceDashboardService
                 'total_pages' => $totalPages,
             ],
             'departments'      => $departments,
-            'trend'            => $this->buildTrend($date, $trendDays),
+            'trend'            => $this->buildTrend($date, $trendDays, $departmentId, $sectionId, $subsectionId),
             'absent_employees' => $absentPanel,
             'statuses'         => self::ALL_STATUSES,
             'filters_applied'  => [
                 'department_id' => $departmentId,
                 'section_id'    => $sectionId,
+                'subsection_id' => $subsectionId,
                 'status'        => $statusFilter ?: null,
                 'search'        => $search ?: null,
             ],
@@ -411,8 +414,12 @@ class AttendanceDashboardService
     /**
      * All active employees in scope for a date with that day's attendance
      * record (if any) attached in the same query - one round trip.
+     *
+     * $subsectionId additionally narrows to a single sub-section (used by the
+     * server-side data-scope clamp for sub-section heads — never from
+     * untrusted input).
      */
-    private function getRosterRows(string $date, ?int $departmentId, ?int $sectionId): array
+    private function getRosterRows(string $date, ?int $departmentId, ?int $sectionId, ?int $subsectionId = null): array
     {
         $sql = "SELECT e.id, e.employee_id,
                        TRIM(CONCAT(e.first_name, ' ', e.last_name)) AS name,
@@ -449,6 +456,11 @@ class AttendanceDashboardService
             $sql .= " AND e.section_id = ?";
             $types .= 'i';
             $params[] = $sectionId;
+        }
+        if ($subsectionId) {
+            $sql .= " AND e.subsection_id = ?";
+            $types .= 'i';
+            $params[] = $subsectionId;
         }
 
         $sql .= " ORDER BY e.first_name ASC, e.last_name ASC";
@@ -592,23 +604,41 @@ class AttendanceDashboardService
     /**
      * Per-day trend for the trailing N days ending at the selected date.
      *
+    /**
      * Attendance counts come from one GROUP BY query over the range; leave
      * overlaps are expanded in PHP (bounded by the <=31 day window); the
      * holidays table is tiny and fetched once for the whole range.
+     *
+     * The optional department/section/subsection filters scope the trend to
+     * the caller's organisational unit (server-side data-scope clamp for
+     * heads) so unit-scoped callers never see org-wide aggregates.
      */
-    private function buildTrend(string $endDate, int $days): array
-    {
+    private function buildTrend(
+        string $endDate,
+        int $days,
+        ?int $departmentId = null,
+        ?int $sectionId = null,
+        ?int $subsectionId = null
+    ): array {
         $startTs = strtotime($endDate . ' -' . ($days - 1) . ' days');
         $startDate = date('Y-m-d', $startTs);
 
+        $unitJoins = ' FROM attendance a JOIN employees e ON a.employee_id = e.id';
+        $unitWhere = '';
+        if ($departmentId || $sectionId || $subsectionId) {
+            $unitWhere = ($departmentId ? ' AND e.department_id = ' . (int) $departmentId : '')
+                . ($sectionId ? ' AND e.section_id = ' . (int) $sectionId : '')
+                . ($subsectionId ? ' AND e.subsection_id = ' . (int) $subsectionId : '');
+        }
+
         // Present + late per day (single grouped query, sargable on clock_in).
         $attRows = \db()->fetchAll(
-            "SELECT DATE(clock_in) AS d,
+            "SELECT DATE(a.clock_in) AS d,
                     COUNT(*) AS present,
-                    SUM(CASE WHEN is_late = 1 THEN 1 ELSE 0 END) AS late
-             FROM attendance
-             WHERE clock_in >= ? AND clock_in < ? + INTERVAL 1 DAY
-             GROUP BY DATE(clock_in)",
+                    SUM(CASE WHEN a.is_late = 1 THEN 1 ELSE 0 END) AS late
+             {$unitJoins}
+             WHERE a.clock_in >= ? AND a.clock_in < ? + INTERVAL 1 DAY{$unitWhere}
+             GROUP BY DATE(a.clock_in)",
             'ss',
             [$startDate, $endDate]
         );
@@ -617,13 +647,15 @@ class AttendanceDashboardService
             $attendanceByDay[$r['d']] = $r;
         }
 
-        // Approved leave applications overlapping the window.
+        // Approved leave applications overlapping the window (scoped to the
+        // same organisational unit when one is applied).
         $leaveRows = \db()->fetchAll(
-            "SELECT employee_id, start_date, end_date
-             FROM leave_applications
-             WHERE status = 'approved'
-               AND start_date <= ?
-               AND end_date >= ?",
+            "SELECT la.employee_id, la.start_date, la.end_date
+             FROM leave_applications la
+             JOIN employees e ON la.employee_id = e.id
+             WHERE la.status = 'approved'
+               AND la.start_date <= ?
+               AND la.end_date >= ?{$unitWhere}",
             'ss',
             [$endDate, $startDate]
         );

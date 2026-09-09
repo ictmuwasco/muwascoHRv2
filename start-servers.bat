@@ -31,7 +31,7 @@ echo PHP Backend: http://localhost:8000
 echo API: http://localhost:8000/api
 echo React Frontend: http://localhost:5173
 echo.
-echo Login: admin@muwasco.co.ke / Admin@123
+echo Login: use your MUWASCO HR account. Credentials are NOT stored in this repository.
 echo.
 
 :end

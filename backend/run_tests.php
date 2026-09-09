@@ -17,14 +17,16 @@ $phpunit = new \PHPUnit\TextUI\Command();
 // Disable code coverage
 $GLOBALS['PHPUNIT_DISABLE_CODE_COVERAGE'] = true;
 
-// Build arguments as a simple array
+// Build arguments as a simple array.
+// The canonical suite configuration is the tracked root phpunit.xml.dist:
+// it covers ALL Unit test directories (the old backend/phpunit.xml only
+// wired Services/Repositories/Controllers, silently skipping the
+// Authorization/Delegation/Helpers/Middleware/Security/Validators suites).
 $arguments = [
     'phpunit',
-    '--bootstrap', __DIR__ . '/tests/bootstrap.php',
-    '--configuration', __DIR__ . '/phpunit.xml',
+    '--configuration', dirname(__DIR__) . '/phpunit.xml.dist',
     '--verbose',
     '--colors',
-    '--debug'
 ];
 
 // Set argv

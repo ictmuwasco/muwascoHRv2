@@ -8,8 +8,12 @@
  *    POST /api/system/client-errors with rate limiting + de-duplication
  *
  * Deliberately dependency-free (uses fetch, NOT the axios apiClient) so that
- * reporting can never recurse through request interceptors.
+ * reporting can never recurse through request interceptors. The only import
+ * is the pure config constant module — zero runtime dependencies, no
+ * interceptors, so the no-recursion guarantee still holds.
  */
+
+import { API_BASE_URL } from '../config/api';
 
 // ---------------------------------------------------------------------------
 // Correlation id
@@ -113,7 +117,7 @@ export function collectContext(): Record<string, unknown> {
     url: typeof location !== 'undefined' ? location.href : '',
     route: typeof location !== 'undefined' ? location.pathname : '',
     screen_size: typeof screen !== 'undefined' ? `${screen.width}x${screen.height}` : '',
-    application_version: (import.meta as any)?.env?.VITE_APP_VERSION || '1.0.0',
+    application_version: import.meta.env.VITE_APP_VERSION || '1.0.0',
     user_id: currentUserId(),
     timestamp: new Date().toISOString(),
     ...parsed,
@@ -206,7 +210,7 @@ export function reportClientError(input: ReportInput): void {
       ...input.extra,
     };
 
-    fetch('/api/system/client-errors', {
+    fetch(`${API_BASE_URL}/system/client-errors`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', 'X-Request-ID': currentRequestId },

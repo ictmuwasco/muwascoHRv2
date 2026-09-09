@@ -40,10 +40,6 @@ const Departments = () => {
         api.get('/subsections')
       ])
 
-      // Debug logging
-      console.log('Sections response:', sectionRes.data)
-      console.log('Subsections response:', subsectionRes.data)
-
       setDepartments(deptRes.data.data || [])
       setSections(sectionRes.data.data || [])
       setSubsections(subsectionRes.data.data || [])

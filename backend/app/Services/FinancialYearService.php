@@ -77,6 +77,49 @@ class FinancialYearService
     }
 
     /**
+     * Phase 5 §8: THE single financial-year resolver for "which FY applies
+     * right now" across all modules (roster, profiles, dashboards, reports).
+     *
+     * Selection order (preserves the legacy behaviour found in
+     * LeaveProfileService::getCurrentFinancialYearId and
+     * LeaveRosterController::defaultFyId):
+     *   1. the latest-starting year that has not ended yet (end_date >= today)
+     *   2. otherwise the most recent year by id
+     *   3. 0 when no financial years exist (callers treat 0 as "unconfigured")
+     */
+    public function resolveCurrentFinancialYearId(): int
+    {
+        $db = \db();
+
+        $row = $db->fetchOne(
+            "SELECT id FROM financial_years WHERE end_date >= CURDATE() ORDER BY id DESC LIMIT 1"
+        );
+        if ($row) {
+            return (int) $row['id'];
+        }
+
+        $row = $db->fetchOne("SELECT id FROM financial_years ORDER BY id DESC LIMIT 1");
+        return $row ? (int) $row['id'] : 0;
+    }
+
+    /**
+     * Phase 5 §8: which financial year does a given date fall into?
+     * Answers "what financial year is this date?" from one implementation.
+     *
+     * @return int|null The financial year id, or null when no configured
+     *                  year covers the date.
+     */
+    public function yearIdForDate(string $date): ?int
+    {
+        $row = \db()->fetchOne(
+            "SELECT id FROM financial_years WHERE start_date <= ? AND end_date >= ? ORDER BY start_date DESC LIMIT 1",
+            'ss',
+            [$date, $date]
+        );
+        return $row ? (int) $row['id'] : null;
+    }
+
+    /**
      * Check if a new financial year can be created.
      * Blocks duplicate years, but allows creation in any month.
      */

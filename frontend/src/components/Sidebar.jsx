@@ -24,25 +24,44 @@ import {
   FileText,
   CalendarClock,
   FileBarChart2,
+  UserCheck,
 } from 'lucide-react'
 import Logo from './Logo'
+import { SETTINGS_VISIBILITY_PERMISSIONS, parsePermission } from '../config/pagePermissions'
 
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
-  const { user } = useAuth()
+  const { can, canAny } = useAuth()
   const location = useLocation()
   const [expandedParent, setExpandedParent] = useState(null)
 
-  const MANAGER_ROLES = ['sub_section_head', 'section_head', 'dept_head', 'managing_director', 'hr_manager', 'super_admin']
-  const role = (user?.role || '').toLowerCase()
-  const canManageLeave = MANAGER_ROLES.includes(role)
-
-  // Strategy & Performance visibility mirrors the backend OrgScope::canViewAny()
-  // viewer roles so the menu only appears for users who can actually use it.
-  const STRATEGY_VIEWER_ROLES = [
-    'super_admin', 'hr_manager', 'dept_head', 'section_head',
-    'sub_section_head', 'manager', 'managing_director', 'officer'
-  ]
-  const canViewStrategy = STRATEGY_VIEWER_ROLES.includes(role)
+  // Phase 2 (§11–12): sidebar visibility follows the CENTRALIZED effective
+  // permission set from /auth/user — not hardcoded role arrays. These were
+  // the exact hardcoded-role checks the audit flagged (super_admin,
+  // hr_manager, dept_head, section_head, sub_section_head, managing_director).
+  const canManageLeave = canAny([['leave', 'approve'], ['leave', 'manage']])
+  const canViewLeave = can('leave', 'view') || canManageLeave
+  const canViewStrategy = canAny([
+    ['strategic_plan', 'view'],
+    ['performance_contract', 'view'],
+    ['workplan', 'view'],
+    ['kpi', 'view'],
+    ['sectional_objective', 'view'],
+  ])
+  const canViewAttendance = can('attendance', 'view')
+  const canViewMeetings = can('meetings', 'view')
+  const canViewReports = can('reports', 'view')
+  // HR Admin group (migration 039): HR-restricted — hr_manager /
+  // managing_director / super_admin by default. Appraisal Cycles is keyed on
+  // the dedicated performance:cycles page permission (NOT performance:view,
+  // which gates the standalone Appraisal page that heads keep), so the group
+  // never renders for section/sub-section/department heads.
+  const canViewHrAdmin = canAny([
+    ['financial_year', 'view'],
+    ['performance', 'cycles'],
+    ['consent', 'view'],
+    ['holidays', 'view'],
+  ])
+  const canViewAppraisal = can('performance', 'view')
 
   // Auto-expand the correct parent based on the current route.
   useEffect(() => {
@@ -72,81 +91,132 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     setExpandedParent((prev) => (prev === name ? null : name))
   }
 
-  const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Employees', href: '/employees', icon: Users },
-    { name: 'Profile', href: '/profile', icon: User },
-    { name: 'Departments', href: '/departments', icon: Building2 },
+  // Navigation items are gated by the centralized effective permission set.
+  // Group headers render only when at least one visible child exists.
+  const allNavigation = [
+    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, visible: () => can('dashboard', 'view') },
+    { name: 'Employees', href: '/employees', icon: Users, visible: () => can('employees', 'view') },
+    { name: 'Profile', href: '/profile', icon: User, visible: () => can('profile', 'view') },
+    { name: 'Departments', href: '/departments', icon: Building2, visible: () => can('departments', 'view') },
     {
       name: 'HR Admin',
       icon: UserCog,
+      visible: () => canViewHrAdmin,
       submenu: [
-        { name: 'Financial Year', href: '/financial_year', icon: DollarSign },
-        { name: 'Appraisal Cycles', href: '/hr_admin/appraisal-cycles', icon: CalendarRange },
-        { name: 'Consent Management', href: '/consent_management', icon: ClipboardList },
-        { name: 'Holidays', href: '/holidays', icon: PartyPopper },
-      ]
+        { name: 'Financial Year', href: '/financial_year', icon: DollarSign, visible: () => can('financial_year', 'view') },
+        { name: 'Appraisal Cycles', href: '/hr_admin/appraisal-cycles', icon: CalendarRange, visible: () => can('performance', 'cycles') },
+        { name: 'Consent Management', href: '/consent_management', icon: ClipboardList, visible: () => can('consent', 'view') },
+        { name: 'Holidays', href: '/holidays', icon: PartyPopper, visible: () => can('holidays', 'view') },
+      ],
     },
     {
       name: 'Attendance',
       icon: CalendarCheck,
+      visible: () => canViewAttendance,
       submenu: [
-        { name: 'Attendance Dashboard', href: '/attendance/dashboard', icon: LayoutDashboard },
-        { name: 'Attendance Records', href: '/attendance', icon: CalendarCheck },
-      ]
+        { name: 'Attendance Dashboard', href: '/attendance/dashboard', icon: LayoutDashboard, visible: () => can('attendance', 'manage') },
+        { name: 'Attendance Records', href: '/attendance', icon: CalendarCheck, visible: () => can('attendance', 'view') },
+      ],
     },
     {
       name: 'Meetings',
       icon: CalendarDays,
+      visible: () => canViewMeetings,
       submenu: [
-        { name: 'Create Meeting', href: '/meetings/create', icon: Calendar },
-        { name: 'My Meetings', href: '/my-meetings', icon: CalendarCheck },
-        { name: 'Dashboard', href: '/meetings', icon: LayoutDashboard },
-      ]
+        { name: 'Create Meeting', href: '/meetings/create', icon: Calendar, visible: () => can('meetings', 'create') },
+        { name: 'My Meetings', href: '/my-meetings', icon: CalendarCheck, visible: () => can('meetings', 'view') },
+        // Org-wide dashboard: only hr_manager / managing_director / super_admin
+        // hold meetings:dashboard (migration 038).
+        { name: 'Dashboard', href: '/meetings', icon: LayoutDashboard, visible: () => can('meetings', 'dashboard') },
+      ],
     },
     canManageLeave
       ? {
           name: 'LEAVE MANAGEMENT',
           icon: Calendar,
+          visible: () => canViewLeave,
           submenu: [
-            { name: 'Leave Applications', href: '/leave', icon: Calendar },
-            { name: 'Manage Leave', href: '/leave/manage', icon: ClipboardList },
-            { name: 'Employee Leave Profile', href: '/leave/profile', icon: User },
+            { name: 'Leave Applications', href: '/leave', icon: Calendar, visible: () => can('leave', 'view') },
+            { name: 'Manage Leave', href: '/leave/manage', icon: ClipboardList, visible: () => can('leave', 'manage') },
+            // Leave Profile is available to EVERY role with leave:view (own
+            // record is auto-selected; data scope enforced server-side).
+            { name: 'Employee Leave Profile', href: '/leave/profile', icon: User, visible: () => can('leave', 'view') },
+            // Temporary Delegation / Acting Authority (§24): every role can
+            // VIEW its own delegations; create/approve are gated in-page and
+            // by the backend. Delegates see the authority they were granted.
+            { name: 'Delegations', href: '/delegations', icon: UserCheck, visible: () => can('delegations', 'view') },
           ],
         }
-      : { name: 'Leave', href: '/leave', icon: Calendar },
+      : {
+          name: 'Leave',
+          icon: Calendar,
+          visible: () => canViewLeave,
+          submenu: [
+            { name: 'Leave Applications', href: '/leave', icon: Calendar, visible: () => can('leave', 'view') },
+            // Self-service leave profile for all non-manager roles too.
+            { name: 'Leave Profile', href: '/leave/profile', icon: User, visible: () => can('leave', 'view') },
+            { name: 'Delegations', href: '/delegations', icon: UserCheck, visible: () => can('delegations', 'view') },
+          ],
+        },
     {
       name: 'Roster',
       icon: CalendarRange,
+      // Roster/Oversight show other employees' planned leave (§33): approver/HR
+      // only. Each child is independently permission-checked (§18).
+      // Phase 10: Roster is an HR-only module gated by the dedicated
+      // leave:roster permission (hr_manager + super_admin by default) -
+      // NOT leave:manage, which heads hold for scoped Leave Management.
+      visible: () => can('leave', 'roster'),
       submenu: [
-        { name: 'Leave Roster', href: '/leave/roster', icon: CalendarRange },
-        { name: 'Leave Oversight', href: '/leave/oversight', icon: BarChart3 },
-      ]
+        { name: 'Leave Roster', href: '/leave/roster', icon: CalendarRange, visible: () => can('leave', 'roster') },
+        { name: 'Leave Oversight', href: '/leave/oversight', icon: BarChart3, visible: () => can('leave', 'roster') },
+      ],
     },
-    { name: 'Appraisal', href: '/appraisal', icon: Star },
+    { name: 'Appraisal', href: '/appraisal', icon: Star, visible: () => canViewAppraisal },
     ...(canViewStrategy
       ? [{
           name: 'Strategy & Performance',
           icon: Target,
+          visible: () => canViewStrategy,
           submenu: [
-            { name: 'Strategic Plan', href: '/strategy/strategic-plan', icon: Target },
-            { name: 'Performance Contracts', href: '/strategy/performance-contracts', icon: FileText },
-            { name: 'Workplans', href: '/strategy/workplans', icon: ClipboardList },
-            { name: 'Performance Reports', href: '/strategy/reports', icon: BarChart3 },
+            { name: 'Strategic Plan', href: '/strategy/strategic-plan', icon: Target, visible: () => can('strategic_plan', 'view') },
+            { name: 'Performance Contracts', href: '/strategy/performance-contracts', icon: FileText, visible: () => can('performance_contract', 'view') },
+            { name: 'Workplans', href: '/strategy/workplans', icon: ClipboardList, visible: () => can('workplan', 'view') },
+            { name: 'Performance Reports', href: '/strategy/reports', icon: BarChart3, visible: () => can('strategic_plan', 'view') },
           ],
         }]
       : []),
     {
       name: 'Reports',
       icon: BarChart3,
+      visible: () => canViewReports,
       submenu: [
-        { name: 'Employee Reports', href: '/reports', icon: Users },
-        { name: 'Attendance Reports', href: '/reports/attendance', icon: CalendarCheck },
-        { name: 'Leave Reports', href: '/leave/reports', icon: FileBarChart2 },
-      ]
+        { name: 'Employee Reports', href: '/reports', icon: Users, visible: () => can('reports', 'view') },
+        { name: 'Attendance Reports', href: '/reports/attendance', icon: CalendarCheck, visible: () => can('reports', 'view') },
+        { name: 'Leave Reports', href: '/leave/reports', icon: FileBarChart2, visible: () => can('reports', 'view') },
+      ],
     },
-     { name: 'Settings', href: '/settings', icon: Settings },
+    {
+      name: 'Settings',
+      href: '/settings',
+      icon: Settings,
+      // §27/§29: the Settings entry follows the central registry — shown only
+      // when the user holds ANY settings-related permission (page shell or
+      // self-service notifications tab). Routes remain guarded independently.
+      visible: () => SETTINGS_VISIBILITY_PERMISSIONS.some((perm) => {
+        const [m, a] = parsePermission(perm)
+        return can(m, a)
+      }),
+    },
   ]
+
+  // Groups only render when a child is visible; drop fully-hidden groups.
+  const navigation = allNavigation
+    .filter((item) => (item.submenu ? item.submenu.some((sub) => sub.visible()) : item.visible()))
+    .map((item) => ({
+      ...item,
+      submenu: item.submenu ? item.submenu.filter((sub) => sub.visible()) : undefined,
+    }))
 
   return (
     <>

@@ -6,6 +6,9 @@ namespace App\Services;
 
 use App\Helpers\Database;
 use App\Helpers\Auth;
+use App\Services\Leave\InvalidLeaveTransitionException;
+use App\Services\Leave\LeaveTypePolicy;
+use App\Services\Leave\LeaveWorkflowRules;
 
 /**
  * LeaveApprovalService
@@ -25,12 +28,16 @@ class LeaveApprovalService
     private \mysqli $db;
     private LeaveWorkflowService $workflowService;
     private LeaveCalculationService $calculationService;
+    private DelegationService $delegationService;
+    private DelegateService $delegateService;
 
     public function __construct()
     {
         $this->db = Database::getInstance()->getConnection();
         $this->workflowService = new LeaveWorkflowService();
         $this->calculationService = new LeaveCalculationService();
+        $this->delegationService = DelegationService::getInstance();
+        $this->delegateService = new DelegateService();
     }
 
     /**
@@ -90,9 +97,9 @@ class LeaveApprovalService
 
         // Counts must reflect the true total, independent of the applied LIMIT,
         // otherwise a limit=1 counts request would always report 1/1/1.
-        $pendingTotal  = $this->countForApprover($role, $employeeId, $currentUser, 'pending');
-        $approvedTotal = $this->countForApprover($role, $employeeId, $currentUser, 'approved');
-        $rejectedTotal = $this->countForApprover($role, $employeeId, $currentUser, 'rejected');
+        $pendingTotal  = $this->countForApprover($role, $employeeId, $currentUser, 'pending', $userId);
+        $approvedTotal = $this->countForApprover($role, $employeeId, $currentUser, 'approved', $userId);
+        $rejectedTotal = $this->countForApprover($role, $employeeId, $currentUser, 'rejected', $userId);
 
         return [
             'success' => true,
@@ -132,6 +139,27 @@ class LeaveApprovalService
             return ['success' => false, 'message' => 'You are not authorised to approve this application'];
         }
 
+        // Resolve the ACTIVE DELEGATION covering this decision, if any, so the
+        // approval history records the delegation reference + the ORIGINAL
+        // approver (§19). Null when the natural role path authorized it.
+        $delegation = $this->activeDelegationFor($userId, $app);
+
+        // Phase 5 §6/§21: formal transition guard. Approve is only valid from
+        // a pending stage — repeat approvals (double-clicks, or the HR /
+        // super-admin bypass acting on an already-decided application) are
+        // blocked here so the balance ledger can NEVER be applied twice.
+        try {
+            LeaveWorkflowRules::assertCanDecide($app['status'], 'approve');
+        } catch (InvalidLeaveTransitionException $e) {
+            \logger()->warning('Leave decision blocked: invalid transition', [
+                'action' => 'approve',
+                'application_id' => $applicationId,
+                'current_status' => $app['status'],
+                'actor_user_id' => $userId,
+            ]);
+            return ['success' => false, 'message' => $e->getMessage(), 'code' => 'INVALID_TRANSITION'];
+        }
+
         $currentStatus = $app['status'];
         $nextStatus = $this->getNextStatus($currentStatus, $role, $app);
 
@@ -157,7 +185,7 @@ class LeaveApprovalService
             }
 
             // Log history
-            $this->logHistory($applicationId, $userId, 'approved', $app);
+            $this->logHistory($applicationId, $userId, 'approved', $app, null, $delegation);
 
             $this->db->commit();
 
@@ -170,7 +198,12 @@ class LeaveApprovalService
             ];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave approval failed', [
+                'application_id' => $applicationId,
+                'actor_user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to process the approval. Please try again.'];
         }
     }
 
@@ -195,25 +228,91 @@ class LeaveApprovalService
             return ['success' => false, 'message' => 'You are not authorised to reject this application'];
         }
 
+        // Resolve the ACTIVE DELEGATION covering this decision, if any, so the
+        // approval history records the delegation reference + the ORIGINAL
+        // approver (§19). Null when the natural role path authorized it.
+        $delegation = $this->activeDelegationFor($userId, $app);
+
+        // Phase 5 §6: reject is only valid from a pending stage. Rejecting an
+        // already-approved application would desynchronise the status from
+        // the balances deducted at approval time.
+        try {
+            LeaveWorkflowRules::assertCanDecide($app['status'], 'reject');
+        } catch (InvalidLeaveTransitionException $e) {
+            \logger()->warning('Leave decision blocked: invalid transition', [
+                'action' => 'reject',
+                'application_id' => $applicationId,
+                'current_status' => $app['status'],
+                'actor_user_id' => $userId,
+            ]);
+            return ['success' => false, 'message' => $e->getMessage(), 'code' => 'INVALID_TRANSITION'];
+        }
+
         $this->db->begin_transaction();
         try {
-            $stmt = $this->db->prepare("
-                UPDATE leave_applications
-                SET status = 'rejected', updated_at = NOW()
-                WHERE id = ?
-            ");
-            $stmt->bind_param('i', $applicationId);
+            // Persist the ACTUAL decider (the logged-in users.id) plus the reason so
+            // the manage tabs show "WHO rejected / why" instead of falling back to
+            // "System" / "—".  The generic approved_by pair always captures the
+            // rejecter (outranking any previous forwarding approver in
+            // resolveDeciders()); the per-stage *_approved_by column matching the
+            // current stage is ALSO filled for backward compatibility with legacy
+            // consumers (stages without a dedicated column such as bod_chair /
+            // manager simply rely on the generic pair).
+            $stageCols = [
+                'pending_subsection_head'   => ['subsection_head_approved_by',   'subsection_head_approved_at'],
+                'pending_section_head'      => ['section_head_approved_by',        'section_head_approved_at'],
+                'pending_dept_head'         => ['dept_head_approved_by',          'dept_head_approved_at'],
+                'pending_managing_director' => ['managing_director_approved_by', 'managing_director_approved_at'],
+                'pending_hr'                => ['hr_approved_by',                 'hr_approved_at'],
+                'pending_hr_manager'        => ['hr_approved_by',                 'hr_approved_at'],
+            ];
+            [$deciderCol, $deciderAtCol] = $stageCols[$app['status']] ?? ['approved_by', 'approved_at'];
+
+            $sets = [
+                "status = 'rejected'",
+                'rejection_reason = ?',
+            ];
+            $params = [mb_substr($reason, 0, 1000)];
+            $types = 's';
+
+            if ($deciderCol !== 'approved_by') {
+                // Stamp the generic decision pair as well so resolveDeciders()
+                // always sees the real rejecter (never a stale forwarding stage);
+                // stages without a dedicated column use the pair via the fallback.
+                $sets[] = 'approved_by = ?';
+                $sets[] = 'approved_at = NOW()';
+                $params[] = $userId;
+                $types .= 'i';
+            }
+
+            $sets[] = $deciderCol . ' = ?';
+            $params[] = $userId;
+            $types .= 'i';
+
+            if ($deciderAtCol !== null) {
+                $sets[] = $deciderAtCol . ' = NOW()';
+            }
+            $sets[] = 'updated_at = NOW()';
+
+            $sql = "UPDATE leave_applications SET " . implode(', ', $sets) . " WHERE id = ?";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bind_param($types . 'i', ...array_merge($params, [$applicationId]));
             $stmt->execute();
             $stmt->close();
 
-            $this->logHistory($applicationId, $userId, 'rejected', $app, $reason);
+            $this->logHistory($applicationId, $userId, 'rejected', $app, $reason, $delegation);
 
             $this->db->commit();
 
             return ['success' => true, 'message' => 'Leave application rejected', 'data' => ['status' => 'rejected']];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave rejection failed', [
+                'application_id' => $applicationId,
+                'actor_user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to process the rejection. Please try again.'];
         }
     }
 
@@ -232,6 +331,22 @@ class LeaveApprovalService
             return ['success' => false, 'message' => 'Application not found'];
         }
 
+        // Phase 5 §5/§6: invalidation is the formal REVERSAL path. Allowed
+        // from pending stages and from approved (which must restore the
+        // deducted balances); rejected/cancelled/invalidated are final.
+        $wasApproved = $app['status'] === LeaveWorkflowRules::STATUS_APPROVED;
+        try {
+            LeaveWorkflowRules::assertCanInvalidate($app['status']);
+        } catch (InvalidLeaveTransitionException $e) {
+            \logger()->warning('Leave decision blocked: invalid transition', [
+                'action' => 'invalidate',
+                'application_id' => $applicationId,
+                'current_status' => $app['status'],
+                'actor_user_id' => $userId,
+            ]);
+            return ['success' => false, 'message' => $e->getMessage(), 'code' => 'INVALID_TRANSITION'];
+        }
+
         $this->db->begin_transaction();
         try {
             $stmt = $this->db->prepare("
@@ -243,6 +358,12 @@ class LeaveApprovalService
             $stmt->execute();
             $stmt->close();
 
+            // Reversing a fully-approved application restores the balances
+            // that were deducted at approval time (mirror of the deduction).
+            if ($wasApproved) {
+                $this->reverseBalanceUpdates($applicationId, $app);
+            }
+
             $this->logHistory($applicationId, $userId, 'invalidated', $app, $reason);
 
             $this->db->commit();
@@ -250,7 +371,12 @@ class LeaveApprovalService
             return ['success' => true, 'message' => 'Leave application invalidated', 'data' => ['status' => 'invalidated']];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave invalidation failed', [
+                'application_id' => $applicationId,
+                'actor_user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to process the invalidation. Please try again.'];
         }
     }
 
@@ -275,12 +401,12 @@ class LeaveApprovalService
             return ['success' => false, 'message' => 'Only the applicant can cancel this application'];
         }
 
-        // Can only cancel if still in a pending state
-        $pendingStatuses = [
-            'pending_subsection_head', 'pending_section_head', 'pending_dept_head',
-            'pending_managing_director', 'pending_hr', 'pending_bod_chair', 'pending_manager',
-        ];
-        if (!in_array($app['status'], $pendingStatuses, true)) {
+        // Can only cancel if still in a pending state. The pending set comes
+        // from the single source of truth (LeaveWorkflowRules) — the previous
+        // hand-written list silently omitted the 'pending' (column default)
+        // and 'pending_hr_manager' stages, making those applications
+        // impossible to cancel.
+        if (!LeaveWorkflowRules::isPending($app['status'])) {
             return ['success' => false, 'message' => 'Only pending applications can be cancelled'];
         }
 
@@ -302,7 +428,12 @@ class LeaveApprovalService
             return ['success' => true, 'message' => 'Leave application cancelled', 'data' => ['status' => 'cancelled']];
         } catch (\Exception $e) {
             $this->db->rollback();
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            \logger()->error('Leave cancellation failed', [
+                'application_id' => $applicationId,
+                'actor_user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            return ['success' => false, 'message' => 'Unable to process the cancellation. Please try again.'];
         }
     }
 
@@ -395,9 +526,76 @@ class LeaveApprovalService
                 return $role === 'bod_chair' || $role === 'bod_chairman';
             case 'pending_manager':
                 return $role === 'manager';
-            default:
-                return false;
         }
+
+        // ── Temporary Delegation / Acting Authority ─────────────────────
+        // An active, HR-approved delegation whose delegated_role matches the
+        // role required by the current stage, whose snapshotted scope covers
+        // the applicant's unit, and whose delegate is not the applicant,
+        // authorizes this decision (spec §14/§18/§31).
+        try {
+            if ($this->delegationService->canActAsLeaveApprover($userId, $status, $app, $managers) !== null) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            error_log('[LeaveApprovalService] delegation check failed: ' . $e->getMessage());
+        }
+
+        // ── Applicant-picked duty-cover delegate (existing 012 feature) ──
+        // A delegate recorded on the application itself may decide ONLY when
+        // the natural approver at this stage is the applicant (self-
+        // application backup case). This was previously dead code — wired in
+        // as documented intent.
+        try {
+            if ($this->delegateService->canDelegateApprove((int) $app['id'], $userId)) {
+                return true;
+            }
+        } catch (\Throwable $e) {
+            error_log('[LeaveApprovalService] duty-cover delegate check failed: ' . $e->getMessage());
+        }
+
+        return false;
+    }
+
+    /**
+     * The active delegation (if any) that authorizes $userId to decide $app at
+     * its current stage. Only queried AFTER isAuthorisedApprover() succeeded,
+     * so the extra lookup runs for delegated decisions and natural approvers
+     * alike but stays cheap (per-request cached inside DelegationService).
+     */
+    private function activeDelegationFor(int $userId, array $app): ?array
+    {
+        try {
+            $managers = $this->workflowService->getManagers((int) $app['employee_id']);
+            return $this->delegationService->canActAsLeaveApprover(
+                $userId,
+                (string) ($app['status'] ?? ''),
+                $app,
+                $managers
+            );
+        } catch (\Throwable $e) {
+            error_log('[LeaveApprovalService] active delegation lookup failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Wrap an approver visibility clause with the delegated scopes of an
+     * active delegation (§17/§18): the delegate sees EXACTLY what the
+     * delegator would see, for as long as the delegation is active. When no
+     * delegation applies, the clause is returned unchanged.
+     */
+    private function wrapWithDelegatedScopes(string $where, int $userId): string
+    {
+        try {
+            $fragments = $this->delegationService->delegatedVisibilityFragments($userId);
+        } catch (\Throwable $e) {
+            return $where;
+        }
+        if ($fragments === []) {
+            return $where;
+        }
+        return '(' . $where . ' OR ' . implode(' OR ', $fragments) . ')';
     }
 
     /**
@@ -483,7 +681,7 @@ class LeaveApprovalService
         $annualDays = (float) ($app['annual_days'] ?? 0);
 
         // Claim a Day — credit annual leave
-        if ($leaveTypeId === 9) {
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_CLAIM_A_DAY) {
             $annualTypeId = $this->getAnnualLeaveTypeId();
             $daysToAdd = (float) ($primaryDays > 0 ? $primaryDays : ($app['days_requested'] ?? 0));
             $stmt = $this->db->prepare("
@@ -500,7 +698,7 @@ class LeaveApprovalService
         }
 
         // Leave of Absence — no balance deduction
-        if ($leaveTypeId === 8) {
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_ABSENCE) {
             return;
         }
 
@@ -531,16 +729,88 @@ class LeaveApprovalService
     }
 
     /**
+     * Restore balances when a fully-approved application is invalidated
+     * (Phase 5 §5 reversal). Exact mirror of applyBalanceUpdates() with
+     * inverted deltas; runs inside the caller's transaction.
+     */
+    private function reverseBalanceUpdates(int $applicationId, array $app): void
+    {
+        $leaveTypeId = (int) $app['leave_type_id'];
+        $employeeId = (int) $app['employee_id'];
+        $financialYearId = (int) $app['financial_year_id'];
+        $primaryDays = (float) ($app['primary_days'] ?? 0);
+        $annualDays = (float) ($app['annual_days'] ?? 0);
+
+        // Claim a Day — remove the annual leave credit
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_CLAIM_A_DAY) {
+            $annualTypeId = $this->getAnnualLeaveTypeId();
+            $daysToAdd = (float) ($primaryDays > 0 ? $primaryDays : ($app['days_requested'] ?? 0));
+            $stmt = $this->db->prepare("
+                UPDATE employee_leave_balances
+                SET allocated_days = allocated_days - ?,
+                    accumulated_days = accumulated_days - ?,
+                    remaining_days = remaining_days - ?
+                WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
+            ");
+            $stmt->bind_param('dddiii', $daysToAdd, $daysToAdd, $daysToAdd, $employeeId, $annualTypeId, $financialYearId);
+            $stmt->execute();
+            $stmt->close();
+            return;
+        }
+
+        // Leave of Absence — no balance movement to reverse
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_ABSENCE) {
+            return;
+        }
+
+        // Restore the primary balance deduction
+        if ($primaryDays > 0) {
+            $stmt = $this->db->prepare("
+                UPDATE employee_leave_balances
+                SET used_days = used_days - ?, remaining_days = remaining_days + ?
+                WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
+            ");
+            $stmt->bind_param('ddiii', $primaryDays, $primaryDays, $employeeId, $leaveTypeId, $financialYearId);
+            $stmt->execute();
+            $stmt->close();
+        }
+
+        // Restore the annual leave deduction
+        if ($annualDays > 0) {
+            $annualTypeId = $this->getAnnualLeaveTypeId();
+            $stmt = $this->db->prepare("
+                UPDATE employee_leave_balances
+                SET used_days = used_days - ?, remaining_days = remaining_days + ?
+                WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
+            ");
+            $stmt->bind_param('ddiii', $annualDays, $annualDays, $employeeId, $annualTypeId, $financialYearId);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+
+    /**
      * Log an approval history entry.
      */
-    private function logHistory(int $applicationId, int $userId, string $action, array $app, ?string $comment = null): void
+    private function logHistory(int $applicationId, int $userId, string $action, array $app, ?string $comment = null, ?array $delegation = null): void
     {
+        $delegationId   = $delegation !== null ? (int) $delegation['id'] : null;
+        $actedForUserId = $delegation !== null ? (int) $delegation['delegator_user_id'] : null;
+
         $comment = $comment ?? "Leave application {$action} by user {$userId}";
+        if ($delegationId !== null) {
+            // §19/§39/§40 — the history must show the ORIGINAL approver (the
+            // delegator) and the delegation reference next to the acting
+            // user; it must NOT read as if the delegate held the role.
+            $delegatorName = $this->delegationService->userName($actedForUserId ?? 0);
+            $comment .= ' — acting as delegate for ' . $delegatorName . ' (Delegation #' . $delegationId . ')';
+        }
+
         $stmt = $this->db->prepare("
-            INSERT INTO leave_history (leave_application_id, action, performed_by, comments, performed_at)
-            VALUES (?, ?, ?, ?, NOW())
+            INSERT INTO leave_history (leave_application_id, action, performed_by, delegation_id, acted_for_user_id, comments, performed_at)
+            VALUES (?, ?, ?, ?, ?, ?, NOW())
         ");
-        $stmt->bind_param('isis', $applicationId, $action, $userId, $comment);
+        $stmt->bind_param('isiiss', $applicationId, $action, $userId, $delegationId, $actedForUserId, $comment);
         $stmt->execute();
         $stmt->close();
     }
@@ -557,8 +827,13 @@ class LeaveApprovalService
 
         $pendingStatuses = "'pending_subsection_head','pending_section_head','pending_dept_head','pending_managing_director','pending_hr','pending_hr_manager','pending_bod_chair','pending_manager'";
 
-        // Build the WHERE clause based on role
-        $where = $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'pending');
+        // Build the WHERE clause based on role, then extend it with the
+        // delegated scopes of any active delegation (§17/§18) so the delegate
+        // is ROUTED the applications the delegator would see.
+        $where = $this->wrapWithDelegatedScopes(
+            $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'pending'),
+            $userId
+        );
 
         $sql = "
             SELECT la.*, lt.name as leave_type_name,
@@ -591,14 +866,23 @@ class LeaveApprovalService
             return [];
         }
 
-        $where = $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'approved');
+        $where = $this->wrapWithDelegatedScopes(
+            $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'approved'),
+            $userId
+        );
 
         $sql = "
             SELECT la.*, lt.name as leave_type_name,
-                   e.first_name, e.last_name, e.employee_id as emp_no
+                   e.first_name, e.last_name, e.employee_id as emp_no,
+                   lh_del.delegation_id AS delegate_delegation_id,
+                   lh_del.acted_for_user_id AS acted_for_user_id
             FROM leave_applications la
             JOIN leave_types lt ON la.leave_type_id = lt.id
             JOIN employees e ON la.employee_id = e.id
+            LEFT JOIN leave_history lh_del ON lh_del.id = (
+                SELECT MAX(x.id) FROM leave_history x
+                WHERE x.leave_application_id = la.id AND x.delegation_id IS NOT NULL
+            )
             WHERE la.status = 'approved'
               AND {$where}
             ORDER BY la.applied_at DESC, la.id DESC
@@ -624,14 +908,23 @@ class LeaveApprovalService
             return [];
         }
 
-        $where = $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'rejected');
+        $where = $this->wrapWithDelegatedScopes(
+            $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'rejected'),
+            $userId
+        );
 
         $sql = "
             SELECT la.*, lt.name as leave_type_name,
-                   e.first_name, e.last_name, e.employee_id as emp_no
+                   e.first_name, e.last_name, e.employee_id as emp_no,
+                   lh_del.delegation_id AS delegate_delegation_id,
+                   lh_del.acted_for_user_id AS acted_for_user_id
             FROM leave_applications la
             JOIN leave_types lt ON la.leave_type_id = lt.id
             JOIN employees e ON la.employee_id = e.id
+            LEFT JOIN leave_history lh_del ON lh_del.id = (
+                SELECT MAX(x.id) FROM leave_history x
+                WHERE x.leave_application_id = la.id AND x.delegation_id IS NOT NULL
+            )
             WHERE la.status = 'rejected'
               AND {$where}
             ORDER BY la.applied_at DESC, la.id DESC
@@ -768,10 +1061,13 @@ class LeaveApprovalService
             return [];
         }
 
-        // Decision-chain priority (final stage wins).  First column that
-        // resolves to a known person is the decider; its *_approved_at
-        // supplies the action date.
+        // Decision-chain priority (latest / final stage wins).  First column that
+        // resolves to a known person is the decider; its date column supplies the
+        // action date.  approved_by/approved_at is written by the current Phase 5+
+        // workflow on BOTH approve() and reject(), so it outranks the legacy per-stage
+        // columns below.
         $priority = [
+            ['id' => 'approved_by',                     'date' => 'approved_at'],
             ['id' => 'managing_director_approved_by', 'date' => 'managing_director_approved_at'],
             ['id' => 'hr_approved_by',               'date' => 'hr_approved_at'],
             ['id' => 'dept_head_approved_by',        'date' => 'dept_head_approved_at'],
@@ -819,7 +1115,30 @@ class LeaveApprovalService
             $stmt->close();
         }
 
-        // 3. For each row, pick the highest-priority populated stage.
+        // 3. Resolve "acting for" delegator names (leave_history rows written
+        //    by a delegate carry acted_for_user_id) so the UI shows e.g.
+        //    "Grace Wanjiru (acting for Samuel Mwangi)" — the delegate is the
+        //    truthful ACTING approver; the delegator stays the recorded owner.
+        $actingForIds = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['acted_for_user_id'] ?? 0);
+            if ($id > 0) {
+                $actingForIds[$id] = true;
+            }
+        }
+        $actingForNames = [];
+        if ($actingForIds) {
+            $list = implode(',', array_map(fn($v) => (int)$v, array_keys($actingForIds)));
+            $stmt = $this->db->prepare("SELECT id, first_name, last_name FROM users WHERE id IN ({$list})");
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($x = $result->fetch_assoc()) {
+                $actingForNames[(int)$x['id']] = trim(($x['first_name'] ?? '') . ' ' . ($x['last_name'] ?? ''));
+            }
+            $stmt->close();
+        }
+
+        // 4. For each row, pick the highest-priority populated stage.
         foreach ($rows as &$row) {
             $row['approver_name'] = 'System';
             $row['action_date']   = null;
@@ -839,6 +1158,11 @@ class LeaveApprovalService
                     break;
                 }
             }
+
+            $actingFor = (int) ($row['acted_for_user_id'] ?? 0);
+            if ($actingFor > 0 && isset($actingForNames[$actingFor]) && $actingForNames[$actingFor] !== '') {
+                $row['approver_name'] .= ' (acting for ' . $actingForNames[$actingFor] . ')';
+            }
         }
         unset($row);
 
@@ -851,7 +1175,7 @@ class LeaveApprovalService
      * Mirrors the SELECT queries' joins/where so the count always matches
      * the visible rows, and is independent of the pagination LIMIT.
      */
-    private function countForApprover(string $role, int $employeeId, array $currentUser, string $category): int
+    private function countForApprover(string $role, int $employeeId, array $currentUser, string $category, ?int $userId = null): int
     {
         $pendingStatuses = "'pending_subsection_head','pending_section_head','pending_dept_head','pending_managing_director','pending_hr','pending_hr_manager','pending_bod_chair','pending_manager'";
 
@@ -868,7 +1192,12 @@ class LeaveApprovalService
                 break;
         }
 
-        $where = $this->buildApproverWhereClause($role, $employeeId, $currentUser, $category);
+        // Same delegated-scope extension as the SELECT queries so the count
+        // always matches the visible rows (delegated queues included).
+        $where = $this->wrapWithDelegatedScopes(
+            $this->buildApproverWhereClause($role, $employeeId, $currentUser, $category),
+            (int) ($userId ?? 0)
+        );
 
         $sql = "
             SELECT COUNT(*) AS total

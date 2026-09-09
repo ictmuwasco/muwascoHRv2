@@ -45,6 +45,10 @@ uploads/*
 !uploads/.gitkeep
 
 # ── Diagnostic / scratch scripts (generated during development/probing) ──────
+# Laravel app (the new authoritative backend)
+!laravel/phpunit.xml
+!laravel/.env.example
+
 dump.js
 probe*.php
 probe_out.txt
@@ -64,13 +68,23 @@ hrdemo.zip
 hrmuwasco.zip
 
 # ── Composer ────────────────────────────────────────────────────────────────
-composer.lock
+# composer.lock IS committed: deterministic CI/production installs
+# (regenerate deliberately via `composer update`; see Phase 5 report §10)
 
 # ── PHPUnit ─────────────────────────────────────────────────────────────────
 .phpunit.result.cache
 phpunit.xml
+!laravel/phpunit.xml
 
 # ── OS Files ────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 *.log
+# Runtime security counters (rate limiting buckets)
+backend/storage/cache/rate-limits/
+
+# E2E / scratch probe artifacts (never commit runtime outputs)
+backend/storage/*.out
+backend/storage/*.err
+laravel/test_*.txt
+laravel/check_db.php

@@ -29,8 +29,7 @@ import {
 
 // ─── Constants ───────────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['hr_manager', 'super_admin', 'managing_director', 'dept_head', 'section_head', 'sub_section_head']
-const FULL_FILTER_ROLES = ['hr_manager', 'super_admin', 'managing_director']
+
 
 const STATUS_MAP = {
   approved: { label: 'Approved', variant: 'success' },
@@ -88,10 +87,11 @@ const getInitials = (emp) => {
 // ─── Main Component ──────────────────────────────────────────────────
 
 const LeaveProfile = () => {
-  const { user } = useAuth()
-  const role = (user?.role || '').toLowerCase()
-  const canViewAll = MANAGER_ROLES.includes(role)
-  const canUseAllFilters = FULL_FILTER_ROLES.includes(role)
+  const { user, can } = useAuth()
+  // Permission-driven visibility: only users with leave:manage can browse
+  // other employees' leave profiles (data scope enforced server-side by
+  // OrgScope). Officers/employees see their own record only.
+  const canViewAll = can('leave', 'manage')
 
   // ── State ──────────────────────────────────────────────────────────
   const [employees, setEmployees] = useState([])
@@ -734,8 +734,9 @@ const LeaveProfile = () => {
           </div>
         </div>
 
-        {/* Filters - only for HR/Admin/MD; employees only see FY selector above */}
-        {canUseAllFilters && (
+        {/* Filters - data scoped server-side; only leave:manage users get the
+            full filter set. Officers/employees see their own record only. */}
+        {canViewAll && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Status</label>

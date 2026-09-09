@@ -75,6 +75,26 @@ return [
                 ['key' => 'reject',     'label' => 'Reject',      'type' => 'action'],
                 ['key' => 'invalidate', 'label' => 'Invalidate',  'type' => 'action'],
                 ['key' => 'manage',     'label' => 'Manage',      'type' => 'action'],
+                // Phase 10: dedicated page permission for the Roster group
+                // (Leave Roster + Leave Oversight). Previously coupled to
+                // leave:manage, which heads need for scoped Leave Management
+                // but which must NOT imply Roster access (HR-only module).
+                ['key' => 'roster',     'label' => 'Leave Roster / Oversight', 'type' => 'page'],
+            ],
+        ],
+
+        'delegations' => [
+            'key'     => 'delegations',
+            'label'   => 'Delegations (Acting Authority)',
+            'actions' => [
+                // Temporary Delegation / Acting Authority module. view drives
+                // page visibility for everyone (self-service "My Delegations");
+                // create is supervisory-only; approve is the HR workflow;
+                // cancel is delegator/HR. Seeded by migration 040.
+                ['key' => 'view',    'label' => 'View',    'type' => 'page'],
+                ['key' => 'create',  'label' => 'Create',  'type' => 'action'],
+                ['key' => 'approve', 'label' => 'Approve', 'type' => 'action'],
+                ['key' => 'cancel',  'label' => 'Cancel',  'type' => 'action'],
             ],
         ],
 
@@ -134,6 +154,14 @@ return [
             'actions' => [
                 ['key' => 'view',   'label' => 'View',   'type' => 'page'],
                 ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+                // Phase 11 (migration 039): dedicated page permission for the
+                // HR Admin "Appraisal Cycles" page. Decoupled from
+                // performance:view (the standalone Appraisal page, which heads
+                // keep) and performance:manage (appraisal create/submit/
+                // approve, which heads also keep) so the HR Admin sidebar
+                // group can be restricted to hr_manager / managing_director /
+                // super_admin without breaking the heads' appraisal workflow.
+                ['key' => 'cycles', 'label' => 'Appraisal Cycles', 'type' => 'page'],
             ],
         ],
 
@@ -152,6 +180,27 @@ return [
             'actions' => [
                 ['key' => 'view',   'label' => 'View',   'type' => 'page'],
                 ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        // Settings module (Phase: Role/Page/Permission restriction enhancement).
+        // The whole /settings page is a protected module: 'view' gates the page
+        // shell, each remaining action gates ONE tab. Defaults (migration 038):
+        // every action is super_admin-only EXCEPT 'notifications', which is the
+        // self-service own-preferences tab seeded to all roles. All of these
+        // remain overridable per user via permission_overrides.
+        'settings' => [
+            'key'     => 'settings',
+            'label'   => 'Settings',
+            'actions' => [
+                ['key' => 'view',         'label' => 'Access Settings',        'type' => 'page'],
+                ['key' => 'profile',      'label' => 'Profile Tab',            'type' => 'action'],
+                ['key' => 'notifications','label' => 'Notifications Tab (self)','type' => 'action'],
+                ['key' => 'security',     'label' => 'Security Tab',           'type' => 'action'],
+                ['key' => 'audit',        'label' => 'Audit Tab',              'type' => 'action'],
+                ['key' => 'users',        'label' => 'User Management Tab',    'type' => 'action'],
+                ['key' => 'permissions',  'label' => 'Permissions Tab',        'type' => 'action'],
+                ['key' => 'monitoring',   'label' => 'System Monitor Tab',     'type' => 'action'],
             ],
         ],
 
@@ -180,7 +229,8 @@ return [
             'key'     => 'meetings',
             'label'   => 'Meetings',
             'actions' => [
-                ['key' => 'view',            'label' => 'View',             'type' => 'page'],
+                ['key' => 'view',            'label' => 'View (My Meetings)', 'type' => 'page'],
+                ['key' => 'dashboard',       'label' => 'Meetings Dashboard (org-wide)', 'type' => 'page'],
                 ['key' => 'create',          'label' => 'Create',           'type' => 'action'],
                 ['key' => 'edit',            'label' => 'Edit',             'type' => 'action'],
                 ['key' => 'delete',          'label' => 'Delete',           'type' => 'action'],
@@ -189,6 +239,20 @@ return [
                 ['key' => 'view_attendance', 'label' => 'View Attendance',  'type' => 'action'],
                 ['key' => 'export',          'label' => 'Export',           'type' => 'action'],
                 ['key' => 'confirm',         'label' => 'Confirm Attendance', 'type' => 'action'],
+
+                // Meeting minutes lifecycle. Migration 034_meeting_minutes.sql
+                // seeds role_permissions with these action keys and
+                // MeetingMinutesService resolves them (hybrid RBAC +
+                // per-user overrides) for minutes visibility and management —
+                // they were missing from the catalog (drift caught by
+                // PermissionCatalogTest::testRolePermissionRowsStayInsideTheCatalog).
+                // Route gates use meetings:view / meetings:manage; the
+                // minutes actions refine access inside the service.
+                ['key' => 'minutes.view',    'label' => 'View Minutes',    'type' => 'action'],
+                ['key' => 'minutes.create',  'label' => 'Create Minutes',  'type' => 'action'],
+                ['key' => 'minutes.update',  'label' => 'Update Minutes',  'type' => 'action'],
+                ['key' => 'minutes.publish', 'label' => 'Publish Minutes', 'type' => 'action'],
+                ['key' => 'minutes.amend',   'label' => 'Amend Minutes',   'type' => 'action'],
             ],
         ],
         'system_errors' => [
@@ -200,6 +264,111 @@ return [
                 ['key' => 'assign',         'label' => 'Assign Errors',       'type' => 'action'],
                 ['key' => 'resolve',        'label' => 'Resolve Errors',      'type' => 'action'],
                 ['key' => 'view_sensitive', 'label' => 'View Technical Data', 'type' => 'action'],
+            ],
+        ],
+
+        // Phase 2 consolidation: modules that were already enforced by
+        // controllers / route gates / seeds but were missing from the catalog
+        // (permission drift). Keeping them here makes the catalog the single
+        // source of truth and lets overrides + the sidebar use them safely.
+
+        'complaints' => [
+            'key'     => 'complaints',
+            'label'   => 'Complaints',
+            'actions' => [
+                // Triage/update of complaints (ComplaintController). Filing and
+                // listing one's OWN complaints is authenticated-only
+                // self-service (see config/authz_allowlist.php).
+                ['key' => 'view', 'label' => 'View / Triage', 'type' => 'page'],
+            ],
+        ],
+
+        'payroll' => [
+            'key'     => 'payroll',
+            'label'   => 'Payroll',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'notifications' => [
+            'key'     => 'notifications',
+            'label'   => 'Notifications Administration',
+            'actions' => [
+                // Admin/HR visibility into notification delivery.
+                // Personal notification preferences/push subscriptions are
+                // authenticated-only self-service.
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        // Strategy & Performance chain (seeded by migration 027):
+        // strategic_plan -> goals -> strategic_targets -> performance_contracts
+        // -> workplan_objectives -> kpis -> sectional objectives.
+        // Route gates mirror these; OrgScope narrows WHO within the permission.
+        'strategic_plan' => [
+            'key'     => 'strategic_plan',
+            'label'   => 'Strategic Plan',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'performance_contract' => [
+            'key'     => 'performance_contract',
+            'label'   => 'Performance Contracts',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'workplan' => [
+            'key'     => 'workplan',
+            'label'   => 'Workplans',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'kpi' => [
+            'key'     => 'kpi',
+            'label'   => 'KPIs',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        'sectional_objective' => [
+            'key'     => 'sectional_objective',
+            'label'   => 'Sectional Objectives',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+
+        // System administration (query log, error monitoring, etc.)
+        'system' => [
+            'key'     => 'system',
+            'label'   => 'System Administration',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
+            ],
+        ],
+        'security' => [
+            'key'     => 'security',
+            'label'   => 'Security Operations',
+            'actions' => [
+                ['key' => 'view',       'label' => 'View',       'type' => 'page'],
+                ['key' => 'investigate', 'label' => 'Investigate', 'type' => 'action'],
+                ['key' => 'manage',     'label' => 'Manage',     'type' => 'action'],
             ],
         ],
     ],

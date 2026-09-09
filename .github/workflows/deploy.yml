@@ -2,13 +2,17 @@ name: MUWASCO HR System - CI/CD Pipeline
 
 on:
   push:
-    branches: [main, develop]
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'phase*/**'
   pull_request:
     branches: [main]
 
 jobs:
   quality:
-    name: Code Quality Checks
+    name: Code Quality & Security Gates
     runs-on: ubuntu-latest
 
     steps:
@@ -26,16 +30,36 @@ jobs:
       - name: Install dependencies
         run: composer install --no-progress --no-interaction
 
+      # ---- BLOCKING GATE 1: PHP syntax validation (Phase 1 / F-01) -------
+      # A syntax-invalid PHP file must never reach production.
+      - name: PHP syntax check (php -l)
+        run: |
+          set -e
+          FILES=$(git ls-files '*.php')
+          test -n "$FILES"
+          echo "$FILES" | xargs -n 1 -P 4 php -l > /dev/null
+          echo "PHP syntax OK for $(echo "$FILES" | wc -l) files"
+
+      # ---- BLOCKING GATE 2: secret detection (Phase 1 / F-02) ------------
+      # Fails the build when real credentials are committed.
+      - name: Secret scan
+        run: php scripts/ci/secret_scan.php
+
+      # ---- Dependency vulnerabilities (advisory until triaged) -----------
+      - name: Dependency security audit
+        run: composer audit
+        continue-on-error: true
+
+      # ---- Style / static analysis ---------------------------------------
+      # Advisory for now: the codebase predates PSR12 enforcement. Promote to
+      # blocking in Phase 2 once existing findings are triaged. The blocking
+      # security gates above (syntax, secrets, tests) must never be masked.
       - name: Run PHP Code Sniffer
         run: vendor/bin/phpcs --standard=PSR12 --extensions=php backend/app/ --ignore=vendor/
+        continue-on-error: true
 
       - name: Run PHPStan
         run: vendor/bin/phpstan analyse backend/app/ --level=6 --no-progress
-
-      - name: Run security check
-        run: |
-          # Check for hardcoded credentials
-          ! grep -r "DB_PASSWORD\|JWT_SECRET\|MAIL_PASSWORD" --include="*.php" --exclude-dir=vendor --exclude="*.env*" .
         continue-on-error: true
 
   tests:
@@ -60,11 +84,13 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.2"
+          extensions: mbstring, mysqli, pdo_mysql
           tools: composer
 
       - name: Install dependencies
         run: composer install --no-progress --no-interaction
 
+      # ---- BLOCKING GATE 3: automated tests (uses phpunit.xml.dist) ------
       - name: Run PHPUnit tests
         run: vendor/bin/phpunit
         env:
@@ -73,6 +99,8 @@ jobs:
           DB_PASSWORD: root
           DB_HOST: 127.0.0.1
           APP_ENV: testing
+          JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+          JWT_ISSUER: muwasco-hr-system
 
   deploy-production:
     name: Deploy to Production

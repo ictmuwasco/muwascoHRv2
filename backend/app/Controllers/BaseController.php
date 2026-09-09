@@ -13,7 +13,14 @@ namespace App\Controllers;
 abstract class BaseController
 {
     /**
-     * Send a JSON response.
+          * Send a JSON response.
+     *
+     * Delegates to the standardized ApiResponse envelope so that every
+     * response — controller-level errors, middleware exits, and exceptions —
+     * shares the same shape: { success, message, data } | { success, message, error: {...} }.
+     *
+     * CORS is handled centrally by SecurityMiddleware::applyCorsHeaders()
+     * (called from api.php before routing), so it is not duplicated here.
      */
     protected function json(mixed $data, int $statusCode = 200): void
     {
@@ -25,63 +32,69 @@ abstract class BaseController
 
         http_response_code($statusCode);
         header('Content-Type: application/json; charset=utf-8');
-        
-        // CORS configuration - must be specific origin when using credentials
-        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-        $allowedOrigins = [
-            'http://localhost:5173',  // Vite dev server
-            'http://localhost:3000',  // Alternative dev port
-            'http://localhost',       // Production
-        ];
-        
-        if (in_array($origin, $allowedOrigins)) {
-            header('Access-Control-Allow-Origin: ' . $origin);
-            header('Access-Control-Allow-Credentials: true');
-        }
-        
-        header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-        header('Access-Control-Allow-Headers: Content-Type, Authorization');
-        
+        header('X-Content-Type-Options: nosniff');
+
         echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit();
     }
 
     /**
-     * Send a success response.
+     * Send a standardized success response.
+     *
+     * Delegates to ApiResponse (single envelope source of truth). The output
+     * buffer cleanup from json() is applied first for parity.
      */
     protected function success(mixed $data = null, string $message = 'Success', int $statusCode = 200): void
     {
-        $this->json([
-            'success' => true,
-            'message' => $message,
-            'data' => $data,
-        ], $statusCode);
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        \App\Helpers\ApiResponse::success($data, $message, $statusCode);
     }
 
     /**
-     * Send an error response.
+     * Send a standardized error response.
      *
-     * @param string $message Error message
-     * @param int $statusCode HTTP status code
-     * @param mixed $error Detailed error for logs (optional)
-     * @param array $meta Additional metadata (e.g., distance, code)
+     * @param string $message    Safe, user-facing error message.
+     * @param int    $statusCode HTTP status code.
+     * @param string $errorCode  Application error code (e.g. 'VALIDATION_ERROR').
+     * @param array  $details    Optional validation/field context.
      */
-    protected function error(string $message, int $statusCode = 400, mixed $error = null, array $meta = []): void
+    protected function error(string $message, int $statusCode = 400, string $errorCode = 'ERROR', array $details = []): void
     {
-        $response = [
-            'success' => false,
-            'message' => $message,
-        ];
-        
-        if ($error !== null) {
-            $response['error'] = $error;
+        while (ob_get_level() > 0) {
+            ob_end_clean();
         }
-        
-        if (!empty($meta)) {
-            $response['meta'] = $meta;
+        \App\Helpers\ApiResponse::error($message, $errorCode, $details, $statusCode);
+    }
+
+    /**
+     * Validate request data against a validator and return it.
+     *
+     * Request validation covers input SHAPE and FORMAT only (required fields,
+     * formats, lengths). Business rules — uniqueness, existence, balances,
+     * conflicts, permissions — are owned by the service layer and are
+     * intentionally NOT duplicated here.
+     *
+     * On failure, emits a standardized 422 envelope where `message` is the
+     * first validation error and `error.details` maps field => message:
+     * { success: false, message: "...", error: { code: "VALIDATION_ERROR", details: {...} } }
+     *
+     * @param \App\Validators\Contracts\ValidatorInterface $validator Validator to run.
+     * @param array|null $data                                        Payload to validate; defaults to the JSON request body.
+     * @return array The validated data, for fluent delegation to services.
+     */
+    protected function validateRequest(\App\Validators\Contracts\ValidatorInterface $validator, ?array $data = null): array
+    {
+        $data = $data ?? $this->getJsonBody();
+
+        if ($validator->fails($data)) {
+            $errors = $validator->errors();
+            $first = $errors ? (string) reset($errors) : 'Validation failed.';
+            $this->error($first, 422, 'VALIDATION_ERROR', $errors);
         }
-        
-        $this->json($response, $statusCode);
+
+        return $data;
     }
 
     /**

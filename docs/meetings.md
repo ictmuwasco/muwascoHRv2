@@ -82,3 +82,18 @@ Invitation, response and cancellation events emit notifications via the Notifica
 - QR check-in exists as an invitation type without a standalone kiosk flow.
 - Minutes permissions are module-level, not per-meeting delegates.
 
+
+## Phase 5 update (lifecycle + attendee security)
+
+- Lifecycle rules documented and enforced via `Services/MeetingRules`:
+  scheduled -> ongoing -> completed / cancelled; RSVP open only while
+  `scheduled|ongoing`; `attendance_status` validated against the migration-017
+  ENUM (present|absent|excused|not_marked) — invalid values now get 422.
+- SECURITY: RSVP no longer self-invites. `confirm`/`decline` require an existing
+  invitation row (previously the repository silently INSERTed an `hr_invited`
+  row for any caller, granting them minutes-access eligibility).
+- `PUT /meetings/{id}` validates `status` against the lifecycle whitelist (422).
+- Minutes visibility rule unchanged: published minutes are visible only to
+  `meetings:manage` holders or invitees with `response_status = accepted`.
+- Unit tests: `backend/tests/Unit/Services/Meetings/MeetingRulesTest.php`.
+
