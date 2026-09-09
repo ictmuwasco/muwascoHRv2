@@ -92,7 +92,11 @@ jobs:
 
       # ---- Run database migrations to create tables --------------------
       - name: Run database migrations
-        run: php backend/database/run_migration.php
+        run: |
+          # Disable foreign key checks during migration to allow tables to be created in any order
+          mysql -u root -proot -h 127.0.0.1 hr_test -e "SET FOREIGN_KEY_CHECKS=0;" 2>/dev/null || true
+          php backend/database/run_migration.php
+          mysql -u root -proot -h 127.0.0.1 hr_test -e "SET FOREIGN_KEY_CHECKS=1;" 2>/dev/null || true
         env:
           DB_DATABASE: hr_test
           DB_USERNAME: root
