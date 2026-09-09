@@ -22,6 +22,12 @@ class AuthService implements AuthServiceInterface
     private ?EmployeeRepositoryInterface $employeeRepository = null;
     private array $dependencies = [];
 
+    /** @var Hash|null Hash helper (declared to avoid PHP 8.2 dynamic-property deprecation) */
+    private ?Hash $hash = null;
+
+    /** @var Session|null Session helper (declared to avoid PHP 8.2 dynamic-property deprecation) */
+    private ?Session $session = null;
+
     public function __construct(
         UserRepositoryInterface $userRepository = null,
         Hash $hash = null,
@@ -64,30 +70,27 @@ class AuthService implements AuthServiceInterface
         // Business rule: Normalize email
         $email = strtolower(trim($email));
 
-        // DEBUG: Log login attempt
-        error_log("Login attempt for email: {$email}");
-
         // Business rule: Get user by email
         $user = $this->userRepository->findByEmail($email);
 
-        // DEBUG: Log if user was found
         if (!$user) {
-            error_log("User not found for email: {$email}");
+            // Consistent error: never reveal whether the account exists.
             throw new \InvalidArgumentException('Invalid credentials');
         }
 
-        error_log("User found: " . print_r($user['email'], true));
-
-        // Business rule: Check if user is active
-        if (!$this->isUserActive($user['id'])) {
-            error_log("User account is inactive: {$email}");
-            throw new \InvalidArgumentException('User account is inactive');
-        }
-
-        // Business rule: Validate password
-        $passwordValid = $this->hash->verify($password, $user['password']);
+        // Business rule: Validate password BEFORE the account-status check so
+        // every failure path is indistinguishable (no user enumeration).
+        $passwordValid = $this->hash->verify($password, (string) ($user['password'] ?? ''));
 
         if (!$passwordValid) {
+            throw new \InvalidArgumentException('Invalid credentials');
+        }
+
+        // Business rule: Check if user is active. The generic message keeps
+        // the response identical to a wrong-password failure; the detailed
+        // reason is only written to the security log.
+        if (!$this->isUserActive($user['id'])) {
+            \logger()->warning('auth.login_inactive_account', ['user_id' => (int) $user['id']]);
             throw new \InvalidArgumentException('Invalid credentials');
         }
 
@@ -108,7 +111,7 @@ class AuthService implements AuthServiceInterface
             $consentModel = new \App\Models\Consent();
             $consentAccepted = $consentModel->hasAcceptedVersion((int)$user['id'], \App\Models\Consent::CURRENT_VERSION);
         } catch (\Throwable $e) {
-            error_log("Consent check during login failed: " . $e->getMessage());
+            \logger()->warning('Consent check during login failed', ['error' => $e->getMessage()]);
         }
 
         // Business rule: Generate token (JWT or session)
@@ -240,15 +243,27 @@ class AuthService implements AuthServiceInterface
         }
 
         // Business rule: Validate password strength
-        if (strlen($newPassword) < 3) {
-            throw new \InvalidArgumentException('Password must be at least 3 characters');
+        if (strlen($newPassword) < 8) {
+            throw new \InvalidArgumentException('Password must be at least 8 characters');
         }
 
         // Business rule: Hash password
         $passwordHash = $this->hash->make($newPassword);
 
         // Business rule: Update password
-        return $this->userRepository->updatePassword($userId, $passwordHash);
+        $updated = $this->userRepository->updatePassword($userId, $passwordHash);
+
+        // Security: a password change invalidates every refresh token issued
+        // for this user, forcing re-authentication on other devices.
+        if ($updated) {
+            try {
+                \App\Helpers\JWT::getInstance()->revokeAllTokens($userId);
+            } catch (\Throwable $e) {
+                \logger()->warning('Refresh token revocation failed after password change', ['user_id' => $userId, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $updated;
     }
 
     public function resetPassword(string $email, string $newPassword): bool
@@ -263,15 +278,26 @@ class AuthService implements AuthServiceInterface
         }
 
         // Business rule: Validate password strength
-        if (strlen($newPassword) < 3) {
-            throw new \InvalidArgumentException('Password must be at least 3 characters');
+        if (strlen($newPassword) < 8) {
+            throw new \InvalidArgumentException('Password must be at least 8 characters');
         }
 
         // Business rule: Hash password
         $passwordHash = $this->hash->make($newPassword);
 
         // Business rule: Update password
-        return $this->userRepository->updatePassword($user['id'], $passwordHash);
+        $updated = $this->userRepository->updatePassword($user['id'], $passwordHash);
+
+        // Security: invalidate outstanding tokens after a reset.
+        if ($updated) {
+            try {
+                \App\Helpers\JWT::getInstance()->revokeAllTokens((int) $user['id']);
+            } catch (\Throwable $e) {
+                \logger()->warning('Refresh token revocation failed after password reset', ['user_id' => (int) $user['id'], 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $updated;
     }
 
     public function isUserActive(int $userId): bool
@@ -345,8 +371,23 @@ class AuthService implements AuthServiceInterface
 
     public function verifyToken(string $token): ?array
     {
-        // Business rule: Decode and verify JWT token
-        return null;
+        // Decode and cryptographically verify the token; only ACCESS tokens
+        // are accepted (refresh tokens are rejected).
+        $decoded = \App\Helpers\JWT::getInstance()->validateAccessToken($token);
+
+        if ($decoded === null) {
+            return null;
+        }
+
+        return [
+            'sub'         => (int) $decoded->sub,
+            'email'       => $decoded->email ?? '',
+            'role'        => $decoded->role ?? '',
+            'employee_id' => isset($decoded->employee_id) ? (int) $decoded->employee_id : null,
+            'iat'         => isset($decoded->iat) ? (int) $decoded->iat : null,
+            'exp'         => isset($decoded->exp) ? (int) $decoded->exp : null,
+            'type'        => 'access',
+        ];
     }
 
     /**

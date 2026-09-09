@@ -20,7 +20,7 @@ use App\Helpers\Auth;
  * Handles leave application API endpoints.
  * Uses new service layer for business logic.
  */
-class LeaveController
+class LeaveController extends BaseController
 {
     private LeaveApplicationService $applicationService;
     private LeaveApprovalService $approvalService;
@@ -51,7 +51,7 @@ class LeaveController
 
 
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
@@ -111,10 +111,7 @@ class LeaveController
             ];
         }, $leaves);
 
-        echo json_encode([
-            'success' => true,
-            'data' => $mapped,
-        ]);
+        \App\Helpers\ApiResponse::success($mapped);
     }
 
     /**
@@ -127,7 +124,7 @@ class LeaveController
         
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
@@ -138,10 +135,19 @@ class LeaveController
         $reason = trim($_POST['reason'] ?? '');
         $delegateEmpId = (int) ($_POST['delegate_emp_id'] ?? 0);
 
-        // Validate required fields
-        if (!$employeeId || !$leaveTypeId || !$startDate || !$endDate || !$delegateEmpId) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Missing required fields.']);
+        // Request validation: shape and format only. Business rules (leave
+        // balance, eligibility, overlapping applications) are enforced by
+        // LeaveApplicationService and intentionally not duplicated here.
+        $this->validateRequest(new \App\Validators\LeaveValidator(), [
+            'employee_id'   => $employeeId,
+            'leave_type_id' => $leaveTypeId,
+            'start_date'    => $startDate,
+            'end_date'      => $endDate,
+            'reason'        => $reason,
+        ]);
+
+        if (!$delegateEmpId) {
+            \App\Helpers\ApiResponse::error('A delegate employee is required.', 'VALIDATION_ERROR', ['delegate_emp_id' => 'Delegate is required.'], 422);
             return;
         }
 
@@ -168,19 +174,9 @@ class LeaveController
                 'Submitted leave application',
                 ['target_type' => 'LeaveApplication', 'target_id' => $result['id'] ?? ($result['application_id'] ?? null), 'metadata' => ['leave_type_id' => $leaveTypeId, 'start_date' => $startDate, 'end_date' => $endDate]]
             );
-            http_response_code(201);
-            echo json_encode([
-                'success' => true,
-                'message' => 'Leave application submitted successfully.',
-                'data' => $result,
-            ]);
+            \App\Helpers\ApiResponse::success($result, 'Leave application submitted successfully.', 201);
         } else {
-            http_response_code(400);
-            echo json_encode([
-                'success' => false,
-                'message' => $result['message'],
-                'eligible_days' => $result['eligible_days'] ?? 0,
-            ]);
+            \App\Helpers\ApiResponse::error($result['message'] ?? 'Unable to submit leave application.', 'BUSINESS_RULE', ['eligible_days' => $result['eligible_days'] ?? 0], 400);
         }
     }
 
@@ -194,16 +190,13 @@ class LeaveController
         
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         $documents = $this->documentService->getDocuments($applicationId);
         
-        echo json_encode([
-            'success' => true,
-            'data' => $documents,
-        ]);
+        \App\Helpers\ApiResponse::success($documents);
     }
 
     /**
@@ -216,7 +209,7 @@ class LeaveController
         
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
@@ -224,23 +217,25 @@ class LeaveController
         
         if (!$document) {
             http_response_code(404);
-            echo json_encode(['success' => false, 'message' => 'Document not found or access denied.']);
+            \App\Helpers\ApiResponse::error('Document not found or access denied.', 'NOT_FOUND', [], 404);
             return;
         }
 
         $filePath = $document['file_path'];
         if (!file_exists($filePath)) {
             http_response_code(404);
-            echo json_encode(['success' => false, 'message' => 'File not found on server.']);
+            \App\Helpers\ApiResponse::error('File not found on server.', 'NOT_FOUND', [], 404);
             return;
         }
 
-        // Serve file securely
-        header('Content-Type: ' . $document['mime_type']);
-        header('Content-Disposition: inline; filename="' . basename($document['original_filename']) . '"');
+        // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
+        // PDF/images (business in-browser preview), attachment otherwise.
+        \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+            $document['mime_type'] ?? 'application/octet-stream',
+            $document['original_filename'] ?? 'document'
+        );
         header('Content-Length: ' . filesize($filePath));
-        header('X-Content-Type-Options: nosniff');
-        
+
         readfile($filePath);
         exit;
     }
@@ -255,7 +250,7 @@ class LeaveController
         
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
@@ -266,14 +261,14 @@ class LeaveController
 
         if (!$employeeId || !$leaveTypeId || !$startDate || !$endDate) {
             http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Missing required fields.']);
+            \App\Helpers\ApiResponse::error('Missing required fields.', 'VALIDATION_ERROR', [], 422);
             return;
         }
 
         $leaveType = $this->getLeaveType($leaveTypeId);
         if (!$leaveType) {
             http_response_code(404);
-            echo json_encode(['success' => false, 'message' => 'Invalid leave type.']);
+            \App\Helpers\ApiResponse::error('Invalid leave type.', 'VALIDATION_ERROR', ['field' => 'leave_type_id'], 422);
             return;
         }
 
@@ -283,13 +278,7 @@ class LeaveController
         // Calculate deduction
         $deductionPlan = $this->calculationService->calculateDeductionFromBalances($employeeId, $leaveTypeId, $eligibleDays);
 
-        echo json_encode([
-            'success' => true,
-            'data' => [
-                'eligible_days' => $eligibleDays,
-                'deduction_plan' => $deductionPlan,
-            ],
-        ]);
+        \App\Helpers\ApiResponse::success(['eligible_days' => $eligibleDays, 'deduction_plan' => $deductionPlan]);
     }
 
     /**
@@ -302,16 +291,13 @@ class LeaveController
         
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         $delegates = $this->workflowService->getEligibleDelegates($userId);
         
-        echo json_encode([
-            'success' => true,
-            'data' => $delegates,
-        ]);
+        \App\Helpers\ApiResponse::success($delegates);
     }
 
     /**
@@ -324,23 +310,20 @@ class LeaveController
         
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         $employeeId = (int) ($_GET['employee_id'] ?? 0);
         if (!$employeeId) {
             http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'Missing employee_id']);
+            \App\Helpers\ApiResponse::error('Missing employee_id', 'VALIDATION_ERROR', [], 422);
             return;
         }
 
         $leaveTypes = $this->getLeaveTypesWithBalances($employeeId);
         
-        echo json_encode([
-            'success' => true,
-            'data' => $leaveTypes,
-        ]);
+        \App\Helpers\ApiResponse::success($leaveTypes);
     }
 
     /**
@@ -354,7 +337,7 @@ class LeaveController
             
             if (!$userId) {
                 http_response_code(401);
-                echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+                \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
                 return;
             }
 
@@ -363,7 +346,7 @@ class LeaveController
 
             if (!$employeeId) {
                 http_response_code(400);
-                echo json_encode(['success' => false, 'message' => 'Employee record not found']);
+                \App\Helpers\ApiResponse::error('Employee record not found', 'EMPLOYEE_NOT_FOUND', [], 400);
                 return;
             }
 
@@ -383,7 +366,7 @@ class LeaveController
 
             if (!$currentEmployee) {
                 http_response_code(403);
-                echo json_encode(['success' => false, 'message' => 'Access denied']);
+                \App\Helpers\ApiResponse::error('Access denied', 'ACCESS_DENIED', [], 403);
                 return;
             }
 
@@ -495,18 +478,11 @@ class LeaveController
                     ];
             }
 
-            echo json_encode([
-                'success' => true,
-                'data' => $employees,
-            ]);
+            \App\Helpers\ApiResponse::success($employees);
         } catch (\Exception $e) {
             error_log('Error in eligibleEmployeesAction: ' . $e->getMessage());
             http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Failed to load employees: ' . $e->getMessage(),
-                'data' => [],
-            ]);
+            \App\Helpers\ApiResponse::error('Failed to load employees.', 'INTERNAL_ERROR', [], 500);
         }
     }
 
@@ -521,7 +497,7 @@ class LeaveController
             
             if (!$userId) {
                 http_response_code(401);
-                echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+                \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
                 return;
             }
 
@@ -530,7 +506,7 @@ class LeaveController
 
             if (!$employeeId) {
                 http_response_code(400);
-                echo json_encode(['success' => false, 'message' => 'Employee record not found']);
+                \App\Helpers\ApiResponse::error('Employee record not found', 'EMPLOYEE_NOT_FOUND', [], 400);
                 return;
             }
 
@@ -550,7 +526,7 @@ class LeaveController
 
             if (!$currentEmployee) {
                 http_response_code(403);
-                echo json_encode(['success' => false, 'message' => 'Access denied']);
+                \App\Helpers\ApiResponse::error('Access denied', 'ACCESS_DENIED', [], 403);
                 return;
             }
 
@@ -714,18 +690,11 @@ class LeaveController
                     break;
             }
 
-            echo json_encode([
-                'success' => true,
-                'data' => $delegates,
-            ]);
+            \App\Helpers\ApiResponse::success($delegates);
         } catch (\Exception $e) {
             error_log('Error in eligibleDelegatesAction: ' . $e->getMessage());
             http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Failed to load delegates: ' . $e->getMessage(),
-                'data' => [],
-            ]);
+            \App\Helpers\ApiResponse::error('Failed to load delegates.', 'INTERNAL_ERROR', [], 500);
         }
     }
 
@@ -739,7 +708,7 @@ class LeaveController
 
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
@@ -752,9 +721,11 @@ class LeaveController
 
         $result = $this->approvalService->listForApprover($userId, $pagination);
 
-        $httpCode = ($result['success'] ?? false) ? 200 : 400;
-        http_response_code($httpCode);
-        echo json_encode($result);
+        if (($result['success'] ?? false)) {
+            \App\Helpers\ApiResponse::success($result['data'] ?? null, $result['message'] ?? 'Operation successful', 200);
+        } else {
+            \App\Helpers\ApiResponse::error($result['message'] ?? 'Request failed.', 'REQUEST_FAILED', isset($result['data']) && is_array($result['data']) ? $result['data'] : [], 400);
+        }
     }
 
     /**
@@ -767,7 +738,7 @@ class LeaveController
 
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
@@ -782,9 +753,17 @@ class LeaveController
             );
         }
 
-        $httpCode = ($result['success'] ?? false) ? 200 : 400;
-        http_response_code($httpCode);
-        echo json_encode($result);
+        if (($result['success'] ?? false)) {
+            \App\Helpers\ApiResponse::success($result['data'] ?? null, $result['message'] ?? 'Operation successful', 200);
+        } else {
+            $isTransition = ($result['code'] ?? null) === 'INVALID_TRANSITION';
+            \App\Helpers\ApiResponse::error(
+                $result['message'] ?? 'Request failed.',
+                $isTransition ? 'INVALID_TRANSITION' : 'REQUEST_FAILED',
+                isset($result['data']) && is_array($result['data']) ? $result['data'] : [],
+                $isTransition ? 409 : 400
+            );
+        }
     }
 
     /**
@@ -797,14 +776,14 @@ class LeaveController
 
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         $reason = $this->readReasonFromBody();
         if ($reason === '') {
             http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'A reason is required to reject leave.']);
+            \App\Helpers\ApiResponse::error('A reason is required to reject leave.', 'VALIDATION_ERROR', [], 400);
             return;
         }
 
@@ -819,9 +798,17 @@ class LeaveController
             );
         }
 
-        $httpCode = ($result['success'] ?? false) ? 200 : 400;
-        http_response_code($httpCode);
-        echo json_encode($result);
+        if (($result['success'] ?? false)) {
+            \App\Helpers\ApiResponse::success($result['data'] ?? null, $result['message'] ?? 'Operation successful', 200);
+        } else {
+            $isTransition = ($result['code'] ?? null) === 'INVALID_TRANSITION';
+            \App\Helpers\ApiResponse::error(
+                $result['message'] ?? 'Request failed.',
+                $isTransition ? 'INVALID_TRANSITION' : 'REQUEST_FAILED',
+                isset($result['data']) && is_array($result['data']) ? $result['data'] : [],
+                $isTransition ? 409 : 400
+            );
+        }
     }
 
     /**
@@ -834,14 +821,14 @@ class LeaveController
 
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         $reason = $this->readReasonFromBody();
         if ($reason === '') {
             http_response_code(400);
-            echo json_encode(['success' => false, 'message' => 'A reason is required to invalidate leave.']);
+            \App\Helpers\ApiResponse::error('A reason is required to invalidate leave.', 'VALIDATION_ERROR', [], 400);
             return;
         }
 
@@ -856,9 +843,17 @@ class LeaveController
             );
         }
 
-        $httpCode = ($result['success'] ?? false) ? 200 : 400;
-        http_response_code($httpCode);
-        echo json_encode($result);
+        if (($result['success'] ?? false)) {
+            \App\Helpers\ApiResponse::success($result['data'] ?? null, $result['message'] ?? 'Operation successful', 200);
+        } else {
+            $isTransition = ($result['code'] ?? null) === 'INVALID_TRANSITION';
+            \App\Helpers\ApiResponse::error(
+                $result['message'] ?? 'Request failed.',
+                $isTransition ? 'INVALID_TRANSITION' : 'REQUEST_FAILED',
+                isset($result['data']) && is_array($result['data']) ? $result['data'] : [],
+                $isTransition ? 409 : 400
+            );
+        }
     }
 
     /**
@@ -871,7 +866,7 @@ class LeaveController
 
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
@@ -886,9 +881,17 @@ class LeaveController
             );
         }
 
-        $httpCode = ($result['success'] ?? false) ? 200 : 400;
-        http_response_code($httpCode);
-        echo json_encode($result);
+        if (($result['success'] ?? false)) {
+            \App\Helpers\ApiResponse::success($result['data'] ?? null, $result['message'] ?? 'Operation successful', 200);
+        } else {
+            $isTransition = ($result['code'] ?? null) === 'INVALID_TRANSITION';
+            \App\Helpers\ApiResponse::error(
+                $result['message'] ?? 'Request failed.',
+                $isTransition ? 'INVALID_TRANSITION' : 'REQUEST_FAILED',
+                isset($result['data']) && is_array($result['data']) ? $result['data'] : [],
+                $isTransition ? 409 : 400
+            );
+        }
     }
 
     /**
@@ -975,6 +978,9 @@ class LeaveController
                 'counts_weekends'      => (int) $row['counts_weekends'],
                 'count_holidays'       => (int) $row['count_holidays'],
                 'deducted_from_annual' => (int) $row['deducted_from_annual'],
+                // Backend-owned leave-type business rules (LeaveTypePolicy),
+                // delivered so the frontend can mirror them for UX only.
+                'policy'               => \App\Services\Leave\LeaveTypePolicy::flags((int) $row['leave_type_id']),
             ];
         }
 
@@ -1013,7 +1019,7 @@ class LeaveController
         $userId = Auth::getInstance()->id();
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
@@ -1034,10 +1040,7 @@ class LeaveController
             });
         }
 
-        echo json_encode([
-            'success' => true,
-            'data' => array_values($employees),
-        ]);
+        \App\Helpers\ApiResponse::success(array_values($employees));
     }
 
     /**
@@ -1057,14 +1060,14 @@ class LeaveController
             $userId = Auth::getInstance()->id();
             if (!$userId) {
                 http_response_code(401);
-                echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+                \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
                 return;
             }
 
             // Authorisation check — backend must verify
             if (!$this->profileService->canViewProfile($employeeId)) {
                 http_response_code(403);
-                echo json_encode(['success' => false, 'message' => 'Access denied — you are not authorised to view this employee\'s leave profile']);
+                \App\Helpers\ApiResponse::error("Access denied — you are not authorised to view this employee's leave profile", 'ACCESS_DENIED', [], 403);
                 return;
             }
 
@@ -1090,24 +1093,14 @@ class LeaveController
             $profile = $this->profileService->getFullProfile($employeeId, $financialYearId, $filters);
 
             if (!$profile['success']) {
-                http_response_code(404);
-                echo json_encode($profile);
-                return;
+                \App\Helpers\ApiResponse::error($profile['message'] ?? 'Profile not found.', 'NOT_FOUND', [], 404);
             }
 
-            echo json_encode([
-                'success' => true,
-                'data' => $profile,
-            ]);
+            \App\Helpers\ApiResponse::success($profile);
         } catch (\Throwable $e) {
             error_log('LeaveProfile profileAction error: ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine());
             http_response_code(500);
-            echo json_encode([
-                'success' => false,
-                'message' => 'Internal server error: ' . $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-            ]);
+            \App\Helpers\ApiResponse::error('Internal server error.', 'INTERNAL_ERROR', [], 500);
         }
     }
 
@@ -1120,13 +1113,13 @@ class LeaveController
         $userId = Auth::getInstance()->id();
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         if (!$this->profileService->canViewProfile($employeeId)) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            \App\Helpers\ApiResponse::error('Access denied', 'ACCESS_DENIED', [], 403);
             return;
         }
 
@@ -1137,10 +1130,7 @@ class LeaveController
 
         $balances = $this->profileService->getLeaveBalances($employeeId, $financialYearId);
 
-        echo json_encode([
-            'success' => true,
-            'data' => $balances,
-        ]);
+        \App\Helpers\ApiResponse::success($balances);
     }
 
     /**
@@ -1152,13 +1142,13 @@ class LeaveController
         $userId = Auth::getInstance()->id();
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         if (!$this->profileService->canViewProfile($employeeId)) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            \App\Helpers\ApiResponse::error('Access denied', 'ACCESS_DENIED', [], 403);
             return;
         }
 
@@ -1183,10 +1173,7 @@ class LeaveController
 
         $applications = $this->profileService->getLeaveApplications($employeeId, $financialYearId, $filters);
 
-        echo json_encode([
-            'success' => true,
-            'data' => $applications,
-        ]);
+        \App\Helpers\ApiResponse::success($applications);
     }
 
     /**
@@ -1198,13 +1185,13 @@ class LeaveController
         $userId = Auth::getInstance()->id();
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         if (!$this->profileService->canViewProfile($employeeId)) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            \App\Helpers\ApiResponse::error('Access denied', 'ACCESS_DENIED', [], 403);
             return;
         }
 
@@ -1215,10 +1202,7 @@ class LeaveController
 
         $timeline = $this->profileService->buildBalanceTimeline($employeeId, $financialYearId);
 
-        echo json_encode([
-            'success' => true,
-            'data' => $timeline,
-        ]);
+        \App\Helpers\ApiResponse::success($timeline);
     }
 
     /**
@@ -1230,13 +1214,13 @@ class LeaveController
         $userId = Auth::getInstance()->id();
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         if (!$this->profileService->canViewProfile($employeeId)) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            \App\Helpers\ApiResponse::error('Access denied', 'ACCESS_DENIED', [], 403);
             return;
         }
 
@@ -1247,10 +1231,7 @@ class LeaveController
 
         $summary = $this->profileService->getSummaryStatistics($employeeId, $financialYearId);
 
-        echo json_encode([
-            'success' => true,
-            'data' => $summary,
-        ]);
+        \App\Helpers\ApiResponse::success($summary);
     }
 
     /**
@@ -1262,13 +1243,13 @@ class LeaveController
         $userId = Auth::getInstance()->id();
         if (!$userId) {
             http_response_code(401);
-            echo json_encode(['success' => false, 'message' => 'Unauthenticated']);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
             return;
         }
 
         if (!$this->profileService->canViewProfile($employeeId)) {
             http_response_code(403);
-            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            \App\Helpers\ApiResponse::error('Access denied', 'ACCESS_DENIED', [], 403);
             return;
         }
 
@@ -1294,9 +1275,7 @@ class LeaveController
         $exportData = $this->profileService->getExportData($employeeId, $financialYearId, $filters);
 
         if (!$exportData['success']) {
-            http_response_code(404);
-            echo json_encode($exportData);
-            return;
+            \App\Helpers\ApiResponse::error($exportData['message'] ?? 'Export data not found.', 'NOT_FOUND', [], 404);
         }
 
         // If format=csv, output as CSV
@@ -1306,10 +1285,7 @@ class LeaveController
             return;
         }
 
-        echo json_encode([
-            'success' => true,
-            'data' => $exportData,
-        ]);
+        \App\Helpers\ApiResponse::success($exportData);
     }
 
     /**

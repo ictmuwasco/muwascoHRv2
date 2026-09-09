@@ -13,7 +13,10 @@ use App\Helpers\Database;
  * (`appraisal_cycles`) that every workplan level attaches its activities to,
  * mirroring the legacy quarter checkboxes (Q1..Q4 per financial year).
  *
- * Read & write: HR managers and super admins only (HR Admin module).
+ * Read: any authenticated user (minimal read-only quarter list for the
+ * workplan pickers; full management payload for performance:cycles holders).
+ * Write: the dedicated performance:cycles page permission (migration 039) —
+ * hr_manager / managing_director / super_admin only (HR Admin module).
  */
 class AppraisalCycleController extends BaseController
 {
@@ -34,10 +37,15 @@ class AppraisalCycleController extends BaseController
         }
     }
 
+    /**
+     * Centralized permission check (migration 039): the dedicated
+     * performance:cycles page permission replaces the former hardcoded
+     * hr_manager/super_admin role array — managing_director holds the
+     * permission by default and super_admin is allowed by engine policy.
+     */
     private function canManage(): bool
     {
-        $role = (string) ($_SESSION['user_role'] ?? '');
-        return in_array($role, ['hr_manager', 'super_admin'], true);
+        return $this->hasPermission('performance', 'cycles');
     }
 
     /** Loads a financial year row by id, or null. */
@@ -153,7 +161,7 @@ class AppraisalCycleController extends BaseController
     {
         $this->authenticate();
         if (!$this->canManage()) {
-            $this->forbidden('Only HR managers and super admins can manage appraisal cycles.');
+            $this->forbidden('You do not have permission to manage appraisal cycles.');
         }
 
         $data      = $this->getJsonBody();
@@ -217,7 +225,7 @@ class AppraisalCycleController extends BaseController
     {
         $this->authenticate();
         if (!$this->canManage()) {
-            $this->forbidden('Only HR managers and super admins can manage appraisal cycles.');
+            $this->forbidden('You do not have permission to manage appraisal cycles.');
         }
 
         $existing = $this->db->query('SELECT id, start_date, end_date, financial_year_id FROM appraisal_cycles WHERE id = ' . (int) $id . ' LIMIT 1');
@@ -334,7 +342,7 @@ class AppraisalCycleController extends BaseController
     {
         $this->authenticate();
         if (!$this->canManage()) {
-            $this->forbidden('Only HR managers and super admins can manage appraisal cycles.');
+            $this->forbidden('You do not have permission to manage appraisal cycles.');
         }
 
         // Guardrail 1: the cycle must exist before anything else.

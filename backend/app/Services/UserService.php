@@ -21,6 +21,27 @@ class UserService implements UserServiceInterface
     private ?EmployeeRepositoryInterface $employeeRepository = null;
     private array $dependencies = [];
 
+    /**
+     * Fields a client may set on a user account (Phase 7, P7-8 mass-assignment
+     * guard). The repository builds INSERT/UPDATE column lists from array
+     * keys, so an unfiltered payload would let a caller write arbitrary
+     * users-table columns — e.g. session_token, login_identifier or
+     * last_activity (authentication state). Server-owned columns are set
+     * exclusively by dedicated code paths.
+     */
+    private const USER_WRITABLE_FIELDS = [
+        'email', 'first_name', 'last_name', 'surname', 'gender',
+        'designation', 'phone', 'address', 'employee_id', 'role', 'password',
+    ];
+
+    /**
+     * Keep only client-writable fields, silently dropping anything else.
+     */
+    private function filterWritable(array $data, array $allowed): array
+    {
+        return array_intersect_key($data, array_flip($allowed));
+    }
+
     public function setUserRepository(UserRepositoryInterface $repository): void
     {
         $this->userRepository = $repository;
@@ -53,6 +74,11 @@ class UserService implements UserServiceInterface
 
     public function createUser(array $data): int
     {
+        // Phase 7 (P7-8): mass-assignment guard. is_active is create-only —
+        // status changes on existing accounts must go through the audited
+        // toggle-status endpoint (which also revokes tokens on deactivation).
+        $data = $this->filterWritable($data, array_merge(self::USER_WRITABLE_FIELDS, ['is_active']));
+
         // Business rule: Validate user data
         $errors = $this->validateUserData($data);
         if (!empty($errors)) {
@@ -82,6 +108,11 @@ class UserService implements UserServiceInterface
             $data['role'] = 'employee';
         }
 
+        // Business rule: role must be a valid catalog role, and creating an
+        // account WITH the super_admin role requires a super_admin actor.
+        $this->assertValidRole((string) $data['role']);
+        $this->assertAuthorizedRoleChange('', (string) $data['role']);
+
         // Business rule: Set default status if not provided
         if (empty($data['is_active'])) {
             $data['is_active'] = 1;
@@ -96,6 +127,11 @@ class UserService implements UserServiceInterface
 
     public function updateUser(int $id, array $data): bool
     {
+        // Phase 7 (P7-8): mass-assignment guard. is_active is NOT
+        // client-writable on update — account status changes must go through
+        // PUT /users/{id}/toggle-status (audited, revokes tokens on disable).
+        $data = $this->filterWritable($data, self::USER_WRITABLE_FIELDS);
+
         // Business rule: Check if user exists
         $existingUser = $this->userRepository->findById($id);
         if (!$existingUser) {
@@ -114,6 +150,17 @@ class UserService implements UserServiceInterface
             if (!$employee) {
                 throw new \InvalidArgumentException('Employee not found');
             }
+        }
+
+        // Business rule: role changes must be valid AND authorized (privilege
+        // escalation guard). A role in the payload means the caller is trying
+        // to change the account's role.
+        if (array_key_exists('role', $data)) {
+            $this->assertValidRole((string) ($data['role'] ?? ''));
+            $this->assertAuthorizedRoleChange(
+                (string) ($existingUser['role'] ?? ''),
+                (string) $data['role']
+            );
         }
 
         // Business rule: Normalize email
@@ -198,13 +245,78 @@ class UserService implements UserServiceInterface
             throw new \InvalidArgumentException('User not found');
         }
 
-        // Business rule: Validate role
-        $validRoles = ['admin', 'hr', 'manager', 'employee'];
-        if (!in_array($role, $validRoles)) {
-            throw new \InvalidArgumentException('Invalid user role');
-        }
+        // Business rule: role must be a valid catalog role and the change
+        // must be authorized (privilege escalation guard).
+        $this->assertValidRole($role);
+        $this->assertAuthorizedRoleChange((string) ($user['role'] ?? ''), $role);
 
         return $this->userRepository->updateRole($userId, $role);
+    }
+
+    /**
+     * Validate a role against the permission catalog ("roles" list).
+     * The catalog is the single source of truth for valid roles; legacy
+     * hand-maintained lists here drifted from it ('hr' never existed).
+     */
+    private function assertValidRole(string $role): void
+    {
+        $roles = $this->catalogRoles();
+        if (!in_array($role, $roles, true)) {
+            throw new \InvalidArgumentException('Invalid user role');
+        }
+    }
+
+    /**
+     * Privilege escalation guard for role assignment.
+     *
+     * Only a Super Administrator may assign or hold the super_admin role —
+     * this prevents a holder of the generic users:edit permission from
+     * elevating themselves or anyone else to full system control. The acting
+     * identity is taken from the authenticated session (never the payload).
+     */
+    private function assertAuthorizedRoleChange(string $currentRole, string $newRole): void
+    {
+        if ($newRole !== 'super_admin' && $newRole !== 'admin') {
+            return;
+        }
+
+        $actingUserId = (int) ($_SESSION['user_id'] ?? 0);
+        $actingRole = (string) ($_SESSION['user_role'] ?? '');
+
+        // Re-resolve from the database when the session does not identify the
+        // actor (e.g. CLI/worker contexts) — never trust a payload role.
+        if ($actingRole === '' && $actingUserId > 0) {
+            try {
+                $acting = db()->fetchOne('SELECT role FROM users WHERE id = ?', 'i', [$actingUserId]);
+                $actingRole = (string) ($acting['role'] ?? '');
+            } catch (\Throwable $e) {
+                $actingRole = '';
+            }
+        }
+
+        if ($actingRole === 'admin' || $actingRole === 'super_admin') {
+            return;
+        }
+
+        throw new \InvalidArgumentException('Only a Super Administrator can assign the Super Admin role');
+    }
+
+    /**
+     * Valid roles from the permission catalog.
+     *
+     * @return string[]
+     */
+    private function catalogRoles(): array
+    {
+        $catalog = null;
+        if (function_exists('config')) {
+            $catalog = config('permissions');
+        }
+        if (!is_array($catalog) || empty($catalog['roles'])) {
+            $path = __DIR__ . '/../../config/permissions.php';
+            $catalog = is_file($path) ? require $path : ['roles' => []];
+        }
+        return is_array($catalog['roles'] ?? null) ? $catalog['roles'] : [];
     }
 
     public function searchUsers(string $query, array $filters = [], int $page = 1, int $limit = 30): array

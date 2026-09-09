@@ -344,11 +344,14 @@ class LeaveAttachmentService
             ]
         );
 
-        // Send file
-        header('Content-Type: ' . $attachment['mime_type']);
-        header('Content-Disposition: attachment; filename="' . basename($attachment['file_name']) . '"');
+        // Send file — Phase 7 (P7-7): sandbox CSP + nosniff + no-store,
+        // forced download to preserve existing leave-attachment behavior.
+        \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+            $attachment['mime_type'] ?? 'application/octet-stream',
+            $attachment['file_name'] ?? 'attachment',
+            true
+        );
         header('Content-Length: ' . $attachment['file_size']);
-        header('Cache-Control: private');
         readfile($filePath);
         exit;
     }

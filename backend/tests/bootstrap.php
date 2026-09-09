@@ -38,6 +38,21 @@ class TestDatabase {
         static $instance = null;
         if ($instance === null) {
             $instance = new class {
+                /**
+                 * Lazily-connected REAL database handle. Engine-backed tests
+                 * (RBAC / AuthorizationService) call db()->getConnection()
+                 * and MUST hit the configured test database, while the inert
+                 * fetchAll/fetchOne/... stubs keep pure-unit tests hermetic.
+                 */
+                private $realConnection = null;
+
+                public function getConnection() {
+                    if ($this->realConnection === null) {
+                        $this->realConnection = \App\Helpers\Database::getInstance()->getConnection();
+                    }
+                    return $this->realConnection;
+                }
+
                 public function fetchAll($sql, $params = []) {
                     return [];
                 }
@@ -93,14 +108,18 @@ if (!function_exists('env')) {
 
 if (!function_exists('config')) {
     function config(string $key, mixed $default = null): mixed {
-        static $config = [
+        static $config = null;
+        if ($config === null) {
+            $config = [
+            // Env-aware test DB config (falls back to the historical defaults,
+            // so environments without DB_* env vars behave exactly as before).
             'database.connections.mysql' => [
-                'host' => 'localhost',
-                'username' => 'root',
-                'password' => '',
-                'database' => 'muwasco',
-                'port' => 3306,
-                'charset' => 'utf8mb4'
+                'host'     => env('DB_HOST', 'localhost'),
+                'username' => env('DB_USERNAME', 'root'),
+                'password' => env('DB_PASSWORD', ''),
+                'database' => env('DB_DATABASE', 'muwasco'),
+                'port'     => (int) env('DB_PORT', 3306),
+                'charset'  => 'utf8mb4'
             ],
             // Observability layer - mirrors backend/config/observability.php
             'observability.enabled'                     => true,
@@ -149,8 +168,8 @@ if (!function_exists('config')) {
             'observability.retention.performance_days'           => 30,
             'observability.retention.client_days'                => 30,
             'observability.retention.resolved_group_months'      => 12,
-        ];
-        
+            ];
+        }
         return $config[$key] ?? $default;
     }
 }

@@ -20,18 +20,18 @@ export const leaveService = {
     Object.entries(data).forEach(([k, v]) => {
       if (v !== undefined && v !== null) form.append(k, v as any);
     });
-    const response = await apiClient.post<ApiResponse<LeaveRequest>>('/leave/applications', form);
+    const response = await apiClient.post<ApiResponse<LeaveRequest>>('/leave/apply', form);
     return response.data;
   },
 
   approve: async (id: number): Promise<ApiResponse<any>> => {
-    const response = await apiClient.put<ApiResponse<any>>(`/leave/applications/${id}/approve`);
+    const response = await apiClient.put<ApiResponse<any>>(`/leave/${id}/approve`);
     return response.data;
   },
 
   reject: async (id: number, reason: string): Promise<ApiResponse<any>> => {
     const response = await apiClient.put<ApiResponse<any>>(
-      `/leave/applications/${id}/reject`,
+      `/leave/${id}/reject`,
       { reason }
     );
     return response.data;
@@ -39,14 +39,14 @@ export const leaveService = {
 
   invalidate: async (id: number, reason: string): Promise<ApiResponse<any>> => {
     const response = await apiClient.put<ApiResponse<any>>(
-      `/leave/applications/${id}/invalidate`,
+      `/leave/${id}/invalidate`,
       { reason }
     );
     return response.data;
   },
 
   cancel: async (id: number): Promise<ApiResponse<any>> => {
-    const response = await apiClient.put<ApiResponse<any>>(`/leave/applications/${id}/cancel`);
+    const response = await apiClient.put<ApiResponse<any>>(`/leave/${id}/cancel`);
     return response.data;
   },
 

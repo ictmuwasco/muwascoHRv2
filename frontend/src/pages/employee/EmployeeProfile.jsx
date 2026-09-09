@@ -8,8 +8,9 @@ import Input from '../../components/ui/Input'
 import EmployeeTabs from '../../components/EmployeeTabs'
 import { ArrowLeft, Mail, Phone, MapPin, Briefcase, Building2, FileText, Users, Heart, Download, Save, Loader2, Plus, Trash2, Upload, Camera } from 'lucide-react'
 
-// Base URL for direct file access (authenticated via httpOnly cookie)
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+// Base URL for direct file access (authenticated via httpOnly cookie) —
+// centralized in src/config/api.ts so every consumer shares VITE_API_URL.
+import { API_BASE_URL as API_BASE } from '../../config/api'
 
 const EmployeeProfile = () => {
   const { id } = useParams()

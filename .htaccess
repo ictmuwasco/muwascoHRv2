@@ -4,7 +4,9 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
     
-    # Redirect HTTP to HTTPS (uncomment in production)
+    # Redirect HTTP to HTTPS (PRODUCTION).
+    # Uncomment AFTER TLS is configured. If a load balancer terminates TLS
+    # and forwards plain HTTP, enforce HTTPS at the LB/WAF layer instead.
     # RewriteCond %{HTTPS} off
     # RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
     
@@ -33,7 +35,10 @@
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set Permissions-Policy "geolocation=(self), microphone=(), camera=()"
     
-    # HSTS (uncomment in production with HTTPS)
+    # HSTS (PRODUCTION). Uncomment only when served exclusively over HTTPS.
+    # SecurityMiddleware::secureCryptoHeaders() already emits HSTS on HTTPS
+    # requests; this block covers plain-HTTP requests that receive no HSTS
+    # header from PHP.
     # Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 </IfModule>
 

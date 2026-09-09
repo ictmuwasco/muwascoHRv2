@@ -1,4 +1,3 @@
-Prevent deleting cycles that are in use (already there) and add better guardrails / messages
 <?php
 
 declare(strict_types=1);

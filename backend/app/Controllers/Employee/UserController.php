@@ -88,7 +88,7 @@ class UserController extends BaseController
     {
         $this->requirePermission('users', 'create');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\UserValidator());
 
         try {
             $userId = $this->userService->createUser($data);
@@ -114,7 +114,7 @@ class UserController extends BaseController
     {
         $this->requirePermission('users', 'edit');
 
-        $data = $this->getJsonBody();
+        $data = $this->validateRequest(new \App\Validators\UserValidator());
 
         try {
             $oldUser = $this->userService->getUserById($id);
@@ -144,6 +144,13 @@ class UserController extends BaseController
         try {
             $oldUser = $this->userService->getUserById($id);
             $this->userService->deleteUser($id);
+
+            // Security: deleted users must not retain usable tokens.
+            try {
+                \App\Helpers\JWT::getInstance()->revokeAllTokens($id);
+            } catch (\Throwable $revokeError) {
+                \logger()->warning('Refresh token revocation failed on user delete', ['user_id' => $id, 'error' => $revokeError->getMessage()]);
+            }
             \App\Services\AuditService::getInstance()->log(
                 \App\Services\AuditService::MODULE_USERS,
                 \App\Services\AuditService::ACTION_DELETE,
@@ -172,6 +179,17 @@ class UserController extends BaseController
             $status = $data['is_active'] ?? ($data['status'] ?? 'active');
             $oldUser = $this->userService->getUserById($id);
             $result = $this->userService->updateUserStatus($id, $status);
+
+            // Security: deactivation must end access immediately. Reload the
+            // user and revoke all refresh tokens when the account is disabled.
+            $fresh = $this->userService->getUserById($id);
+            if (!$fresh || (int) ($fresh['is_active'] ?? 1) !== 1) {
+                try {
+                    \App\Helpers\JWT::getInstance()->revokeAllTokens($id);
+                } catch (\Throwable $revokeError) {
+                    \logger()->warning('Refresh token revocation failed on user disable', ['user_id' => $id, 'error' => $revokeError->getMessage()]);
+                }
+            }
             \App\Services\AuditService::getInstance()->log(
                 \App\Services\AuditService::MODULE_USERS,
                 \App\Services\AuditService::ACTION_STATUS_CHANGE,
@@ -207,6 +225,21 @@ class UserController extends BaseController
                 return;
             }
             $result = $this->userService->updatePassword($id, $newPassword);
+
+            // Security: admin-forced password change invalidates existing tokens.
+            try {
+                \App\Helpers\JWT::getInstance()->revokeAllTokens($id);
+            } catch (\Throwable $revokeError) {
+                \logger()->warning('Refresh token revocation failed on admin password change', ['user_id' => $id, 'error' => $revokeError->getMessage()]);
+            }
+
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_USERS,
+                \App\Services\AuditService::ACTION_PASSWORD_CHANGE,
+                'Password changed by administrator',
+                ['status' => \App\Services\AuditService::STATUS_SUCCESS, 'target_type' => 'User', 'target_id' => $id]
+            );
+
             $this->success($result, 'Password changed successfully');
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);

@@ -4,8 +4,13 @@ export interface User {
   id: number;
   email: string;
   name: string;
+  role?: string;
+  permissions?: string[];
   [key: string]: any;
 }
+
+export type PermissionCheck = (module: string, action?: string) => boolean;
+export type PermissionAnyCheck = (pairs: Array<[string, string]>) => boolean;
 
 export interface AuthContextType {
   user: User | null;
@@ -13,6 +18,8 @@ export interface AuthContextType {
   logout: () => Promise<void>;
   loading: boolean;
   isAuthenticated: boolean;
+  can: PermissionCheck;
+  canAny: PermissionAnyCheck;
 }
 
 export const useAuth: () => AuthContextType;

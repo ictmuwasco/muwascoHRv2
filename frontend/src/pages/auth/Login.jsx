@@ -40,8 +40,8 @@ const Login = () => {
       ? 'Please enter a valid email address'
       : ''
   const passwordError =
-    touched.password && password.length < 3
-      ? 'Password must be at least 3 characters'
+    touched.password && password.length < 8
+      ? 'Password must be at least 8 characters'
       : ''
 
   const handleSubmit = async (e) => {

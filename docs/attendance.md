@@ -58,3 +58,21 @@ Reporting endpoints live under `/reports/attendance/*` (options, summary, trends
 - No shift/roster or overtime management.
 - No biometric/hardware device integration.
 - Manual corrections by HR rely on the audit fields (026) — there is no separate amendment workflow.
+
+## Phase 5 update (domain extraction)
+
+- Clock-in/out business rules live in `Services/Attendance/AttendanceClockService`;
+  the controller maps outcomes/exceptions to HTTP (200 with idempotent retries,
+  400, 403 `OUTSIDE_RADIUS` with distance/allowed_radius, 409 `ON_APPROVED_LEAVE`).
+- New rule (env-gated, default ON): clock-in is blocked while the employee has an
+  APPROVED leave application covering today (`ATTENDANCE_BLOCK_CLOCKIN_ON_LEAVE`).
+- Late cutoff is configurable: `ATTENDANCE_LATE_CUTOFF` (default 08:30; 08:30
+  exactly is NOT late — boundary preserved from the original implementation).
+- Missed clock-out has ONE implementation: `Services/Attendance/AttendanceCloseService`,
+  used by `cron/auto_clockout.php`, `POST /attendance/auto-clockout` and the
+  per-employee lazy reconcile. `GET /api/dashboard` no longer mutates attendance.
+- Legacy CRUD routes `POST /attendance`, `GET|PUT|DELETE /attendance/{id}` were
+  removed (the controller never implemented those actions); the stale
+  `AttendanceService`, `AttendanceValidator` and `Models/Attendance` were deleted.
+- Unit tests: `backend/tests/Unit/Services/Attendance/`.
+

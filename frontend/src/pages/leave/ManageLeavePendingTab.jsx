@@ -55,7 +55,7 @@ const PendingTab = () => {
     }
     setLoading(true)
     try {
-      const url = `/leave/applications/${modal.row.id}/${modal.action}`
+      const url = `/leave/${modal.row.id}/${modal.action}`
       const payload = (modal.action === 'reject' || modal.action === 'invalidate')
         ? { reason: modal.reason.trim() }
         : undefined

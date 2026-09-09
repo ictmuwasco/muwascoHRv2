@@ -13,8 +13,15 @@
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USERNAME:-muwascohr}"
-DB_PASS="${DB_PASSWORD:-Jmwkah198}"
+DB_PASS="${DB_PASSWORD:-}"
 DB_NAME="${DB_DATABASE:-admin_hrdemo}"
+
+# SECURITY: never embed credentials here. Source them from the environment:
+#   set -a; . /path/to/.env; set +a; ./backup.sh
+if [ -z "$DB_PASS" ]; then
+    echo -e "${RED}[ERROR]${NC} DB_PASSWORD is not set. Export DB_PASSWORD (or source your .env) instead of hardcoding credentials." >&2
+    exit 1
+fi
 
 BACKUP_DIR="${BACKUP_PATH:-$(dirname "$0")}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
