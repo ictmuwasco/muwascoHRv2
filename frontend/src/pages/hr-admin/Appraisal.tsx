@@ -4,11 +4,11 @@ import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
-import { Plus, CheckCircle, XCircle } from 'lucide-react';
-import type { Appraisal } from '../../types';
+import { Plus, CheckCircle } from 'lucide-react';
+import type { Appraisal as AppraisalType } from '../../types';
 
 const Appraisal = () => {
-  const [appraisals, setAppraisals] = useState<Appraisal[]>([]);
+  const [appraisals, setAppraisals] = useState<AppraisalType[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ const Appraisal = () => {
     {
       key: 'id',
       label: 'Actions',
-      render: (_: any, row: Appraisal) => (
+      render: (_: any, row: AppraisalType) => (
         <div className="flex space-x-2">
           {row.status === 'Pending' && (
             <Button size="sm" variant="success" onClick={() => handleApprove(row.id)}>

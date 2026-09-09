@@ -65,7 +65,6 @@ export function useWorkplanTier(view: TierView) {
   }, [status, search, parentFilter, fyId]);
 
   const applySearch = () => setSearch(searchInput.trim());
-  const clearNotice = () => setNotice('');
 
   return {
     list,

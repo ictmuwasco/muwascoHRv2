@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+
 import api from '../../utils/api'
 import Card from '../../components/ui/Card'
 import Table from '../../components/ui/Table'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
-import Select from '../../components/ui/Select'
+
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 
 const Holidays = () => {
-  const navigate = useNavigate()
+
   const [holidays, setHolidays] = useState([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

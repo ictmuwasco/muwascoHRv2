@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import {
   getConsentDashboard,
   getEmployeeConsentList,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 
 const Consent = () => {
-  const navigate = useNavigate();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dashboard, setDashboard] = useState<{
@@ -57,7 +57,7 @@ const Consent = () => {
   });
   const [departments, setDepartments] = useState<Array<{ id: number; name: string }>>([]);
   const [sections, setSections] = useState<Array<{ id: number; name: string; department_id: number }>>([]);
-  const [versions, setVersions] = useState<string[]>([]);
+  const [, setVersions] = useState<string[]>([]);
 
   useEffect(() => {
     fetchDashboard();
