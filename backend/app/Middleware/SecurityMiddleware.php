@@ -573,12 +573,33 @@ class SecurityMiddleware
         int $windowSeconds = 900,
         ?string $identifier = null
     ): void {
-        if (!self::checkRateLimit($action, $maxAttempts, $windowSeconds, $identifier)) {
+                if (!self::checkRateLimit($action, $maxAttempts, $windowSeconds, $identifier)) {
             self::logSecurityEvent('auth.bruteforce_blocked', 'warning', [
                 'action'          => $action,
                 'user_id'         => $_SESSION['user_id'] ?? null,
                 'identifier_hash' => $identifier !== null ? substr(hash('sha256', $identifier), 0, 12) : null,
             ]);
+
+            // Mirror the 429 into the SOC event layer so rate-limit abuse is
+            // correlated by the rule engine (e.g. probing bursts) — keeps the
+            // endpoint inventory's `monitoring = true` claim truthful.
+            try {
+                \App\Services\Security\SecurityEventService::getInstance()->record(
+                    \App\Services\Security\SecurityEventService::RATE_LIMIT_VIOLATION,
+                    \App\Services\Security\SecurityEventService::SEVERITY_MEDIUM,
+                    25,
+                    [
+                        'user_id'        => $_SESSION['user_id'] ?? null,
+                        'resource_type'  => 'rate_limit',
+                        'description'    => 'Rate limit exceeded for action: ' . $action,
+                        'action_taken'   => \App\Services\Security\SecurityEventService::ACTION_RATE_LIMITED,
+                        'http_method'    => $_SERVER['REQUEST_METHOD'] ?? null,
+                        'route'          => $_SERVER['REQUEST_URI'] ?? null,
+                    ]
+                );
+            } catch (\Throwable $e) {
+                // Never let telemetry break the 429 path.
+            }
 
             \App\Helpers\ApiResponse::error(
                 'Too many attempts. Please try again later.',
@@ -640,6 +661,7 @@ class SecurityMiddleware
                     [],
                     401
                 );
+                exit;
             }
 
             $_SESSION['flash_message'] = 'Your session has expired. Please sign in again.';
