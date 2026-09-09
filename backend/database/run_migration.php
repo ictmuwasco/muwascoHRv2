@@ -9,7 +9,11 @@ use App\Helpers\Database;
 try {
     $db = Database::getInstance();
     $conn = $db->getConnection();
-    
+
+    // Disable foreign key checks to allow tables to be created in any order
+    // (some migrations reference tables created by later migrations)
+    $conn->query('SET FOREIGN_KEY_CHECKS=0');
+
     // Run migration 002 - Refresh tokens
     $sql = file_get_contents(__DIR__ . '/migrations/002_refresh_tokens.sql');
     
@@ -294,8 +298,11 @@ try {
         exit(1);
     }
 
+    // Re-enable foreign key checks after migration is complete
+    $conn->query('SET FOREIGN_KEY_CHECKS=1');
+
     echo "\n✓ All migrations completed successfully!\n";
-    
+
     // Re-run role permissions migration to ensure new permissions are added
     echo "\nUpdating role permissions...\n";
     $sql = file_get_contents(__DIR__ . '/migrations/004_role_permissions.sql');
