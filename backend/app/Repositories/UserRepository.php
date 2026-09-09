@@ -419,4 +419,25 @@ class UserRepository implements UserRepositoryInterface
 
         return $insertId;
     }
+
+    /**
+     * Find an employee record by employee_id (the HR identifier, not the user ID).
+     * Used by EmployeePolicy to resolve department for dept_head checks.
+     */
+    public function findEmployeeByEmployeeId(string $employeeId): ?array
+    {
+        $stmt = $this->conn->prepare("
+            SELECT id, employee_id, first_name, last_name, department_id, section_id
+            FROM employees
+            WHERE employee_id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param('s', $employeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $employee = $result->fetch_assoc();
+        $stmt->close();
+
+        return $employee ?: null;
+    }
 }

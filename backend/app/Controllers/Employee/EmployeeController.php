@@ -8,6 +8,8 @@ use App\Controllers\BaseController;
 
 use App\Services\Contracts\EmployeeServiceInterface;
 use App\Services\EmployeeService;
+use App\Services\Security\EmployeePolicy;
+use App\Services\Security\SecurityEventService;
 
 /**
  * Employee Controller - REST API for employee management.
@@ -19,17 +21,13 @@ class EmployeeController extends BaseController
 {
     private EmployeeServiceInterface $employeeService;
 
-    public function __construct()
+    /**
+     * Constructor with dependency injection.
+     * The DI container automatically resolves EmployeeServiceInterface.
+     */
+    public function __construct(EmployeeServiceInterface $employeeService)
     {
-        // Dependency injection - services are injected via setter methods
-        $this->employeeService = new EmployeeService();
-        
-        // Set repository dependencies
-        $this->employeeService->setEmployeeRepository(new \App\Repositories\EmployeeRepository());
-        $this->employeeService->setDepartmentRepository(new \App\Repositories\DepartmentRepository());
-        $this->employeeService->setSectionRepository(new \App\Repositories\SectionRepository());
-        $this->employeeService->setOfficeRepository(new \App\Repositories\OfficeRepository());
-        $this->employeeService->setUserRepository(new \App\Repositories\UserRepository());
+        $this->employeeService = $employeeService;
     }
 
     /**
@@ -57,7 +55,7 @@ class EmployeeController extends BaseController
     /**
      * GET /api/employees/{id} - Get a single employee.
      */
-    public function showAction(int $id): void
+        public function showAction(int $id): void
     {
         $this->requirePermission('employees', 'view');
 
@@ -65,6 +63,28 @@ class EmployeeController extends BaseController
             $employee = $this->employeeService->getEmployeeById($id);
             if (!$employee) {
                 $this->notFound('Employee not found');
+            }
+
+            // OBJECT-LEVEL AUTHORIZATION (IDOR/BOLA protection)
+            // The permission check above verifies the user CAN view employees,
+            // but this check verifies they can view THIS specific employee.
+            if (!\App\Services\Security\EmployeePolicy::canView($this->getAuthUserId(), $employee)) {
+                // Log the security event before denying
+                \App\Services\Security\SecurityEventService::getInstance()->record(
+                    \App\Services\Security\SecurityEventService::UNAUTHORIZED_OBJECT_ACCESS,
+                    \App\Services\Security\SecurityEventService::SEVERITY_HIGH,
+                    65,
+                    [
+                        'user_id' => $this->getAuthUserId(),
+                        'resource_type' => 'employee',
+                        'resource_id' => $id,
+                        'response_status' => 403,
+                        'action_taken' => \App\Services\Security\SecurityEventService::ACTION_DENIED,
+                        'description' => "Unauthorized access attempt to employee#{$id}",
+                        'route' => $_SERVER['REQUEST_URI'] ?? null,
+                    ]
+                );
+                $this->forbidden('You are not authorized to view this employee');
             }
 
             $this->success($employee);
@@ -556,6 +576,27 @@ class EmployeeController extends BaseController
                 $this->notFound('Employee not found');
             }
 
+            // OBJECT-LEVEL AUTHORIZATION (IDOR/BOLA protection) — matches
+            // updateAction(): only HR/admin may modify another employee's
+            // profile image; everyone else is denied and the attempt recorded.
+            if (!EmployeePolicy::canEdit($this->getAuthUserId(), $employee)) {
+                SecurityEventService::getInstance()->record(
+                    SecurityEventService::UNAUTHORIZED_OBJECT_ACCESS,
+                    SecurityEventService::SEVERITY_MEDIUM,
+                    65,
+                    [
+                        'user_id' => $this->getAuthUserId(),
+                        'resource_type' => 'employee',
+                        'resource_id' => $id,
+                        'response_status' => 403,
+                        'action_taken' => SecurityEventService::ACTION_DENIED,
+                        'description' => "Unauthorized profile image edit attempt for employee#{$id}",
+                        'route' => $_SERVER['REQUEST_URI'] ?? null,
+                    ]
+                );
+                $this->forbidden('You are not authorized to edit this employee');
+            }
+
             $this->handleProfileImageUpload($id);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -708,6 +749,28 @@ class EmployeeController extends BaseController
             $employee = $this->employeeService->getEmployeeById($id);
             if (!$employee) {
                 $this->notFound('Employee not found');
+            }
+
+            // OBJECT-LEVEL AUTHORIZATION (IDOR/BOLA protection) — mirrors
+            // showAction(): the permission gate above verifies the caller can
+            // view employees at all, but this verifies they can view THIS
+            // specific employee's profile image (dept heads, HR scope, etc.).
+            if (!EmployeePolicy::canView($this->getAuthUserId(), $employee)) {
+                SecurityEventService::getInstance()->record(
+                    SecurityEventService::UNAUTHORIZED_OBJECT_ACCESS,
+                    SecurityEventService::SEVERITY_MEDIUM,
+                    60,
+                    [
+                        'user_id' => $this->getAuthUserId(),
+                        'resource_type' => 'employee',
+                        'resource_id' => $id,
+                        'response_status' => 403,
+                        'action_taken' => SecurityEventService::ACTION_DENIED,
+                        'description' => "Unauthorized access attempt to employee#{$id} profile image",
+                        'route' => $_SERVER['REQUEST_URI'] ?? null,
+                    ]
+                );
+                $this->forbidden('You are not authorized to view this employee');
             }
 
             $this->streamProfileImage($id);
