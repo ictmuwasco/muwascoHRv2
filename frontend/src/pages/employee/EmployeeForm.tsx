@@ -49,8 +49,8 @@ const NO_ORG_ROLES = ['managing_director', 'bod_chairman', 'super_admin']
 const DEPT_ONLY_ROLES = ['dept_head', 'hr_manager']
 // Roles that need department + section
 const SECTION_ROLES = ['section_head']
-// Roles that need department + section + subsection
-const SUBSECTION_ROLES = ['sub_section_head']
+
+
 
 const EmployeeForm = () => {
   const { id } = useParams()

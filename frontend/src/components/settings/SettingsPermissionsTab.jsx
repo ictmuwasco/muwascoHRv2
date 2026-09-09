@@ -28,8 +28,6 @@ const PermissionsTab = () => {
   const [search, setSearch] = useState('')
   const [selectedUserId, setSelectedUserId] = useState(null)
   const [userPerms, setUserPerms] = useState(null)
-  const [overrides, setOverrides] = useState([])
-  const [loading, setLoading] = useState(false)
   const [loadingUser, setLoadingUser] = useState(false)
   const [error, setError] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)

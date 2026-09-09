@@ -4,7 +4,7 @@ import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
-import { Plus, Building2, Calendar } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import type { FinancialYear } from '../../types';
 
 const Admin = () => {
