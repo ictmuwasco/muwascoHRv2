@@ -37,6 +37,14 @@ class RBAC
     }
 
     /**
+     * Clear the permission cache. Useful for testing when permissions change.
+     */
+    public function clearCache(): void
+    {
+        $this->cache = [];
+    }
+
+    /**
      * Check whether the given role has permission for module.action.
      */
     public function hasPermission(string $role, string $module, string $action): bool

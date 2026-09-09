@@ -69,12 +69,13 @@ class SecurityOperationsTest extends TestCase
         $this->assertStringContainsString('isHrOrAdmin($userId)', $policy);
         $this->assertStringContainsString('isSelf($userId, $employee)', $policy);
 
-        // Ownership must compare the session-derived user id against the
-        // employee.user_id — never a client-supplied value.
+        // Ownership must compare the user's employee_id against the
+        // employee.employee_id — never a client-supplied value.
+        // Note: users table has employee_id, employees table has employee_id (no user_id column)
         $this->assertStringContainsString(
-            '(int) $employee[\'user_id\'] === $userId',
+            '$user[\'employee_id\'] === $employee[\'employee_id\']',
             $policy,
-            'Ownership must compare the session user id against employee.user_id'
+            'Ownership must compare user.employee_id against employee.employee_id'
         );
     }
 
