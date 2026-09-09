@@ -35,10 +35,14 @@ final class InstrumentedMysqliStmt extends \mysqli_stmt
 
     public function execute(?array $params = null): bool
     {
-        $start                = microtime(true);
-        $result               = parent::execute($params);
-        $this->pendingMs     += (microtime(true) - $start) * 1000.0;
-        $this->issued         = true;
+        $start = microtime(true);
+        // PHP 8.0 compatibility: mysqli_stmt::execute() takes no arguments in 8.0,
+        // but accepts ?array $params in 8.1+. Call without args when params is null.
+        $result = ($params === null)
+            ? parent::execute()
+            : parent::execute($params);
+        $this->pendingMs += (microtime(true) - $start) * 1000.0;
+        $this->issued     = true;
         return $result;
     }
 
