@@ -31,6 +31,8 @@ abstract class AbstractOpenAiCompatibleProvider implements AiProviderInterface
     protected int $maxRetries;
     protected int $retryBackoffMs;
     protected bool $supportsTools;
+    /** @var array<string,mixed> provider-specific body params merged into every request */
+    protected array $extraBody = [];
     protected HttpTransport $transport;
 
     public function __construct(array $config, ?HttpTransport $transport = null)
@@ -44,6 +46,7 @@ abstract class AbstractOpenAiCompatibleProvider implements AiProviderInterface
         $this->maxRetries     = (int) ($config['max_retries'] ?? 0);
         $this->retryBackoffMs = (int) ($config['retry_backoff_ms'] ?? 500);
         $this->supportsTools  = (bool) ($config['supports_tools'] ?? false);
+        $this->extraBody      = is_array($config['extra_body'] ?? null) ? $config['extra_body'] : [];
         $this->transport      = $transport ?? new HttpTransport();
     }
 
@@ -109,6 +112,13 @@ abstract class AbstractOpenAiCompatibleProvider implements AiProviderInterface
         if ($this->supportsTools && is_array($tools) && $tools !== []) {
             $payload['tools']       = $tools;
             $payload['tool_choice'] = 'auto';
+        }
+
+        // Provider-specific passthrough params (e.g. disabling chain-of-thought
+        // on reasoning models via chat_template_kwargs). Merged last so an
+        // extra_body entry can intentionally override the defaults above.
+        if ($this->extraBody !== []) {
+            $payload = array_merge($payload, $this->extraBody);
         }
 
         $transport = $this->transport->postJson(
