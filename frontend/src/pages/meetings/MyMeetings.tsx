@@ -7,7 +7,7 @@ import Button from '../../components/ui/Button'
 import Tabs from '../../components/ui/Tabs'
 import Modal from '../../components/ui/Modal'
 import MeetingMinutesModal, { MinutesMeetingInfo } from './MeetingMinutesModal'
-import { CalendarCheck, Calendar, Clock, MapPin, Check, X, Hourglass, History, Users, FileText, User, FileDown } from 'lucide-react'
+import { CalendarCheck, Calendar, Clock, MapPin, Check, X, History, Users, FileText, User, FileDown } from 'lucide-react'
 
 interface MeetingInvitation {
   id: number
@@ -291,7 +291,7 @@ const MyMeetings = () => {
     {
       key: 'meeting_date',
       label: 'Date',
-      render: (value: string, row: MeetingInvitation) => (
+      render: (value: string) => (
         <div className="flex items-center text-sm">
           <Calendar className="h-4 w-4 mr-1 text-gray-400" />
           {formatDate(value)}
