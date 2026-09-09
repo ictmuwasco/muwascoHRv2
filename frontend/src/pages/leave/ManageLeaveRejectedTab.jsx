@@ -5,14 +5,14 @@ import { badgeClass, formatDate, formatStatus, ROWS_PER_PAGE, Pagination } from 
 
 const RejectedTab = () => {
   const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [offset, setOffset] = useState(0)
   const [count, setCount] = useState(0)
 
   useEffect(() => {
     fetchRows()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [offset])
 
   const fetchRows = async () => {
