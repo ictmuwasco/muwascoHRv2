@@ -90,6 +90,15 @@ jobs:
       - name: Install dependencies
         run: composer install --no-progress --no-interaction
 
+      # ---- Run database migrations to create tables --------------------
+      - name: Run database migrations
+        run: php backend/database/migrate.php
+        env:
+          DB_DATABASE: hr_test
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          DB_HOST: 127.0.0.1
+
       # ---- BLOCKING GATE 3: automated tests (uses phpunit.xml.dist) ------
       - name: Run PHPUnit tests
         run: vendor/bin/phpunit

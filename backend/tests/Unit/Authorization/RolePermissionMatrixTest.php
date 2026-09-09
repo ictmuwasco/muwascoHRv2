@@ -42,6 +42,9 @@ class RolePermissionMatrixTest extends TestCase
         $_SESSION['session_valid'] = true;
         unset($_SERVER['HTTP_AUTHORIZATION'], $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
         $_COOKIE = [];
+
+        // Clear RBAC cache to prevent stale permissions from affecting tests
+        \App\Helpers\RBAC::getInstance()->clearCache();
     }
 
     protected function tearDown(): void
@@ -423,7 +426,10 @@ class RolePermissionMatrixTest extends TestCase
         $_SESSION['user_id'] = $userId;
         $_SESSION['user_role'] = $role;
 
-        return \App\Helpers\AuthorizationService::getInstance();
+        $service = \App\Helpers\AuthorizationService::getInstance();
+        $service->clearCache();
+
+        return $service;
     }
 
     private function createMatrixUser(string $role): int
