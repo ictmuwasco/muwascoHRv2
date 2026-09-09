@@ -56,10 +56,15 @@ return [
             'timeout_seconds' => (int) env('AI_NVIDIA_TIMEOUT', 90),
             'connect_timeout' => 10,
             'max_tokens'      => (int) env('AI_NVIDIA_MAX_TOKENS', 2048),
-            'max_retries'     => 2,
+            'max_retries'     => (int) env('AI_NVIDIA_MAX_RETRIES', 1),
             'retry_backoff_ms'=> 750,
             // nemotron models handle OpenAI-style function calling; local stays off.
             'supports_tools'  => filter_var(env('AI_NVIDIA_SUPPORTS_TOOLS', true), FILTER_VALIDATE_BOOLEAN),
+            // Provider-specific body params merged verbatim into every chat
+            // completion request (JSON string in env). Used e.g. to disable
+            // chain-of-thought on reasoning models:
+            //   AI_NVIDIA_EXTRA_BODY={"chat_template_kwargs":{"thinking":false}}
+            'extra_body'      => json_decode((string) env('AI_NVIDIA_EXTRA_BODY', ''), true) ?? [],
         ],
 
         // Generic OpenAI-compatible host (OpenAI, Azure, Together, Groq, ...).
