@@ -1,5 +1,5 @@
 import apiClient from '../client';
-import type { ApiResponse, Report } from '../../types';
+import type { ApiResponse } from '../../types';
 
 export const reportService = {
   getEmployees: async (params?: Record<string, any>): Promise<ApiResponse<any>> => {

@@ -56,6 +56,7 @@ class AuthorizationMiddleware extends BaseMiddleware
         }
 
         self::auditDenial($permission);
+        self::recordSecurityEvent($permission);
 
         \App\Helpers\ApiResponse::error(
             'Forbidden - insufficient permissions for this action.',
@@ -63,6 +64,47 @@ class AuthorizationMiddleware extends BaseMiddleware
             [],
             403
         );
+    }
+
+    /**
+     * Record a security event for EVERY denied endpoint access, regardless of
+     * module. Unlike auditDenial() (which is deliberately narrow to avoid
+     * flooding the business audit trail), this feeds the Security Operations
+     * layer: repeated denials are exactly the signal the rule engine needs to
+     * raise privilege-escalation / probing incidents. The event recorder is
+     * PII-safe and never throws; a telemetry failure must never prevent the
+     * 403 from being emitted.
+     */
+    private static function recordSecurityEvent(string $permission): void
+    {
+        try {
+            $module = explode(':', $permission, 2)[0];
+            $sensitive = in_array($module, ['settings', 'permission_overrides', 'security', 'users'], true);
+
+            $route = \ApiRouter::currentRoute();
+
+            \App\Services\Security\SecurityEventService::getInstance()->record(
+                $sensitive
+                    ? \App\Services\Security\SecurityEventService::UNAUTHORIZED_ADMIN_ACCESS
+                    : \App\Services\Security\SecurityEventService::SUSPICIOUS_API_ACTIVITY,
+                $sensitive
+                    ? \App\Services\Security\SecurityEventService::SEVERITY_HIGH
+                    : \App\Services\Security\SecurityEventService::SEVERITY_MEDIUM,
+                $sensitive ? 55 : 40,
+                [
+                    'user_id'         => Auth::getInstance()->id(),
+                    'http_method'     => $_SERVER['REQUEST_METHOD'] ?? null,
+                    'route'           => parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH),
+                    'required_permission' => $permission,
+                                        'route_definition' => ($route !== null ? ($route['method'] . ' ' . $route['path']) : null),
+                    'response_status' => 403,
+                    'action_taken'    => \App\Services\Security\SecurityEventService::ACTION_DENIED,
+                    'description'     => "Permission denied for {$permission} on protected endpoint",
+                ]
+            );
+        } catch (\Throwable $e) {
+            error_log('[AuthorizationMiddleware] security event recording failed: ' . $e->getMessage());
+        }
     }
 
     /**

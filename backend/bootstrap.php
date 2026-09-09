@@ -335,8 +335,73 @@ if (!function_exists('logger')) {
     }
 }
 
+// ============================================================================
+// Dependency Injection Container Initialization
+// ============================================================================
+// Register all application services and repositories with the DI container.
+// This enables automatic dependency resolution throughout the application.
+if (!function_exists('container')) {
+    /**
+     * Get the DI container instance or resolve a binding.
+     * 
+     * Usage:
+     *   $container = container();           // Get container instance
+     *   $service = container(AuthService::class); // Resolve a binding
+     */
+    function container(string $abstract = null): mixed
+    {
+        $instance = \App\Container\Container::getInstance();
+        
+        if ($abstract === null) {
+            return $instance;
+        }
+        
+        return $instance->get($abstract);
+    }
+}
+
+// Register service bindings
+try {
+    $serviceProvider = new \App\Container\ServiceProvider();
+    $serviceProvider->register();
+} catch (\Throwable $e) {
+    error_log('[DI Container] Service registration failed: ' . $e->getMessage());
+}
+
 // Load Auth helper for permission functions
 require_once BACKEND_PATH . '/app/Helpers/Auth.php';
+
+// ============================================================================
+// Exception Handler Registration
+// ============================================================================
+// Register centralized exception handler for consistent error responses.
+\App\Exceptions\ExceptionHandler::register();
+
+// ============================================================================
+// Configuration Validation
+// ============================================================================
+// Validate required configuration values on boot (fail-fast).
+try {
+    \App\Config\ConfigValidator::validate();
+} catch (\Throwable $e) {
+    error_log('[Config Validation] ' . $e->getMessage());
+    // Don't die here - let the exception handler deal with it when a request comes in
+}
+
+// ============================================================================
+// Event Listeners Registration
+// ============================================================================
+// Register event listeners for decoupled application actions.
+// Example: EventDispatcher::listen(UserCreatedEvent::class, [NotificationListener::class, 'handleUserCreated']);
+
+// Process deferred events after response is sent
+register_shutdown_function(function () {
+    try {
+        \App\Events\EventDispatcher::processDeferred();
+    } catch (\Throwable $e) {
+        error_log('[Event] Deferred processing failed: ' . $e->getMessage());
+    }
+});
 
 /**
  * Check if user has permission (global helper for backward compatibility).
