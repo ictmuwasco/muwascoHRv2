@@ -98,7 +98,11 @@ TXT;
                 ? ChatMessage::user((string) $row['content'])
                 : ChatMessage::assistant((string) $row['content']);
         }
-        $messages[] = ChatMessage::user($message);
+        // Inject the current date into every user message as a hidden prefix.
+        // This overrides any wrong dates in the conversation history — the model
+        // sees the correct date in the CURRENT message, not just the system prompt.
+        $datePrefix = '[Today is ' . date('l, j F Y') . '.] ';
+        $messages[] = ChatMessage::user($datePrefix . $message);
 
         $startedAt = microtime(true);
 
@@ -467,7 +471,29 @@ TXT;
         }
 
         $content = is_string($content) ? trim($content) : '';
-        return $content !== '' ? $content : self::DEFAULT_SYSTEM_PROMPT;
+        $prompt  = $content !== '' ? $content : self::DEFAULT_SYSTEM_PROMPT;
+
+        // Inject the current date so the model never hallucinates the year/month.
+        // CRITICAL: This block is prepended (not appended) because language models
+        // pay the most attention to the beginning of the system prompt. It uses
+        // strong, unambiguous language and repeats the date in multiple formats
+        // to prevent the model from "forgetting" or ignoring it.
+        $today = date('Y-m-d');
+        $dow   = date('l');
+        $year  = date('Y');
+        $month = date('F Y');
+
+        $dateBlock = "=== CRITICAL DATE CONTEXT (authoritative, NEVER override) ===\n"
+            . "Today's date is {$today} ({$dow}).\n"
+            . "The current year is {$year}.\n"
+            . "The current month is {$month}.\n"
+            . "You MUST use these dates in every answer. NEVER invent, guess, or imply\n"
+            . "a different date, year, or month — even if the user's question or the\n"
+            . "conversation history suggests otherwise. If a tool returns no data for\n"
+            . "the requested period, say so plainly using the current date above.\n"
+            . "=== END DATE CONTEXT ===";
+
+        return $dateBlock . "\n\n" . $prompt;
     }
 
     /** RFC 4122 version-4 UUID from CSPRNG bytes. */

@@ -18,8 +18,13 @@
  */
 import api from '../utils/api'
 
-/** AI generations can legitimately take longer than ordinary pages. */
-const CHAT_TIMEOUT_MS = 60000
+/**
+ * AI generations can legitimately take longer than ordinary pages. This must
+ * stay ABOVE the backend's worst-case provider budget (config/ai.php):
+ * per-attempt timeout × retries (e.g. 45s × 2 + backoff ≈ 91s) so a slow but
+ * successful answer is never masked by an opaque client-side abort.
+ */
+const CHAT_TIMEOUT_MS = 120000
 
 /** Mirrors the server-side AI_MAX_REQUEST_CHARS guard (config/ai.php). */
 export const MAX_CHAT_MESSAGE_LENGTH = 2000
