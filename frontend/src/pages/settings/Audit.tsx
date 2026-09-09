@@ -345,7 +345,7 @@ const Audit = () => {
     return '';
   };
 
-  const renderJsonData = (data: Record<string, any> | null | undefined, label: string) => {
+  const renderJsonData = (data: Record<string, any> | null | undefined, _label: string) => {
     if (!data || Object.keys(data).length === 0) {
       return (
         <p className="text-sm text-gray-400 dark:text-gray-500 italic">No data recorded</p>

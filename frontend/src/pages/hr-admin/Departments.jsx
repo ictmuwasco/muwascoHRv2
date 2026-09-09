@@ -213,13 +213,6 @@ const Departments = () => {
   }
 
   // Use enriched data from API if available
-  const getDepartmentNameFromSection = (section) => {
-    return section.department_name || getDepartmentName(section.department_id)
-  }
-
-  const getSectionNameFromSubsection = (subsection) => {
-    return subsection.section_name || getSectionName(subsection.section_id)
-  }
 
   // Fetch sections when department changes in subsection modal
   useEffect(() => {
