@@ -546,18 +546,29 @@ class MeetingMinutesService
 
     // ---- Permissions / access ----
 
+    /**
+     * Minutes management capability for the CURRENT user.
+     *
+     * Phase 2: aligned with the permission catalog. The legacy checks
+     * referenced non-existent 'meetings.minutes.*' actions (permission
+     * drift), which silently locked everybody except super_admin out of
+     * minutes management. The route gate uses meetings:manage as well;
+     * per-record refinement (draft editing, publishing windows) stays here.
+     */
     private function canManageMinutes(): bool
     {
-        return $this->hasPermission('meetings.minutes.update')
-            || $this->hasPermission('meetings.minutes.create')
-            || $this->hasPermission('meetings.minutes.publish');
+        return $this->hasPermission('meetings:manage');
     }
 
+    /**
+     * Catalog permission check in "module:action" notation, resolved through
+     * the single authorization engine (super_admin policy + user overrides +
+     * role permissions + default deny).
+     */
     private function hasPermission(string $moduleAction): bool
     {
-        // Accepts 'module.action' strings.
-        $parts = explode('.', $moduleAction, 2);
-        if (count($parts) !== 2) {
+        $parts = explode(':', $moduleAction, 2);
+        if (count($parts) !== 2 || $parts[0] === '' || $parts[1] === '') {
             return false;
         }
         return Auth::getInstance()->hasPermission($parts[0], $parts[1]);

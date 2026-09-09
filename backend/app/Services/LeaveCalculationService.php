@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Helpers\Database;
+use App\Services\Leave\LeaveTypePolicy;
 
 /**
  * LeaveCalculationService
@@ -107,15 +108,15 @@ class LeaveCalculationService
             return $deductionPlan;
         }
 
-        // Claim a Day
-        if ($leaveTypeId === 9) {
+        // Claim a Day — credits annual leave (see LeaveTypePolicy)
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_CLAIM_A_DAY) {
             $deductionPlan['warnings'][] = "This will add {$eligibleDays} days to annual leave upon approval.";
             $deductionPlan['add_to_annual'] = $eligibleDays;
             return $deductionPlan;
         }
 
-        // Leave of Absence
-        if ($leaveTypeId === 8) {
+        // Leave of Absence — unpaid, no deduction
+        if ($leaveTypeId === LeaveTypePolicy::TYPE_ABSENCE) {
             $deductionPlan['unpaid_days'] = $eligibleDays;
             $deductionPlan['warnings'][] = "Leave of Absence — {$eligibleDays} days unpaid.";
             return $deductionPlan;

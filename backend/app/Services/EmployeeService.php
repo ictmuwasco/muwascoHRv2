@@ -89,6 +89,40 @@ class EmployeeService implements EmployeeServiceInterface
         return $this->updateEmployee($id, $data);
     }
 
+    /**
+     * Fields a client may set on an employee record (Phase 7, P7-8
+     * mass-assignment guard). The repository builds INSERT/UPDATE column
+     * lists from array keys, so an unfiltered payload would let a caller
+     * write arbitrary employees-table columns.
+     *
+     * Deliberately NOT client-writable:
+     *   - salary            — sensitive HR data; owned by the payroll domain
+     *   - profile_image_url — set exclusively by the profile-image endpoints
+     *   - profile_token     — consent/onboarding server-side token
+     *   - id / created_at / updated_at — server-owned
+     *
+     * next_of_kin / dependants ARE writable: array forms are persisted to
+     * the child tables (saveNextOfKin/saveDependants) and JSON-string forms
+     * to the employees text columns — both replaced into $data by the
+     * service's own handling before this filter runs.
+     */
+    private const EMPLOYEE_WRITABLE_FIELDS = [
+        'employee_id', 'first_name', 'last_name', 'surname', 'gender',
+        'national_id', 'email', 'designation', 'phone', 'date_of_birth',
+        'address', 'department_id', 'section_id', 'subsection_id', 'office_id',
+        'position', 'hire_date', 'employment_type', 'employee_type',
+        'employee_status', 'scale_id', 'contract_start_date', 'contract_end_date',
+        'next_of_kin', 'dependants',
+    ];
+
+    /**
+     * Keep only client-writable fields, silently dropping anything else.
+     */
+    private function filterWritable(array $data, array $allowed): array
+    {
+        return array_intersect_key($data, array_flip($allowed));
+    }
+
     public function delete(int $id): bool
     {
         return $this->deleteEmployee($id);
@@ -173,6 +207,9 @@ class EmployeeService implements EmployeeServiceInterface
             return true;
         }
 
+        // Phase 7 (P7-8): mass-assignment guard (see EMPLOYEE_WRITABLE_FIELDS).
+        $data = $this->filterWritable($data, self::EMPLOYEE_WRITABLE_FIELDS);
+
         return $this->employeeRepository->update($id, $data);
     }
 
@@ -231,6 +268,9 @@ class EmployeeService implements EmployeeServiceInterface
         if (($data['employment_type'] ?? '') !== 'contract') {
             unset($data['contract_start_date'], $data['contract_end_date']);
         }
+
+        // Phase 7 (P7-8): mass-assignment guard (see EMPLOYEE_WRITABLE_FIELDS).
+        $data = $this->filterWritable($data, self::EMPLOYEE_WRITABLE_FIELDS);
 
         $employeeId = $this->employeeRepository->create($data);
 
@@ -346,6 +386,9 @@ class EmployeeService implements EmployeeServiceInterface
         if (empty($data)) {
             return true;
         }
+
+        // Phase 7 (P7-8): mass-assignment guard (see EMPLOYEE_WRITABLE_FIELDS).
+        $data = $this->filterWritable($data, self::EMPLOYEE_WRITABLE_FIELDS);
 
         return $this->employeeRepository->update($id, $data);
     }

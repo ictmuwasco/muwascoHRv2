@@ -51,3 +51,21 @@ The one-off fix log `LEAVE_APPLICATION_ENHANCEMENT.md` (archived under [archive/
 - Approval routing supports delegates, but there is no configurable multi-level approval chain UI — the chain is enforced in `LeaveWorkflowService`.
 - No leave cancellation-after-approval workflow beyond admin correction; balances reconcile through the financial-year allocation endpoints.
 
+
+## Phase 5 update (workflow state machine)
+
+- Leave transitions are enforced by `Services/Leave/LeaveWorkflowRules`:
+  decisions only from `pending_*` stages; `approved -> invalidated` is the only
+  reversal path and RESTORES deducted balances; terminal states are final.
+- Invalid decisions return **409 INVALID_TRANSITION** (previously a misleading
+  400, or for HR/super-admin a silent double balance deduction).
+- Roster writes moved to `Services/Leave/LeaveRosterService`: planned months
+  must be July->June calendar months (422 INVALID_ROSTER_MONTH), `scheduled_year`
+  is derived from the FY start, all writes audited. The roster NEVER touches
+  balances or applications — it is a planning tool only.
+- Financial-year resolution is centralized in
+  `FinancialYearService::resolveCurrentFinancialYearId()` / `yearIdForDate()`.
+- Service-layer database errors no longer leak exception messages; clients get
+  safe messages while `logger()` keeps full context.
+- Unit tests: `backend/tests/Unit/Services/Leave/`.
+

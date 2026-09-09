@@ -54,7 +54,13 @@ class MeetingController extends BaseController
 
     /**
      * GET /api/meetings
-     * List all meetings with pagination and filters.
+     * List meetings with pagination and filters.
+     *
+     * DATA SCOPE (Phase 6 follow-up): holders of meetings:dashboard
+     * (hr_manager / managing_director / super_admin / explicit override) see
+     * the org-wide list; every other authorized caller (meetings:create, e.g.
+     * dept_head) sees ONLY the meetings they organized. The scope is derived
+     * from the authenticated user, never from request parameters.
      */
     public function indexAction(): void
     {
@@ -84,7 +90,17 @@ class MeetingController extends BaseController
                 $filters['location'] = $_GET['location'];
             }
 
-            $result = $this->meetingService->getAllMeetings($page, $perPage, $filters);
+            $userId = (int)($_SESSION['user_id'] ?? 0);
+            $orgWide = $userId > 0
+                && \App\Helpers\AuthorizationService::getInstance()
+                    ->hasPermission($userId, 'meetings', 'dashboard');
+
+            $result = $this->meetingService->getAllMeetings(
+                $page,
+                $perPage,
+                $filters,
+                $orgWide ? null : $userId
+            );
 
             // Build response with pagination metadata at the top level
             // (frontend expects response.data.data for the array and
@@ -143,8 +159,14 @@ class MeetingController extends BaseController
                 $filters['search'] = $_GET['search'];
             }
 
-            // Fetch all meetings (no pagination) for export
-            $result = $this->meetingService->getAllMeetings(1, 100000, $filters);
+            // Fetch all meetings (no pagination) for export. Same data scope
+            // as indexAction: org-wide for meetings:dashboard holders, the
+            // caller's own meetings otherwise.
+            $userId = (int)($_SESSION['user_id'] ?? 0);
+            $orgWide = $userId > 0
+                && \App\Helpers\AuthorizationService::getInstance()
+                    ->hasPermission($userId, 'meetings', 'dashboard');
+            $result = $this->meetingService->getAllMeetings(1, 100000, $filters, $orgWide ? null : $userId);
             $meetings = $result['data'] ?? [];
 
             // Build CSV
@@ -412,6 +434,16 @@ class MeetingController extends BaseController
 
         if ($employeeId <= 0) {
             $this->error('Employee ID is required', 400);
+            return;
+        }
+
+        // Phase 5 §19: validate against the meeting_invitations ENUM
+        // (migration 017) instead of passing arbitrary strings to the DB.
+        if (!\App\Services\MeetingRules::isValidAttendanceStatus((string) $status)) {
+            $this->error(
+                'Invalid attendance status. Allowed: ' . implode(', ', \App\Services\MeetingRules::ATTENDANCE_STATUSES),
+                422
+            );
             return;
         }
 

@@ -183,11 +183,20 @@ class MeetingRepository implements RepositoryInterface
      * @param array  $filters  Supported keys: status, date_from, date_to, search
      * @return array  {data, total, per_page, current_page, last_page}
      */
-    public function paginate(int $page = 1, int $perPage = 20, array $filters = []): array
+    public function paginate(int $page = 1, int $perPage = 20, array $filters = [], ?int $ownerUserId = null): array
     {
         $where = [];
         $types = '';
         $params = [];
+
+        // Data scope (Phase 6 follow-up): when an owner is given, list only
+        // the meetings that user created. Org-wide listing is reserved for
+        // meetings:dashboard holders (resolved in MeetingController).
+        if ($ownerUserId !== null && $ownerUserId > 0) {
+            $where[] = "m.created_by = ?";
+            $types .= 'i';
+            $params[] = $ownerUserId;
+        }
 
         if (!empty($filters['status'])) {
             $where[] = "m.status = ?";

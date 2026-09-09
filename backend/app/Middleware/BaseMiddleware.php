@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Middleware;
 
-use App\Middleware\Contracts\MiddlewareInterface;
-
 /**
  * Base Middleware
  *
  * Provides common functionality for all middleware.
+ *
+ * Note (Phase 1): implements App\Middleware\MiddlewareInterface directly
+ * (same namespace). The previous `use App\Middleware\Contracts\...` import
+ * referenced an interface that does not exist anywhere in the codebase and
+ * would have caused a fatal error the moment this class was autoloaded.
  */
 abstract class BaseMiddleware implements MiddlewareInterface
 {
@@ -32,20 +35,28 @@ abstract class BaseMiddleware implements MiddlewareInterface
 
     /**
      * Return a JSON response.
+     *
+     * Delegates to the standardized ApiResponse envelope so middleware exits
+     * share the same shape as controller and exception-handler responses.
      */
     protected function json(array $data, int $statusCode = 200): void
     {
-        http_response_code($statusCode);
-        header('Content-Type: application/json');
-        echo json_encode($data);
-        exit();
+        if (($data['success'] ?? null) === false) {
+            \App\Helpers\ApiResponse::error(
+                (string) ($data['message'] ?? $data['error'] ?? 'Request failed.'),
+                'MIDDLEWARE_ERROR',
+                [],
+                $statusCode
+            );
+        }
+        \App\Helpers\ApiResponse::success($data, 'OK', $statusCode);
     }
 
     /**
-     * Abort the request with an error message.
+     * Abort the request with a standardized error envelope.
      */
     protected function abort(string $message, int $statusCode = 403): void
     {
-        $this->json(['error' => $message], $statusCode);
+        \App\Helpers\ApiResponse::error($message, 'REQUEST_ABORTED', [], $statusCode);
     }
 }

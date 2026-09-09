@@ -5,19 +5,21 @@ declare(strict_types=1);
 namespace App\Controllers\HR;
 
 use App\Controllers\BaseController;
-
 use App\Models\FinancialYear;
-use App\Models\EmployeeLeaveBalance;
 use App\Models\Employee;
 use App\Models\LeaveType;
 use App\Services\FinancialYearService;
-use App\Helpers\Auth;
-use App\Helpers\RBAC;
 
 /**
  * FinancialYearController
- * 
- * Handles API endpoints for financial year management.
+ *
+ * API endpoints for financial year management.
+ *
+ * Authorization: route metadata (`financial_year:view|create|edit`) is
+ * enforced by AuthorizationMiddleware; each action additionally calls
+ * requirePermission() as a second, engine-backed guard. The legacy
+ * RBAC/development-mode bypass previously used here was removed in Phase 3
+ * (H3): all permission decisions flow through the central engine.
  */
 class FinancialYearController extends BaseController
 {
@@ -29,53 +31,31 @@ class FinancialYearController extends BaseController
     }
 
     /**
-     * Get all financial years.
+     * GET /api/admin/financial-years - All financial years.
      */
     public function indexAction(): void
     {
-        try {
-            // Authorization check
-            $auth = Auth::getInstance();
-            if (!$this->checkPermission('financial_year', 'view')) {
-                $this->json([
-                    'success' => false,
-                    'message' => 'Unauthorized',
-                ], 403);
-                return;
-            }
+        $this->requirePermission('financial_year', 'view');
 
+        try {
             $financialYears = FinancialYear::all('start_date', 'DESC');
             $data = \App\Http\Resources\FinancialYearResource::collection($financialYears);
 
-            $this->json([
-                'success' => true,
-                'data' => $data,
-            ]);
-        } catch (\Exception $e) {
-            error_log("Financial Year Index Error: " . $e->getMessage());
-            $this->json([
-                'success' => false,
-                'message' => 'Failed to fetch financial years',
-                'error' => $e->getMessage(),
-            ], 500);
+            $this->success($data, 'OK');
+        } catch (\Throwable $e) {
+            \logger()->error('Financial year index failed', ['error' => $e->getMessage()]);
+            $this->error('Failed to fetch financial years', 500, 'INTERNAL_ERROR');
         }
     }
 
     /**
-     * Get financial year status.
+     * GET /api/admin/financial-years/status - Current FY status.
      */
     public function statusAction(): void
     {
-        try {
-            $auth = Auth::getInstance();
-            if (!$this->checkPermission('financial_year', 'view')) {
-                $this->json([
-                    'success' => false,
-                    'message' => 'Unauthorized',
-                ], 403);
-                return;
-            }
+        $this->requirePermission('financial_year', 'view');
 
+        try {
             $status = $this->financialYearService->getFinancialYearStatus();
             $currentFY = $this->financialYearService->getCurrentFinancialYear();
 
@@ -84,154 +64,100 @@ class FinancialYearController extends BaseController
                 $currentFYData = \App\Http\Resources\FinancialYearResource::toArray($currentFY);
             }
 
-            $this->json([
-                'success' => true,
-                'data' => [
-                    'status' => $status,
-                    'current_financial_year' => $currentFYData,
-                ],
-            ]);
-        } catch (\Exception $e) {
-            error_log("Financial Year Status Error: " . $e->getMessage());
-            $this->json([
-                'success' => false,
-                'message' => 'Failed to fetch status',
-                'error' => $e->getMessage(),
-            ], 500);
+            $this->success([
+                'status' => $status,
+                'current_financial_year' => $currentFYData,
+            ], 'OK');
+        } catch (\Throwable $e) {
+            \logger()->error('Financial year status failed', ['error' => $e->getMessage()]);
+            $this->error('Failed to fetch status', 500, 'INTERNAL_ERROR');
         }
     }
 
     /**
-     * Create a new financial year.
+     * POST /api/admin/financial-year/add - Create a financial year.
+     *
+     * Creation also allocates leave for every employee and can be long
+     * running; the execution time limit is lifted for this action only.
      */
     public function storeAction(): void
     {
+        $this->requirePermission('financial_year', 'create');
+
         try {
-            // Financial year creation includes leave allocation for all employees
-            // which can take a long time. Remove PHP execution time limit.
             set_time_limit(0);
-            
-            $auth = Auth::getInstance();
-            if (!$this->checkPermission('financial_year', 'create')) {
-                $this->json([
-                    'success' => false,
-                    'message' => 'Unauthorized',
-                ], 403);
-                return;
-            }
 
-            // Get JSON input
-            $input = json_decode(file_get_contents('php://input'), true);
-            
+            $input = $this->getJsonBody();
             if (!$input) {
-                $this->json([
-                    'success' => false,
-                    'message' => 'Invalid request data',
-                ], 422);
-                return;
+                $this->error('Invalid request data', 422, 'VALIDATION_ERROR');
             }
 
-            // Check if creation is allowed
+            // Business gate: creation windows are controlled by the service.
             $canCreate = $this->financialYearService->canCreateNewFinancialYear();
             if (!$canCreate['can_create']) {
-                $this->json([
-                    'success' => false,
-                    'message' => $canCreate['reason'],
-                    'can_create' => false,
-                ], 403);
-                return;
+                $this->error(
+                    (string) $canCreate['reason'],
+                    403,
+                    'BUSINESS_RULE',
+                    ['can_create' => false]
+                );
             }
 
-            // Validate input
+            // Shape validation (uniqueness/existence rules live in the service).
             $requiredFields = ['year_name', 'start_date', 'end_date', 'total_days'];
             foreach ($requiredFields as $field) {
                 if (empty($input[$field])) {
-                    $this->json([
-                        'success' => false,
-                        'message' => "Missing required field: {$field}",
-                    ], 422);
-                    return;
+                    $this->error("Missing required field: {$field}", 422, 'VALIDATION_ERROR');
                 }
             }
 
-            // Get current user
-            $user = $auth->user();
-            $createdBy = $user['name'] ?? 'System';
+            $createdBy = \App\Helpers\Auth::getInstance()->user()['name'] ?? 'System';
 
-            // Create financial year
             $result = $this->financialYearService->createFinancialYear([
                 'year_name' => $input['year_name'],
                 'start_date' => $input['start_date'],
                 'end_date' => $input['end_date'],
-                'total_days' => (int)$input['total_days'],
+                'total_days' => (int) $input['total_days'],
             ], $createdBy);
 
             if ($result['success']) {
-                $this->json([
-                    'success' => true,
-                    'message' => $result['message'],
-                    'data' => [
-                        'financial_year_id' => $result['financial_year_id'],
-                        'allocated_count' => $result['allocated_count'],
-                    ],
-                ], 201);
-            } else {
-                $this->json([
-                    'success' => false,
-                    'message' => $result['error'],
-                ], 500);
+                $this->success([
+                    'financial_year_id' => $result['financial_year_id'],
+                    'allocated_count' => $result['allocated_count'],
+                ], (string) $result['message'], 201);
             }
 
-        } catch (\Exception $e) {
-            error_log("Financial Year Store Error: " . $e->getMessage());
-            $this->json([
-                'success' => false,
-                'message' => 'Failed to create financial year',
-                'error' => $e->getMessage(),
-            ], 500);
+            $this->error((string) ($result['error'] ?? 'Failed to create financial year'), 400, 'BUSINESS_RULE');
+        } catch (\Throwable $e) {
+            \logger()->error('Financial year creation failed', ['error' => $e->getMessage()]);
+            $this->error('Failed to create financial year', 500, 'INTERNAL_ERROR');
         }
     }
 
     /**
-     * Allocate leave to an employee.
+     * POST /api/admin/financial-year/allocate - Allocate leave to one employee.
      */
     public function allocateLeaveAction(): void
     {
-        try {
-            $auth = Auth::getInstance();
-            if (!$this->checkPermission('financial_year', 'edit')) {
-                $this->json([
-                    'success' => false,
-                    'message' => 'Unauthorized',
-                ], 403);
-                return;
-            }
+        $this->requirePermission('financial_year', 'edit');
 
-            $input = json_decode(file_get_contents('php://input'), true);
+        try {
+            $input = $this->getJsonBody();
 
             if (!$input || empty($input['employee_id']) || empty($input['financial_year_id'])) {
-                $this->json([
-                    'success' => false,
-                    'message' => 'Missing required fields: employee_id, financial_year_id',
-                ], 422);
-                return;
+                $this->error('Missing required fields: employee_id, financial_year_id', 422, 'VALIDATION_ERROR');
             }
 
-            $employeeId = (int)$input['employee_id'];
-            $financialYearId = (int)$input['financial_year_id'];
+            $employeeId = (int) $input['employee_id'];
+            $financialYearId = (int) $input['financial_year_id'];
             $selectedLeaveTypes = $input['leave_types'] ?? null;
 
-            // Verify financial year exists
+            // Existence guard (business validation lives in the service).
             $fy = FinancialYear::findById($financialYearId);
             if (!$fy) {
-                $this->json([
-                    'success' => false,
-                    'message' => 'Financial year not found',
-                ], 404);
-                return;
+                $this->error('Financial year not found', 404, 'NOT_FOUND');
             }
 
-            // Allocate leave
             $result = $this->financialYearService->allocateLeaveToEmployee(
                 $employeeId,
                 $financialYearId,
@@ -239,142 +165,62 @@ class FinancialYearController extends BaseController
             );
 
             if (!empty($result['error'])) {
-                $this->json([
-                    'success' => false,
-                    'message' => $result['error'],
-                ], 500);
-                return;
+                $this->error((string) $result['error'], 400, 'ALLOCATION_FAILED');
             }
 
             $message = "Leave allocated successfully. {$result['allocated']} new record(s) created.";
-            if ($result['skipped'] > 0) {
+            if (($result['skipped'] ?? 0) > 0) {
                 $message .= " {$result['skipped']} already existed and were skipped.";
             }
 
-            $this->json([
-                'success' => true,
-                'message' => $message,
-                'data' => $result,
-            ]);
-
-        } catch (\Exception $e) {
-            error_log("Leave Allocation Error: " . $e->getMessage());
-            $this->json([
-                'success' => false,
-                'message' => 'Failed to allocate leave',
-                'error' => $e->getMessage(),
-            ], 500);
+            $this->success($result, $message);
+        } catch (\Throwable $e) {
+            \logger()->error('Leave allocation failed', ['error' => $e->getMessage()]);
+            $this->error('Failed to allocate leave', 500, 'INTERNAL_ERROR');
         }
     }
 
     /**
-     * Get leave types.
+     * GET /api/admin/financial-years/leave-types - Leave type catalogue.
      */
     public function leaveTypesAction(): void
     {
+        $this->requirePermission('financial_year', 'view');
+
         try {
-            $auth = Auth::getInstance();
-            if (!$auth->check()) {
-                $this->json([
-                    'success' => false,
-                    'message' => 'Unauthorized',
-                ], 403);
-                return;
-            }
-
             $leaveTypes = LeaveType::all();
-            $data = array_map(function ($lt) {
-                return [
-                    'id' => $lt['id'],
-                    'name' => $lt['name'],
-                    'description' => $lt['description'] ?? null,
-                    'is_active' => (bool)($lt['is_active'] ?? false),
-                ];
-            }, $leaveTypes);
+            $data = array_map(static fn (array $lt): array => [
+                'id' => $lt['id'],
+                'name' => $lt['name'],
+                'description' => $lt['description'] ?? null,
+                'is_active' => (bool) ($lt['is_active'] ?? false),
+            ], $leaveTypes);
 
-            $this->json([
-                'success' => true,
-                'data' => $data,
-            ]);
-        } catch (\Exception $e) {
-            error_log("Leave Types Error: " . $e->getMessage());
-            $this->json([
-                'success' => false,
-                'message' => 'Failed to fetch leave types',
-            ], 500);
+            $this->success($data, 'OK');
+        } catch (\Throwable $e) {
+            \logger()->error('Leave types fetch failed', ['error' => $e->getMessage()]);
+            $this->error('Failed to fetch leave types', 500, 'INTERNAL_ERROR');
         }
     }
 
     /**
-     * Get active employees for allocation.
+     * GET /api/admin/financial-years/employees - Active employees for allocation.
      */
     public function employeesAction(): void
     {
+        $this->requirePermission('financial_year', 'edit');
+
         try {
-            $auth = Auth::getInstance();
-            if (!$this->checkPermission('financial_year', 'edit')) {
-                $this->json([
-                    'success' => false,
-                    'message' => 'Unauthorized',
-                ], 403);
-                return;
-            }
-
             $employees = Employee::where(['employee_status' => 'active']);
-            $data = array_map(function ($emp) {
-                return [
-                    'id' => $emp['id'],
-                    'full_name' => trim(($emp['first_name'] ?? '') . ' ' . ($emp['last_name'] ?? '') . (!empty($emp['surname']) ? ' ' . $emp['surname'] : '')),
-                ];
-            }, $employees);
+            $data = array_map(static fn (array $emp): array => [
+                'id' => $emp['id'],
+                'full_name' => trim(($emp['first_name'] ?? '') . ' ' . ($emp['last_name'] ?? '') . (!empty($emp['surname']) ? ' ' . $emp['surname'] : '')),
+            ], $employees);
 
-            $this->json([
-                'success' => true,
-                'data' => $data,
-            ]);
-        } catch (\Exception $e) {
-            error_log("Employees Error: " . $e->getMessage());
-            $this->json([
-                'success' => false,
-                'message' => 'Failed to fetch employees',
-            ], 500);
+            $this->success($data, 'OK');
+        } catch (\Throwable $e) {
+            \logger()->error('Employee fetch failed', ['error' => $e->getMessage()]);
+            $this->error('Failed to fetch employees', 500, 'INTERNAL_ERROR');
         }
-    }
-
-    /**
-     * Check permission with development mode fallback.
-     */
-    private function checkPermission(string $module, string $action): bool
-    {
-        $auth = Auth::getInstance();
-        
-        // First check if user is authenticated
-        if (!$auth->check()) {
-            return false;
-        }
-        
-        // Get current user role
-        $user = $auth->user();
-        $role = $user['role'] ?? '';
-        
-        // Super admin always has access
-        if ($role === 'super_admin') {
-            return true;
-        }
-        
-        // Check permission using RBAC
-        $rbac = \App\Helpers\RBAC::getInstance();
-        if ($rbac->hasPermission($role, $module, $action)) {
-            return true;
-        }
-        
-        // Fallback: in development mode, allow authenticated users
-        $env = env('APP_ENV', 'production');
-        if ($env === 'development') {
-            return true;
-        }
-        
-        return false;
     }
 }
-

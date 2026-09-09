@@ -47,8 +47,11 @@ class Database
         $database = $this->config['database'] ?? 'muwasco';
         $port     = (int) ($this->config['port'] ?? 3306);
 
-        // Use mysqli_init + real_connect to properly handle empty passwords
-        $this->mysqli = \mysqli_init();
+        // Use the instrumented subclass so EVERY query executed on this
+        // connection (helper methods, repositories, raw $conn->query() /
+        // $conn->prepare() sites) is counted and timed by PerfTiming
+        // (Phase 2). Still a \mysqli — fully type-compatible downstream.
+        $this->mysqli = new InstrumentedMysqli();
 
         // Set connection and read timeouts to prevent hanging requests
         $connectTimeout = (int)($this->config['connect_timeout'] ?? 5);

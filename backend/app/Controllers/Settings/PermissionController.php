@@ -99,6 +99,10 @@ class PermissionController extends BaseController
         $this->success([
             'user'             => $result['user'],
             'role'             => $result['user']['role'],
+            // Server-resolved organisational scope of the TARGET user so the
+            // permission management UI can show why a user is unit-restricted.
+            // Resolved from the DB — never from client input.
+            'org_scope'        => \App\Helpers\OrgScope::forUser($userId),
             'role_permissions' => $result['role_permissions'],
             'overrides'        => $overrides,
             'effective'        => $effective,

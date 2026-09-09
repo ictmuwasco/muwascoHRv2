@@ -226,6 +226,13 @@ class PermissionService
             return ['success' => false, 'message' => 'Permission type must be "allow" or "deny"'];
         }
 
+        // PRIVILEGE ESCALATION GUARD: an administrator must never modify their
+        // own authorization. Self-granted overrides bypass the separation
+        // between the actor and the reviewed target of a permission change.
+        if ($grantedBy === $userId) {
+            return ['success' => false, 'message' => 'You cannot modify your own permission overrides'];
+        }
+
         // Validate module/action exist in catalog
         $catalog = $this->getPermissionCatalog();
         if (!isset($catalog[$module])) {

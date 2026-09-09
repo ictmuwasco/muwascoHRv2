@@ -209,8 +209,9 @@ final class OrgScope
         $sec  = $scope['section_id'] ?? null;
         $sub  = $scope['subsection_id'] ?? null;
 
-        // Broad organisational access.
-        if ($scope['is_hr'] || $scope['is_super_admin'] || $scope['is_pme_or_audit']) {
+        // Broad organisational access. (!empty() keeps this safe for callers
+        // that construct partial scope arrays — e.g. tests / future callers.)
+        if (!empty($scope['is_hr']) || !empty($scope['is_super_admin']) || !empty($scope['is_pme_or_audit'])) {
             return ['1=1', []];
         }
 
@@ -221,7 +222,7 @@ final class OrgScope
         $clauses = [];
         $params  = [];
 
-        if ($scope['is_sub_section_head'] || $scope['is_section_head']) {
+        if (!empty($scope['is_sub_section_head']) || !empty($scope['is_section_head'])) {
             // Heads of smaller units are narrowed as far as the data allows,
             // but never wider than their own department.
             if ($sub !== null && $sec !== null && $dept !== null) {
@@ -247,5 +248,230 @@ final class OrgScope
         }
 
         return [implode(' AND ', $clauses), $params];
+    }
+
+    // =========================================================================
+    // Attendance data scope (Phase: Role/Page/Permission restriction system)
+    //
+    // Permission (CAN open the attendance module) and DATA SCOPE (WHICH
+    // attendance records) are separate axes. These helpers answer the scope
+    // question for attendance reads and are consumed by AttendanceController
+    // and AttendanceDashboardService. The authenticated session/employee
+    // record is the ONLY input — request parameters are never trusted.
+    // =========================================================================
+
+    public const ATTENDANCE_SCOPE_ALL  = 'all';
+    public const ATTENDANCE_SCOPE_UNIT = 'unit';
+    public const ATTENDANCE_SCOPE_OWN  = 'own';
+
+    /**
+     * Attendance read mode for the given organisational scope.
+     *
+     *   'all'  — org-wide attendance: super admin, HR, Managing Director
+     *            (oversight) and the PME/Audit leadership special case that
+     *            OrgScope already treats as organisation-wide.
+     *   'unit' — own organisational unit only: department / section /
+     *            sub-section heads (narrowed as far as the data allows).
+     *   'own'  — own attendance records ONLY: every other authenticated role
+     *            (officer, employee, ...). The default.
+     */
+    public static function attendanceReadMode(array $scope): string
+    {
+        $role = (string)($scope['role'] ?? '');
+        if (
+            !empty($scope['is_super_admin']) || !empty($scope['is_hr'])
+            || $role === 'managing_director' || !empty($scope['is_pme_or_audit'])
+        ) {
+            return self::ATTENDANCE_SCOPE_ALL;
+        }
+        if (
+            !empty($scope['is_dept_head']) || !empty($scope['is_section_head'])
+            || !empty($scope['is_sub_section_head'])
+        ) {
+            return self::ATTENDANCE_SCOPE_UNIT;
+        }
+        return self::ATTENDANCE_SCOPE_OWN;
+    }
+
+    /**
+     * Describe the caller's attendance scope as a plain array (also used by
+     * the permission management UI and tests).
+     */
+    public static function attendanceScope(array $scope, ?int $ownEmployeeDbId): array
+    {
+        $mode = self::attendanceReadMode($scope);
+        return [
+            'mode'           => $mode,
+            'employee_db_id' => $mode === self::ATTENDANCE_SCOPE_OWN ? $ownEmployeeDbId : null,
+            'department_id'  => $scope['department_id'] ?? null,
+            'section_id'     => $scope['section_id'] ?? null,
+            'subsection_id'  => $scope['subsection_id'] ?? null,
+        ];
+    }
+
+    /**
+     * SQL WHERE clause (with bound params) restricting an attendance query to
+     * the caller's data scope. Queries must alias the attendance table as
+     * `a` and the employees table as `e` (or pass a column map).
+     *
+     *  - all  → '1=1' (no restriction)
+     *  - own  → a.employee_id = <own employee id>; unresolvable identity → deny
+     *  - unit → department/section/subsection narrowing via scopeWhere();
+     *           unresolvable unit → deny ('1=0')
+     *
+     * @return array{0:string, 1:array} [whereClause, params] (all params int)
+     */
+    public static function attendanceWhere(array $scope, ?int $ownEmployeeDbId, array $columnMap = []): array
+    {
+        $mode = self::attendanceReadMode($scope);
+
+        if ($mode === self::ATTENDANCE_SCOPE_ALL) {
+            return ['1=1', []];
+        }
+
+        $empCol = $columnMap['employee_id'] ?? 'a.employee_id';
+
+        if ($mode === self::ATTENDANCE_SCOPE_OWN) {
+            if ($ownEmployeeDbId === null || $ownEmployeeDbId <= 0) {
+                // Identity could not be resolved - deny rather than expose data.
+                return ['1=0', []];
+            }
+            return ["{$empCol} = ?", [(int) $ownEmployeeDbId]];
+        }
+
+        // Unit mode — heads. scopeWhere() narrows sub-section/section heads to
+        // their own unit and every other unit-resolvable caller to their own
+        // department, returning '1=0' when the unit cannot be resolved.
+        return self::scopeWhere($scope, $columnMap);
+    }
+
+    /**
+     * True when the caller may read a SPECIFIC employee's attendance record
+     * (IDOR guard for /attendance/employee/{id} and /attendance/hr-employee-
+     * history). Mirrors attendanceWhere() exactly so an employee excluded
+     * from list reads can never be read through the by-employee endpoints.
+     *
+     * @param array $scope               OrgScope::current() result for the caller
+     * @param int|null $ownEmployeeDbId  Caller's own employees.id (may be null)
+     * @param array $targetEmployee      Target row: id, department_id, section_id, subsection_id
+     */
+    public static function attendanceEmployeeAllowed(
+        array $scope,
+        ?int $ownEmployeeDbId,
+        array $targetEmployee
+    ): bool {
+        $mode = self::attendanceReadMode($scope);
+
+        if ($mode === self::ATTENDANCE_SCOPE_ALL) {
+            return true;
+        }
+
+        if ($mode === self::ATTENDANCE_SCOPE_OWN) {
+            return $ownEmployeeDbId !== null
+                && $ownEmployeeDbId > 0
+                && (int)($targetEmployee['id'] ?? 0) === $ownEmployeeDbId;
+        }
+
+        // Unit mode — same narrowing ladder as scopeWhere().
+        $dept = $scope['department_id'] ?? null;
+        $sec  = $scope['section_id'] ?? null;
+        $sub  = $scope['subsection_id'] ?? null;
+
+        $tDept = isset($targetEmployee['department_id']) && $targetEmployee['department_id'] !== null
+            ? (int) $targetEmployee['department_id'] : null;
+        $tSec  = isset($targetEmployee['section_id']) && $targetEmployee['section_id'] !== null
+            ? (int) $targetEmployee['section_id'] : null;
+        $tSub  = isset($targetEmployee['subsection_id']) && $targetEmployee['subsection_id'] !== null
+            ? (int) $targetEmployee['subsection_id'] : null;
+
+        if ($sub !== null && $sec !== null && $dept !== null) {
+            return $tDept === (int) $dept && $tSec === (int) $sec && $tSub === (int) $sub;
+        }
+        if ($sec !== null && $dept !== null) {
+            return $tDept === (int) $dept && $tSec === (int) $sec;
+        }
+        if ($dept !== null) {
+            return $tDept === (int) $dept;
+        }
+
+        // Unit could not be resolved - deny.
+        return false;
+    }
+
+    /**
+     * Resolve the organisational scope of an ARBITRARY user (not the session
+     * user). Used by the permission management UI to display the target
+     * user's organisational scope next to their effective permissions.
+     * Read-only and defensive: never throws.
+     */
+    public static function forUser(int $userId): array
+    {
+        $scope = [
+            'user_id'         => $userId,
+            'role'            => null,
+            'employee_id'     => null,
+            'department_id'   => null,
+            'department_name' => null,
+            'section_id'      => null,
+            'subsection_id'   => null,
+            'resolved'        => false,
+        ];
+
+        if ($userId <= 0) {
+            return $scope;
+        }
+
+        try {
+            $conn = Database::getInstance()->getConnection();
+
+            $q = $conn->prepare('SELECT role, employee_id FROM users WHERE id = ? LIMIT 1');
+            if (!$q) {
+                return $scope;
+            }
+            $q->bind_param('i', $userId);
+            $q->execute();
+            $user = $q->get_result()->fetch_assoc();
+            $q->close();
+
+            if (!$user) {
+                return $scope;
+            }
+
+            $scope['role']        = $user['role'] ?? null;
+            $scope['employee_id'] = $user['employee_id'] ?? null;
+
+            $empCode = (string)($user['employee_id'] ?? '');
+            if ($empCode === '') {
+                return $scope;
+            }
+
+            $stmt = $conn->prepare(
+                'SELECT e.department_id, e.section_id, e.subsection_id, d.name AS department_name
+                 FROM employees e
+                 LEFT JOIN departments d ON e.department_id = d.id
+                 WHERE e.employee_id = ?
+                 LIMIT 1'
+            );
+            if (!$stmt) {
+                return $scope;
+            }
+            $stmt->bind_param('s', $empCode);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if ($row) {
+                $scope['department_id']   = $row['department_id'] !== null ? (int) $row['department_id'] : null;
+                $scope['section_id']      = $row['section_id'] !== null ? (int) $row['section_id'] : null;
+                $scope['subsection_id']   = $row['subsection_id'] !== null ? (int) $row['subsection_id'] : null;
+                $scope['department_name'] = $row['department_name'] ?? null;
+                $scope['resolved']        = true;
+            }
+
+            return $scope;
+        } catch (\Throwable $e) {
+            error_log('[OrgScope::forUser] ' . $e->getMessage());
+            return $scope;
+        }
     }
 }
