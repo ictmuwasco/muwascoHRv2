@@ -199,7 +199,7 @@ const MeetingMinutesModal = ({
       }
     }
     load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [meeting.id])
 
   const isPublished = minutesStatus?.exists && minutesStatus?.status === 'published'
