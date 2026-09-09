@@ -27,7 +27,6 @@ const MonthPills = ({ selectedMonth, scheduledMonths = [], onChange, financialYe
           const short = FY_MONTH_SHORT[idx]
           const isScheduled = scheduledMonths.includes(month)
           const isSelected = selectedMonth === month
-          const isCurrent = month === new Date().toLocaleString('default', { month: 'long' })
 
           let bgColor = 'bg-gray-100 dark:bg-slate-700'
           let textColor = 'text-gray-600 dark:text-gray-400'

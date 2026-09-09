@@ -1,5 +1,3 @@
-import { FY_MONTHS } from '../../constants/leaveConstants'
-
 /**
  * Coverage progress bar with explanatory text.
  *
@@ -10,7 +8,6 @@ const CoverageBar = ({ stats, label = 'PLANNING COVERAGE', showDetails = true })
   const scheduled = stats?.total_scheduled || 0
   const active = stats?.total_active || 0
   const notScheduled = stats?.not_scheduled || 0
-  const coverage = stats?.coverage_percent || 0
 
   const percentage = active > 0 ? Math.round((scheduled / active) * 1000) / 10 : 0
 
