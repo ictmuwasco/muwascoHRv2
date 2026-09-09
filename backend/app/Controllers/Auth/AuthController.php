@@ -19,14 +19,13 @@ class AuthController extends BaseController
 {
     private AuthServiceInterface $authService;
 
-    public function __construct()
+    /**
+     * Constructor with dependency injection.
+     * The DI container automatically resolves AuthServiceInterface.
+     */
+    public function __construct(AuthServiceInterface $authService)
     {
-        // Dependency injection - services are injected via setter methods
-        $this->authService = new AuthService();
-        
-        // Set repository dependencies
-        $this->authService->setUserRepository(new \App\Repositories\UserRepository());
-        $this->authService->setEmployeeRepository(new \App\Repositories\EmployeeRepository());
+        $this->authService = $authService;
     }
 
     /**

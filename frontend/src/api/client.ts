@@ -1,5 +1,4 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
-import type { ApiResponse } from '../types';
 import { getRequestId, setRequestId, reportClientError } from '../utils/errorReporting';
 // Single source of truth for the API base URL (VITE_API_URL — typed in
 // src/vite-env.d.ts, documented in .env.example).
