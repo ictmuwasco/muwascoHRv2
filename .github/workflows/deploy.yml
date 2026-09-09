@@ -92,7 +92,7 @@ jobs:
 
       # ---- Run database migrations to create tables --------------------
       - name: Run database migrations
-        run: php backend/database/migrate.php
+        run: php backend/database/run_migration.php
         env:
           DB_DATABASE: hr_test
           DB_USERNAME: root
