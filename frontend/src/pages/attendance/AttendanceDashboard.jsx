@@ -19,7 +19,6 @@ import {
   Pause,
   Play,
   Download,
-  Search,
   Eye,
   AlertTriangle,
   CalendarOff,
@@ -251,7 +250,7 @@ const AttendanceDashboard = () => {
       })
       downloadCsv(csv, csvFilenameWithDate('attendance_dashboard'))
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error('Export failed:', err)
     } finally {
       setExporting(false)
