@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Search, User } from 'lucide-react'
 import api from '../../utils/api'
 import Button from '../ui/Button'
-import Input from '../ui/Input'
 import Select from '../ui/Select'
 import Badge from '../ui/Badge'
 import { FY_MONTHS } from '../../constants/leaveConstants'
@@ -172,7 +171,7 @@ const ScheduleSlideOver = ({
       setNotes('')
       setError('')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isOpen])
 
   if (!isOpen) return null
