@@ -537,7 +537,7 @@ function TargetModal({ mode, record, plans, goals, departments, onClose, onSave 
   const [planId, setPlanId] = useState<number | ''>(record?.strategic_plan_id ?? plans[0]?.id ?? '');
   const [departmentId, setDepartmentId] = useState<number | ''>(record?.department_id ?? '');
   const [name, setName] = useState(record?.name ?? '');
-  const [description, setDescription] = useState(record?.description ?? '');
+  const [description] = useState(record?.description ?? '');
   const [baseline, setBaseline] = useState(record?.baseline_value ?? '');
   const [targetValue, setTargetValue] = useState(record?.target_value ?? '');
   const [unit, setUnit] = useState(record?.unit ?? '');

@@ -124,7 +124,7 @@ export default function TraceabilityPanel({ objectiveId, onClose }: Props) {
           {data.ancestors.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Cascaded from</p>
-              {data.ancestors.map((a, i) => (
+              {data.ancestors.map((a) => (
                 <div key={a.id}>
                   <LineageCard node={a} />
                   <div className="flex justify-center py-0.5"><ArrowDown className="h-4 w-4 text-gray-300 dark:text-slate-500" /></div>

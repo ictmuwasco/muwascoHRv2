@@ -4,7 +4,7 @@ import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
-import { User, Briefcase, Users, FileText, Key, Save, Loader2, Plus, Trash2, Upload, Eye, Download, UserRound } from 'lucide-react';
+import { User, Briefcase, Users, FileText, Key, Loader2, Plus, Trash2, Upload, Eye, Download, UserRound } from 'lucide-react';
 import type { EmployeeProfile } from '../../types';
 
 // Base URL for direct file access (authenticated via httpOnly cookie) —

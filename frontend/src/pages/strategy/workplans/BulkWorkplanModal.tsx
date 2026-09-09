@@ -4,7 +4,7 @@ import Button from '../../../components/ui/Button';
 import { Plus } from 'lucide-react';
 import { workplanService } from '../../../api/services/workplanService';
 import type {
-  AssignableEmployee, UnitRef, WorkplanObjective,
+  AssignableEmployee, UnitRef,
 } from '../../../api/services/workplanService';
 import type { AppraisalCycle } from '../../../api/services/appraisalCycleService';
 import { appraisalCycleService, cycleLabel } from '../../../api/services/appraisalCycleService';
@@ -40,7 +40,7 @@ interface RowState {
  * section (and optionally a subsection) with its own appraisal quarters.
  */
 export default function BulkWorkplanModal({
-  isOpen, contracts, sections, subsections, employees, cycles = [], departmentId,
+  isOpen, contracts, sections, subsections, cycles = [], departmentId,
   onClose, onSaved, onError,
 }: Props) {
   const [liveCycles, setLiveCycles] = useState<AppraisalCycle[] | null>(null);

@@ -155,7 +155,7 @@ const DataProtectionConsent = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [verifiedName, setVerifiedName] = useState('');
+  const [, setVerifiedName] = useState('');
 
   const handleVerify = async () => {
     setError('');

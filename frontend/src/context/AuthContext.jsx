@@ -175,7 +175,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Log full error to the browser console for easier debugging
-      // eslint-disable-next-line no-console
+       
       console.error('Login error:', error, errorData)
 
       return {
