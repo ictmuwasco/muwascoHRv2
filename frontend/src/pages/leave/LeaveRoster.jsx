@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Users, Download, Plus, RefreshCw, CalendarRange, LayoutGrid, List } from 'lucide-react'
+import { Users, Download, Plus, LayoutGrid, List } from 'lucide-react'
 import api from '../../utils/api'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
-import Badge from '../../components/ui/Badge'
+
 import LeaveInfoBanner from '../../components/leave/LeaveInfoBanner'
 import CoverageBar from '../../components/leave/CoverageBar'
 import MonthPills from '../../components/leave/MonthPills'
@@ -11,7 +11,7 @@ import PlanningMatrix from '../../components/leave/PlanningMatrix'
 import ScheduleSlideOver from '../../components/leave/ScheduleSlideOver'
 import EmployeeRosterTable from '../../components/leave/EmployeeRosterTable'
 import FilterBar from '../../components/leave/FilterBar'
-import { FY_MONTHS } from '../../constants/leaveConstants'
+
 
 const LeaveRoster = () => {
 
@@ -21,8 +21,8 @@ const LeaveRoster = () => {
   const [departments, setDepartments] = useState([])
   const [sections, setSections] = useState([])
   const [stats, setStats] = useState(null)
-  const [distribution, setDistribution] = useState({ distribution: [], highest: null, lowest: null })
-  const [upcoming, setUpcoming] = useState(null)
+  const [, setDistribution] = useState({ distribution: [], highest: null, lowest: null })
+  const [, setUpcoming] = useState(null)
   const [matrixData, setMatrixData] = useState(null)
 
   // UI state
@@ -36,9 +36,9 @@ const LeaveRoster = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState('matrix')
   const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const [selectedEmployeeForSchedule, setSelectedEmployeeForSchedule] = useState(null)
+  const [, setSelectedEmployeeForSchedule] = useState(null)
   const [pagination, setPagination] = useState({ total: 0, per_page: 20, current_page: 1, last_page: 1 })
-  const [actionLoading, setActionLoading] = useState(null)
+  const [, setActionLoading] = useState(null)
 
   // ─── Data Loading ───────────────────────────────────────────────
 

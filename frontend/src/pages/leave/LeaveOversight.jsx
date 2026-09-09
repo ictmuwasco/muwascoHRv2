@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Download, RefreshCw, LayoutGrid, List, Users, Check, BarChart3, Calendar, Info } from 'lucide-react'
+import { Download, RefreshCw, LayoutGrid, List, Users, Check } from 'lucide-react'
 import api from '../../utils/api'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
-import Badge from '../../components/ui/Badge'
+
 import LeaveInfoBanner from '../../components/leave/LeaveInfoBanner'
 import CoverageBar from '../../components/leave/CoverageBar'
 import PlanningMatrix from '../../components/leave/PlanningMatrix'
@@ -12,7 +12,7 @@ import UpcomingLeave from '../../components/leave/UpcomingLeave'
 import DepartmentTable from '../../components/leave/DepartmentTable'
 import EmployeeRosterTable from '../../components/leave/EmployeeRosterTable'
 import FilterBar from '../../components/leave/FilterBar'
-import { FY_MONTHS } from '../../constants/leaveConstants'
+
 
 
 const LeaveOversight = () => {
@@ -268,13 +268,6 @@ const LeaveOversight = () => {
   })
 
   // Get scheduled months for month pills
-  const scheduledMonths = Array.from(
-    new Set(
-      matrixEmployees
-        .filter((e) => e.scheduled_month)
-        .map((e) => e.scheduled_month)
-    )
-  )
 
   if (loading && !stats && !matrixData) {
     return (
@@ -536,7 +529,7 @@ const LeaveOversight = () => {
         {viewMode === 'matrix' ? (
           <PlanningMatrix
             employees={filteredMatrixEmployees}
-            onEdit={(emp) => {}}
+            onEdit={() => {}}
             onDelete={() => {}}
             onSchedule={() => {}}
           />

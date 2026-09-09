@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Calendar, Edit3, Trash2, User } from 'lucide-react'
 import Badge from '../ui/Badge'
 import Button from '../ui/Button'
-import { FY_MONTHS } from '../../constants/leaveConstants'
 
 /**
  * Employee roster table with list view.

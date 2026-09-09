@@ -160,16 +160,8 @@ const downloadBlob = (blob: Blob, filename: string): void => {
 const PER_PAGE = 15
 
 // ---- Stat card -------------------------------------------------------------
-const StatCard = ({ title, value, icon: Icon, subtitle, accent = 'default' }: any) => {
-  const accents: Record<string, string> = {
-    default: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300',
-    success: 'bg-green-100 text-green-600 dark:bg-green-900/40 dark:text-green-300',
-    warning: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/40 dark:text-yellow-300',
-    danger: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300',
-    info: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/40 dark:text-indigo-300',
-  }
-  return (
-    <Card className="p-4">
+const StatCard = ({ title, value, icon: Icon, subtitle, accent = 'default' }: any) => (
+  <Card className="p-4">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
@@ -181,8 +173,7 @@ const StatCard = ({ title, value, icon: Icon, subtitle, accent = 'default' }: an
         </div>
       </div>
     </Card>
-  )
-}
+)
 
 // ---- Filter panel ----------------------------------------------------------
 const QUICK_PRESETS = [
