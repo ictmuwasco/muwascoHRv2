@@ -7,6 +7,8 @@ on:
       - develop
       - 'feature/**'
       - 'phase*/**'
+      - 'chore/**'
+      - 'fix/**'
   pull_request:
     branches: [main]
 
