@@ -41,6 +41,8 @@ $conn->query("CREATE TABLE IF NOT EXISTS migrations (
 
 // Ensure error_message column exists (for backward compatibility)
 $conn->query("ALTER TABLE migrations ADD COLUMN IF NOT EXISTS error_message TEXT DEFAULT NULL");
+$conn->query("ALTER TABLE migrations ADD COLUMN IF NOT EXISTS duration_ms INT UNSIGNED DEFAULT 0");
+$conn->query("ALTER TABLE migrations ADD COLUMN IF NOT EXISTS status ENUM('completed','failed','rolled_back') DEFAULT 'completed'");
 
 // Get pending migrations
 $allFiles = array_diff(scandir($migrationsDir), ['.', '..']);
@@ -77,7 +79,7 @@ foreach ($toRun as $file) {
     if ($isCiMysql && in_array($file, $ciSkipped, true)) {
         echo "[~] {$file} ... SKIPPED on CI MySQL (MariaDB-only syntax)\n";
         $duration = 0;
-        $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, duration_ms, status) VALUES (?, ?, ?, 'completed')");
+        $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, status) VALUES (?, ?, 'completed')");
         $stmt->bind_param("ssi", $file, $batch, $duration);
         $stmt->execute();
         $success++;

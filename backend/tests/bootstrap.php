@@ -4,6 +4,30 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../../vendor/autoload.php';
 
+// Define path constants that production bootstrap.php normally provides.
+// Tests exercise production code (e.g. PermissionCatalogTest require's
+// BASE_PATH . '/backend/config/permissions.php', SecurityMiddleware uses
+// STORAGE_PATH) which assumes these constants exist.
+if (!defined('BASE_PATH')) {
+    define('BASE_PATH', dirname(__DIR__));
+}
+if (!defined('BACKEND_PATH')) {
+    define('BACKEND_PATH', BASE_PATH . '/backend');
+}
+if (!defined('STORAGE_PATH')) {
+    define('STORAGE_PATH', BACKEND_PATH . '/storage');
+}
+
+// Ensure storage sub-directories exist (CI runs in a fresh checkout where
+// these are not created by the repo — RateLimitTest writes to
+// STORAGE_PATH/cache/rate-limits).
+$storageDirs = [STORAGE_PATH, STORAGE_PATH . '/logs', STORAGE_PATH . '/cache', STORAGE_PATH . '/backups'];
+foreach ($storageDirs as $dir) {
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+}
+
 // Load environment variables
 $envFile = dirname(__DIR__) . '/.env';
 if (file_exists($envFile)) {
