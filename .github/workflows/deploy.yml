@@ -109,13 +109,7 @@ jobs:
       - name: Run PHPUnit tests
         run: |
           set -o pipefail
-          php -v
-          php -m | grep -i -E 'mysqli|pdo'
-          ls -la backend/storage/ || true
-          echo '--- phpunit: Unit suite only (fail-fast, full trace) ---'
-          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose --debug --stop-on-error --stop-on-failure --testsuite Unit 2>&1 | tee /tmp/phpunit_unit.log; test ${PIPESTATUS[0]} -eq 0
-          echo '--- phpunit: full run ---'
-          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose 2>&1 | tee /tmp/phpunit_full.log; test ${PIPESTATUS[0]} -eq 0
+          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose 2>&1 | tee /tmp/phpunit_full.log
         env:
           DB_DATABASE: muwasco
           DB_USERNAME: root
@@ -125,6 +119,18 @@ jobs:
           APP_ENV: testing
           JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
           JWT_ISSUER: muwasco-hr-system
+
+      - name: Show phpunit log on failure
+        if: always()
+        run: |
+          echo '--- phpunit full log tail ---'
+          tail -n 250 /tmp/phpunit_full.log || true
+
+      - name: Show migration log on failure
+        if: failure()
+        run: |
+          echo '--- phpunit full log tail ---'
+          tail -n 120 /tmp/phpunit_full.log || true
 
       - name: Dump error log on failure
         if: failure()
