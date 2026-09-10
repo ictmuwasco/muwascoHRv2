@@ -10,9 +10,11 @@
     <testsuites>
         <testsuite name="Unit">
             <directory>backend/tests/Unit</directory>
-            <!-- Standalone script-style test (run directly with php);
-                 it self-executes and exits, which would abort the suite. -->
+            <!-- Standalone script-style tests (run directly with php);
+                 they self-execute and exit, which would abort the suite. -->
             <exclude>backend/tests/Unit/Services/AttendanceStatusResolutionTest.php</exclude>
+            <exclude>backend/tests/_phpunit_out.txt</exclude>
+            <exclude>backend/tests/_suite_out.txt</exclude>
         </testsuite>
         <testsuite name="Feature">
             <directory>backend/tests/Feature</directory>
