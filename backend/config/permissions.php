@@ -31,6 +31,13 @@ return [
             'label'   => 'Dashboard',
             'actions' => [
                 ['key' => 'view', 'label' => 'View', 'type' => 'page'],
+                // Dashboard "HR Insights" widget — org-wide oversight (contract
+                // expiry, retirement, pending leave, roster, attendance and
+                // on-leave monitoring). Seeded to hr_manager /
+                // managing_director / super_admin by migration 046. Contrasts
+                // with dashboard:view (held by every role), which must NOT see
+                // org-wide insight data.
+                ['key' => 'hr_insights', 'label' => 'HR Insights', 'type' => 'action'],
             ],
         ],
 
