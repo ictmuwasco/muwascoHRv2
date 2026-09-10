@@ -109,7 +109,7 @@ jobs:
           php -v
           php -m | grep -i -E 'mysqli|pdo'
           ls -la backend/storage/ || true
-          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose 2>&1
+          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose --debug 2>&1
         env:
           DB_DATABASE: muwasco
           DB_USERNAME: root
@@ -120,13 +120,14 @@ jobs:
           JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
           JWT_ISSUER: muwasco-hr-system
 
-      - name: Dump error log on failure
-        if: failure()
+      - name: Dump diagnostics on failure
+        if: always()
         run: |
           echo '--- storage/logs ---'
           ls -la backend/storage/logs/ || true
-          tail -n 200 backend/storage/logs/error.log || true
-          tail -n 200 backend/storage/logs/*.log || true
+          tail -n 200 backend/storage/logs/error.log 2>/dev/null || echo '(no error.log)'
+          echo '--- phpunit exit probe ---'
+          vendor/bin/phpunit --version || true
 
   deploy-production:
     name: Deploy to Production
