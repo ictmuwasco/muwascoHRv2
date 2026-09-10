@@ -17,15 +17,19 @@
 -- Run via the project's existing ad-hoc migration convention (cf. 006).
 -- ------------------------------------------------------------------
 
--- 1. Generated column (derived from clock_in; NULL when clock_in is NULL).
---    Multiple NULLs are allowed by a UNIQUE index, so pre-existing rows
---    with no clock_in are not blocked.
-ALTER TABLE attendance
-  ADD COLUMN attendance_date DATE
-    AS (DATE(clock_in)) STORED;
-
--- 2. Unique constraint: prevents two attendance rows for the same
---    employee on the same attendance day.
-ALTER TABLE attendance
-  ADD CONSTRAINT uk_attendance_employee_date
-  UNIQUE KEY uk_attendance_employee_date (employee_id, attendance_date);
+-- Idempotent guard: only add column + constraint if not present
+SET @has_col = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance' AND COLUMN_NAME = 'attendance_date');
+SET @has_uk = (SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance' AND CONSTRAINT_NAME = 'uk_attendance_employee_date');
+SET @need = IF(@has_col = 0 OR @has_uk = 0, 1, 0);
+SET @sql = IF(@need = 1,
+    'ALTER TABLE attendance
+       ADD COLUMN IF NOT EXISTS attendance_date DATE
+         AS (DATE(clock_in)) STORED,
+     ADD CONSTRAINT IF NOT EXISTS uk_attendance_employee_date
+       UNIQUE KEY uk_attendance_employee_date (employee_id, attendance_date)',
+    'SELECT 1 AS no_op_attendance_date_already_exists');
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

@@ -74,6 +74,14 @@ DEALLOCATE PREPARE stmt;
 SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
                    WHERE TABLE_SCHEMA = DATABASE()
                      AND TABLE_NAME   = 'performance_events'
+                     AND COLUMN_NAME  = 'controller_ms');
+SET @ddl = IF(@col_exists = 0,
+    'ALTER TABLE `performance_events` ADD COLUMN `controller_ms` INT UNSIGNED NULL AFTER `authorization_ms`',
+    'SELECT ''performance_events.controller_ms already present''');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- serialization_ms: json_encode time in the ApiResponse envelope
 SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
                    WHERE TABLE_SCHEMA = DATABASE()
@@ -130,13 +138,6 @@ SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
 SET @ddl = IF(@col_exists = 0,
     'ALTER TABLE `performance_events` ADD COLUMN `external_http_ms` INT UNSIGNED NULL AFTER `ai_tool_calls`',
     'SELECT ''performance_events.external_http_ms already present''');
-PREPARE stmt FROM @ddl;
-EXECUTE stmt;
-DEALLOCATE PREPARE stmt;
-                     AND COLUMN_NAME  = 'controller_ms');
-SET @ddl = IF(@col_exists = 0,
-    'ALTER TABLE `performance_events` ADD COLUMN `controller_ms` INT UNSIGNED NULL AFTER `authorization_ms`',
-    'SELECT ''performance_events.controller_ms already present''');
 PREPARE stmt FROM @ddl;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
