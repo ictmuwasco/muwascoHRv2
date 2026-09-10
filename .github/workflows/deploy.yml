@@ -111,7 +111,10 @@ jobs:
           php -v
           php -m | grep -i -E 'mysqli|pdo'
           ls -la backend/storage/ || true
-          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose --debug 2>&1
+          echo '--- phpunit: Unit suite only (fail-fast, full trace) ---'
+          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose --debug --stop-on-error --stop-on-failure --testsuite Unit 2>&1; echo "PHPUNIT_UNIT_EXIT=$?"
+          echo '--- phpunit: full run ---'
+          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose 2>&1; echo "PHPUNIT_EXIT=$?"
         env:
           DB_DATABASE: muwasco
           DB_USERNAME: root
@@ -122,14 +125,12 @@ jobs:
           JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
           JWT_ISSUER: muwasco-hr-system
 
-      - name: Dump diagnostics on failure
-        if: always()
+      - name: Dump error log on failure
+        if: failure()
         run: |
           echo '--- storage/logs ---'
           ls -la backend/storage/logs/ || true
-          tail -n 200 backend/storage/logs/error.log 2>/dev/null || echo '(no error.log)'
-          echo '--- phpunit exit probe ---'
-          vendor/bin/phpunit --version || true
+          for f in backend/storage/logs/*.log; do echo "===== $f ====="; tail -n 100 "$f" || true; done
 
   deploy-production:
     name: Deploy to Production
