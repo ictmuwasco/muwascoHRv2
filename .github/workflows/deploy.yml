@@ -108,13 +108,14 @@ jobs:
       # ---- BLOCKING GATE 3: automated tests (uses phpunit.xml.dist) ------
       - name: Run PHPUnit tests
         run: |
+          set -o pipefail
           php -v
           php -m | grep -i -E 'mysqli|pdo'
           ls -la backend/storage/ || true
           echo '--- phpunit: Unit suite only (fail-fast, full trace) ---'
-          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose --debug --stop-on-error --stop-on-failure --testsuite Unit 2>&1; echo "PHPUNIT_UNIT_EXIT=$?"
+          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose --debug --stop-on-error --stop-on-failure --testsuite Unit 2>&1 | tee /tmp/phpunit_unit.log; test ${PIPESTATUS[0]} -eq 0
           echo '--- phpunit: full run ---'
-          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose 2>&1; echo "PHPUNIT_EXIT=$?"
+          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose 2>&1 | tee /tmp/phpunit_full.log; test ${PIPESTATUS[0]} -eq 0
         env:
           DB_DATABASE: muwasco
           DB_USERNAME: root
