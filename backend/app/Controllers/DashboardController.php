@@ -78,6 +78,241 @@ class DashboardController extends BaseController
     }
 
     /**
+     * GET /api/dashboard/hr-insights - HR oversight insights widget data.
+     *
+     * Business rule (dashboard:hr_insights — see migration 046): this endpoint
+     * aggregates org-wide oversight signals that only HR Manager, Managing
+     * Director and Super Admin may see:
+     *
+     *   1. Contracts expired / expiring within the next 30 days
+     *      (employees.contract_end_date, migration 009)
+     *   2. Employees within 1 year of retirement (age >= 59, retirement at 60,
+     *      not already marked retired — mirrors the Reports module rule)
+     *   3. Leave applications stuck in any pending* stage for more than 7 days
+     *   4. Employees rostered for leave in the current calendar month
+     *      (leave_roster scheduled_month/scheduled_year)
+     *   5. Today's attendance: who clocked in vs who did not
+     *   6. Employees on approved leave today
+     *
+     * Read-only; every list is capped so the widget stays light.
+     */
+    public function hrInsightsAction(): void
+    {
+        $this->requirePermission('dashboard', 'hr_insights');
+
+        $db = \db();
+        $today = date('Y-m-d');
+        $in30Days = date('Y-m-d', strtotime('+30 days'));
+        $weekAgo = date('Y-m-d H:i:s', strtotime('-7 days'));
+        $retireAge = 60;
+
+        $insights = [
+            'generated_at' => date('c'),
+            'contracts_expired' => ['count' => 0, 'items' => []],
+            'contracts_expiring' => ['count' => 0, 'items' => []],
+            'retiring_soon' => ['count' => 0, 'items' => []],
+            'leave_pending_over_week' => ['count' => 0, 'items' => []],
+            'roster_current_month' => ['count' => 0, 'items' => []],
+            'attendance_today' => ['clocked_in' => 0, 'not_clocked_in' => 0, 'items' => []],
+            'on_leave_today' => ['count' => 0, 'items' => []],
+        ];
+
+        try {
+            // 1a. Contracts already expired (active employees only)
+            $insights['contracts_expired']['items'] = $this->fetchEmployeeRows(
+                $db,
+                "SELECT e.id, CONCAT_WS(' ', e.first_name, e.last_name) AS name,
+                        e.position, d.name AS department_name,
+                        e.contract_end_date AS end_date
+                 FROM employees e
+                 LEFT JOIN departments d ON d.id = e.department_id
+                 WHERE e.employee_status = 'active'
+                   AND e.contract_end_date IS NOT NULL
+                   AND e.contract_end_date < ?
+                 ORDER BY e.contract_end_date ASC
+                 LIMIT 20",
+                's', [$today]
+            );
+            $insights['contracts_expired']['count'] = (int) $db->fetchValue(
+                "SELECT COUNT(*) FROM employees
+                 WHERE employee_status = 'active'
+                   AND contract_end_date IS NOT NULL
+                   AND contract_end_date < ?",
+                's', [$today]
+            );
+
+            // 1b. Contracts expiring within the next 30 days
+            $insights['contracts_expiring']['items'] = $this->fetchEmployeeRows(
+                $db,
+                "SELECT e.id, CONCAT_WS(' ', e.first_name, e.last_name) AS name,
+                        e.position, d.name AS department_name,
+                        e.contract_end_date AS end_date
+                 FROM employees e
+                 LEFT JOIN departments d ON d.id = e.department_id
+                 WHERE e.employee_status = 'active'
+                   AND e.contract_end_date IS NOT NULL
+                   AND e.contract_end_date BETWEEN ? AND ?
+                 ORDER BY e.contract_end_date ASC
+                 LIMIT 20",
+                'ss', [$today, $in30Days]
+            );
+            $insights['contracts_expiring']['count'] = (int) $db->fetchValue(
+                "SELECT COUNT(*) FROM employees
+                 WHERE employee_status = 'active'
+                   AND contract_end_date IS NOT NULL
+                   AND contract_end_date BETWEEN ? AND ?",
+                'ss', [$today, $in30Days]
+            );
+
+            // 2. Retirement within 1 year (age >= 59, not yet retired)
+            $insights['retiring_soon']['items'] = $this->fetchEmployeeRows(
+                $db,
+                "SELECT e.id, CONCAT_WS(' ', e.first_name, e.last_name) AS name,
+                        e.position, d.name AS department_name,
+                        e.date_of_birth,
+                        TIMESTAMPDIFF(YEAR, e.date_of_birth, ?) AS age
+                 FROM employees e
+                 LEFT JOIN departments d ON d.id = e.department_id
+                 WHERE e.employee_status = 'active'
+                   AND e.date_of_birth IS NOT NULL
+                   AND TIMESTAMPDIFF(YEAR, e.date_of_birth, ?) >= ? - 1
+                 ORDER BY e.date_of_birth ASC
+                 LIMIT 20",
+                'ssi', [$today, $today, $retireAge]
+            );
+            $insights['retiring_soon']['count'] = (int) $db->fetchValue(
+                "SELECT COUNT(*) FROM employees
+                 WHERE employee_status = 'active'
+                   AND date_of_birth IS NOT NULL
+                   AND TIMESTAMPDIFF(YEAR, date_of_birth, ?) >= ? - 1",
+                'si', [$today, $retireAge]
+            );
+
+            // 3. Leave pending for more than one week (any pending* stage)
+            $insights['leave_pending_over_week']['items'] = $this->fetchEmployeeRows(
+                $db,
+                "SELECT la.id, CONCAT_WS(' ', e.first_name, e.last_name) AS name,
+                        d.name AS department_name, la.status, la.start_date,
+                        la.end_date, la.applied_at,
+                        DATEDIFF(NOW(), la.applied_at) AS days_pending
+                 FROM leave_applications la
+                 JOIN employees e ON e.id = la.employee_id
+                 LEFT JOIN departments d ON d.id = e.department_id
+                 WHERE la.status LIKE 'pending%'
+                   AND la.applied_at <= ?
+                 ORDER BY la.applied_at ASC
+                 LIMIT 20",
+                's', [$weekAgo]
+            );
+            $insights['leave_pending_over_week']['count'] = (int) $db->fetchValue(
+                "SELECT COUNT(*) FROM leave_applications
+                 WHERE status LIKE 'pending%' AND applied_at <= ?",
+                's', [$weekAgo]
+            );
+
+            // 4. Roster: employees scheduled for leave in the current month
+            $monthName = date('F');
+            $year = (int) date('Y');
+            $insights['roster_current_month']['items'] = $this->fetchEmployeeRows(
+                $db,
+                "SELECT e.id, CONCAT_WS(' ', e.first_name, e.last_name) AS name,
+                        e.position, d.name AS department_name,
+                        lr.scheduled_month, lr.scheduled_year
+                 FROM leave_roster lr
+                 JOIN employees e ON e.id = lr.employee_id
+                   AND e.employee_status = 'active'
+                 LEFT JOIN departments d ON d.id = e.department_id
+                 WHERE lr.scheduled_month = ? AND lr.scheduled_year = ?
+                 ORDER BY e.first_name ASC
+                 LIMIT 50",
+                'si', [$monthName, $year]
+            );
+            $insights['roster_current_month']['count'] = (int) $db->fetchValue(
+                "SELECT COUNT(*) FROM leave_roster lr
+                 JOIN employees e ON e.id = lr.employee_id
+                   AND e.employee_status = 'active'
+                 WHERE lr.scheduled_month = ? AND lr.scheduled_year = ?",
+                'si', [$monthName, $year]
+            );
+
+            // 5. Attendance today: who clocked in
+            $insights['attendance_today']['items'] = $this->fetchEmployeeRows(
+                $db,
+                "SELECT e.id, CONCAT_WS(' ', e.first_name, e.last_name) AS name,
+                        e.position, d.name AS department_name,
+                        MIN(a.clock_in) AS clock_in
+                 FROM attendance a
+                 JOIN employees e ON e.id = a.employee_id
+                 LEFT JOIN departments d ON d.id = e.department_id
+                 WHERE DATE(a.clock_in) = ?
+                 GROUP BY e.id, e.first_name, e.last_name, e.position, d.name
+                 ORDER BY clock_in ASC
+                 LIMIT 50",
+                's', [$today]
+            );
+            $insights['attendance_today']['clocked_in'] = (int) $db->fetchValue(
+                "SELECT COUNT(DISTINCT a.employee_id) FROM attendance a
+                 JOIN employees e ON e.id = a.employee_id
+                 WHERE e.employee_status = 'active' AND DATE(a.clock_in) = ?",
+                's', [$today]
+            );
+
+            // 6. Employees on approved leave today + "did not clock in" figure.
+            $insights['on_leave_today']['items'] = $this->fetchEmployeeRows(
+                $db,
+                "SELECT e.id, CONCAT_WS(' ', e.first_name, e.last_name) AS name,
+                        e.position, d.name AS department_name,
+                        la.start_date, la.end_date
+                 FROM leave_applications la
+                 JOIN employees e ON e.id = la.employee_id
+                 LEFT JOIN departments d ON d.id = e.department_id
+                 WHERE la.status = 'approved'
+                   AND la.start_date <= ? AND la.end_date >= ?
+                   AND e.employee_status = 'active'
+                 ORDER BY e.first_name ASC
+                 LIMIT 50",
+                'ss', [$today, $today]
+            );
+            $onLeaveToday = (int) $db->fetchValue(
+                "SELECT COUNT(*) FROM leave_applications la
+                 JOIN employees e ON e.id = la.employee_id
+                 WHERE la.status = 'approved'
+                   AND la.start_date <= ? AND la.end_date >= ?
+                   AND e.employee_status = 'active'",
+                'ss', [$today, $today]
+            );
+            $totalActive = (int) $db->fetchValue(
+                "SELECT COUNT(*) FROM employees WHERE employee_status = 'active'"
+            );
+            $insights['on_leave_today']['count'] = $onLeaveToday;
+            $insights['attendance_today']['on_leave'] = $onLeaveToday;
+            $insights['attendance_today']['total_active'] = $totalActive;
+            $insights['attendance_today']['not_clocked_in'] = max(
+                0,
+                $totalActive - $insights['attendance_today']['clocked_in'] - $onLeaveToday
+            );
+        } catch (\Throwable $e) {
+            \logger()->error('HR insights error', ['error' => $e->getMessage()]);
+        }
+
+        $this->success($insights);
+    }
+
+    /**
+     * Run a prepared statement and return all rows as an associative array.
+     * Helper for hrInsightsAction — logs and returns [] on prepare failure.
+     */
+    private function fetchEmployeeRows(\App\Helpers\Database $db, string $sql, string $types = '', array $params = []): array
+    {
+        try {
+            return $db->fetchAll($sql, $types, $params);
+        } catch (\Throwable $e) {
+            \logger()->error('HR insights query failed', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
      * Get all dashboard statistics.
      */
     public function statsAction(): void
@@ -359,7 +594,9 @@ class DashboardController extends BaseController
      */
     public function chartsAttendanceAction(): void
     {
-        $this->requirePermission('dashboard', 'view');
+        // HR-restricted — org-wide presence data (dashboard:hr_insights,
+        // migration 046). Only hr_manager / managing_director / super_admin.
+        $this->requirePermission('dashboard', 'hr_insights');
 
         $db = \db();
         $today = date('Y-m-d');
@@ -393,7 +630,9 @@ class DashboardController extends BaseController
      */
     public function chartsDepartmentsAction(): void
     {
-        $this->requirePermission('dashboard', 'view');
+        // HR-restricted — org-wide headcount data (dashboard:hr_insights,
+        // migration 046). Only hr_manager / managing_director / super_admin.
+        $this->requirePermission('dashboard', 'hr_insights');
 
         $db = \db();
         $departments = $db->fetchAll(
@@ -416,7 +655,9 @@ class DashboardController extends BaseController
      */
     public function chartsLeaveAction(): void
     {
-        $this->requirePermission('dashboard', 'view');
+        // HR-restricted — org-wide leave volumes (dashboard:hr_insights,
+        // migration 046). Only hr_manager / managing_director / super_admin.
+        $this->requirePermission('dashboard', 'hr_insights');
 
         $db = \db();
         $today = date('Y-m-d');
