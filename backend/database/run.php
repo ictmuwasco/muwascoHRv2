@@ -1,0 +1,124 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * Unified Database Migration Runner
+ * Runs all SQL migrations in order from the migrations/ directory.
+ * 
+ * Usage: php backend/database/run.php
+ */
+
+// Load bootstrap to get database connection
+require_once __DIR__ . '/../bootstrap.php';
+
+use App\Helpers\Database;
+
+echo "MUWASCO HR Database Migrations\n";
+echo str_repeat("=", 50) . "\n";
+
+try {
+    $db = Database::getInstance();
+    $conn = $db->getConnection();
+} catch (Exception $e) {
+    fwrite(STDERR, "FATAL: " . $e->getMessage() . "\n");
+    exit(1);
+}
+
+$migrationsDir = __DIR__ . '/migrations';
+
+// Create or alter migrations tracking table to ensure it has all columns
+$conn->query("CREATE TABLE IF NOT EXISTS migrations (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    migration VARCHAR(255) NOT NULL,
+    batch INT UNSIGNED NOT NULL,
+    executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    duration_ms INT UNSIGNED DEFAULT 0,
+    status ENUM('completed','failed','rolled_back') DEFAULT 'completed',
+    error_message TEXT DEFAULT NULL,
+    UNIQUE KEY uk_migration (migration)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+// Ensure error_message column exists (for backward compatibility)
+$conn->query("ALTER TABLE migrations ADD COLUMN IF NOT EXISTS error_message TEXT DEFAULT NULL");
+
+// Get pending migrations
+$allFiles = array_diff(scandir($migrationsDir), ['.', '..']);
+$sqlFiles = array_filter($allFiles, fn($f) => substr($f, -4) === '.sql');
+sort($sqlFiles);
+
+$result = $conn->query("SELECT migration FROM migrations WHERE status='completed'");
+$ran = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+$ran = array_column($ran, 'migration');
+$toRun = array_values(array_diff($sqlFiles, $ran));
+$batchResult = $conn->query("SELECT COALESCE(MAX(batch),0)+1 FROM migrations");
+$batch = (int) ($batchResult ? $batchResult->fetch_row()[0] : 1);
+
+if (empty($toRun)) {
+    echo "✓ All migrations up to date.\n";
+    exit(0);
+}
+
+echo "Running " . count($toRun) . " migration(s) (batch #{$batch})...\n\n";
+
+$success = 0;
+$failed = 0;
+
+foreach ($toRun as $file) {
+    echo "[+] {$file} ... ";
+    $start = microtime(true);
+    
+    try {
+        $sql = file_get_contents($migrationsDir . '/' . $file);
+        
+        if ($conn->multi_query($sql)) {
+            do {
+                if ($result = $conn->store_result()) {
+                    $result->free();
+                }
+            } while ($conn->more_results() && $conn->next_result());
+        }
+        
+        $duration = (int)((microtime(true) - $start) * 1000);
+        
+        $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, duration_ms, status) VALUES (?, ?, ?, 'completed')");
+        $stmt->bind_param("ssi", $file, $batch, $duration);
+        $stmt->execute();
+        
+        echo "✓ ({$duration}ms)\n";
+        $success++;
+    } catch (Exception $e) {
+        $duration = (int)((microtime(true) - $start) * 1000);
+        $errorMsg = $e->getMessage();
+        
+        $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, duration_ms, status, error_message) VALUES (?, ?, ?, 'failed', ?)");
+        $stmt->bind_param("ssis", $file, $batch, $duration, $errorMsg);
+        $stmt->execute();
+        
+        echo "✗ FAILED: " . $errorMsg . "\n";
+        $failed++;
+    }
+}
+
+echo "\n" . str_repeat("=", 50) . "\n";
+echo "Completed: {$success} successful, {$failed} failed\n";
+
+if ($failed > 0) {
+    exit(1);
+}
+
+// Re-seed role permissions if 004 was run
+if (in_array('004_role_permissions.sql', $toRun)) {
+    echo "\nRe-seeding role permissions...\n";
+    $sql = file_get_contents($migrationsDir . '/004_role_permissions.sql');
+    if ($sql && $conn->multi_query($sql)) {
+        do {
+            if ($result = $conn->store_result()) {
+                $result->free();
+            }
+        } while ($conn->more_results() && $conn->next_result());
+        echo "✓ Role permissions re-seeded\n";
+    }
+}
+
+echo "\n✓ All migrations completed successfully!\n";
