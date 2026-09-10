@@ -48,7 +48,14 @@ class TestDatabase {
 
                 public function getConnection() {
                     if ($this->realConnection === null) {
-                        $this->realConnection = \App\Helpers\Database::getInstance()->getConnection();
+                        try {
+                            $this->realConnection = \App\Helpers\Database::getInstance()->getConnection();
+                        } catch (\Throwable $e) {
+                            $this->realConnection = false;
+                        }
+                    }
+                    if ($this->realConnection === false) {
+                        throw new \RuntimeException('Database unavailable: ' . 'connection failed');
                     }
                     return $this->realConnection;
                 }
