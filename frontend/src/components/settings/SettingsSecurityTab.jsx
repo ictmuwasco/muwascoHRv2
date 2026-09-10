@@ -60,7 +60,10 @@ const SecurityTab = () => {
     const loadVulnerabilities = useCallback(async () => {
     try {
       const res = await securityService.getVulnerabilities();
-      setVulnerabilities(res.data?.data || []);
+      // The endpoint returns a paginated envelope under `data`:
+      //   { success, message, data: { data: [...], total, page, per_page, last_page } }
+      // so the list is at res.data.data.data (axios envelope → API envelope → list).
+      setVulnerabilities(res.data?.data?.data || []);
     } catch (err) { /* silently fail */ }
   }, []);
 
@@ -202,6 +205,22 @@ const SecurityTab = () => {
       {selectedTab === 'vulnerabilities' && (
         <Card title="Vulnerability & Control Status">
           <div className="space-y-3">
+            {(vulnerabilities.length > 0 ? vulnerabilities : []).map((v, i) => (
+              <div key={v.id || i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <AlertTriangle className={`h-5 w-5 ${v.status === 'OPEN' ? 'text-red-500' : 'text-green-500'}`} />
+                  <div>
+                    <p className="text-sm font-medium">{(v.title || v.name || 'Vulnerability').replace(/_/g, ' ')}</p>
+                    <p className="text-xs text-gray-500">{v.description || 'No description provided.'}</p>
+                  </div>
+                </div>
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${v.status === 'OPEN' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>{v.status || 'OPEN'}</span>
+              </div>
+            ))}
+            {vulnerabilities.length === 0 && <p className="text-gray-500 text-center py-4">No vulnerabilities detected</p>}
+          </div>
+        </Card>
+      )}
       {selectedTab === 'ai-analyst' && (
         <div className="space-y-6">
           <Card>

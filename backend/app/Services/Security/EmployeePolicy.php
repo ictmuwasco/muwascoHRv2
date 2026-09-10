@@ -38,21 +38,23 @@ final class EmployeePolicy
 
     /**
      * Can the given user view this employee's profile?
+     *
+     * Directory visibility is driven by the role permission matrix: only
+     * roles granted `employees:view` (hr_manager, super_admin) may open
+     * employee profiles. Roles explicitly denied view in the matrix (officer,
+     * section/sub_section head, dept_head, managing_director — is_granted=0)
+     * are refused by the same check. Non-sensitive data only — salary,
+     * national_id etc. remain gated by canViewSensitive() (HR/admin).
      */
     public static function canView(int $userId, array $employee): bool
     {
         if ($userId <= 0 || empty($employee)) return false;
 
-        // Super admin and HR manager can view all
-        if (self::isHrOrAdmin($userId)) return true;
-
-        // User can view their own profile
+        // User can always view their own profile (self-service)
         if (self::isSelf($userId, $employee)) return true;
 
-        // Dept head can view employees in their department
-        if (self::isSameDepartmentHead($userId, $employee)) return true;
-
-        return false;
+        // Role-matrix gate: `employees:view` grants profile/directory access.
+        return AuthorizationService::getInstance()->hasPermission($userId, 'employees', 'view');
     }
 
     /**
