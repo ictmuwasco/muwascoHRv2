@@ -15,19 +15,7 @@ CREATE TABLE IF NOT EXISTS leave_application_documents (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
-    -- Foreign key to leave_applications
-    CONSTRAINT fk_leave_doc_application
-        FOREIGN KEY (leave_application_id)
-        REFERENCES leave_applications(id)
-        ON DELETE CASCADE,
-
-    -- Foreign key to users
-    CONSTRAINT fk_leave_doc_uploader
-        FOREIGN KEY (uploaded_by)
-        REFERENCES users(id)
-        ON DELETE RESTRICT,
-
-    -- Index for faster lookups
+    -- Index for faster lookups (FK added later by 2026_09_07_144623_add_foreign_keys_to_leave_application_documents_table.php)
     INDEX idx_leave_application_id (leave_application_id),
     INDEX idx_uploaded_by (uploaded_by),
     INDEX idx_document_type (document_type)

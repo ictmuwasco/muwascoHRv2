@@ -1,18 +1,8 @@
--- 022_attendance_ip_address.sql
--- ------------------------------------------------------------------
--- Always-on origin evidence for attendance records.
---
--- Even when a device cannot provide GPS coordinates (desktop PCs on
--- isolated networks), we still record the client's IP address. Office
--- workstations share the office public IP, so HR retains a strong
--- network-origin signal for every record - verified or not.
---
--- VARCHAR(45) accommodates IPv6. Nullable: rows written before this
--- migration keep NULL.
---
--- Apply (one time):
---   mysql -u root -p muwasco < backend/database/migrations/022_attendance_ip_address.sql
--- ------------------------------------------------------------------
-
-ALTER TABLE attendance
-  ADD COLUMN ip_address VARCHAR(45) NULL AFTER accuracy;
+-- Idempotent guard: only add column if not present
+SET @has_col = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance' AND COLUMN_NAME = 'ip_address');
+SET @sql = IF(@has_col = 0,
+    'ALTER TABLE attendance ADD COLUMN ip_address VARCHAR(45) NULL AFTER accuracy',
+    'SELECT 1 AS no_op_ip_address_already_exists');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+-- 022_attendance_ip_address.sql-- -------------------------------------------------------------------- Always-on origin evidence for attendance records.---- Even when a device cannot provide GPS coordinates (desktop PCs on-- isolated networks), we still record the client IP address. Office-- workstations share the office public IP, so HR retains a strong-- network-origin signal for every record - verified or not.-- VARCHAR(45) accommodates IPv6. Nullable: rows written before this-- migration keep NULL.---- Apply (one time):--   mysql -u root -p muwasco < backend/database/migrations/022_attendance_ip_address.sql-- -------------------------------------------------------------------- Idempotent guard: only add column if not presentSET @has_col = (SELECT COUNT(*) FROM information_schema.COLUMNS    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'attendance' AND COLUMN_NAME = 'ip_address');SET @sql = IF(@has_col = 0,    'ALTER TABLE attendance ADD COLUMN ip_address VARCHAR(45) NULL AFTER accuracy',    'SELECT 1 AS no_op_ip_address_already_exists');PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
