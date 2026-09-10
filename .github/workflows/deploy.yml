@@ -108,8 +108,8 @@ jobs:
       # ---- BLOCKING GATE 3: automated tests (uses phpunit.xml.dist) ------
       - name: Run PHPUnit tests
         run: |
-          set -o pipefail
-          vendor/bin/phpunit --no-coverage --do-not-cache-result --debug 2>&1 | tee /tmp/phpunit_full.log; echo "PHPUNIT_EXIT=${PIPESTATUS[0]}" | tee -a /tmp/phpunit_full.log; exit ${PIPESTATUS[0]}
+          set -eo pipefail
+          vendor/bin/phpunit --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
         env:
           DB_DATABASE: muwasco
           DB_USERNAME: root
