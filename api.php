@@ -402,9 +402,12 @@ $router->add('DELETE', '/leave/roster/{id}', LeaveRosterController::class, 'dest
 // Dashboard routes
 $router->add('GET', '/dashboard', DashboardController::class, 'index', 'dashboard:view');
 $router->add('GET', '/dashboard/stats', DashboardController::class, 'stats', 'dashboard:view');
-$router->add('GET', '/dashboard/charts/attendance', DashboardController::class, 'chartsAttendance', 'dashboard:view');
-$router->add('GET', '/dashboard/charts/departments', DashboardController::class, 'chartsDepartments', 'dashboard:view');
-$router->add('GET', '/dashboard/charts/leave', DashboardController::class, 'chartsLeave', 'dashboard:view');
+$router->add('GET', '/dashboard/charts/attendance', DashboardController::class, 'chartsAttendance', 'dashboard:hr_insights');
+$router->add('GET', '/dashboard/charts/departments', DashboardController::class, 'chartsDepartments', 'dashboard:hr_insights');
+$router->add('GET', '/dashboard/charts/leave', DashboardController::class, 'chartsLeave', 'dashboard:hr_insights');
+// HR Insights widget — restricted to hr_manager / managing_director /
+// super_admin via dashboard:hr_insights (migration 046).
+$router->add('GET', '/dashboard/hr-insights', DashboardController::class, 'hrInsights', 'dashboard:hr_insights');
 
 // Report routes
 $router->add('GET', '/reports/employees', ReportController::class, 'employees', 'reports:view');

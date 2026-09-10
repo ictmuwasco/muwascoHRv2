@@ -4,7 +4,7 @@ import api from '../../utils/api'
 import { requestLocation } from '../../utils/geolocation'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
-import { Users, CalendarCheck, Calendar, TrendingUp, Clock, FileText, Star, Bell } from 'lucide-react'
+import { CalendarCheck, Clock, FileText, Star, Bell, AlertTriangle, Hourglass, CalendarDays, UserCheck, UserMinus, ExternalLink } from 'lucide-react'
 import {
   ResponsiveContainer,
   PieChart,
@@ -22,6 +22,7 @@ import {
   RadialBar,
 } from 'recharts'
 import { useTheme } from '../../context/ThemeContext'
+import { useAuth } from '../../context/AuthContext'
 
 interface Stats {
   totalEmployees: number
@@ -77,6 +78,40 @@ interface Analytics {
   leave: Record<string, any> | null
 }
 
+interface HrInsightItem {
+  id: number
+  name: string
+  position?: string | null
+  department_name?: string | null
+  end_date?: string | null
+  date_of_birth?: string | null
+  age?: number
+  status?: string | null
+  start_date?: string | null
+  applied_at?: string | null
+  days_pending?: number
+  scheduled_month?: string | null
+  scheduled_year?: number | null
+  clock_in?: string | null
+}
+
+interface HrInsights {
+  generated_at: string
+  contracts_expired: { count: number; items: HrInsightItem[] }
+  contracts_expiring: { count: number; items: HrInsightItem[] }
+  retiring_soon: { count: number; items: HrInsightItem[] }
+  leave_pending_over_week: { count: number; items: HrInsightItem[] }
+  roster_current_month: { count: number; items: HrInsightItem[] }
+  attendance_today: {
+    clocked_in: number
+    not_clocked_in: number
+    total_active?: number
+    on_leave?: number
+    items: HrInsightItem[]
+  }
+  on_leave_today: { count: number; items: HrInsightItem[] }
+}
+
 /**
  * Great-circle distance between two coordinates, in whole metres (Haversine).
  */
@@ -105,6 +140,7 @@ const formatDistance = (meters: number): string =>
 const Dashboard = () => {
   const navigate = useNavigate()
   const { theme } = useTheme()
+  const { can } = useAuth()
   const isDark = theme === 'dark'
   const [stats, setStats] = useState<Stats>({
     totalEmployees: 0,
@@ -162,11 +198,25 @@ const Dashboard = () => {
     leave: null
   })
 
+  const [hrInsights, setHrInsights] = useState<HrInsights | null>(null)
+  const [hrInsightsLoading, setHrInsightsLoading] = useState(false)
+
+  // HR Insights widget is restricted to HR Manager / Managing Director /
+  // Super Admin (seeded via dashboard:hr_insights in migration 046). The
+  // backend enforces the same permission on GET /dashboard/hr-insights.
+  const showHrInsights = can('dashboard', 'hr_insights')
+
   useEffect(() => {
-    fetchStats()
     fetchAttendanceDashboard()
     fetchNotifications()
-    fetchAnalytics()
+    // HR Insights widget + the org-wide analytics charts (Attendance, Leave,
+    // Department, Employee statistics) are HR-restricted surfaces — only
+    // hr_manager / managing_director / super_admin may see or fetch them.
+    if (can('dashboard', 'hr_insights')) {
+      fetchStats()
+      fetchAnalytics()
+      fetchHrInsights()
+    }
   }, [])
 
   const fetchStats = async () => {
@@ -232,6 +282,18 @@ const Dashboard = () => {
       })
     } catch (error) {
       console.error('Failed to fetch analytics:', error)
+    }
+  }
+
+  const fetchHrInsights = async () => {
+    setHrInsightsLoading(true)
+    try {
+      const response = await api.get('/dashboard/hr-insights')
+      setHrInsights(response.data.data as HrInsights)
+    } catch (error) {
+      console.error('Failed to fetch HR insights:', error)
+    } finally {
+      setHrInsightsLoading(false)
     }
   }
 
@@ -304,7 +366,11 @@ const Dashboard = () => {
             (action === 'clock-in' ? 'Clocked in successfully.' : 'Clocked out successfully.')
         )
         fetchAttendanceDashboard()
-        fetchStats()
+        // HR-restricted analytics feed — only hr_manager / managing_director /
+        // super_admin consume /dashboard/stats (see fetchAnalytics).
+        if (can('dashboard', 'hr_insights')) {
+          fetchStats()
+        }
       }
     } catch (error) {
       const resp: any = (error as any)?.response?.data
@@ -442,33 +508,6 @@ const Dashboard = () => {
     <div className="h-64 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">{label}</div>
   )
 
-  const statCards = [
-    {
-      title: 'Total Employees',
-      value: stats.totalEmployees,
-      icon: Users,
-      color: 'bg-blue-500',
-    },
-    {
-      title: 'Present Today',
-      value: stats.presentToday,
-      icon: CalendarCheck,
-      color: 'bg-green-500',
-    },
-    {
-      title: 'On Leave',
-      value: stats.onLeave,
-      icon: Calendar,
-      color: 'bg-yellow-500',
-    },
-    {
-      title: 'Pending Approvals',
-      value: stats.pendingApprovals,
-      icon: TrendingUp,
-      color: 'bg-purple-500',
-    },
-  ]
-
   const getStatusBadge = () => {
     if (attendanceData.is_clocked_in) {
       return (
@@ -498,23 +537,6 @@ const Dashboard = () => {
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
         <p className="text-gray-500 dark:text-gray-400">Welcome to MUWASCO HR Management System</p>
-      </div>
-
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {statCards.map((card) => (
-          <Card key={card.title}>
-            <div className="flex items-center space-x-4">
-              <div className={`p-3 rounded-lg ${card.color}`}>
-                <card.icon className="h-6 w-6 text-white" />
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{card.title}</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{card.value}</p>
-              </div>
-            </div>
-          </Card>
-        ))}
       </div>
 
       {/* Clock In/Clock Out Card */}
@@ -706,6 +728,224 @@ const Dashboard = () => {
         </div>
       </Card>
 
+      {/* HR Insights widget — only for HR Manager / Managing Director / Super Admin */}
+      {showHrInsights && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">HR Insights</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Org-wide oversight signals that need your attention
+              </p>
+            </div>
+            <Clock className="h-5 w-5 text-gray-400" />
+          </div>
+
+          {hrInsightsLoading || !hrInsights ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Card key={i}>
+                  <div className="animate-pulse space-y-3">
+                    <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded w-1/2" />
+                    <div className="h-8 bg-gray-200 dark:bg-slate-700 rounded w-1/4" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+
+              {/* Contracts expired */}
+              <Card>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Expired Contracts</p>
+                    <p className="text-3xl font-bold text-red-600">{hrInsights.contracts_expired.count}</p>
+                  </div>
+                  <AlertTriangle className="h-5 w-5 text-red-500" />
+                </div>
+                <div className="space-y-1 mb-3 max-h-24 overflow-y-auto">
+                  {hrInsights.contracts_expired.items.slice(0, 5).map((e) => (
+                    <p key={e.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                      {e.name} · {e.end_date}
+                    </p>
+                  ))}
+                  {hrInsights.contracts_expired.items.length === 0 && (
+                    <p className="text-xs text-gray-400">None</p>
+                  )}
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => navigate('/reports')}>
+                  View <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </Card>
+
+              {/* Contracts expiring within 30 days */}
+              <Card>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Contracts Expiring (30d)</p>
+                    <p className="text-3xl font-bold text-amber-600">{hrInsights.contracts_expiring.count}</p>
+                  </div>
+                  <Clock className="h-5 w-5 text-amber-500" />
+                </div>
+                <div className="space-y-1 mb-3 max-h-24 overflow-y-auto">
+                  {hrInsights.contracts_expiring.items.slice(0, 5).map((e) => (
+                    <p key={e.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                      {e.name} · {e.end_date}
+                    </p>
+                  ))}
+                  {hrInsights.contracts_expiring.items.length === 0 && (
+                    <p className="text-xs text-gray-400">None</p>
+                  )}
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => navigate('/reports')}>
+                  View <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </Card>
+
+              {/* Retirement within 1 year */}
+              <Card>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Retiring Within 1 Year</p>
+                    <p className="text-3xl font-bold text-blue-600">{hrInsights.retiring_soon.count}</p>
+                  </div>
+                  <UserMinus className="h-5 w-5 text-blue-500" />
+                </div>
+                <div className="space-y-1 mb-3 max-h-24 overflow-y-auto">
+                  {hrInsights.retiring_soon.items.slice(0, 5).map((e) => (
+                    <p key={e.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                      {e.name} · age {e.age}
+                    </p>
+                  ))}
+                  {hrInsights.retiring_soon.items.length === 0 && (
+                    <p className="text-xs text-gray-400">None</p>
+                  )}
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => navigate('/reports')}>
+                  View <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </Card>
+
+              {/* Leave pending > 1 week */}
+              <Card>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Leave Pending &gt; 1 Week</p>
+                    <p className="text-3xl font-bold text-orange-600">{hrInsights.leave_pending_over_week.count}</p>
+                  </div>
+                  <Hourglass className="h-5 w-5 text-orange-500" />
+                </div>
+                <div className="space-y-1 mb-3 max-h-24 overflow-y-auto">
+                  {hrInsights.leave_pending_over_week.items.slice(0, 5).map((r) => (
+                    <p key={r.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                      {r.name} · {r.days_pending}d
+                    </p>
+                  ))}
+                  {hrInsights.leave_pending_over_week.items.length === 0 && (
+                    <p className="text-xs text-gray-400">None</p>
+                  )}
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => navigate('/leave/manage/pending')}>
+                  View <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </Card>
+
+              {/* Roster current month */}
+              <Card>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Roster — {new Date().toLocaleString('default', { month: 'long' })}</p>
+                    <p className="text-3xl font-bold text-indigo-600">{hrInsights.roster_current_month.count}</p>
+                  </div>
+                  <CalendarDays className="h-5 w-5 text-indigo-500" />
+                </div>
+                <div className="space-y-1 mb-3 max-h-24 overflow-y-auto">
+                  {hrInsights.roster_current_month.items.slice(0, 5).map((e) => (
+                    <p key={e.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                      {e.name}
+                    </p>
+                  ))}
+                  {hrInsights.roster_current_month.items.length === 0 && (
+                    <p className="text-xs text-gray-400">None</p>
+                  )}
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => navigate('/leave/roster')}>
+                  View <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </Card>
+
+              {/* On leave today */}
+              <Card>
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">On Leave Today</p>
+                    <p className="text-3xl font-bold text-teal-600">{hrInsights.on_leave_today.count}</p>
+                  </div>
+                  <CalendarCheck className="h-5 w-5 text-teal-500" />
+                </div>
+                <div className="space-y-1 mb-3 max-h-24 overflow-y-auto">
+                  {hrInsights.on_leave_today.items.slice(0, 5).map((e) => (
+                    <p key={e.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                      {e.name} · {e.start_date} → {e.end_date}
+                    </p>
+                  ))}
+                  {hrInsights.on_leave_today.items.length === 0 && (
+                    <p className="text-xs text-gray-400">None</p>
+                  )}
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => navigate('/leave/oversight')}>
+                  View <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </Card>
+
+      {/* Attendance today — clocked in vs not */}
+              <Card className="md:col-span-2 lg:col-span-3">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Attendance Today</p>
+                    <div className="flex items-baseline space-x-4 mt-1">
+                      <span className="text-2xl font-bold text-green-600">
+                        {hrInsights.attendance_today.clocked_in}
+                        <span className="text-sm font-normal text-gray-500 ml-1">in</span>
+                      </span>
+                      <span className="text-2xl font-bold text-red-600">
+                        {hrInsights.attendance_today.not_clocked_in}
+                        <span className="text-sm font-normal text-gray-500 ml-1">not in</span>
+                      </span>
+                      <span className="text-sm text-gray-500">
+                        {hrInsights.attendance_today.on_leave} on leave · {hrInsights.attendance_today.total_active} active
+                      </span>
+                    </div>
+                  </div>
+                  <UserCheck className="h-5 w-5 text-green-500" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-1">Clocked in</p>
+                    <div className="space-y-1 max-h-24 overflow-y-auto">
+                      {hrInsights.attendance_today.items.slice(0, 6).map((e) => (
+                        <p key={e.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                          {e.name} · {e.clock_in ? new Date(e.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </p>
+                      ))}
+                      {hrInsights.attendance_today.items.length === 0 && (
+                        <p className="text-xs text-gray-400">No one yet</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end">
+                    <Button variant="secondary" size="sm" onClick={() => navigate('/attendance/dashboard')}>
+                      View <ExternalLink className="ml-1 h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>
@@ -794,9 +1034,13 @@ const Dashboard = () => {
       </Card>
 
       {/* Analytics Graphs - live Recharts visualisations fed by the
-           /dashboard/charts/* endpoints. Charts always render; each card
-           degrades to its own empty state when data has not loaded. */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+           /dashboard/charts/* endpoints. HR-restricted surface: charts are
+           org-wide presence / headcount / leave data and are only visible to
+           hr_manager / managing_director / super_admin
+           (dashboard:hr_insights, migration 046); the backend enforces the
+           same permission on GET /dashboard/charts/*. */}
+      {showHrInsights && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Attendance: donut split of on-time / late / absent today. */}
         <Card title="Attendance Analytics"
           subtitle={`${atWorkPct}% of ${stats.totalEmployees.toLocaleString()} active employees at work`} >
@@ -934,7 +1178,9 @@ const Dashboard = () => {
             </div>
           </div>
         </Card>
-      </div>
+        </div>
+      )}
+
     </div>
   )
 }

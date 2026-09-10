@@ -32,7 +32,7 @@ use Tests\TestCase;
  */
 class AuthorizationServiceTest extends TestCase
 {
-    private \mysqli $conn;
+    private ?\mysqli $conn = null;
 
     /** @var int[] user ids created by these tests */
     private array $createdUserIds = [];
