@@ -49,4 +49,27 @@ final class InstrumentedMysqli extends \mysqli
     {
         return new InstrumentedMysqliStmt($this, $query);
     }
+
+    /**
+     * exec() proxy for multi-statement SQL (used by migration runner for
+     * DELIMITER-bearing scripts such as 026_attendance_audit_fields.sql).
+     *
+     * mysqli::exec() was introduced in PHP 8.1; older versions do not
+     * expose it, so we guard against a missing parent method.
+     */
+    public function exec(string $query): bool
+    {
+        $start = microtime(true);
+        if (method_exists(parent::class, 'exec')) {
+            $result = parent::exec($query);
+        } else {
+            $result = $this->multi_query($query);
+            while ($this->more_results() && $this->next_result()) {
+                $res = $this->store_result();
+                if ($res !== false && $res !== null) { $res->free(); }
+            }
+        }
+        PerfTiming::recordQuery((microtime(true) - $start) * 1000.0);
+        return $result;
+    }
 }

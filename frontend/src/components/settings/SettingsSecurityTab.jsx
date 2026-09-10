@@ -11,16 +11,14 @@ const SecurityTab = () => {
   const [incidentsMeta, setIncidentsMeta] = useState({ page: 1, per_page: 25, total: 0 });
   const [aiThreats, setAiThreats] = useState(null);
   const [vulnerabilities, setVulnerabilities] = useState([]);
-  const [endpoints, setEndpoints] = useState([]);
   const [selectedTab, setSelectedTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copilotMessages, setCopilotMessages] = useState([]);
   const [copilotInput, setCopilotInput] = useState('');
   const [copilotLoading, setCopilotLoading] = useState(false);
-  const [aiThreatsLoading, setAiThreatsLoading] = useState(false);
 
-  const TABS = ['overview', 'events', 'incidents', 'endpoints', 'vulnerabilities', 'ai-analyst', 'ai-copilot'];
+    const TABS = ['overview', 'events', 'incidents', 'endpoints', 'vulnerabilities', 'ai-analyst', 'ai-copilot'];
 
   const fetchData = useCallback(async () => {
     try {
@@ -51,30 +49,22 @@ const SecurityTab = () => {
 
   const loadAiThreats = useCallback(async () => {
     try {
-      setAiThreatsLoading(true);
+      setCopilotLoading(true);
       const res = await securityService.getAiThreats();
       setAiThreats(res.data?.data || res.data);
     } catch (err) {
       setAiThreats({ error: 'Failed to load AI analysis', threats: [] });
-    } finally { setAiThreatsLoading(false); }
+    } finally { setCopilotLoading(false); }
   }, []);
 
-  const loadEndpoints = useCallback(async () => {
-    try {
-      const res = await securityService.getEndpoints();
-      const rows = res.data?.data || res.data;
-      setEndpoints(Array.isArray(rows) ? rows : []);
-    } catch (err) { setEndpoints([]); }
-  }, []);
-
-  const loadVulnerabilities = useCallback(async () => {
+    const loadVulnerabilities = useCallback(async () => {
     try {
       const res = await securityService.getVulnerabilities();
-      setVulnerabilities(res.data?.data?.data || []);
+      setVulnerabilities(res.data?.data || []);
     } catch (err) { /* silently fail */ }
   }, []);
 
-  const handleCopilotSend = async () => {
+    const handleCopilotSend = async () => {
     if (!copilotInput.trim()) return;
     const userMsg = { role: 'user', content: copilotInput, timestamp: new Date().toISOString() };
     setCopilotMessages(prev => [...prev, userMsg]);
@@ -96,7 +86,7 @@ const SecurityTab = () => {
   };
 
   const postureColor = (p) => {
-    switch (String(p || '')) {
+    switch (p) {
       case 'CRITICAL': return 'bg-red-100 text-red-800 border-red-200';
       case 'HIGH_RISK': return 'bg-orange-100 text-orange-800 border-orange-200';
       case 'WARNING': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
@@ -109,34 +99,8 @@ const SecurityTab = () => {
     return c[s] || 'bg-gray-100 text-gray-800';
   };
 
-  const fmtDate = (value) => {
-    if (!value) return '-';
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? '-' : d.toLocaleString();
-  };
-
-  const fmtType = (value) => String(value || 'Unknown event').replace(/_/g, ' ');
-
-  const fmtAction = (value) => String(value || 'unknown').replace(/_/g, ' ');
-
-  const fmtClass = (value) => String(value || 'Unclassified').replace(/_/g, ' ');
-
-  const statusColor = (s) => {
+    const statusColor = (s) => {
     const c = { NEW: 'bg-blue-100 text-blue-800', INVESTIGATING: 'bg-yellow-100 text-yellow-800', CONTAINED: 'bg-orange-100 text-orange-800', RESOLVED: 'bg-green-100 text-green-800', FALSE_POSITIVE: 'bg-gray-100 text-gray-800' };
-    return c[s] || 'bg-gray-100 text-gray-800';
-  };
-
-  const vulnStatusColor = (s) => {
-    const c = {
-      OPEN: 'bg-blue-100 text-blue-800',
-      ACKNOWLEDGED: 'bg-indigo-100 text-indigo-800',
-      IN_PROGRESS: 'bg-yellow-100 text-yellow-800',
-      MITIGATED: 'bg-orange-100 text-orange-800',
-      RESOLVED: 'bg-green-100 text-green-800',
-      FALSE_POSITIVE: 'bg-gray-100 text-gray-800',
-      ACCEPTED_RISK: 'bg-purple-100 text-purple-800',
-      REOPENED: 'bg-red-100 text-red-800',
-    };
     return c[s] || 'bg-gray-100 text-gray-800';
   };
 
@@ -146,7 +110,7 @@ const SecurityTab = () => {
     <div className="space-y-6">
       <div className="flex space-x-1 bg-gray-100 dark:bg-slate-800 rounded-lg p-1 overflow-x-auto">
         {TABS.map((tab) => (
-          <button key={tab} onClick={() => { setSelectedTab(tab); if (tab === 'ai-analyst') loadAiThreats(); if (tab === 'vulnerabilities') loadVulnerabilities(); if (tab === 'endpoints') loadEndpoints(); }}
+          <button key={tab} onClick={() => { setSelectedTab(tab); if (tab === 'ai-analyst') loadAiThreats(); if (tab === 'vulnerabilities') loadVulnerabilities(); }}
             className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedTab === tab ? 'bg-white dark:bg-slate-700 text-primary-600 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'}`}>
             {tab.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
           </button>
@@ -183,17 +147,16 @@ const SecurityTab = () => {
             <div key={e.id} className="flex items-center justify-between p-3 border-b dark:border-slate-700">
               <div className="flex items-center space-x-3">
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${sevBadge(e.severity)}`}>{e.severity}</span>
-                <span className="text-sm font-medium">{fmtType(e.event_type)}</span>
+                <span className="text-sm font-medium">{e.event_type.replace(/_/g, ' ')}</span>
               </div>
               <div className="flex items-center space-x-4 text-xs">
                 <span className="text-gray-500">{e.user_id ? 'User #' + e.user_id : 'System'}</span>
                 <span className="text-gray-500">{e.ip_address}</span>
                 <span className="text-gray-500">{e.route}</span>
-                <span className={`px-2 py-0.5 rounded ${e.action_taken === 'BLOCKED' || e.action_taken === 'DENIED' ? 'bg-red-100 text-red-800' : e.action_taken === 'RATE_LIMITED' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-700'}`}>{fmtAction(e.action_taken)}</span>
-                <span className="text-gray-400">{fmtDate(e.detected_at)}</span>
+                <span className="text-gray-400">{new Date(e.detected_at).toLocaleString()}</span>
               </div>
             </div>
-          )) : <p className="text-gray-500 text-center py-8">No events</p>}
+          ))           : <p className="text-gray-500 text-center py-8">No events</p>}
         </Card>
       )}
       {selectedTab === 'incidents' && (
@@ -205,11 +168,7 @@ const SecurityTab = () => {
                 <span className={`px-2 py-0.5 rounded text-xs font-medium ${statusColor(inc.status)}`}>{inc.status}</span>
               </div>
               <div className="flex-1 ml-4"><p className="text-sm font-medium">{inc.summary || inc.ai_reasoning?.substring(0, 100) || 'Security incident'}</p></div>
-              <div className="flex items-center space-x-2 text-xs">
-                {inc.ai_classification && <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700">{fmtClass(inc.ai_classification)}</span>}
-                <span className="text-gray-500">Risk: {inc.risk_score}</span>
-                <span className="text-gray-400">{fmtDate(inc.last_seen)}</span>
-              </div>
+              <div className="flex items-center space-x-2 text-xs"><span className="text-gray-500">Risk: {inc.risk_score}</span><span className="text-gray-400">{new Date(inc.last_seen).toLocaleString()}</span></div>
             </div>
           )) : <p className="text-gray-500 text-center py-8">No incidents</p>}
         </Card>
@@ -219,60 +178,37 @@ const SecurityTab = () => {
           <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead><tr className="text-left border-b dark:border-slate-700"><th className="pb-2">Method</th><th className="pb-2">Route</th><th className="pb-2">Permission</th><th className="pb-2">Object Auth</th><th className="pb-2">Rate Limit</th><th className="pb-2">Monitoring</th></tr></thead>
             <tbody>
-              {endpoints.length > 0 ? endpoints.map((ep, i) => (
+              {[
+                {method:'GET',route:'/employees/{id}',permission:'employees:view',object_auth:true,rate_limit:true,monitoring:true},
+                {method:'PUT',route:'/employees/{id}',permission:'employees:edit',object_auth:true,rate_limit:true,monitoring:true},
+                {method:'GET',route:'/leave/{id}',permission:'leave:view',object_auth:true,rate_limit:true,monitoring:true},
+                {method:'GET',route:'/attendance/{id}',permission:'attendance:view',object_auth:true,rate_limit:true,monitoring:true},
+                {method:'GET',route:'/meetings/{id}',permission:'meetings:view',object_auth:true,rate_limit:true,monitoring:true},
+                {method:'GET',route:'/users/{id}',permission:'settings:users',object_auth:true,rate_limit:true,monitoring:true},
+              ].map((ep, i) => (
                 <tr key={i} className="border-b dark:border-slate-800">
                   <td className="py-2"><span className={`px-2 py-0.5 rounded text-xs font-bold ${ep.method === 'GET' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}>{ep.method}</span></td>
                   <td className="py-2 font-mono text-xs">{ep.route}</td>
-                  <td className="py-2">{ep.permission || '-'}</td>
+                  <td className="py-2">{ep.permission}</td>
                   <td className="py-2">{ep.object_auth ? 'Yes' : 'No'}</td>
                   <td className="py-2">{ep.rate_limit ? 'Yes' : 'No'}</td>
                   <td className="py-2">{ep.monitoring ? 'Yes' : 'No'}</td>
                 </tr>
-              )) : (
-                <tr><td colSpan={6} className="py-4 text-center text-gray-500">Endpoint inventory unavailable</td></tr>
-              )}
+              ))}
             </tbody>
           </table></div>
         </Card>
       )}
       {selectedTab === 'vulnerabilities' && (
-        <Card title="Vulnerabilities" subtitle={`${vulnerabilities.length} records`}>
+        <Card title="Vulnerability & Control Status">
           <div className="space-y-3">
-            {vulnerabilities.length > 0 ? vulnerabilities.map((v, i) => (
-              <div key={v.id || i} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-slate-800 rounded-lg">
-                <div className="flex items-center space-x-3">
-                  {v.status === 'RESOLVED' || v.status === 'FALSE_POSITIVE' ? (
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                  ) : v.severity === 'CRITICAL' || v.severity === 'HIGH' ? (
-                    <AlertOctagon className="h-5 w-5 text-red-500" />
-                  ) : (
-                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
-                  )}
-                  <div>
-                    <p className="font-medium">{v.title}</p>
-                    <p className="text-xs text-gray-500">{v.affected_endpoint || v.category || 'Unknown'}</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${sevBadge(v.severity)}`}>{v.severity}</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${vulnStatusColor(v.status)}`}>{v.status?.replace(/_/g, ' ')}</span>
-                  {v.risk_score != null && <span className="text-xs text-gray-500">Risk: {v.risk_score}</span>}
-                  <span className="text-xs text-gray-400">{fmtDate(v.last_seen_at || v.first_detected_at)}</span>
-                </div>
-              </div>
-            )) : (
-              <p className="text-gray-500 text-center py-8">No vulnerabilities recorded</p>
-            )}
-          </div>
-        </Card>
-      )}
       {selectedTab === 'ai-analyst' && (
         <div className="space-y-6">
           <Card>
             <div className="flex items-center space-x-3"><Bot className="h-6 w-6 text-primary-600" /><h3 className="text-lg font-semibold">AI Security Analyst</h3></div>
             <p className="text-sm text-gray-500 mt-1">NVIDIA AI analysis of recent security events</p>
           </Card>
-          {aiThreatsLoading ? (
+          {copilotLoading && aiThreats === null ? (
             <div className="flex items-center justify-center h-40"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div></div>
           ) : aiThreats?.error ? (
             <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{aiThreats.error}</div>
@@ -301,7 +237,7 @@ const SecurityTab = () => {
               )}
             </div>
           )}
-          <button onClick={loadAiThreats} disabled={aiThreatsLoading} className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+          <button onClick={loadAiThreats} className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">
             <RefreshCw className="h-4 w-4" /><span>Refresh AI Analysis</span>
           </button>
         </div>
@@ -348,4 +284,4 @@ const SecurityTab = () => {
 };
 
 export default SecurityTab;
-         
+            
