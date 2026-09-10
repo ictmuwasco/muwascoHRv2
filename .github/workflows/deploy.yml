@@ -91,6 +91,9 @@ jobs:
         run: composer install --no-progress --no-interaction
 
       # ---- Run database migrations to create tables --------------------
+      - name: Prepare storage dirs
+        run: mkdir -p backend/storage/logs backend/storage/cache backend/storage/backups
+
       - name: Run database migrations
         run: php backend/database/run.php
         env:
@@ -98,18 +101,32 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: root
           DB_HOST: 127.0.0.1
+          DB_PORT: 3306
 
       # ---- BLOCKING GATE 3: automated tests (uses phpunit.xml.dist) ------
       - name: Run PHPUnit tests
-        run: vendor/bin/phpunit
+        run: |
+          php -v
+          php -m | grep -i -E 'mysqli|pdo'
+          ls -la backend/storage/ || true
+          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose 2>&1
         env:
           DB_DATABASE: muwasco
           DB_USERNAME: root
           DB_PASSWORD: root
           DB_HOST: 127.0.0.1
+          DB_PORT: 3306
           APP_ENV: testing
           JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
           JWT_ISSUER: muwasco-hr-system
+
+      - name: Dump error log on failure
+        if: failure()
+        run: |
+          echo '--- storage/logs ---'
+          ls -la backend/storage/logs/ || true
+          tail -n 200 backend/storage/logs/error.log || true
+          tail -n 200 backend/storage/logs/*.log || true
 
   deploy-production:
     name: Deploy to Production
