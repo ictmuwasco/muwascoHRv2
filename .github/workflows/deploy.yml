@@ -106,10 +106,13 @@ jobs:
           DB_PORT: 3306
 
       # ---- BLOCKING GATE 3: automated tests (uses phpunit.xml.dist) ------
+      # NOTE: bootstrap wired to backend/tests/bootstrap.php (test harness).
+      # The previous bootstrap backend/bootstrap.php is HTTP-only (sessions,
+      # shutdown handlers, error_log writes) and crashes CLI with exit 255.
       - name: Run PHPUnit tests
         run: |
           set -o pipefail
-          vendor/bin/phpunit --no-coverage --do-not-cache-result --verbose 2>&1 | tee /tmp/phpunit_full.log
+          vendor/bin/phpunit -c phpunit.xml.dist --bootstrap backend/tests/bootstrap.php --no-coverage --do-not-cache-result --debug 2>&1 | tee /tmp/phpunit_full.log; echo "PHPUNIT_EXIT=${PIPESTATUS[0]}" | tee -a /tmp/phpunit_full.log; exit ${PIPESTATUS[0]}
         env:
           DB_DATABASE: muwasco
           DB_USERNAME: root
