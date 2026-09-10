@@ -72,7 +72,7 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: hr_test
+          MYSQL_DATABASE: muwasco
         ports:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
@@ -92,9 +92,9 @@ jobs:
 
       # ---- Run database migrations to create tables --------------------
       - name: Run database migrations
-        run: php backend/database/run_migration.php
+        run: php backend/database/run.php
         env:
-          DB_DATABASE: hr_test
+          DB_DATABASE: muwasco
           DB_USERNAME: root
           DB_PASSWORD: root
           DB_HOST: 127.0.0.1
@@ -103,7 +103,7 @@ jobs:
       - name: Run PHPUnit tests
         run: vendor/bin/phpunit
         env:
-          DB_DATABASE: hr_test
+          DB_DATABASE: muwasco
           DB_USERNAME: root
           DB_PASSWORD: root
           DB_HOST: 127.0.0.1

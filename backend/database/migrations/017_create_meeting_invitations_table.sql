@@ -38,10 +38,10 @@ CREATE TABLE IF NOT EXISTS meeting_invitations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Indexes for query performance
-CREATE INDEX idx_invitations_meeting ON meeting_invitations(meeting_id);
-CREATE INDEX idx_invitations_employee ON meeting_invitations(employee_id);
-CREATE INDEX idx_invitations_response ON meeting_invitations(response_status);
-CREATE INDEX idx_invitations_attendance ON meeting_invitations(attendance_status);
-CREATE INDEX idx_invitations_type ON meeting_invitations(invitation_type);
-CREATE INDEX idx_invitations_meeting_response ON meeting_invitations(meeting_id, response_status);
-CREATE INDEX idx_invitations_meeting_attendance ON meeting_invitations(meeting_id, attendance_status);
+-- CREATE INDEX idx_invitations_meeting ON meeting_invitations(meeting_id);
+-- CREATE INDEX idx_invitations_employee ON meeting_invitations(employee_id);
+-- CREATE INDEX idx_invitations_response ON meeting_invitations(response_status);
+-- CREATE INDEX idx_invitations_attendance ON meeting_invitations(attendance_status);
+-- CREATE INDEX idx_invitations_type ON meeting_invitations(invitation_type);
+-- CREATE INDEX idx_invitations_meeting_response ON meeting_invitations(meeting_id, response_status);
+-- CREATE INDEX idx_invitations_meeting_attendance ON meeting_invitations(meeting_id, attendance_status);
