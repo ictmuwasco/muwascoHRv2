@@ -22,7 +22,7 @@ use Tests\TestCase;
  */
 class PrivilegeEscalationTest extends TestCase
 {
-    private \mysqli $conn;
+    private ?\mysqli $conn = null;
 
     /** @var int[] */
     private array $createdUserIds = [];

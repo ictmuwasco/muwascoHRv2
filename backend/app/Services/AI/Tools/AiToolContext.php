@@ -98,9 +98,10 @@ final class AiToolContext
         return $this->permCache[$key];
     }
 
-    /** Shared database helper. */
-    public function db(): \App\Helpers\Database
+    /** Shared database helper (duck-typed: production returns Database, tests may inject a compatible stub). */
+    public function db()
     {
         return \db();
     }
 }
+

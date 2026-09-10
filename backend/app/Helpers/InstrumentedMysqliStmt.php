@@ -46,7 +46,8 @@ final class InstrumentedMysqliStmt extends \mysqli_stmt
         return $result;
     }
 
-    public function get_result(): \mysqli_result|bool
+    #[\ReturnTypeWillChange]
+    public function get_result(): \mysqli_result|false
     {
         $start            = microtime(true);
         $result           = parent::get_result();

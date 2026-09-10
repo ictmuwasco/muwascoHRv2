@@ -7,6 +7,8 @@ on:
       - develop
       - 'feature/**'
       - 'phase*/**'
+      - 'chore/**'
+      - 'fix/**'
   pull_request:
     branches: [main]
 
@@ -84,13 +86,16 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.2"
-          extensions: mbstring, mysqli, pdo_mysql
+          extensions: mbstring, mysqli, pdo_mysql, int
           tools: composer
 
       - name: Install dependencies
         run: composer install --no-progress --no-interaction
 
       # ---- Run database migrations to create tables --------------------
+      - name: Prepare storage dirs
+        run: mkdir -p backend/storage/logs backend/storage/cache backend/storage/backups
+
       - name: Run database migrations
         run: php backend/database/run.php
         env:
@@ -98,18 +103,41 @@ jobs:
           DB_USERNAME: root
           DB_PASSWORD: root
           DB_HOST: 127.0.0.1
+          DB_PORT: 3306
 
       # ---- BLOCKING GATE 3: automated tests (uses phpunit.xml.dist) ------
       - name: Run PHPUnit tests
-        run: vendor/bin/phpunit
+        run: |
+          set -eo pipefail
+          vendor/bin/phpunit --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
         env:
           DB_DATABASE: muwasco
           DB_USERNAME: root
           DB_PASSWORD: root
           DB_HOST: 127.0.0.1
+          DB_PORT: 3306
           APP_ENV: testing
           JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
           JWT_ISSUER: muwasco-hr-system
+
+      - name: Show phpunit log on failure
+        if: always()
+        run: |
+          echo '--- phpunit full log tail ---'
+          tail -n 250 /tmp/phpunit_full.log || true
+
+      - name: Show migration log on failure
+        if: failure()
+        run: |
+          echo '--- phpunit full log tail ---'
+          tail -n 120 /tmp/phpunit_full.log || true
+
+      - name: Dump error log on failure
+        if: failure()
+        run: |
+          echo '--- storage/logs ---'
+          ls -la backend/storage/logs/ || true
+          for f in backend/storage/logs/*.log; do echo "===== $f ====="; tail -n 100 "$f" || true; done
 
   deploy-production:
     name: Deploy to Production
