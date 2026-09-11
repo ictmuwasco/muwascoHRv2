@@ -416,11 +416,11 @@ class DelegationWorkflowTest extends TestCase
         $lastName = 'Test';
 
         $stmt = $conn->prepare(
-            'INSERT INTO users (email, first_name, last_name, password, role, is_active, employee_id)
-             VALUES (?, ?, ?, ?, ?, 1, ?)'
+            'INSERT INTO users (email, first_name, last_name, surname, password, role, is_active, employee_id)
+             VALUES (?, ?, ?, ?, ?, ?, 1, ?)'
         );
         $employeeCode = $employeeCode;
-        $stmt->bind_param('ssssss', $email, $firstName, $lastName, $password, $role, $employeeCode);
+        $stmt->bind_param('sssssss', $email, $firstName, $lastName, $lastName, $password, $role, $employeeCode);
         $stmt->execute();
         $userId = (int) $conn->insert_id;
         $stmt->close();

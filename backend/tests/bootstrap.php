@@ -89,19 +89,59 @@ class TestDatabase {
                     return $this->realConnection;
                 }
 
-                public function fetchAll($sql, $params = []) {
-                    return [];
+                public function fetchAll(string $sql, string $types = '', array $params = []): array {
+                    $conn = $this->getConnection();
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $rows = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+                    $stmt->close();
+                    return $rows;
                 }
-                public function fetchOne($sql, $params = []) {
-                    return null;
+                public function fetchOne(string $sql, string $types = '', array $params = []): ?array {
+                    $conn = $this->getConnection();
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $result = $stmt->get_result();
+                    $row = $result ? $result->fetch_assoc() : null;
+                    $stmt->close();
+                    return $row;
                 }
-                public function insert($sql, $params = []) {
-                    return 1;
+                public function insert(string $sql, string $types = '', array $params = []): int {
+                    $conn = $this->getConnection();
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $id = $conn->insert_id;
+                    $stmt->close();
+                    return $id;
                 }
-                public function update($sql, $params = []) {
+                public function update(string $sql, string $types = '', array $params = []): bool {
+                    $conn = $this->getConnection();
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $stmt->close();
                     return true;
                 }
-                public function delete($sql, $params = []) {
+                public function delete(string $sql, string $types = '', array $params = []): bool {
+                    $conn = $this->getConnection();
+                    $stmt = $conn->prepare($sql);
+                    if (!empty($params)) {
+                        $stmt->bind_param($types, ...$params);
+                    }
+                    $stmt->execute();
+                    $stmt->close();
                     return true;
                 }
             };
@@ -144,11 +184,33 @@ if (!function_exists('env')) {
 
 if (!function_exists('config')) {
     function config(string $key, mixed $default = null): mixed {
-        static $config = null;
-        if ($config === null) {
-            $config = [
-            // Env-aware test DB config (falls back to the historical defaults,
-            // so environments without DB_* env vars behave exactly as before).
+        static $config = [];
+
+        // First, try to load from config file on disk (matches production behavior)
+        $segments = explode('.', $key);
+        $file = array_shift($segments);
+
+        if (!isset($config[$file])) {
+            $configPath = BACKEND_PATH . "/config/{$file}.php";
+            if (file_exists($configPath)) {
+                $config[$file] = require $configPath;
+            }
+        }
+
+        // If config file was loaded, traverse segments to find the value
+        if (isset($config[$file]) && is_array($config[$file])) {
+            $value = $config[$file];
+            foreach ($segments as $segment) {
+                if (!is_array($value) || !array_key_exists($segment, $value)) {
+                    return $default;
+                }
+                $value = $value[$segment];
+            }
+            return $value;
+        }
+
+        // Fallback to hardcoded test defaults for keys without config files
+        $defaults = [
             'database.connections.mysql' => [
                 'host'     => env('DB_HOST', 'localhost'),
                 'username' => env('DB_USERNAME', 'root'),
@@ -157,7 +219,6 @@ if (!function_exists('config')) {
                 'port'     => (int) env('DB_PORT', 3306),
                 'charset'  => 'utf8mb4'
             ],
-            // Observability layer - mirrors backend/config/observability.php
             'observability.enabled'                     => true,
             'observability.version'                     => '1.0.0',
             'observability.git_commit'                  => null,
@@ -204,9 +265,9 @@ if (!function_exists('config')) {
             'observability.retention.performance_days'           => 30,
             'observability.retention.client_days'                => 30,
             'observability.retention.resolved_group_months'      => 12,
-            ];
-        }
-        return $config[$key] ?? $default;
+        ];
+
+        return $defaults[$key] ?? $default;
     }
 }
 

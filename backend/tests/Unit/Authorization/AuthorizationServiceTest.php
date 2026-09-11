@@ -254,8 +254,8 @@ class AuthorizationServiceTest extends TestCase
         // Simulate a stray/manual deny row (the admin UI refuses to create
         // these) — the engine must still honour the super-admin policy.
         $stmt = $this->conn()->prepare(
-            "INSERT INTO user_page_permissions (user_id, module, action, permission_type, granted_by, updated_by, active)
-             VALUES (?, 'leave', 'manage', 'deny', ?, ?, 1)"
+            "INSERT INTO user_page_permissions (user_id, module, action, page_id, permission_type, granted_by, updated_by, active)
+             VALUES (?, 'leave', 'manage', 'leave', 'deny', ?, ?, 1)"
         );
         $stmt->bind_param('iii', $userId, $userId, $userId);
         $stmt->execute();
