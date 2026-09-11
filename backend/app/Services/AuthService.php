@@ -121,7 +121,7 @@ class AuthService implements AuthServiceInterface
         $this->updateLastLogin($user['id']);
 
         // Security: Prevent session fixation — new session ID after successful auth
-        if (session_status() === PHP_SESSION_ACTIVE) {
+        if (headers_sent() === false && session_status() === PHP_SESSION_ACTIVE) {
             session_regenerate_id(true);
         }
 
