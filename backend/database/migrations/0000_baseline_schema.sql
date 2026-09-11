@@ -1516,20 +1516,12 @@ CREATE TABLE `meeting_minutes_decisions` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
---
--- Table structure for table `migrations`
---
-
-DROP TABLE IF EXISTS `migrations`;
-/*!40101 SET @saved_cs_client     = @@character_set_client */;
-/*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `migrations` (
-  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-  `migration` varchar(255) NOT NULL,
-  `batch` int(11) NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=116 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-/*!40101 SET character_set_client = @saved_cs_client */;
+-- NOTE: The `migrations` tracking table is OWNED by database/run.php (the
+-- migration runner), which creates it with the full tracking schema and uses
+-- it to record executed migrations. This baseline dump must NOT include it:
+-- an earlier version DROP'd + re-CREATE'd it with an outdated 3-column
+-- structure mid-run, wiping batch history and breaking the runner's INSERTs
+-- (Unknown column 'duration_ms' → migrations silently mis-tracked).
 
 --
 -- Table structure for table `next_of_kin`
