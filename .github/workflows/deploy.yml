@@ -105,6 +105,21 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
 
+      # ---- Run security permission seeder (grants catalog modules to hr_manager) ----
+      - name: Run SecurityPermissionsSeeder
+        run: php -r "
+          require 'backend/bootstrap.php';
+          \$seeder = new Database\Seeders\SecurityPermissionsSeeder();
+          \$seeder->run();
+          echo 'SecurityPermissionsSeeder completed successfully\n';
+        "
+        env:
+          DB_DATABASE: muwasco
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+
       # ---- BLOCKING GATE 3: automated tests (uses phpunit.xml.dist) ------
       - name: Run PHPUnit tests
         run: |

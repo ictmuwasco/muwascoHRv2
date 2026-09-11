@@ -30,12 +30,17 @@ class SecurityPermissionsSeeder extends Seeder
         }
 
         // Load the full permission catalog and grant each module/action to hr_manager for testing
-        $catalogPath = dirname(__DIR__, 2) . '/config/permissions.php';
+        $catalogPath = BACKEND_PATH . '/config/permissions.php';
         if (file_exists($catalogPath)) {
-            $catalog = require $catalogPath; // Expected to return array of modules
-            foreach ($catalog as $module => $data) {
+            $catalog = require $catalogPath;
+            $modules = $catalog['modules'] ?? [];
+            foreach ($modules as $module => $data) {
                 if (isset($data['actions']) && is_array($data['actions'])) {
-                    foreach (array_keys($data['actions']) as $action) {
+                    foreach ($data['actions'] as $actionData) {
+                        $action = $actionData['key'] ?? null;
+                        if ($action === null) {
+                            continue;
+                        }
                         $this->seed('role_permissions', [[
                             'role' => 'hr_manager',
                             'module' => $module,
