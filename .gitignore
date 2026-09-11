@@ -1,6 +1,7 @@
 # ── Environment & Configuration ────────────────────────────────────────────
+# NOTE: .env is ignored (real secrets). .env.example / .env.production.example
+# are intentionally TRACKED — they are safe templates with no real secrets.
 .env
-.env.example
 config.php
 *.local.php
 
@@ -47,7 +48,6 @@ uploads/*
 # ── Diagnostic / scratch scripts (generated during development/probing) ──────
 # Laravel app (the new authoritative backend)
 !laravel/phpunit.xml
-!laravel/.env.example
 
 dump.js
 probe*.php
@@ -80,6 +80,9 @@ phpunit.xml
 .DS_Store
 Thumbs.db
 *.log
+$WinREAgent/
+$RECYCLE.BIN/
+System Volume Information/
 # Runtime security counters (rate limiting buckets)
 backend/storage/cache/rate-limits/
 
