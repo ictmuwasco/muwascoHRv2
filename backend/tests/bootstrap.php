@@ -8,8 +8,13 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 // Tests exercise production code (e.g. PermissionCatalogTest require's
 // BASE_PATH . '/backend/config/permissions.php', SecurityMiddleware uses
 // STORAGE_PATH) which assumes these constants exist.
+//
+// BASE_PATH must be the REPO ROOT (same semantics as backend/bootstrap.php,
+// where dirname(__DIR__) from backend/ = repo root). From backend/tests/ the
+// repo root is TWO levels up — an off-by-one here silently resolves every
+// BASE_PATH.'/backend/...' path to 'backend/backend/...' (CI failure, exit 2).
 if (!defined('BASE_PATH')) {
-    define('BASE_PATH', dirname(__DIR__));
+    define('BASE_PATH', dirname(__DIR__, 2));
 }
 if (!defined('BACKEND_PATH')) {
     define('BACKEND_PATH', BASE_PATH . '/backend');
