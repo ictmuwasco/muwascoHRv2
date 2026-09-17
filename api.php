@@ -38,6 +38,7 @@ use App\Controllers\Settings\NotificationController;
 use App\Controllers\Settings\AuditLogController;
 use App\Controllers\HR\HolidayController;
 use App\Controllers\Settings\PermissionController;
+use App\Controllers\Settings\RolesController;
 use App\Controllers\Meeting\MeetingController;
 use App\Controllers\Meeting\MeetingMinutesController;
 use App\Controllers\Reports\ReportsController as ReportController;
@@ -317,6 +318,13 @@ $router->add('DELETE', '/users/{id}', UserController::class, 'destroy', 'users:d
 $router->add('PUT', '/users/{id}/toggle-status', UserController::class, 'toggleStatus', 'users:edit', '30:300');
 $router->add('POST', '/users/{id}/change-password', UserController::class, 'changePassword', 'users:edit', '10:900');
 
+// Roles reference (migration 083) — canonical role keys/labels for dropdowns
+// and role-aware UIs. Read-only reference data: the global authentication gate
+// protects it and it is listed under 'reference_data' in
+// backend/config/authz_allowlist.php. Role ASSIGNMENT stays guarded by the
+// users:* permissions on the /users endpoints.
+$router->add('GET', '/roles', RolesController::class, 'index');
+
 // Attendance routes — clock-in/out are self-service (own record enforced in
 // the controller); record administration requires attendance:manage.
 $router->add('GET', '/attendance/today', AttendanceController::class, 'today', 'attendance:view');
@@ -408,6 +416,12 @@ $router->add('GET', '/dashboard/charts/leave', DashboardController::class, 'char
 // HR Insights widget — restricted to hr_manager / managing_director /
 // super_admin via dashboard:hr_insights (migration 046).
 $router->add('GET', '/dashboard/hr-insights', DashboardController::class, 'hrInsights', 'dashboard:hr_insights');
+// Personal "My Pending Approvals" widget - visible to ANY staff member with
+// approval duties (section_head / sub_section_head / dept_head / manager /
+// hr roles). dashboard:view is held by every role, and the payload is always
+// scoped server-side to the caller's own employee id, so this deliberately
+// does NOT expose the org-wide hr-insights surface.
+$router->add('GET', '/dashboard/my-pending-leaves', DashboardController::class, 'myPendingLeaves', 'dashboard:view');
 
 // Report routes
 $router->add('GET', '/reports/employees', ReportController::class, 'employees', 'reports:view');
@@ -610,11 +624,20 @@ $router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewP
 $router->add('GET', '/profile/documents/{id}/view', EmployeeController::class, 'viewProfileDocument');
 $router->add('DELETE', '/profile/documents/{id}', EmployeeController::class, 'deleteProfileDocument', 'profile:edit');
 
+// Profile contracts routes — self-service
+$router->add('GET', '/profile/contracts', EmployeeController::class, 'getProfileContracts', 'profile:view');
+$router->add('POST', '/profile/contracts/{id}/renew', EmployeeController::class, 'renewProfileContract', 'profile:edit', '20:300');
+
 // Profile picture routes
 $router->add('POST', '/profile/profile-image', EmployeeController::class, 'uploadProfileImage', 'profile:edit', '20:300');
 $router->add('GET', '/profile/profile-image', EmployeeController::class, 'profileImage', 'profile:view');
 $router->add('POST', '/employees/{id}/profile-image', EmployeeController::class, 'uploadEmployeeProfileImage', 'employees:edit', '20:300');
 $router->add('GET', '/employees/{id}/profile-image', EmployeeController::class, 'employeeProfileImage', 'employees:view');
+
+// Employee contracts routes (HR) - manage contract renewals and history
+$router->add('GET', '/employees/{id}/contracts', EmployeeController::class, 'getEmployeeContracts', 'employees:view');
+$router->add('POST', '/employees/{id}/contracts/{contractId}/renew', EmployeeController::class, 'renewEmployeeContract', 'employees:edit', '20:300');
+$router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController::class, 'convertToPermanent', 'employees:edit', '20:300');
 
 // Permission routes - plain method names (permission administration itself
 // is protected by permission_overrides:view / permission_overrides:manage)
@@ -748,6 +771,48 @@ $router->add('POST', '/security/incidents/{id}/resolve', SecurityAdminController
 $router->add('POST', '/security/incidents/{id}/false-positive', SecurityAdminController::class, 'falsePositive', 'security:manage', '30:300');
 $router->add('POST', '/security/incidents/{id}/investigate', SecurityAdminController::class, 'investigate', 'security:investigate', '30:300');
 $router->add('POST', '/security/incidents/{id}/contain', SecurityAdminController::class, 'contain', 'security:manage', '30:300');
+
+// ============================================================================
+// HR Policy & Procedures Manual module (migration 081)
+//
+// Employee reader/search/acknowledgement surface: hr_policies:view /
+// hr_policies:acknowledge (seeded to EVERY role). Static paths are registered
+// BEFORE the /hr-policies/{id} wildcard so they take precedence (first-match
+// router). File streaming reads PRIVATE storage only.
+//
+// HR administration: hr_policies:manage (upload/edit/archive/delete/history/
+// acknowledgements) and hr_policies:publish (publish workflow) — seeded to
+// hr_manager / super_admin only. Uploads are throttled; uploads NEVER
+// auto-publish (draft → review → publish is explicit).
+// ============================================================================
+use App\Controllers\HR\HrPolicyController;
+use App\Controllers\Settings\HrPolicyAdminController;
+
+// --- Employee-facing reader (static paths first) ---
+$router->add('GET', '/hr-policies/current', HrPolicyController::class, 'current', 'hr_policies:view');
+$router->add('GET', '/hr-policies/search', HrPolicyController::class, 'search', 'hr_policies:view');
+$router->add('GET', '/hr-policies/bookmarks', HrPolicyController::class, 'bookmarks', 'hr_policies:view');
+$router->add('POST', '/hr-policies/bookmarks', HrPolicyController::class, 'addBookmark', 'hr_policies:view', '30:300');
+$router->add('DELETE', '/hr-policies/bookmarks/{sectionId}', HrPolicyController::class, 'removeBookmark', 'hr_policies:view', '30:300');
+$router->add('GET', '/hr-policies/recent', HrPolicyController::class, 'recent', 'hr_policies:view');
+$router->add('GET', '/hr-policies/sections/{id}', HrPolicyController::class, 'section', 'hr_policies:view');
+// --- Document-scoped reads (wildcards) ---
+$router->add('GET', '/hr-policies', HrPolicyController::class, 'index', 'hr_policies:view');
+$router->add('GET', '/hr-policies/{id}', HrPolicyController::class, 'show', 'hr_policies:view');
+$router->add('GET', '/hr-policies/{id}/sections', HrPolicyController::class, 'sections', 'hr_policies:view');
+$router->add('GET', '/hr-policies/{id}/file', HrPolicyController::class, 'file', 'hr_policies:view');
+$router->add('POST', '/hr-policies/{id}/acknowledge', HrPolicyController::class, 'acknowledge', 'hr_policies:acknowledge', '20:300');
+
+// --- HR administration (/settings/hr-policies) ---
+$router->add('GET', '/settings/hr-policies', HrPolicyAdminController::class, 'index', 'hr_policies:manage');
+$router->add('POST', '/settings/hr-policies', HrPolicyAdminController::class, 'store', 'hr_policies:manage', '30:300');
+$router->add('PUT', '/settings/hr-policies/{id}', HrPolicyAdminController::class, 'update', 'hr_policies:manage', '20:300');
+$router->add('POST', '/settings/hr-policies/{id}/status', HrPolicyAdminController::class, 'setStatus', 'hr_policies:manage', '20:300');
+$router->add('POST', '/settings/hr-policies/{id}/publish', HrPolicyAdminController::class, 'publish', 'hr_policies:publish', '10:300');
+$router->add('POST', '/settings/hr-policies/{id}/archive', HrPolicyAdminController::class, 'archive', 'hr_policies:manage', '10:300');
+$router->add('DELETE', '/settings/hr-policies/{id}', HrPolicyAdminController::class, 'destroy', 'hr_policies:manage', '10:300');
+$router->add('GET', '/settings/hr-policies/{id}/history', HrPolicyAdminController::class, 'history', 'hr_policies:manage');
+$router->add('GET', '/settings/hr-policies/{id}/acknowledgements', HrPolicyAdminController::class, 'acknowledgements', 'hr_policies:manage');
 
 
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { Menu, Bell, LogOut, Sun, Moon } from 'lucide-react'
-import apiClient from '../api/client'
+import api from '../utils/api'
 // Base URL for direct file access (auth cookie is sent automatically) —
 // centralized in src/config/api.ts so every consumer shares VITE_API_URL.
 import { API_BASE_URL as API_BASE } from '../config/api'
@@ -23,7 +23,7 @@ const UserAvatar = ({ user }) => {
     setImageFailed(false)
     ;(async () => {
       try {
-        const res = await apiClient.get('/profile')
+                const res = await api.get('/profile')
         const stored = res.data?.data?.profile_image_url
         if (!cancelled && stored) {
           // Same streaming URL the Profile page uses; cache-busted after re-upload.

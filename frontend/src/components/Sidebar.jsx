@@ -196,6 +196,12 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       ],
     },
     {
+      name: 'HR Policies',
+      href: '/hr/policies',
+      icon: FileText,
+      visible: () => can('hr_policies', 'view'),
+    },
+    {
       name: 'Settings',
       href: '/settings',
       icon: Settings,

@@ -90,4 +90,39 @@ interface EmployeeRepositoryInterface extends RepositoryInterface
      * Get employees by section.
      */
     public function getBySection(int $sectionId): array;
+
+    /**
+     * Get all contracts for an employee.
+     */
+    public function getEmployeeContracts(int $employeeId): array;
+
+    /**
+     * Get total contract count for an employee.
+     */
+    public function getEmployeeContractCount(int $employeeId): int;
+
+    /**
+     * Get a specific contract by ID.
+     */
+    public function getContractById(int $contractId): ?array;
+
+    /**
+     * Create a new contract record.
+     */
+    public function createContract(array $data): int;
+
+    /**
+     * Get the next contract number for an employee.
+     */
+    public function getNextContractNumber(int $employeeId): int;
+
+    /**
+     * Update employee contract dates.
+     */
+    public function updateEmployeeContractDates(int $employeeId, string $startDate, string $endDate): bool;
+
+    /**
+     * Increment the total contracts count for an employee.
+     */
+    public function incrementContractCount(int $employeeId): bool;
 }

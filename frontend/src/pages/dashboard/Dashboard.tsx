@@ -4,6 +4,7 @@ import api from '../../utils/api'
 import { requestLocation } from '../../utils/geolocation'
 import Card from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
+import Modal from '../../components/ui/Modal'
 import { CalendarCheck, Clock, FileText, Star, Bell, AlertTriangle, Hourglass, CalendarDays, UserCheck, UserMinus, ExternalLink } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -23,6 +24,10 @@ import {
 } from 'recharts'
 import { useTheme } from '../../context/ThemeContext'
 import { useAuth } from '../../context/AuthContext'
+import { hrPolicyService } from '../../api/services/hrPolicyService'
+import type { CurrentPolicyResponse } from '../../api/services/hrPolicyService'
+// Role behavior groups — centralized in the global role registry (config/roles.js)
+import { SUPERVISOR_ROLES } from '../../config/roles'
 
 interface Stats {
   totalEmployees: number
@@ -101,6 +106,7 @@ interface HrInsights {
   contracts_expiring: { count: number; items: HrInsightItem[] }
   retiring_soon: { count: number; items: HrInsightItem[] }
   leave_pending_over_week: { count: number; items: HrInsightItem[] }
+  my_pending_leaves: { count: number; items: HrInsightItem[] }
   roster_current_month: { count: number; items: HrInsightItem[] }
   attendance_today: {
     clocked_in: number
@@ -137,10 +143,19 @@ const formatDistance = (meters: number): string =>
     ? `${(meters / 1000).toFixed(meters >= 10000 ? 0 : 1)} km`
     : `${Math.round(meters)} m`
 
+/** Elapsed "11h 57m" between a past clock-in timestamp and a reference time (ms). */
+const formatWorkedDuration = (clockIn: string, nowMs: number): string => {
+  const diffMs = Math.max(0, nowMs - new Date(clockIn).getTime())
+  const totalMinutes = Math.floor(diffMs / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  return `${hours}h ${minutes}m`
+}
+
 const Dashboard = () => {
   const navigate = useNavigate()
   const { theme } = useTheme()
-  const { can } = useAuth()
+  const { can, hasRole } = useAuth()
   const isDark = theme === 'dark'
   const [stats, setStats] = useState<Stats>({
     totalEmployees: 0,
@@ -164,6 +179,12 @@ const Dashboard = () => {
   const [locationError, setLocationError] = useState('')
   const [actionMessage, setActionMessage] = useState('')
   const [selectedOffice, setSelectedOffice] = useState('')
+
+  // Clock-out confirmation — a review step so employees can't clock out by
+  // mistake. `clockOutRequestedAt` freezes the "Current Time" shown in the
+  // review dialog so the figures stay stable while the employee reads them.
+  const [showClockOutConfirm, setShowClockOutConfirm] = useState(false)
+  const [clockOutRequestedAt, setClockOutRequestedAt] = useState<number | null>(null)
 
   /**
    * Set when a fix could not be obtained at all, OR when a fix was
@@ -201,23 +222,56 @@ const Dashboard = () => {
   const [hrInsights, setHrInsights] = useState<HrInsights | null>(null)
   const [hrInsightsLoading, setHrInsightsLoading] = useState(false)
 
-  // HR Insights widget is restricted to HR Manager / Managing Director /
+  // "My Pending Approvals" widget data - fetched from the personal scoped
+  // endpoint so section/subsection/dept heads see their OWN pending approvals
+  // without needing the org-wide hr_insights permission.
+  const [myPendingLeaves, setMyPendingLeaves] = useState<{ count: number; items: HrInsightItem[] }>({ count: 0, items: [] })
+
+      // HR Insights widget is restricted to HR Manager / Managing Director /
   // Super Admin (seeded via dashboard:hr_insights in migration 046). The
   // backend enforces the same permission on GET /dashboard/hr-insights.
   const showHrInsights = can('dashboard', 'hr_insights')
 
-  useEffect(() => {
+  // "My Pending Approvals" card: visible to any user with a management role.
+  // Uses hasRole as fallback so the card shows immediately even before the
+  // permissions array has been refreshed from /auth/user on login.
+  const showMyPending = can('leave', 'approve') || hasRole(SUPERVISOR_ROLES)
+
+  // HR Policy & Procedures Manual dashboard card (§3)
+  const [currentPolicy, setCurrentPolicy] = useState<CurrentPolicyResponse['policy']>(null)
+  const [policyLoading, setPolicyLoading] = useState(true)
+
+    useEffect(() => {
     fetchAttendanceDashboard()
     fetchNotifications()
-    // HR Insights widget + the org-wide analytics charts (Attendance, Leave,
-    // Department, Employee statistics) are HR-restricted surfaces — only
-    // hr_manager / managing_director / super_admin may see or fetch them.
-    if (can('dashboard', 'hr_insights')) {
+    fetchCurrentPolicy()
+  }, [])
+
+  // HR Insights widget + the org-wide analytics charts (Attendance, Leave,
+  // Department, Employee statistics) are HR-restricted surfaces - only
+  // hr_manager / managing_director / super_admin may see or fetch them.
+  // The permission may arrive AFTER first render (AuthContext restores the
+  // cached profile from localStorage first, then /auth/user overwrites it),
+  // so gate the fetch on the live permission value instead of a one-time
+  // mount check. Without this, users with stale cached permissions would see
+  // the cards render but sit on a permanent loading skeleton.
+  useEffect(() => {
+    if (showHrInsights) {
       fetchStats()
       fetchAnalytics()
       fetchHrInsights()
     }
-  }, [])
+  }, [showHrInsights])
+
+  // "My Pending Approvals" - a personal scoped widget, visible to approvers
+  // (leave:approve / leave:manage) of any level. Fetched from the dedicated
+  // /dashboard/my-pending-leaves endpoint, NOT from the org-wide hr-insights
+  // surface, so heads see only their own queue.
+  useEffect(() => {
+    if (showMyPending) {
+      fetchMyPendingLeaves()
+    }
+  }, [showMyPending])
 
   const fetchStats = async () => {
     try {
@@ -268,6 +322,20 @@ const Dashboard = () => {
     }
   }
 
+  const fetchCurrentPolicy = async () => {
+    setPolicyLoading(true)
+    try {
+      const response = await hrPolicyService.getCurrent()
+      setCurrentPolicy(response?.policy ?? null)
+    } catch (error) {
+      // Policy module is non-fatal: silently swallow on the dashboard.
+      console.error('Failed to fetch current policy:', error)
+      setCurrentPolicy(null)
+    } finally {
+      setPolicyLoading(false)
+    }
+  }
+
   const fetchAnalytics = async () => {
     try {
       const [attendanceRes, departmentsRes, leaveRes] = await Promise.all([
@@ -294,6 +362,18 @@ const Dashboard = () => {
       console.error('Failed to fetch HR insights:', error)
     } finally {
       setHrInsightsLoading(false)
+    }
+  }
+
+  const fetchMyPendingLeaves = async () => {
+    try {
+      const response = await api.get('/dashboard/my-pending-leaves')
+      const data = response.data?.data
+      if (data && typeof data.count === 'number' && Array.isArray(data.items)) {
+        setMyPendingLeaves({ count: data.count, items: data.items as HrInsightItem[] })
+      }
+    } catch (error) {
+      console.error('Failed to fetch my pending leaves:', error)
     }
   }
 
@@ -458,7 +538,16 @@ const Dashboard = () => {
   }
 
   const handleClockIn = () => startClock('clock-in')
-  const handleClockOut = () => startClock('clock-out')
+  /** Clock Out opens a review dialog first; the GPS-verified submission runs on confirm. */
+  const handleClockOut = () => {
+    if (!attendanceData.current_session) return
+    setClockOutRequestedAt(Date.now())
+    setShowClockOutConfirm(true)
+  }
+  const confirmClockOut = () => {
+    setShowClockOutConfirm(false)
+    startClock('clock-out')
+  }
 
   /**
    * Shared presentation tokens so every chart follows light/dark mode.
@@ -728,6 +817,63 @@ const Dashboard = () => {
         </div>
       </Card>
 
+      {/* Clock-out confirmation — a review step so an employee can't clock out
+          by mistake. Shows the clock-in time, the current time and the time
+          worked, and only proceeds to the GPS-verified clock-out when the
+          employee explicitly confirms. */}
+      <Modal
+        isOpen={showClockOutConfirm}
+        onClose={() => setShowClockOutConfirm(false)}
+        title="Confirm Clock Out"
+        size="sm"
+      >
+        <p className="text-sm text-gray-500 dark:text-gray-400">Please review before proceeding</p>
+        <div className="mt-4 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500 dark:text-gray-400">Clocked In:</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">
+              {attendanceData.current_session
+                ? new Date(attendanceData.current_session.clock_in).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '—'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500 dark:text-gray-400">Current Time:</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">
+              {clockOutRequestedAt
+                ? new Date(clockOutRequestedAt).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })
+                : '—'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500 dark:text-gray-400">Time Worked:</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">
+              {attendanceData.current_session && clockOutRequestedAt
+                ? formatWorkedDuration(attendanceData.current_session.clock_in, clockOutRequestedAt)
+                : '—'}
+            </span>
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setShowClockOutConfirm(false)}>
+            Stay Clocked In
+          </Button>
+          <Button
+            variant="danger"
+            onClick={confirmClockOut}
+            disabled={clockingOut || locating !== null}
+          >
+            {clockingOut ? 'Clocking Out…' : 'Clock Out'}
+          </Button>
+        </div>
+      </Modal>
+
       {/* HR Insights widget — only for HR Manager / Managing Director / Super Admin */}
       {showHrInsights && (
         <div className="space-y-4">
@@ -766,9 +912,19 @@ const Dashboard = () => {
                 </div>
                 <div className="space-y-1 mb-3 max-h-24 overflow-y-auto">
                   {hrInsights.contracts_expired.items.slice(0, 5).map((e) => (
-                    <p key={e.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
-                      {e.name} · {e.end_date}
-                    </p>
+                    <div key={e.id} className="flex items-center justify-between gap-2">
+                      <span className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                        {e.name} · {e.end_date}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/employees/${e.id}/profile?tab=contracts`)}
+                        title="Open the employee's Contracts tab to renew"
+                        className="shrink-0 rounded-md border border-red-200 px-2 py-0.5 text-[11px] font-medium text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+                      >
+                        Renew
+                      </button>
+                    </div>
                   ))}
                   {hrInsights.contracts_expired.items.length === 0 && (
                     <p className="text-xs text-gray-400">None</p>
@@ -851,7 +1007,7 @@ const Dashboard = () => {
                 </Button>
               </Card>
 
-              {/* Roster current month */}
+                                                        {/* Roster current month */}
               <Card>
                 <div className="flex items-start justify-between mb-3">
                   <div>
@@ -947,41 +1103,103 @@ const Dashboard = () => {
       )}
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+        {/* HR Policy & Procedures Manual card (§3) — visible to all employees */}
         <Card>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div className="flex items-start space-x-4 min-w-0">
+              <div className="p-3 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg shrink-0">
+                <FileText className="h-6 w-6 text-emerald-600 dark:text-emerald-300" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">HR Policy &amp; Procedures</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Official MUWASCO HR Policy Manual</p>
+                {currentPolicy && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      v{currentPolicy.version}
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-50 dark:bg-slate-900/60 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700">
+                      {currentPolicy.section_count} sections
+                    </span>
+                    {currentPolicy.effective_date && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-50 dark:bg-slate-900/60 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-slate-700">
+                        Effective {new Date(currentPolicy.effective_date).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <Button onClick={() => navigate('/hr/policies')} className="w-full lg:w-auto shrink-0">
+              Read Policy Manual
+            </Button>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div className="flex items-start sm:items-center space-x-4 min-w-0">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/40 rounded-lg shrink-0">
                 <FileText className="h-6 w-6 text-blue-600 dark:text-blue-300" />
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Apply Leave</h3>
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">Apply Leave</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Submit leave application</p>
               </div>
             </div>
-            <Button onClick={() => navigate('/leave')}>
+            <Button onClick={() => navigate('/leave')} className="w-full lg:w-auto shrink-0">
               Apply Now
             </Button>
           </div>
         </Card>
 
         <Card>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-purple-100 dark:bg-purple-900/40 rounded-lg">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div className="flex items-start sm:items-center space-x-4 min-w-0">
+              <div className="p-3 bg-purple-100 dark:bg-purple-900/40 rounded-lg shrink-0">
                 <Star className="h-6 w-6 text-purple-600 dark:text-purple-300" />
               </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">My Appraisal</h3>
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">My Appraisal</h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">View performance reviews</p>
               </div>
             </div>
-            <Button onClick={() => navigate('/appraisal')} variant="secondary">
+            <Button onClick={() => navigate('/appraisal')} variant="secondary" className="w-full lg:w-auto shrink-0">
               View Appraisals
             </Button>
           </div>
         </Card>
       </div>
+
+      {/* My Pending Approvals - personal scoped widget. Visible to approvers of
+          any level (section_head / sub_section_head / dept_head / manager / HR).
+          Data comes from the dedicated /dashboard/my-pending-leaves endpoint so
+          heads see only their OWN queue, without org-wide hr-insights access. */}
+      {showMyPending && (
+        <Card className="md:col-span-2 lg:col-span-3">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">My Pending Approvals</p>
+              <p className="text-3xl font-bold text-purple-600">{myPendingLeaves.count}</p>
+            </div>
+            <UserCheck className="h-5 w-5 text-purple-500" />
+          </div>
+          <div className="space-y-1 mb-3 max-h-24 overflow-y-auto">
+            {myPendingLeaves.items.slice(0, 5).map((r) => (
+              <p key={r.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                {r.name} · {r.days_pending}d
+              </p>
+            ))}
+            {myPendingLeaves.items.length === 0 && (
+              <p className="text-xs text-gray-400">No pending approvals awaiting your action.</p>
+            )}
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => navigate('/leave/manage/pending')}>
+            View <ExternalLink className="ml-1 h-3 w-3" />
+          </Button>
+        </Card>
+      )}
 
       {/* Notifications Widget */}
       <Card>

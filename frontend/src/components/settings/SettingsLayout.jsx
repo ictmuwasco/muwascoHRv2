@@ -37,7 +37,8 @@ const TAB_ICONS = {
   audit: <FileText className="h-4 w-4" />,
   users: <UsersIcon className="h-4 w-4" />,
   permissions: <Shield className="h-4 w-4" />,
-  monitoring: <Activity className="h-4 w-4" />, 
+  monitoring: <Activity className="h-4 w-4" />,
+  'hr-policies': <FileText className="h-4 w-4" />,
 }
 
 /**

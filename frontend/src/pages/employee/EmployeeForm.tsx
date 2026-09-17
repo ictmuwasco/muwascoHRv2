@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-// @ts-ignore - JS module without types
 import api from '../../utils/api'
 import Card from '../../components/ui/Card'
 import Input from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
-// @ts-ignore - JS module without types
 import EmployeeTabs from '../../components/EmployeeTabs'
 import { ArrowLeft, Save, Loader2 } from 'lucide-react'
 

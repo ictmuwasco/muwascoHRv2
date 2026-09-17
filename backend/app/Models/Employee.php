@@ -47,6 +47,7 @@ class Employee extends BaseModel
     public const EMPLOYMENT_TYPES = [
         'permanent' => 'Permanent',
         'contract' => 'Contract',
+        'csuite' => 'C-suite (contract, permanent leave rate)',
         'temporary' => 'Temporary',
         'intern' => 'Intern',
     ];

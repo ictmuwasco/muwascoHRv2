@@ -360,6 +360,23 @@ return [
             ],
         ],
 
+        // HR Policy & Procedures Manual module (migration 081): versioned,
+        // workflow-controlled (draft → review → published → archived) official
+        // policy. view/acknowledge are seeded to EVERY role (all employees read
+        // the published policy); manage/publish are seeded to hr_manager /
+        // super_admin only. Files live in private storage and are streamed via
+        // permission-checked endpoints.
+        'hr_policies' => [
+            'key'     => 'hr_policies',
+            'label'   => 'HR Policies',
+            'actions' => [
+                ['key' => 'view',        'label' => 'View Published Policies', 'type' => 'page'],
+                ['key' => 'acknowledge', 'label' => 'Acknowledge Policy (self)', 'type' => 'action'],
+                ['key' => 'manage',      'label' => 'Manage Policies',  'type' => 'action'],
+                ['key' => 'publish',     'label' => 'Publish / Archive', 'type' => 'action'],
+            ],
+        ],
+
         // System administration (query log, error monitoring, etc.)
         'system' => [
             'key'     => 'system',

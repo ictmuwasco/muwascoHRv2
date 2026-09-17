@@ -287,6 +287,20 @@ const useAiChat = () => {
 
   const suggestions = useMemo(() => buildSuggestedQuestions(user, can), [user, can])
 
+  // Queue a question to send automatically after initialise() resolves.
+  // Used by the "Ask AI About This Policy" flow (§19): the PolicyReader
+  // dispatches a window event that AiAssistantWidget picks up, opens itself,
+  // calls initialize(), then calls seedOutgoing(). initialise() returns a
+  // promise, so .then(seedOutgoing) guarantees the conversation id is ready
+  // before send() is invoked.
+  const seedOutgoing = useCallback((text) => {
+    const trimmed = String(text ?? '').trim()
+    if (!trimmed) return
+    // initialize() already resolved by the caller; send() handles a null
+    // conversationId by starting a fresh conversation.
+    send(trimmed)
+  }, [send])
+
   return {
     messages,
     loading,
@@ -295,6 +309,7 @@ const useAiChat = () => {
     canRetry: Boolean(lastFailedQuestion),
     initialize,
     send,
+    seedOutgoing,
     stop,
     retry,
     reset,
