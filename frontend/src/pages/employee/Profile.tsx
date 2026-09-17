@@ -4,7 +4,8 @@ import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
-import { User, Briefcase, Users, FileText, Key, Loader2, Plus, Trash2, Upload, Eye, Download, UserRound } from 'lucide-react';
+import { User, Briefcase, Users, FileText, Key, Loader2, Plus, Trash2, Upload, Eye, Download, UserRound, Calendar, Clock, RefreshCw } from 'lucide-react';
+import Badge from '../../components/ui/Badge';
 import type { EmployeeProfile } from '../../types';
 
 // Base URL for direct file access (authenticated via httpOnly cookie) —
@@ -46,6 +47,7 @@ const Profile = () => {
     section: '',
     office: '',
     designation: '',
+    employment_type: '',
     employee_type: '',
     employee_status: '',
     employment_date: '',
@@ -75,6 +77,11 @@ const Profile = () => {
     file: null,
   });
 
+  // Contract state
+  const [contracts, setContracts] = useState<Array<{ id: number; name: string; start_date: string; end_date: string }>>([]);
+  const [contractCount, setContractCount] = useState(0);
+  const [renewingContract, setRenewingContract] = useState(false);
+
   // Popup (modal) toggles - opened by the Add buttons in the card headers.
   const [nokModalOpen, setNokModalOpen] = useState(false);
   const [depModalOpen, setDepModalOpen] = useState(false);
@@ -103,6 +110,7 @@ const Profile = () => {
           section: data.employment?.section || '',
           office: data.employment?.office || '',
           designation: data.employment?.designation || '',
+          employment_type: data.employment?.employment_type || '',
           employee_type: data.employment?.employee_type || '',
           employee_status: data.employment?.employee_status || '',
           employment_date: data.employment?.employment_date || '',
@@ -122,6 +130,18 @@ const Profile = () => {
           contact: r?.contact || r?.phone || '',
         })));
         setDocuments(data.documents || []);
+
+        // Fetch contract information
+        try {
+          const contractRes = await apiClient.get('/profile/contracts');
+          const contractData = contractRes.data.data;
+          setContracts(contractData?.contracts || []);
+          setContractCount(contractData?.count || (contractData?.contracts || []).length);
+        } catch (err) {
+          console.error('Failed to fetch contracts:', err);
+          setContracts([]);
+          setContractCount(0);
+        }
 
         // Parse dependants (from separate table via dependants_data)
         if (data.dependants) {
@@ -329,6 +349,24 @@ const Profile = () => {
     } catch (err) {
       setError('Failed to delete document');
       console.error('Failed to delete document:', err);
+    }
+  };
+
+  // Contract renewal function
+  const handleRenewContract = async (contractId: number) => {
+    if (!confirm('Are you sure you want to renew this contract? This will extend the contract end date.')) return;
+    setRenewingContract(true);
+    setError('');
+    setSuccess('');
+    try {
+      await apiClient.post(`/profile/contracts/${contractId}/renew`);
+      setSuccess('Contract renewed successfully');
+      fetchProfile();
+    } catch (err) {
+      setError('Failed to renew contract');
+      console.error('Failed to renew contract:', err);
+    } finally {
+      setRenewingContract(false);
     }
   };
 
@@ -545,6 +583,133 @@ const Profile = () => {
               disabled
             />
           </div>
+
+          {/* Contract Information - only shown for contract-based employees
+              ('contract' and 'csuite' both carry renewable contract terms) */}
+          {['contract', 'csuite'].includes(employment.employment_type) && (
+            <div className="mt-6 border-t pt-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <Briefcase className="h-5 w-5 mr-2 text-primary-600" />
+                Contract Details
+              </h3>
+
+              {contracts.length > 0 ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <span className="text-sm text-gray-500">Total Contracts Assigned</span>
+                    <span className="text-2xl font-bold text-primary-700">{contractCount}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <span className="text-sm text-gray-500 flex items-center">
+                        <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                        Contract Start
+                      </span>
+                      <span className="font-medium text-gray-900">
+                        {employment.employment_date || 'Not specified'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <span className="text-sm text-gray-500 flex items-center">
+                        <Calendar className="h-4 w-4 mr-2 text-gray-400" />
+                        Contract End
+                      </span>
+                      <span className="font-medium text-gray-900">
+                        {contracts[0]?.end_date || employment.employment_date || 'Not specified'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Your Contracts</h4>
+                    <div className="space-y-3">
+                      {contracts.map((contract) => {
+                        const endDate = contract.end_date ? new Date(contract.end_date) : null;
+                        const isActive = !endDate || endDate > new Date();
+                        const daysLeft = endDate ? Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                        return (
+                          <div
+                            key={contract.id}
+                            className={`p-4 rounded-lg border ${isActive ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-sm font-medium text-gray-900">
+                                {contract.name || 'Contract'}
+                              </span>
+                              <Badge variant={isActive ? 'success' : 'default'}>
+                                {isActive ? 'Active' : 'Ended'}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                              <div>
+                                <p>Start: <span className="font-medium text-gray-900">{contract.start_date || 'N/A'}</span></p>
+                              </div>
+                              <div>
+                                <p>End: <span className="font-medium text-gray-900">{contract.end_date || 'N/A'}</span></p>
+                              </div>
+                              {daysLeft !== null && daysLeft > 0 && (
+                                <div className="col-span-2">
+                                  <p className="text-amber-600 text-sm">
+                                    <Clock className="h-3 w-3 inline mr-1" />
+                                    {daysLeft} days remaining
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                            {isActive && (
+                              <div className="mt-3 flex justify-end">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleRenewContract(contract.id)}
+                                  disabled={renewingContract}
+                                >
+                                  {renewingContract ? (
+                                    <>
+                                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                      Renewing...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <RefreshCw className="h-3 w-3 mr-1" />
+                                      Renew Contract
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+
+                  {/* Contract Renewal Info */}
+                  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-start space-x-3">
+                      <RefreshCw className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-blue-900">About Contract Renewal</p>
+                        <p className="text-sm text-blue-700 mt-1">
+                          When your contract term is about to expire, you can request renewal by clicking the
+                          <span className="font-medium"> "Renew Contract"</span> button on any active contract.
+                          This will extend your contract end date. Please contact HR for the new contract terms before renewing.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <Briefcase className="h-12 w-12 mx-auto text-gray-300 mb-3" />
+                  <p className="text-gray-500">No contracts on record.</p>
+                </div>
+              )}
+            </div>
+          )}
+
           <p className="text-sm text-gray-500 mt-4">Employment information is managed by HR department.</p>
         </Card>
       )}

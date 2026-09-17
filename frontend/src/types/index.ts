@@ -5,25 +5,35 @@
 // --- Authentication ---
 export interface User {
   id: number;
-  employee_id: string;
+  employee_id?: number;
   first_name: string;
   last_name: string;
-  surname: string;
+  surname?: string;
   email: string;
   role: string;
-  designation: string;
-  phone: string;
-  address: string;
-  gender: string;
-  is_active: boolean;
-  last_login: string | null;
-  created_at: string;
-  updated_at: string;
+  designation?: string;
+  phone?: string;
+  address?: string;
+  gender?: string;
+  is_active?: boolean;
+  last_login?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  /** Effective permission strings from the authorization engine (e.g. ['leave:view', 'dashboard:view']). */
+  permissions?: string[];
+  /** Active temporary delegations (acting authority) — used by DelegateBanner. */
+  active_delegations?: Array<{ id: number; delegator_id: number; delegator_name: string; role: string; delegated_role: string; start_date: string; end_date: string; is_active: boolean; created_at: string }>;
+  /** Whether the user has accepted the current HR policy consent version. */
+  consent_accepted?: boolean;
+  /** Full employee record (nested, when available from login / auth/user). */
+  employee?: Record<string, unknown> | null;
 }
 
 export interface LoginResponse {
-  token: string;
   user: User;
+  token: string;
+  permissions?: string[];
+  active_delegations?: Array<{ id: number; delegator_id: number; delegator_name: string; role: string; delegated_role: string; start_date: string; end_date: string; is_active: boolean; created_at: string }>;
 }
 
 export interface AuthState {

@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react'
 import api from '../utils/api'
+// Fallback broad-access roles — centralized in the global role registry (config/roles.js)
+import { BROAD_ACCESS_ROLES } from '../config/roles'
 
 const AuthContext = createContext(null)
 
@@ -15,7 +17,7 @@ export const useAuth = () => {
     // with "useAuth must be used within an AuthProvider" (seen once from
     // /leave/roster). Behaving as signed-out lets ProtectedRoute send the
     // user to /login and every other consumer keep rendering safely.
-    if (!warnedMissingProvider) {
+        if (!warnedMissingProvider) {
       warnedMissingProvider = true
       console.warn('useAuth called outside AuthProvider - using signed-out fallback.')
     }
@@ -25,6 +27,7 @@ export const useAuth = () => {
       isAuthenticated: false,
       can: () => false,
       canAny: () => false,
+      hasRole: () => false,
       login: async () => ({
         success: false,
         message: 'Authentication is unavailable. Please reload the page.',
@@ -88,11 +91,11 @@ export const AuthProvider = ({ children }) => {
         if (parsed && typeof parsed === 'object') {
           setUser(parsed)
         } else {
-          // Corrupt entry — clear it so we don't loop
+          // Corrupt entry � clear it so we don't loop
           localStorage.removeItem('user')
         }
       } catch {
-        // Corrupt JSON — clear and continue
+        // Corrupt JSON � clear and continue
         localStorage.removeItem('user')
       }
     }
@@ -101,7 +104,13 @@ export const AuthProvider = ({ children }) => {
     //  - on mount (authoritative overwrite of the cached profile)
     //  - on window focus / visibility change (returning to the tab)
     //  - on a 5-minute interval (long-lived sessions pick up admin changes)
-    refreshPermissions()
+    //
+    // IMPORTANT: setLoading(false) is delayed until refreshPermissions()
+    // resolves so that ProtectedRoute doesn't unblock with a stale
+    // localStorage profile (missing the permissions array). This was the
+    // root cause of managing_director seeing "Access denied" on the
+    // dashboard even though the backend granted dashboard:view.
+    refreshPermissions().finally(() => setLoading(false))
 
     const onVisibility = () => {
       if (document.visibilityState === 'visible') refreshPermissions()
@@ -110,8 +119,6 @@ export const AuthProvider = ({ children }) => {
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('focus', onFocus)
     const interval = window.setInterval(refreshPermissions, 5 * 60 * 1000)
-
-    setLoading(false)
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
@@ -219,15 +226,33 @@ export const AuthProvider = ({ children }) => {
    * @param {string} module  catalog module key, e.g. 'leave'
    * @param {string} action  catalog action key, e.g. 'approve'
    * @returns {boolean}
-   */
+     */
   const can = (module, action = 'view') => {
     if (!user || !Array.isArray(user.permissions)) {
       // No effective-permission set (e.g. stale localStorage from before
-      // Phase 2). Default deny for everyone except super_admin, whose
-      // documented policy is unlimited access — the backend declares it.
-      return !!user && (user.role === 'super_admin' || user.role === 'admin')
+      // Phase 2). Default deny for everyone except the broad-access roles,
+      // whose documented policy is broad access — managing_director holds
+      // dashboard:view in the role matrix (migration 038 §5) but is NOT
+      // covered by the super_admin/admin shortcut that previously excluded
+      // it (Phase 2 §14 fallback). Role list lives in the global role
+      // registry (config/roles.js). UX only — the backend enforces the real
+      // check on every API request.
+      return !!user && BROAD_ACCESS_ROLES.includes(user.role)
     }
     return user.permissions.includes(`${module}:${action}`)
+  }
+
+  /**
+   * Role-based check — useful for UI elements that should be visible to
+   * all users holding a particular role, regardless of whether the
+   * permission set has been loaded yet.
+   * @param {string|string[]} roles e.g. 'section_head' or ['section_head','subsection_head']
+   * @returns {boolean}
+   */
+  const hasRole = (roles) => {
+    if (!user || !user.role) return false
+    const list = Array.isArray(roles) ? roles : [roles]
+    return list.includes(user.role)
   }
 
   /**
@@ -248,6 +273,7 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: !!user,
     can,
     canAny,
+    hasRole,
     refreshPermissions,
   }
 

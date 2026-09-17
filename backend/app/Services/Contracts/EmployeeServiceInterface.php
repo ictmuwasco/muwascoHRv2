@@ -87,6 +87,33 @@ interface EmployeeServiceInterface extends ServiceInterface
     public function getOffices(): array;
 
     /**
+     * Get all contracts for an employee.
+     */
+    public function getEmployeeContracts(int $employeeId): array;
+
+    /**
+     * Get total contract count for an employee.
+     */
+    public function getEmployeeContractCount(int $employeeId): int;
+
+    /**
+     * Record the initial contract for an employee.
+     */
+    public function createEmployeeContract(int $employeeId, array $data): int;
+
+    /**
+     * Renew a contract for an employee.
+     */
+    public function renewEmployeeContract(int $employeeId, int $previousContractId): array;
+
+    /**
+     * Convert a contract-based employee to permanent employment
+     * (employment_type = 'permanent', active contract dates cleared,
+     * contract history preserved).
+     */
+    public function convertEmployeeToPermanent(int $employeeId): array;
+
+    /**
      * Validate employee data.
      */
     public function validateEmployeeData(array $data, ?int $excludeId = null): array;

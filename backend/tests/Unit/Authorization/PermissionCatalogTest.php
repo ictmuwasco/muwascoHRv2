@@ -35,9 +35,11 @@ class PermissionCatalogTest extends TestCase
         // delegation / acting-authority phase — delegation management is
         // permission-gated like every other admin surface); +1 'system' module
         // (query log, error monitoring, system administration); +1 'security'
-        // module (Security Operations dashboard & AI copilot). Review the diff
-        // when this changes.
-        $this->assertCount(29, $this->catalog['modules'], 'Catalog module count changed - review this test');
+        // module (Security Operations dashboard & AI copilot); +1
+        // 'hr_policies' module (HR Policy & Procedures Manual — versioned,
+        // workflow-controlled policy reader + HR administration, migration
+        // 081). Review the diff when this changes.
+        $this->assertCount(30, $this->catalog['modules'], 'Catalog module count changed - review this test');
     }
 
     public function testEveryModuleDefinesKeyLabelAndActions(): void

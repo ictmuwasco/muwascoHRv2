@@ -242,7 +242,7 @@ class LeaveApplicationService
         $deptHeadEmpId       = $managers['dept_head_emp_id'] ?? null;
 
         $stmt->bind_param(
-            'iiissisiiiiiii',
+            'iiississiiiiiii',
             $employeeId,
             $leaveTypeId,
             $fyId,

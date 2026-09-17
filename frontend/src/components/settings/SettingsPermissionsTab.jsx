@@ -5,21 +5,10 @@ import Button from '../ui/Button'
 import Input from '../ui/Input'
 import Badge from '../ui/Badge'
 import { permissionService } from '../../api/services/permissionService'
+// Role badge colors — centralized in the global role registry (config/roles.js)
+import { ROLE_BADGE_CLASSES, isSuperAdmin } from '../../config/roles'
 
-const ROLE_COLORS = {
-  super_admin: 'bg-purple-100 text-purple-800',
-  hr_manager: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-  dept_head: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-  section_head: 'bg-teal-100 text-teal-800',
-  sub_section_head: 'bg-cyan-100 text-cyan-800',
-  manager: 'bg-indigo-100 text-indigo-800',
-  officer: 'bg-yellow-100 text-yellow-800',
-  employee: 'bg-gray-100 text-gray-800',
-  managing_director: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
-  bod_chairman: 'bg-rose-100 text-rose-800',
-}
-
-const roleColor = (role) => ROLE_COLORS[role] || 'bg-gray-100 text-gray-800'
+const roleColor = (role) => ROLE_BADGE_CLASSES[role] || 'bg-gray-100 text-gray-800'
 
 const PermissionsTab = () => {
   const [catalog, setCatalog] = useState(null)
@@ -381,7 +370,7 @@ const PermissionsTab = () => {
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => handleSaveOverride(moduleKey, action.key, 'allow')}
-                                    disabled={isSaving || userPerms.user.role === 'super_admin'}
+                                    disabled={isSaving || isSuperAdmin(userPerms.user.role)}
                                     className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                                       override?.permission_type === 'allow'
                                         ? 'bg-green-600 text-white'
@@ -392,7 +381,7 @@ const PermissionsTab = () => {
                                   </button>
                                   <button
                                     onClick={() => handleSaveOverride(moduleKey, action.key, 'deny')}
-                                    disabled={isSaving || userPerms.user.role === 'super_admin'}
+                                    disabled={isSaving || isSuperAdmin(userPerms.user.role)}
                                     className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
                                       override?.permission_type === 'deny'
                                         ? 'bg-red-600 text-white'
@@ -403,7 +392,7 @@ const PermissionsTab = () => {
                                   </button>
                                   <button
                                     onClick={() => handleRemoveOverride(moduleKey, action.key)}
-                                    disabled={!override || isSaving || userPerms.user.role === 'super_admin'}
+                                    disabled={!override || isSaving || isSuperAdmin(userPerms.user.role)}
                                     title="Remove override (inherit role)"
                                     className="px-2 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-50"
                                   >
@@ -472,7 +461,7 @@ const PermissionsTab = () => {
               </div>
 
               {/* Super Admin notice */}
-              {userPerms.user.role === 'super_admin' && (
+              {isSuperAdmin(userPerms.user.role) && (
                 <div className="mt-4 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-md p-4 flex items-start gap-3">
                   <Info className="h-5 w-5 text-purple-500 mt-0.5" />
                   <div>

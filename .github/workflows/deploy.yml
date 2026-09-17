@@ -64,6 +64,44 @@ jobs:
         run: vendor/bin/phpstan analyse backend/app/ --level=6 --no-progress
         continue-on-error: true
 
+  frontend-quality:
+    name: Frontend Lint, Type-check & Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Prettier format check
+        run: npx prettier --check "src/**/*.{js,jsx,ts,tsx,css}"
+        working-directory: frontend
+
+      - name: ESLint
+        run: npm run lint
+        working-directory: frontend
+
+      - name: TypeScript type-check
+        run: npm run typecheck
+        working-directory: frontend
+
+      - name: Run frontend tests
+        run: npm run test
+        working-directory: frontend
+
+      - name: Build for production
+        run: npm run build
+        working-directory: frontend
+
   tests:
     name: Run Tests
     needs: quality
@@ -154,9 +192,9 @@ jobs:
           ls -la backend/storage/logs/ || true
           for f in backend/storage/logs/*.log; do echo "===== $f ====="; tail -n 100 "$f" || true; done
 
-  deploy-production:
+    deploy-production:
     name: Deploy to Production
-    needs: [quality, tests]
+    needs: [quality, tests, frontend-quality]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
 
@@ -169,8 +207,25 @@ jobs:
           php-version: "8.2"
           tools: composer
 
-      - name: Install production dependencies
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install production dependencies (backend)
         run: composer install --no-dev --optimize-autoloader --no-interaction
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build frontend for production
+        run: npm run build
+        working-directory: frontend
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL || 'https://hr.muwasco.co.ke/hrdemo/api' }}
 
       - name: Deploy via FTP/SFTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.4

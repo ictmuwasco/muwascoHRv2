@@ -88,6 +88,7 @@ return [
         'GET /sections',
         'GET /subsections',
         'GET /appraisal-cycles',
+        'GET /roles', // canonical role keys/labels (roles table, migration 083)
     ],
 
     /**

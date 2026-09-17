@@ -12,6 +12,22 @@ namespace App\Controllers;
 class DashboardController extends BaseController
 {
     /**
+     * Employee repository — injected in the constructor.
+     *
+     * DashboardController previously relied on a dynamic (undefined) property
+     * $this->employeeRepository, which is null under the container's zero-arg
+     * autoWire(). Calling ->findByUserId() on null threw a PHP 8 Error
+     * (uncaught, because resolveCurrentEmployeePk runs before the try/catch
+     * in hrInsightsAction / myPendingLeavesAction) → HTTP 500.
+     */
+    private \App\Repositories\EmployeeRepository $employeeRepository;
+
+    public function __construct()
+    {
+        $this->employeeRepository = new \App\Repositories\EmployeeRepository();
+    }
+
+    /**
      * GET /api/dashboard - Get dashboard data and statistics.
      *
      * Phase 5: this endpoint is now strictly read-only. The previous
@@ -401,6 +417,112 @@ class DashboardController extends BaseController
         );
 
         $this->success($leaves);
+    }
+    /**
+     * GET /api/dashboard/my-pending-leaves - Personal pending approvals widget.
+     *
+     * Returns leave applications that the CURRENT user is expected to approve
+     * at whatever workflow stage they are currently pending at. This lets
+     * section/subsection/dept heads and managers see only their OWN queue
+     * without needing the org-wide dashboard:hr_insights permission.
+     *
+     * Response shape: { count: number, items: [{ id, name, days_pending }] }
+     */
+    public function myPendingLeavesAction(): void
+    {
+        $userId = $this->getUserId();
+        if ($userId <= 0) {
+            $this->forbidden('Authentication required');
+        }
+
+        // Resolve the current user's employee record
+        $employee = $this->employeeRepository->findByUserId($userId);
+        $employeeId = $employee ? (int) $employee['id'] : 0;
+        $userRole = $this->getUserRole();
+
+        if ($employeeId <= 0) {
+            // No employee record — return empty rather than 500
+            $this->success(['count' => 0, 'items' => []]);
+            return;
+        }
+
+        $db = \db();
+
+        // Build a WHERE clause that matches leave applications pending at the
+        // current user's approval level. The leave_applications table tracks
+        // the designated approver per level via *_emp_id columns, and the
+        // status enum indicates which level is currently pending.
+        $roleStatusMap = [
+            'section_head'      => 'pending_section_head',
+            'dept_head'         => 'pending_dept_head',
+            'managing_director' => 'pending_managing_director',
+            'manager'           => 'pending_manager',
+            'sub_section_head'  => 'pending_subsection_head',
+            'hr_manager'        => 'pending_hr_manager',
+        ];
+
+        $roleEmpIdColumn = [
+            'section_head'      => 'section_head_emp_id',
+            'dept_head'         => 'dept_head_emp_id',
+            'managing_director' => 'md_emp_id',
+            'manager'           => 'manager_emp_id',
+            'sub_section_head'  => 'subsection_head_emp_id',
+            'hr_manager'        => 'hr_approved_by',
+        ];
+
+        $whereClauses = [];
+        $params = [];
+        $types = '';
+
+        // Role-based matching: if the user has a management role, match leaves
+        // pending at that level where they are the designated approver.
+        foreach ($roleStatusMap as $role => $status) {
+            if ($userRole === $role || $userRole === 'super_admin') {
+                $col = $roleEmpIdColumn[$role];
+                $whereClauses[] = "(l.status = ? AND l.{$col} = ?)";
+                $params[] = $status;
+                $params[] = $employeeId;
+                $types .= 'si';
+            }
+        }
+
+        // Also match leaves pending at HR level for hr_manager role
+        // (status can be 'pending_hr_manager' or 'pending_hr')
+        if ($userRole === 'hr_manager' || $userRole === 'super_admin') {
+            $whereClauses[] = "(l.status = 'pending_hr' AND l.hr_approved_by = ?)";
+            $params[] = $employeeId;
+            $types .= 'i';
+        }
+
+        // If no role matched, return empty
+        if (empty($whereClauses)) {
+            $this->success(['count' => 0, 'items' => []]);
+            return;
+        }
+
+        $whereSql = '(' . implode(' OR ', $whereClauses) . ')';
+
+        $items = $db->fetchAll(
+            "SELECT l.id,
+                    CONCAT_WS(' ', e.first_name, e.last_name) AS name,
+                    DATEDIFF(NOW(), l.applied_at) AS days_pending
+             FROM leave_applications l
+             JOIN employees e ON l.employee_id = e.id
+             WHERE {$whereSql}
+             ORDER BY l.applied_at ASC
+             LIMIT 20",
+            $types, $params
+        );
+
+        $count = (int) $db->fetchValue(
+            "SELECT COUNT(*) FROM leave_applications l WHERE {$whereSql}",
+            $types, $params
+        );
+
+        $this->success([
+            'count' => $count,
+            'items' => $items ?: [],
+        ]);
     }
 
     /**

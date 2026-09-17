@@ -860,6 +860,7 @@ class EmployeeController extends BaseController
                     'section' => $employee['section_name'] ?? '',
                     'office' => $employee['office_name'] ?? '',
                     'designation' => $employee['designation'] ?? '',
+                    'employment_type' => $employee['employment_type'] ?? '',
                     'employee_type' => $employee['employee_type'] ?? '',
                     'employee_status' => $employee['employee_status'] ?? '',
                     'employment_date' => $employee['hire_date'] ?? $employee['employment_date'] ?? '',
@@ -962,6 +963,184 @@ class EmployeeController extends BaseController
         } catch (\Exception $e) {
             \logger()->error('Profile update error', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             $this->error('Failed to update profile. Please try again.', 500);
+        }
+    }
+
+    /**
+     * GET /api/employees/{id}/contracts - Get all contracts for an employee (HR).
+     */
+    public function getEmployeeContractsAction(int $id): void
+    {
+        $this->requirePermission('employees', 'view');
+
+        try {
+            $employee = $this->employeeService->getEmployeeById($id);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+            }
+
+            if (!\App\Services\Security\EmployeePolicy::canView($this->getAuthUserId(), $employee)) {
+                $this->forbidden('You are not authorized to view this employee');
+            }
+
+            $contracts = $this->employeeService->getEmployeeContracts($id);
+            $totalCount = $this->employeeService->getEmployeeContractCount($id);
+
+            $this->success([
+                'contracts' => $contracts,
+                'count' => $totalCount,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Employee contracts retrieval error', ['error' => $e->getMessage(), 'id' => $id]);
+            $this->error('Failed to retrieve contracts. Please try again.', 500);
+        }
+    }
+
+    /**
+     * POST /api/employees/{id}/contracts/{contractId}/renew - Renew a contract (HR).
+     */
+    public function renewEmployeeContractAction(int $id, int $contractId): void
+    {
+        $this->requirePermission('employees', 'edit');
+
+        try {
+            $employee = $this->employeeService->getEmployeeById($id);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+            }
+
+            if (!\App\Services\Security\EmployeePolicy::canEdit($this->getAuthUserId(), $employee)) {
+                $this->forbidden('You are not authorized to edit this employee');
+            }
+
+            $body = $this->getJsonBody() ?: [];
+            $result = $this->employeeService->renewEmployeeContract($id, $contractId, [
+                'start_date' => $body['start_date'] ?? null,
+                'end_date' => $body['end_date'] ?? null,
+                'duration_months' => $body['duration_months'] ?? null,
+            ]);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\AuditService::ACTION_UPDATE,
+                'Renewed contract for employee',
+                ['target_type' => 'Contract', 'target_id' => $contractId, 'target_name' => 'Employee #' . $id]
+            );
+            $this->success($result, 'Contract renewed successfully');
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Contract renewal error', ['error' => $e->getMessage(), 'id' => $id, 'contractId' => $contractId]);
+            $this->error('Failed to renew contract. Please try again.', 500);
+        }
+    }
+
+    /**
+     * POST /api/employees/{id}/convert-to-permanent - Convert a contract
+     * employee to permanent employment (HR). Sets employment_type to
+     * 'permanent', clears the active contract dates and preserves the
+     * contract history. The UI follows up with leave allocation in the
+     * Financial Year module.
+     */
+    public function convertToPermanentAction(int $id): void
+    {
+        $this->requirePermission('employees', 'edit');
+
+        try {
+            $employee = $this->employeeService->getEmployeeById($id);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+            }
+
+            if (!\App\Services\Security\EmployeePolicy::canEdit($this->getAuthUserId(), $employee)) {
+                $this->forbidden('You are not authorized to edit this employee');
+            }
+
+            $updated = $this->employeeService->convertEmployeeToPermanent($id);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\AuditService::ACTION_UPDATE,
+                'Converted employee to permanent employment',
+                [
+                    'target_type' => 'Employee',
+                    'target_id' => $id,
+                    'target_name' => trim(($employee['first_name'] ?? '') . ' ' . ($employee['last_name'] ?? '')) ?: ('Employee #' . $id),
+                ]
+            );
+            $this->success(['employee' => $updated], 'Employee converted to permanent successfully');
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Employee conversion error', ['error' => $e->getMessage(), 'id' => $id]);
+            $this->error('Failed to convert employee to permanent. Please try again.', 500);
+        }
+    }
+
+    /**
+     * GET /api/profile/contracts - Get contracts for the current user.
+     */
+    public function getProfileContractsAction(): void
+    {
+        $this->requirePermission('profile', 'view');
+
+        try {
+            $userId = $this->getUserId();
+            if ($userId === 0) {
+                $this->unauthorized('Authentication required');
+            }
+
+            $employee = $this->employeeService->getEmployeeByUserId($userId);
+            if (!$employee) {
+                $this->notFound('Employee profile not found');
+            }
+
+            $contracts = $this->employeeService->getEmployeeContracts((int)$employee['id']);
+            $totalCount = $this->employeeService->getEmployeeContractCount((int)$employee['id']);
+
+            $this->success([
+                'contracts' => $contracts,
+                'count' => $totalCount,
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Profile contracts retrieval error', ['error' => $e->getMessage()]);
+            $this->error('Failed to retrieve contracts. Please try again.', 500);
+        }
+    }
+
+    /**
+     * POST /api/profile/contracts/{contractId}/renew - Renew a contract for current user.
+     */
+    public function renewProfileContractAction(int $contractId): void
+    {
+        $this->requirePermission('profile', 'edit');
+
+        try {
+            $userId = $this->getUserId();
+            if ($userId === 0) {
+                $this->unauthorized('Authentication required');
+            }
+
+            $employee = $this->employeeService->getEmployeeByUserId($userId);
+            if (!$employee) {
+                $this->notFound('Employee profile not found');
+            }
+
+            $result = $this->employeeService->renewEmployeeContract((int)$employee['id'], $contractId);
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\AuditService::ACTION_UPDATE,
+                'Renewed own contract',
+                ['target_type' => 'Contract', 'target_id' => $contractId, 'target_name' => 'Employee #' . $employee['id']]
+            );
+            $this->success($result, 'Contract renewed successfully');
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Profile contract renewal error', ['error' => $e->getMessage(), 'contractId' => $contractId]);
+            $this->error('Failed to renew contract. Please try again.', 500);
         }
     }
 }

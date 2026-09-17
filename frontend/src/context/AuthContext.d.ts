@@ -1,16 +1,9 @@
 import { ReactNode } from 'react';
-
-export interface User {
-  id: number;
-  email: string;
-  name: string;
-  role?: string;
-  permissions?: string[];
-  [key: string]: any;
-}
+import type { User } from '../types';
 
 export type PermissionCheck = (module: string, action?: string) => boolean;
 export type PermissionAnyCheck = (pairs: Array<[string, string]>) => boolean;
+export type RoleCheck = (roles: string | string[]) => boolean;
 
 export interface AuthContextType {
   user: User | null;
@@ -20,6 +13,8 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   can: PermissionCheck;
   canAny: PermissionAnyCheck;
+  hasRole: RoleCheck;
+  refreshPermissions: () => Promise<void>;
 }
 
 export const useAuth: () => AuthContextType;

@@ -122,4 +122,23 @@ return [
         'POST /ai/conversations/{id}/clear',
         'POST /ai/feedback',
     ],
+
+    /**
+     * HR Policy & Procedures module (migration 081). Uploads cost storage +
+     * validation work (classic abuse surface); publish/archive/delete are
+     * rare, high-impact workflow decisions. Bookmark writes and
+     * acknowledgements are cheap per-user writes kept modestly bounded.
+     * Read/search endpoints are unthrottled (indexed reads on a small set).
+     */
+    'hr_policies' => [
+        'POST /settings/hr-policies',
+        'PUT /settings/hr-policies/{id}',
+        'POST /settings/hr-policies/{id}/status',
+        'POST /settings/hr-policies/{id}/publish',
+        'POST /settings/hr-policies/{id}/archive',
+        'DELETE /settings/hr-policies/{id}',
+        'POST /hr-policies/bookmarks',
+        'DELETE /hr-policies/bookmarks/{sectionId}',
+        'POST /hr-policies/{id}/acknowledge',
+    ],
 ];
