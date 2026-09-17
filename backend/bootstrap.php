@@ -243,7 +243,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
 // never persisted to the session file, so subsequent API requests see an
 // empty session and return 401 Unauthorized.
 $requestPath = $_SERVER['REQUEST_URI'] ?? '';
-$isLoginRequest = strpos($requestPath, '/api/auth/login') !== false;
+$isLoginRequest = strpos($requestPath, '/api/auth/login') !== false || strpos($requestPath, '/hrdemo/api/auth/login') !== false;
 if ($isApiRequest && !$isLoginRequest) {
     session_write_close();
 }

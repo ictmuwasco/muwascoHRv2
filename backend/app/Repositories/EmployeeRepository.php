@@ -706,4 +706,231 @@ class EmployeeRepository implements EmployeeRepositoryInterface
 
         return $employees;
     }
+
+    /**
+     * Cached flag: does the employee_contracts table exist?
+     * Deployments that have not yet run migration 057 would otherwise
+     * turn every contract read into a 500. Reads degrade gracefully to
+     * empty results instead.
+     */
+    private ?bool $contractsTableExists = null;
+
+    private function contractsTableExists(): bool
+    {
+        if ($this->contractsTableExists === null) {
+            $result = $this->conn->query("SHOW TABLES LIKE 'employee_contracts'");
+            $this->contractsTableExists = $result && $result->num_rows > 0;
+        }
+        return $this->contractsTableExists;
+    }
+
+    /**
+     * Get all contracts for an employee.
+     */
+    public function getEmployeeContracts(int $employeeId): array
+    {
+        if (!$this->contractsTableExists()) {
+            return [];
+        }
+
+        $stmt = $this->conn->prepare("
+            SELECT c.*, d.name as department_name, s.name as section_name
+            FROM employee_contracts c
+            LEFT JOIN departments d ON c.department_id = d.id
+            LEFT JOIN sections s ON c.section_id = s.id
+            WHERE c.employee_id = ?
+            ORDER BY c.contract_number DESC
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $contracts = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        return $contracts;
+    }
+
+    /**
+     * Get total contract count for an employee.
+     */
+    public function getEmployeeContractCount(int $employeeId): int
+    {
+        if (!$this->contractsTableExists()) {
+            return 0;
+        }
+
+        $stmt = $this->conn->prepare("
+            SELECT COUNT(*) as total
+            FROM employee_contracts
+            WHERE employee_id = ?
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $stmt->close();
+
+        return (int)($row['total'] ?? 0);
+    }
+
+    /**
+     * Get a specific contract by ID.
+     */
+    public function getContractById(int $contractId): ?array
+    {
+        if (!$this->contractsTableExists()) {
+            return null;
+        }
+
+        $stmt = $this->conn->prepare("
+            SELECT *
+            FROM employee_contracts
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->bind_param('i', $contractId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $contract = $result->fetch_assoc();
+        $stmt->close();
+
+        return $contract ?: null;
+    }
+
+    /**
+     * Create a new contract record.
+     */
+    public function createContract(array $data): int
+    {
+        $fields = array_keys($data);
+        $placeholders = array_fill(0, count($fields), '?');
+        $types = '';
+        $values = [];
+
+        foreach ($data as $value) {
+            if ($value === null) {
+                $types .= 's';
+                $values[] = null;
+            } elseif (is_int($value)) {
+                $types .= 'i';
+                $values[] = $value;
+            } elseif (is_float($value)) {
+                $types .= 'd';
+                $values[] = $value;
+            } else {
+                $types .= 's';
+                $values[] = $value;
+            }
+        }
+
+        $sql = "INSERT INTO employee_contracts (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->bind_param($types, ...$values);
+        $stmt->execute();
+        $insertId = (int)$this->conn->insert_id;
+        $stmt->close();
+
+        return $insertId;
+    }
+
+    /**
+     * Get the next contract number for an employee.
+     */
+    public function getNextContractNumber(int $employeeId): int
+    {
+        $stmt = $this->conn->prepare("
+            SELECT COALESCE(MAX(contract_number), 0) + 1 as next_number
+            FROM employee_contracts
+            WHERE employee_id = ?
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+        $stmt->close();
+
+        return (int)($row['next_number'] ?? 1);
+    }
+
+    /**
+     * Cached flag: does employees.total_contracts exist? (migration 057)
+     */
+    private ?bool $totalContractsColumnExists = null;
+
+    private function totalContractsColumnExists(): bool
+    {
+        if ($this->totalContractsColumnExists === null) {
+            $result = $this->conn->query("SHOW COLUMNS FROM employees LIKE 'total_contracts'");
+            $this->totalContractsColumnExists = $result && $result->num_rows > 0;
+        }
+        return $this->totalContractsColumnExists;
+    }
+
+    /**
+     * Update employee contract dates.
+     */
+    public function updateEmployeeContractDates(int $employeeId, string $startDate, string $endDate): bool
+    {
+        if (!$this->contractsTableExists() || !$this->totalContractsColumnExists()) {
+            // Migration 057 not applied — nothing to keep in sync.
+            return false;
+        }
+
+        $stmt = $this->conn->prepare("
+            UPDATE employees
+            SET contract_start_date = ?, contract_end_date = ?
+            WHERE id = ?
+        ");
+        $stmt->bind_param('ssi', $startDate, $endDate, $employeeId);
+        $result = $stmt->execute();
+        $stmt->close();
+
+        return $result;
+    }
+
+    /**
+     * Increment the total contracts count for an employee.
+     */
+    public function incrementContractCount(int $employeeId): bool
+    {
+        if (!$this->totalContractsColumnExists()) {
+            // Migration 057 not applied — counter is unavailable; the
+            // canonical count is always COUNT(*) on employee_contracts.
+            return false;
+        }
+
+        $stmt = $this->conn->prepare("
+            UPDATE employees
+            SET total_contracts = COALESCE(total_contracts, 0) + 1
+            WHERE id = ?
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $result = $stmt->execute();
+        $stmt->close();
+
+        return $result;
+    }
+
+    /**
+     * Clear the employee's contract date columns (used when an employee
+     * is promoted from contract to permanent employment). Tolerates the
+     * case where the columns don't exist (migration 057 not applied).
+     */
+    public function clearContractDates(int $employeeId): bool
+    {
+        if (!$this->contractsTableExists() || !$this->totalContractsColumnExists()) {
+            return false;
+        }
+
+        $stmt = $this->conn->prepare(
+            "UPDATE employees
+             SET contract_start_date = NULL, contract_end_date = NULL
+             WHERE id = ?
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $result = $stmt->execute();
+        $stmt->close();
+
+        return $result;
+    }
 }

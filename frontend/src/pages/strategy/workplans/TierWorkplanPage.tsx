@@ -4,6 +4,7 @@ import { useAuth } from '../../../context/AuthContext';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
 import { AlertTriangle, CheckCircle, Download, Plus, RefreshCw } from 'lucide-react';
+import { WIDE_SCOPE_ROLES } from '../../../config/roles';
 import { workplanService } from '../../../api/services/workplanService';
 import type { WorkplanObjective } from '../../../api/services/workplanService';
 import { appraisalCycleService } from '../../../api/services/appraisalCycleService';
@@ -135,8 +136,7 @@ export default function TierWorkplanPage({
   // Pin reference data (contracts) and the create flows to the caller's own
   // department so a department head never sees a neighbour's workplan options.
   const scopeInfo = tier.list?.scope;
-  const wideRole = !!scopeInfo
-    && (scopeInfo.role === 'super_admin' || scopeInfo.role === 'hr_manager' || scopeInfo.role === 'managing_director');
+  const wideRole = !!scopeInfo && WIDE_SCOPE_ROLES.includes(scopeInfo.role);
   const deptId = !wideRole && scopeInfo && scopeInfo.department != null ? scopeInfo.department : null;
   const deptContracts = deptId != null
     ? refs.contracts.filter((c) => c.department_id === deptId)
@@ -196,7 +196,7 @@ export default function TierWorkplanPage({
 
       {tier.summary && (() => {
         const s = tier.summary.scope;
-        const broadRole = ['super_admin', 'hr_manager', 'managing_director'].includes(s.role);
+        const broadRole = WIDE_SCOPE_ROLES.includes(s.role);
         const unresolved = !broadRole && s.department === null && s.section === null && s.subsection === null;
         if (unresolved) {
           return (

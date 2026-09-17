@@ -302,7 +302,7 @@ class FinancialYearService
                 }
 
                 $allocatedDays = (float)$rule['allocated_days'];
-                $broughtForward = ($rule['leave_type_id'] === 1 && $employment === 'permanent') ? $broughtForwardDays : 0.0;
+                $broughtForward = ($rule['leave_type_id'] === 1 && ($employment === 'permanent' || $employment === 'csuite')) ? $broughtForwardDays : 0.0;
                 $accumulated = $allocatedDays + $broughtForward;
                 $remaining = $accumulated;
 
@@ -363,6 +363,10 @@ class FinancialYearService
     {
         return [
             ['leave_type_id' => 1, 'allocated_days' => 30, 'gender' => 'all', 'employment' => 'permanent'],
+            // C-suite contracts (technical manager, internal auditor, commercial
+            // manager, managing director, ...) are renewable contracts but accrue
+            // leave at the permanent-employee rate — same 30 annual days.
+            ['leave_type_id' => 1, 'allocated_days' => 30, 'gender' => 'all', 'employment' => 'csuite'],
             ['leave_type_id' => 1, 'allocated_days' => 0, 'gender' => 'all', 'employment' => 'contract'],
             ['leave_type_id' => 2, 'allocated_days' => 10, 'gender' => 'all', 'employment' => 'all'],
             ['leave_type_id' => 3, 'allocated_days' => 120, 'gender' => 'female', 'employment' => 'all'],

@@ -215,6 +215,11 @@ class FinancialYearController extends BaseController
             $data = array_map(static fn (array $emp): array => [
                 'id' => $emp['id'],
                 'full_name' => trim(($emp['first_name'] ?? '') . ' ' . ($emp['last_name'] ?? '') . (!empty($emp['surname']) ? ' ' . $emp['surname'] : '')),
+                // Exposed so the Leave Allocation UI can detect C-suite
+                // employees ('csuite') and pre-select all leave types — they
+                // accrue leave at the permanent rate despite being renewable
+                // contract staff.
+                'employment_type' => $emp['employment_type'] ?? null,
             ], $employees);
 
             $this->success($data, 'OK');

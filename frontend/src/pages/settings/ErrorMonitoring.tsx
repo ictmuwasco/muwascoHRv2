@@ -10,6 +10,8 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Select from '../../components/ui/Select';
 import { useAuth } from '../../context/AuthContext';
+// Monitoring management roles — centralized global role registry
+import { MONITORING_ROLES } from '../../config/roles';
 import {
   errorTrackingService,
   type StatsPayload,
@@ -29,7 +31,6 @@ import {
 // together by the shared Request ID correlation.
 // ===========================================================================
 
-const MONITORING_ROLES = ['super_admin', 'hr_manager'];
 const SEVERITIES = ['', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'INFO', 'DEBUG'];
 const STATUSES = ['', 'NEW', 'ACKNOWLEDGED', 'INVESTIGATING', 'FIXED', 'VERIFIED', 'RESOLVED', 'IGNORED'];
 

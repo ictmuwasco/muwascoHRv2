@@ -302,12 +302,21 @@ class UserService implements UserServiceInterface
     }
 
     /**
-     * Valid roles from the permission catalog.
+     * Valid roles from the roles lookup table (migration 083), falling back
+     * to the permission catalog when the table is missing/empty (pre-migration
+     * databases). The roles table is the authoritative, editable source so a
+     * new role can be provisioned without a deploy; the catalog in
+     * config/permissions.php remains the deterministic fallback.
      *
      * @return string[]
      */
     private function catalogRoles(): array
     {
+        $roles = $this->rolesTableKeys();
+        if (!empty($roles)) {
+            return $roles;
+        }
+
         $catalog = null;
         if (function_exists('config')) {
             $catalog = config('permissions');
@@ -317,6 +326,39 @@ class UserService implements UserServiceInterface
             $catalog = is_file($path) ? require $path : ['roles' => []];
         }
         return is_array($catalog['roles'] ?? null) ? $catalog['roles'] : [];
+    }
+
+    /**
+     * Active role keys from the roles table (migration 083).
+     * Deny-by-default on any failure: an empty result defers to the catalog.
+     *
+     * @return string[]
+     */
+    private function rolesTableKeys(): array
+    {
+        try {
+            $conn = db()->getConnection();
+            $table = $conn->query("SHOW TABLES LIKE 'roles'");
+            if (!$table || $table->num_rows === 0) {
+                if ($table) {
+                    $table->free();
+                }
+                return [];
+            }
+            $table->free();
+
+            $stmt = $conn->prepare('SELECT `key` FROM roles WHERE is_active = 1 ORDER BY sort_order ASC');
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $keys = [];
+            foreach ($result->fetch_all(\MYSQLI_ASSOC) as $row) {
+                $keys[] = (string) $row['key'];
+            }
+            $stmt->close();
+            return $keys;
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 
     public function searchUsers(string $query, array $filters = [], int $page = 1, int $limit = 30): array

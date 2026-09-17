@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   getFinancialYears,
   getFinancialYearStatus,
@@ -10,6 +11,11 @@ import LeaveAllocationCard from '../../components/financial-year/LeaveAllocation
 import FinancialYearTable from '../../components/financial-year/FinancialYearTable';
 
 const FinancialYear = () => {
+      // Read navigation state handed over from the Contracts tab
+  // "Convert to Permanent" flow (pre-selected employee for leave allocation).
+  const location = useLocation();
+  const preselectedEmployeeId = location.state?.allocateEmployeeId ?? null;
+  const preselectedEmployeeName = location.state?.allocateEmployeeName ?? null;
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [financialYears, setFinancialYears] = useState([]);
@@ -124,7 +130,22 @@ const FinancialYear = () => {
         creating={creating}
       />
 
-      <LeaveAllocationCard financialYears={financialYears} />
+      {preselectedEmployeeId && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <p className="text-sm text-blue-800 dark:text-blue-200">
+            {preselectedEmployeeName
+              ? <><strong className="font-semibold">{preselectedEmployeeName}</strong> was converted to Permanent employment — </>
+              : 'An employee was converted to Permanent employment — '}
+            pick the financial year below and allocate their leave days. The employee is pre-selected in the
+            allocation form.
+          </p>
+        </div>
+      )}
+
+      <LeaveAllocationCard
+        financialYears={financialYears}
+        preselectedEmployeeId={preselectedEmployeeId}
+      />
 
       <FinancialYearTable financialYears={financialYears} />
     </div>

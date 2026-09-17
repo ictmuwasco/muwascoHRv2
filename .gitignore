@@ -46,9 +46,6 @@ uploads/*
 !uploads/.gitkeep
 
 # ── Diagnostic / scratch scripts (generated during development/probing) ──────
-# Laravel app (the new authoritative backend)
-!laravel/phpunit.xml
-
 dump.js
 probe*.php
 probe_out.txt
@@ -58,6 +55,10 @@ gather.ps1
 # ── Runtime uploads (user content) ───────────────────────────────────────────
 backend/app/public/uploads/
 backend/storage/uploads/
+backend/storage/policies/*
+!backend/storage/policies/.gitkeep
+frontend/public/uploads/*
+!frontend/public/uploads/.gitkeep
 
 # ── Archives & Backups ───────────────────────────────────────────────────────
 *.zip
@@ -73,8 +74,8 @@ hrmuwasco.zip
 
 # ── PHPUnit ─────────────────────────────────────────────────────────────────
 .phpunit.result.cache
+# phpunit.xml is the local dev override (gitignored); phpunit.xml.dist is tracked.
 phpunit.xml
-!laravel/phpunit.xml
 
 # ── OS Files ────────────────────────────────────────────────────────────────
 .DS_Store
@@ -89,5 +90,5 @@ backend/storage/cache/rate-limits/
 # E2E / scratch probe artifacts (never commit runtime outputs)
 backend/storage/*.out
 backend/storage/*.err
-laravel/test_*.txt
-laravel/check_db.php
+backend/tests/_phpunit_out.txt
+backend/tests/_suite_out.txt

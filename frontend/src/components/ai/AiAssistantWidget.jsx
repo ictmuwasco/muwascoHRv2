@@ -37,10 +37,25 @@ const AiAssistantWidget = () => {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [open, confirmClear])
 
-  // Focus the composer when the panel opens.
+    // Focus the composer when the panel opens.
   useEffect(() => {
     if (open) inputRef.current?.focus()
   }, [open])
+
+  // Global event: "Ask AI About This Policy" (§19). Another component dispatches
+  // `muwasco:ask-ai` with { question, section } — we open the panel, ensure the
+  // conversation is initialised, and seed the outgoing question. This keeps the
+  // widget decoupled from any specific page (it lives in Layout.jsx).
+  useEffect(() => {
+    const handler = (e) => {
+      const detail = e?.detail
+      if (!detail || !detail.question) return
+      setOpen(true)
+      chat.initialize().then(() => chat.seedOutgoing(detail.question))
+    }
+    window.addEventListener('muwasco:ask-ai', handler)
+    return () => window.removeEventListener('muwasco:ask-ai', handler)
+  }, [chat])
 
   if (!user) return null
 

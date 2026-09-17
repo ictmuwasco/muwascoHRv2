@@ -6,7 +6,8 @@ import Layout from './components/Layout'
 import ConnectionStatus from './components/ConnectionStatus'
 import ErrorBoundary from './components/ErrorBoundary'
 import PageLoader from './components/PageLoader'
-import { PAGE_PERMISSIONS, firstPermittedRoute } from './config/pagePermissions'
+import AccessDenied from './components/AccessDenied'
+import { PAGE_PERMISSIONS, firstPermittedRoute, canOpenSettingsShell } from './config/pagePermissions'
 
 // Eagerly loaded - needed immediately for initial render
 import Login from './pages/auth/Login'
@@ -57,6 +58,10 @@ const AttendanceReport = lazy(() => import('./pages/reports/AttendanceReport'))
 const LeaveReports = lazy(() => import('./pages/reports/LeaveReports'))
 const StrategicPlan = lazy(() => import('./pages/strategic-plan/StrategicPlan'))
 
+// Lazy loaded - HR Policy & Procedures module
+const HrPolicies = lazy(() => import('./pages/hr-policies/HrPolicyReader'))
+const HrPolicyAdmin = lazy(() => import('./pages/settings/HrPolicies'))
+
 // Lazy loaded - Strategy & Performance pages
 const PerformanceContracts = lazy(() => import('./pages/strategy/PerformanceContracts'))
 const Workplans = lazy(() => import('./pages/strategy/Workplans'))
@@ -78,6 +83,26 @@ import SettingsPermissionsTab from './components/settings/SettingsPermissionsTab
 const Guarded = ({ route, children }) => {
   const entry = PAGE_PERMISSIONS[route]
   return <ProtectedRoute permission={entry?.permission}>{children}</ProtectedRoute>
+}
+
+/**
+ * Settings module SHELL guard (Phase 8, HR Policy & Procedures §8).
+ *
+ * The shell is a container: every tab (and every underlying API) carries its
+ * own server-defined permission, and SettingsLayout renders "Access denied"
+ * when zero tabs are permitted. The shell therefore accepts ANY
+ * settings-registration permission (canOpenSettingsShell) instead of the
+ * super_admin-only settings:view — this is what makes the all-roles
+ * Notifications tab (migration 038) and the HR Policies admin tab (migration
+ * 081, hr_policies:manage) reachable for users who do not hold settings:view.
+ * UX only; the backend enforces everything independently.
+ */
+const SettingsShellGuard = ({ children }) => {
+  const { can } = useAuth()
+  if (!canOpenSettingsShell(can)) {
+    return <AccessDenied permission="settings:view" />
+  }
+  return children
 }
 
 const SafeFallback = () => {
@@ -158,7 +183,10 @@ function App() {
           <Route path="meetings/:id/details" element={<Guarded route="/meetings/:id/details"><Suspense fallback={<PageLoader />}><MeetingsDashboard /></Suspense></Guarded>} />
           <Route path="meetings/:id/confirm" element={<Guarded route="/meetings/:id/confirm"><Suspense fallback={<PageLoader />}><MeetingsDashboard /></Suspense></Guarded>} />
           
-          <Route path="settings" element={<Guarded route="/settings"><SettingsLayout /></Guarded>}>
+          <Route path="hr/policies" element={<Guarded route="/hr/policies"><Suspense fallback={<PageLoader />}><HrPolicies /></Suspense></Guarded>} />
+          <Route path="hr/policies/sections/:id" element={<Guarded route="/hr/policies/sections/:id"><Suspense fallback={<PageLoader />}><HrPolicies /></Suspense></Guarded>} />
+          
+          <Route path="settings" element={<SettingsShellGuard><SettingsLayout /></SettingsShellGuard>}>
             <Route index element={<SettingsIndexRedirect />} />
             <Route path="profile" element={<Guarded route="/settings/profile"><SettingsProfileTab /></Guarded>} />
             <Route path="notifications" element={<Guarded route="/settings/notifications"><SettingsNotificationsTab /></Guarded>} />
@@ -167,6 +195,7 @@ function App() {
             <Route path="users" element={<Guarded route="/settings/users"><SettingsUsersTab /></Guarded>} />
             <Route path="permissions" element={<Guarded route="/settings/permissions"><SettingsPermissionsTab /></Guarded>} />
             <Route path="monitoring" element={<Guarded route="/settings/monitoring"><Suspense fallback={<PageLoader />}><ErrorMonitoring /></Suspense></Guarded>} />
+          <Route path="hr-policies" element={<Guarded route="/settings/hr-policies"><Suspense fallback={<PageLoader />}><HrPolicyAdmin /></Suspense></Guarded>} />
           </Route>
         </Route>
 

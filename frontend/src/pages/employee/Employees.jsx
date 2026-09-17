@@ -90,7 +90,7 @@ const Employees = () => {
       label: 'Status',
       render: (value) => (
         <Badge variant={String(value).toLowerCase() === 'active' ? 'success' : 'danger'}>
-          {value || 'Active'}
+          { value || 'Active' }
         </Badge>
       ),
     },

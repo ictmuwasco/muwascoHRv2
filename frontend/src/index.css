@@ -72,4 +72,83 @@
   .label {
     @apply text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
   }
+
+  /* ============================================================
+   * HR Policy reader — rich, enticing content styling
+   * ============================================================ */
+  .policy-content-wrap {
+    @apply bg-white dark:bg-slate-800/60 rounded-xl border border-gray-200 dark:border-slate-700 p-8 md:p-10 shadow-sm;
+  }
+
+  .policy-content {
+    @apply text-[15px] md:text-base leading-relaxed;
+  }
+
+  /* Paragraphs */
+  .policy-content p {
+    @apply mb-4 text-gray-700 dark:text-gray-300 leading-relaxed;
+  }
+
+  .policy-content p:first-child::first-letter {
+    @apply text-primary-700 dark:text-primary-400 font-semibold;
+  }
+
+  /* Sub-headings inside content (ALL CAPS detection) */
+  .policy-subheading {
+    @apply mt-8 mb-3 text-base md:text-lg font-bold text-gray-900 dark:text-gray-100 uppercase tracking-wide flex items-center gap-2;
+  }
+  .policy-subheading::before {
+    content: '';
+    @apply inline-block w-1 h-5 rounded-full bg-gradient-to-b from-primary-500 to-primary-300 dark:from-primary-500 dark:to-primary-300;
+  }
+
+  /* Bullet list */
+  .policy-list {
+    @apply my-4 space-y-2 pl-0 list-none;
+  }
+  .policy-list li {
+    @apply relative pl-6 text-gray-700 dark:text-gray-300 leading-relaxed;
+  }
+  .policy-list li::before {
+    content: '▸';
+    @apply absolute left-0 top-0 text-primary-500 dark:text-primary-400 font-bold;
+  }
+  .policy-list li strong {
+    @apply text-gray-900 dark:text-gray-100 font-semibold mr-1;
+  }
+
+  /* Ordered list */
+  .policy-list ol,
+  ol.policy-list {
+    @apply list-decimal pl-6 space-y-2 marker:text-primary-500 dark:marker:text-primary-400;
+  }
+  ol.policy-list li {
+    @apply pl-1;
+  }
+  ol.policy-list li::before {
+    content: none;
+  }
+
+  /* Highlight callout for key passages */
+  .policy-callout {
+    @apply my-6 p-4 rounded-lg border-l-4 bg-primary-50 dark:bg-primary-900/20 border-primary-500 dark:border-primary-400 text-gray-800 dark:text-gray-200;
+  }
+
+  /* Definition / term list */
+  .policy-content dd {
+    @apply ml-4 mb-2 text-gray-600 dark:text-gray-400;
+  }
+  .policy-content dt {
+    @apply font-semibold text-gray-900 dark:text-gray-100 mt-3;
+  }
+
+  /* Horizontal rules */
+  .policy-content hr {
+    @apply my-6 border-gray-200 dark:border-slate-700;
+  }
+
+  /* Links */
+  .policy-content a {
+    @apply text-primary-600 dark:text-primary-400 underline underline-offset-2 hover:text-primary-700 dark:hover:text-primary-300;
+  }
 }

@@ -115,6 +115,14 @@ export const PAGE_PERMISSIONS = {
   '/settings/permissions':   { id: 'settings_permissions',   permission: 'settings:permissions' },
   '/settings/monitoring':    { id: 'settings_monitoring',    permission: 'settings:monitoring' },
 
+    // --- HR Policy & Procedures (module 081) -------------------------------------------
+  '/hr/policies':         { id: 'hr_policies', permission: 'hr_policies:view' },
+  '/hr/policies/sections/:id': { id: 'hr_policies', permission: 'hr_policies:view' },
+
+  // --- Settings: HR Policy administration (Phase 8) ----------------------------------
+  '/settings/hr-policies':           { id: 'hr_policies_admin', permission: 'hr_policies:manage' },
+  '/settings/hr-policies/:id/history': { id: 'hr_policies_admin', permission: 'hr_policies:manage' },
+
   // --- Standalone admin pages --------------------------------------------------------
   '/admin': { id: 'admin', permission: 'admin:view' },
   '/audit': { id: 'audit', permission: 'audit:view' },
@@ -131,15 +139,39 @@ export const SETTINGS_TABS = [
   { id: 'security',      name: 'Security',       permission: 'settings:security',      selfService: true },
   { id: 'audit',         name: 'Audit',          permission: 'settings:audit' },
   { id: 'users',         name: 'Users',          permission: 'settings:users' },
-  { id: 'permissions',   name: 'Permissions',    permission: 'settings:permissions' },
-  { id: 'monitoring',    name: 'System Monitor', permission: 'settings:monitoring' },
+    { id: 'permissions',  name: 'Permissions',   permission: 'settings:permissions' },
+  { id: 'monitoring',   name: 'System Monitor', permission: 'settings:monitoring' },
+  // HR Policy & Procedures manual administration (Phase 8 §8).
+  { id: 'hr-policies',  name: 'HR Policies',   permission: 'hr_policies:manage' },
 ]
 
 /**
  * Permissions that unlock the Settings sidebar entry. Users without ANY of
  * them never see the item (UX only — routes are guarded independently).
  */
-export const SETTINGS_VISIBILITY_PERMISSIONS = ['settings:view', 'settings:notifications']
+export const SETTINGS_VISIBILITY_PERMISSIONS = ['settings:view', 'settings:notifications', 'hr_policies:manage']
+
+/**
+ * Whether the user may open the Settings module SHELL (/settings).
+ *
+ * The shell is a container only: every tab route (and every underlying API)
+ * carries its own server-defined permission, and SettingsLayout renders an
+ * explicit "Access denied" screen when zero tabs are permitted. Holding ANY
+ * settings-registration permission is therefore the correct shell gate — this
+ * is what lets the all-roles self-service Notifications tab (migration 038)
+ * and the HR Policies admin tab (migration 081, `hr_policies:manage`) be
+ * reached by users who do not hold the super_admin-only `settings:view`.
+ *
+ * @param {(module: string, action?: string) => boolean} can
+ * @returns {boolean}
+ */
+export function canOpenSettingsShell(can) {
+  if (typeof can !== 'function') return false
+  return SETTINGS_VISIBILITY_PERMISSIONS.some((perm) => {
+    const [module, action] = parsePermission(perm)
+    return can(module, action)
+  })
+}
 
 /**
  * Look up the permission requirement for a route pattern.

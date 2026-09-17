@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Button from '../ui/Button';
 import { getLeaveTypes, getEmployees, allocateLeaveToEmployee } from '../../api/services/financialYearService';
 
-const LeaveAllocationCard = ({ financialYears }) => {
+const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [employees, setEmployees] = useState([]);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [loading, setLoading] = useState(true);
   const [allocating, setAllocating] = useState(false);
   
@@ -14,11 +15,40 @@ const LeaveAllocationCard = ({ financialYears }) => {
     leave_types: [],
   });
 
-  const [selectAll, setSelectAll] = useState(false);
+  const [selectAll, setSelectAll] = useState(false)
+
+  // Store whether the selected employee is C-suite so we can pre-check "Select All"
+  // for them. C-suite employees get the same full leave allocation as permanent
+  // employees even though their contract can still be renewed.
+  const isSelectedEmployeeCsuite = useMemo(
+    () => selectedEmployee?.employment_type === 'csuite',
+    [selectedEmployee?.employment_type],
+  );
+
+  // Pre-check Select All when a C-suite employee is selected.
+  useEffect(() => {
+    if (!isSelectedEmployeeCsuite) return;
+    setSelectAll(true);
+    setFormData({
+      ...formData,
+      leave_types: leaveTypes.length > 0 ? leaveTypes.map((lt) => lt.id) : [],
+    });
+  }, [isSelectedEmployeeCsuite, leaveTypes]);
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  // Pre-select an employee handed over from another page (the Contracts tab
+  // "Convert to Permanent" flow navigates here so HR can allocate leave for
+  // the freshly converted employee). Runs once the employee list has loaded.
+  useEffect(() => {
+    if (!preselectedEmployeeId || employees.length === 0) return;
+    const match = employees.find((emp) => String(emp.id) === String(preselectedEmployeeId));
+    if (!match) return;
+    setFormData((prev) => ({ ...prev, employee_id: String(match.id) }));
+    setSelectedEmployee(match);
+  }, [preselectedEmployeeId, employees]);
 
   const fetchData = async () => {
     try {
@@ -65,7 +95,7 @@ const LeaveAllocationCard = ({ financialYears }) => {
       const result = await allocateLeaveToEmployee({
         employee_id: parseInt(formData.employee_id),
         financial_year_id: parseInt(formData.financial_year_id),
-        leave_types: formData.leave_types.length > 0 ? formData.leave_types : null,
+        leave_types: isSelectedEmployeeCsuite ? null : formData.leave_types.length > 0 ? formData.leave_types : null,
       });
 
       if (result.success) {
@@ -113,7 +143,15 @@ const LeaveAllocationCard = ({ financialYears }) => {
             </label>
             <select
               value={formData.employee_id}
-              onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
+              onChange={(e) => {
+                const id = e.target.value
+                setFormData({ ...formData, employee_id: id })
+                setSelectedEmployee(
+                  id
+                    ? employees.find((emp) => String(emp.id) === id) || null
+                    : null,
+                )
+              }}
               className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               required
             >
@@ -150,6 +188,11 @@ const LeaveAllocationCard = ({ financialYears }) => {
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Leave Types <span className="text-xs text-gray-500 dark:text-gray-400">(leave unchecked to allocate all applicable types)</span>
           </label>
+          {isSelectedEmployeeCsuite && (
+          <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2">
+            C-suite contract: renewable like any contract, but leave accrues at the permanent-employee rate — all leave types are pre-selected.
+          </p>
+          )}
           <div className="border border-gray-300 dark:border-slate-600 rounded-md p-4">
             <div className="mb-3">
               <label className="flex items-center">

@@ -32,6 +32,10 @@ final class AiToolRegistry
         $this->register(new GetMyLeaveApplicationsTool());
         $this->register(new GetMyEmployeeProfileTool());
         $this->register(new GetMyAttendanceTool());
+        // HR Policy module (migration 081): the AI retrieves approved policy
+        // provisions with section citations — and MUST use the tool's exact
+        // fallback sentence when the manual has no matching provision.
+        $this->register(new SearchHrPolicyTool());
     }
 
     public function register(AiToolInterface $tool): void

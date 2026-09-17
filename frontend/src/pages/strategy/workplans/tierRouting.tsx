@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
+import { WIDE_SCOPE_ROLES } from '../../../config/roles';
 
 /** The four workplan tiers exposed as routes under /strategy/workplans. */
 export type TierKey = 'managing-director' | 'department-head' | 'section-head' | 'subsection-head';
@@ -63,11 +64,12 @@ export function defaultTierForRole(role: string): TierKey {
  * (the backend remains the authorisation authority for the underlying data).
  */
 export function visibleTiersForRole(role: string): TierKey[] {
-  switch ((role || '').toLowerCase()) {
-    case 'super_admin':
-    case 'hr_manager':
-    case 'managing_director':
-      return ['managing-director', 'department-head', 'section-head', 'subsection-head'];
+  const key = (role || '').toLowerCase();
+  // Org-wide roles see every tier (mirrors WorkplanController::availableViews()).
+  if (WIDE_SCOPE_ROLES.includes(key)) {
+    return ['managing-director', 'department-head', 'section-head', 'subsection-head'];
+  }
+  switch (key) {
     case 'dept_head':
       return ['department-head', 'section-head', 'subsection-head'];
     case 'section_head':
