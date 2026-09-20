@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import apiClient from '../../api/client';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
@@ -54,7 +54,7 @@ const Appraisal = () => {
       label: 'Actions',
       render: (_: any, row: AppraisalType) => (
         <div className="flex space-x-2">
-          {row.status === 'Pending' && (
+          {row.status === 'submitted' && (
             <Button size="sm" variant="success" onClick={() => handleApprove(row.id)}>
               <CheckCircle className="h-4 w-4" />
             </Button>

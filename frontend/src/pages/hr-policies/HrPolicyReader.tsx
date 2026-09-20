@@ -1,4 +1,4 @@
-/**
+﻿/**
  * HrPolicyReader - employee-facing policy reader (Phase 4-5, §19, §20, §21).
  *
  * Features:
@@ -70,7 +70,7 @@ const formatSectionContent = (content: string | null | undefined): string => {
     if (paragraphBuffer.length === 0) return
     const text = paragraphBuffer.join(' ')
     // Detect ALL-CAPS heading lines (likely sub-headings inside content)
-    if (/^[A-Z][A-Z\s\d\-\.\:]{3,}$/.test(text) && text.length < 60) {
+    if (/^[A-Z][A-Z\s\d.-:]{3,}$/.test(text) && text.length < 60) {
       blocks.push(`<h3 class="policy-subheading">${esc(text)}</h3>`)
     } else {
       blocks.push(`<p>${esc(text)}</p>`)
@@ -86,7 +86,7 @@ const formatSectionContent = (content: string | null | undefined): string => {
     }
 
     // Numbered list item (starts with number + . or ))
-    const olMatch = line.match(/^(\d+[\.\)])\s+(.*)$/)
+    const olMatch = line.match(/^(\d+[.)])\s+(.*)$/)
     // Bullet list item
     const ulMatch = line.match(/^[-•*\u2022\u25aa\u25cf\u00b7]\s+(.*)$/)
 
@@ -273,7 +273,7 @@ const HrPolicyReader = () => {
     })
   }
 
-  const renderSectionTree = (nodes: PolicySectionNode[], depth = 0) => {
+  const renderSectionTree = (_nodes: PolicySectionNode[]) => {
     const children = (nodeId: number | null) =>
       sections
         .filter((s) => s.parent_id === nodeId)

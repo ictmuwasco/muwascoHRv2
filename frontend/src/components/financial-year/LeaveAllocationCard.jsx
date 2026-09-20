@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Button from '../ui/Button';
 import { getLeaveTypes, getEmployees, allocateLeaveToEmployee } from '../../api/services/financialYearService';
 
