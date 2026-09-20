@@ -126,11 +126,13 @@ const MeetingsDashboard = () => {
     try {
       // Fetch all meetings (no pagination) for client-side filtering/sorting/export
       const [meetingsRes, statsRes] = await Promise.all([
-        api.get('/meetings?per_page=100000'),
-        api.get('/meetings/stats'),
+        api.get<Meeting[]>('/meetings?per_page=100000'),
+        api.get<Stats>('/meetings/stats'),
       ])
-      setMeetings(meetingsRes.data?.data || [])
-      setStats(statsRes.data?.data || null)
+      const meetingsPayload = meetingsRes.data?.data
+      setMeetings(Array.isArray(meetingsPayload) ? meetingsPayload : [])
+      const statsPayload = statsRes.data?.data
+      setStats((statsPayload as Stats) ?? null)
     } catch (err: any) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to load meetings'
       setError(msg)

@@ -137,7 +137,7 @@ const EmployeeProfile = () => {
     if (requestedTab && PROFILE_TABS.some((t) => t.id === requestedTab) && requestedTab !== activeTab) {
       setActiveTab(requestedTab)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [requestedTab])
 
   // Mirror tab changes into the URL so refresh/back behave predictably.
@@ -147,7 +147,7 @@ const EmployeeProfile = () => {
     } else if (searchParams.get('tab') !== activeTab) {
       setSearchParams({ tab: activeTab }, { replace: true })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [activeTab])
 
   const fetchEmployee = async () => {

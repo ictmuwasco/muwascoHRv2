@@ -9,7 +9,7 @@
  * All reference data is keyed to the authenticated user's session — it is
  * never shared across accounts, even in a shared-tab scenario.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import apiClient from '../../../api/client';
 import { appraisalCycleService } from '../../../api/services/appraisalCycleService';
 import type { AppraisalCycle, FinancialYearRef } from '../../../api/services/appraisalCycleService';

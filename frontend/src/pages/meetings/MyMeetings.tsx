@@ -80,8 +80,9 @@ const MyMeetings = () => {
     setLoading(true)
     setError('')
     try {
-      const response = await api.get('/my-meetings')
-      setMeetings(response.data?.data || [])
+      const response = await api.get<MeetingInvitation[]>('/my-meetings')
+      const payload = response.data?.data
+      setMeetings(Array.isArray(payload) ? payload : [])
     } catch (err: any) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to load meetings'
       setError(msg)
@@ -95,8 +96,9 @@ const MyMeetings = () => {
     setDetailsError('')
     setDetailsModalOpen(true)
     try {
-      const response = await api.get(`/meetings/${meetingId}`)
-      setSelectedMeeting(response.data?.data || null)
+      const response = await api.get<MeetingDetails>(`/meetings/${meetingId}`)
+      const payload = response.data?.data
+      setSelectedMeeting((payload as MeetingDetails) ?? null)
     } catch (err: any) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to load meeting details'
       setDetailsError(msg)
@@ -116,8 +118,8 @@ const MyMeetings = () => {
     setActionLoading(meetingId)
     setError('')
     try {
-      const response = await api.post(`/meetings/${meetingId}/confirm`)
-      const invitation = response.data?.data
+      const response = await api.post<{ response_status: string; responded_at: string | null }>(`/meetings/${meetingId}/confirm`)
+      const invitation = response.data?.data as { response_status: string; responded_at: string | null } | undefined
       if (invitation && invitation.response_status === 'accepted') {
         // Update local state with the persisted response from the backend
         setMeetings((prev) =>
@@ -152,8 +154,8 @@ const MyMeetings = () => {
     setActionLoading(meetingId)
     setError('')
     try {
-      const response = await api.post(`/meetings/${meetingId}/decline`)
-      const invitation = response.data?.data
+      const response = await api.post<{ response_status: string; responded_at: string | null }>(`/meetings/${meetingId}/decline`)
+      const invitation = response.data?.data as { response_status: string; responded_at: string | null } | undefined
       if (invitation && invitation.response_status === 'declined') {
         // Update local state with the persisted response from the backend
         setMeetings((prev) =>

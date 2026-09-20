@@ -14,7 +14,7 @@ import Input from '../../components/ui/Input'
 import api from '../../utils/api'
 import minutesService from '../../api/services/meetingMinutesService'
 import type {
-  MinutesStatus, MinutesOptions, MinutesPayload, AttendanceRow,
+  MinutesStatus, MinutesOptions, MinutesPayload, MinutesDetail, AttendanceRow,
   AgendaItemInput, DecisionItemInput, ActionItemInput, AobItemInput,
 } from '../../api/services/meetingMinutesService'
 
@@ -149,35 +149,40 @@ const MeetingMinutesModal = ({
           minutesService.options(meeting.id),
         ])
         if (statusRes.status === 'fulfilled') {
-          setMinutesStatus(statusRes.value.data?.data as MinutesStatus)
+          const statusPayload = statusRes.value.data?.data as MinutesStatus | undefined
+          if (statusPayload) setMinutesStatus(statusPayload)
         }
         if (optionsRes.status === 'fulfilled') {
-          setOptions(optionsRes.value.data?.data as MinutesOptions)
+          const optionsPayload = optionsRes.value.data?.data as MinutesOptions | undefined
+          if (optionsPayload) setOptions(optionsPayload)
         }
 
-        if (statusRes.status === 'fulfilled' && statusRes.value.data?.data?.exists) {
+        const statusPayload = statusRes.status === 'fulfilled'
+          ? (statusRes.value.data?.data as MinutesStatus | undefined)
+          : undefined
+        if (statusPayload?.exists) {
           try {
             const viewRes = await minutesService.view(meeting.id)
-            const detail = viewRes.data?.data as any
+            const detail = viewRes.data?.data as MinutesDetail | null
             if (detail) {
               const m = detail.minutes || {}
               setForm({
-                meeting_date: m.meeting_date || meeting.meeting_date,
-                start_time: m.start_time || meeting.start_time,
-                end_time: m.end_time || meeting.end_time,
-                venue: m.venue || meeting.location,
-                chairperson_id: m.chairperson_id ? String(m.chairperson_id) : '',
-                secretary_id: m.secretary_id ? String(m.secretary_id) : '',
-                aob: m.aob || '',
-                next_meeting_date: m.next_meeting_date || '',
-                next_meeting_time: m.next_meeting_time || '',
-                next_meeting_venue: m.next_meeting_venue || '',
-                next_meeting_notes: m.next_meeting_notes || '',
+                meeting_date: (m as any).meeting_date || meeting.meeting_date,
+                start_time: (m as any).start_time || meeting.start_time,
+                end_time: (m as any).end_time || meeting.end_time,
+                venue: (m as any).venue || meeting.location,
+                chairperson_id: (m as any).chairperson_id ? String((m as any).chairperson_id) : '',
+                secretary_id: (m as any).secretary_id ? String((m as any).secretary_id) : '',
+                aob: (m as any).aob || '',
+                next_meeting_date: (m as any).next_meeting_date || '',
+                next_meeting_time: (m as any).next_meeting_time || '',
+                next_meeting_venue: (m as any).next_meeting_venue || '',
+                next_meeting_notes: (m as any).next_meeting_notes || '',
                 amendment_reason: '',
-                agenda_items: detail.agenda_items?.length ? detail.agenda_items : [emptyAgenda(1)],
-                decisions: detail.decisions?.length ? detail.decisions : [emptyDecision(1)],
-                action_items: detail.action_items?.length ? detail.action_items : [emptyAction()],
-                aob_items: detail.aob_items?.length ? detail.aob_items : [emptyAob()],
+                agenda_items: detail.agenda_items?.length ? (detail.agenda_items as unknown as AgendaItemInput[]) : [emptyAgenda(1)],
+                decisions: detail.decisions?.length ? (detail.decisions as unknown as DecisionItemInput[]) : [emptyDecision(1)],
+                action_items: detail.action_items?.length ? (detail.action_items as unknown as ActionItemInput[]) : [emptyAction()],
+                aob_items: detail.aob_items?.length ? (detail.aob_items as unknown as AobItemInput[]) : [emptyAob()],
               })
             }
           } catch { /* view failed — treat as new */ }
@@ -186,8 +191,9 @@ const MeetingMinutesModal = ({
         // Load participants for the Attendance tab
         setParticipantsLoading(true)
         try {
-          const partRes = await api.get(`/meetings/${meeting.id}/participants`)
-          setParticipants((partRes.data?.data || []) as AttendanceRow[])
+          const partRes = await api.get<{ data: AttendanceRow[] }>(`/meetings/${meeting.id}/participants`)
+          const partPayload = partRes.data?.data
+          setParticipants(Array.isArray(partPayload) ? partPayload : [])
         } catch {
           setParticipants([])
         }
