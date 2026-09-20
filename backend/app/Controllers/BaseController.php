@@ -53,6 +53,33 @@ abstract class BaseController
     }
 
     /**
+     * Send a cacheable standardized success response (ETag + Cache-Control).
+     *
+     * Use for read-only GET endpoints whose payload is expensive to build and
+     * stable for a short window (dashboard widgets, chart aggregates, the
+     * current HR policy). The browser replays an unchanged payload with a 304,
+     * so the server emits headers only and performs no query work.
+     *
+     * @param mixed  $data    Payload placed under `data`.
+     * @param int    $maxAge  Freshness lifetime in seconds (0 = always revalidate).
+     * @param array  $scope   Inputs that change the payload, e.g. ['user' => $id]
+     *                        or ['user' => $id, 'fy' => $fyId]. Folding these into
+     *                        the validator keeps per-user variants from colliding.
+     * @param string $message Human-readable status message.
+     */
+    protected function successCached(
+        mixed $data = null,
+        int $maxAge = 60,
+        array $scope = [],
+        string $message = 'Success'
+    ): void {
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+        \App\Helpers\ApiResponse::cachedSuccess($data, $maxAge, $scope, $message);
+    }
+
+    /**
      * Send a standardized error response.
      *
      * @param string $message    Safe, user-facing error message.

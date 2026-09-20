@@ -320,7 +320,7 @@ class AttendanceDashboardService
                     a.status AS attendance_status,
                     a.is_late, a.auto_clocked_out
              FROM attendance a
-             WHERE a.employee_id = ? AND DATE(a.clock_in) BETWEEN ? AND ?
+             WHERE a.employee_id = ? AND a.attendance_date BETWEEN ? AND ?
              ORDER BY a.clock_in DESC
              LIMIT " . max(1, min(100, $limit)),
             'iss',
@@ -631,14 +631,16 @@ class AttendanceDashboardService
                 . ($subsectionId ? ' AND e.subsection_id = ' . (int) $subsectionId : '');
         }
 
-        // Present + late per day (single grouped query, sargable on clock_in).
+        // Present + late per day (single grouped query, sargable on the bare
+        // clock_in range; attendance_date (STORED GENERATED, migration 020)
+        // is used for the day key so rows need no per-row DATE() evaluation).
         $attRows = \db()->fetchAll(
-            "SELECT DATE(a.clock_in) AS d,
+            "SELECT a.attendance_date AS d,
                     COUNT(*) AS present,
                     SUM(CASE WHEN a.is_late = 1 THEN 1 ELSE 0 END) AS late
              {$unitJoins}
              WHERE a.clock_in >= ? AND a.clock_in < ? + INTERVAL 1 DAY{$unitWhere}
-             GROUP BY DATE(a.clock_in)",
+             GROUP BY a.attendance_date",
             'ss',
             [$startDate, $endDate]
         );

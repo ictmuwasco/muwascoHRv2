@@ -10,7 +10,9 @@ use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DepartmentSeeder;
 use Database\Seeders\LeaveTypeSeeder;
 use Database\Seeders\EmployeeSeeder;
+use Database\Seeders\MeetingSeeder;
 use Database\Seeders\UserSeeder;
+use Database\Seeders\AttendanceSeeder;
 
 class SeederController extends BaseController
 {
@@ -42,6 +44,11 @@ class SeederController extends BaseController
                 'name' => 'UserSeeder',
                 'description' => 'Seeds users table with test data',
                 'table' => 'users',
+            ],
+            [
+                'name' => 'AttendanceSeeder',
+                'description' => 'Backfills realistic recent attendance (last 14 workdays) for the live dashboard widgets',
+                'table' => 'attendance',
             ],
         ];
 
@@ -79,6 +86,8 @@ class SeederController extends BaseController
             'leave_types' => LeaveTypeSeeder::class,
             'employees' => EmployeeSeeder::class,
             'users' => UserSeeder::class,
+            'meetings' => MeetingSeeder::class,
+            'attendance' => AttendanceSeeder::class,
             default => null,
         };
 

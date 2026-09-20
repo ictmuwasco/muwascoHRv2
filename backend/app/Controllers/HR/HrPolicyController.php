@@ -43,14 +43,22 @@ class HrPolicyController extends BaseController
         }
 
         try {
-            $doc = HrPolicyDocument::findActive();
+            // The single active+published document only changes when HR
+            // publishes, archives or deactivates one, so it is worth memoising
+            // well beyond the per-user parts of this response.
+            // HrPolicyAdminController invalidates this key on every such change.
+            $doc = \App\Helpers\Cache::remember(
+                'hr_policy.active_document',
+                static fn (): ?array => HrPolicyDocument::findActive(),
+                300
+            );
             if (!$doc) {
                 $this->success(['policy' => null], 'No active policy published yet');
             }
 
             $ack = PolicyService::acknowledgementFor((int) $doc['id'], $userId);
 
-            $this->success([
+            $this->successCached([
                 'policy' => [
                     'id'               => (int) $doc['id'],
                     'title'            => $doc['title'],
@@ -68,7 +76,11 @@ class HrPolicyController extends BaseController
                 'acknowledged_at' => $ack['acknowledged_at'] ?? null,
                 'bookmarks'       => PolicyService::bookmarksFor($userId),
                 'recent'          => PolicyService::recentFor($userId),
-            ]);
+            ], 60, ['user' => $userId]);
+            // NOTE: successCached(), NOT success() — the trailing 60/['user']
+            // arguments are the cache TTL + validator scope; passing them to
+            // success() (string message / int status under strict_types) throws
+            // an uncaught TypeError, which surfaced as a 500 on this endpoint.
         } catch (\Exception $e) {
             \logger()->error('Policy current error', ['error' => $e->getMessage()]);
             $this->error('Failed to load the current policy. Please try again.', 500);

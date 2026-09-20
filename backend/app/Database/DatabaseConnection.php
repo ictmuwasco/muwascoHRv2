@@ -55,7 +55,11 @@ class DatabaseConnection
 
         try {
             $this->connection = DriverManager::getConnection($connectionParams);
-            $this->connection->executeStatement("SET time_zone = \'+03:00\'");
+            // NB: the previous "\\'+03:00\\'" version leaked literal backslashes
+            // into the SQL (\\' is not a recognized PHP escape in double quotes),
+            // making MariaDB fail with "syntax error near '\'+03:00\''" and
+            // breaking every Doctrine-DBAL-based seeder. Plain quotes only.
+            $this->connection->executeStatement("SET time_zone = '+03:00'");
         } catch (Exception $e) {
             throw new \RuntimeException(
                 "Database connection failed: " . $e->getMessage()

@@ -15,10 +15,10 @@ use InvalidArgumentException;
  * MeetingMinutesService
  *
  * Core business logic for the Meeting Minutes module. Enforces:
- *  - Hybrid RBAC permissions (meetings.minutes.*)
+  *  - Hybrid RBAC permissions (meetings:manage)
  *  - The strict view-access rule: published minutes are visible ONLY to
  *    confirmed invitees (response_status = 'accepted') or to users with the
- *    meetings.minutes.view permission. Declined / pending / never-invited
+  *    meetings:manage permission. Declined / pending / never-invited
  *    users and unauthenticated callers are DENIED at the service layer.
  *  - Transactional persistence of the minutes header + child records.
  *  - Draft lifecycle (draft -> published, published immutable until reopen).
@@ -192,13 +192,13 @@ class MeetingMinutesService
     }
 
     /**
-     * Publish draft minutes. Requires meetings.minutes.publish permission,
+      * Publish draft minutes. Requires meetings:manage permission,
      * validates the structure, marks status 'published', records the author
      * + timestamp, and writes an audit event.
      */
     public function publish(int $meetingId, array $raw, int $userId): bool
     {
-        if (!$this->hasPermission('meetings.minutes.publish')) {
+        if (!$this->hasPermission('meetings:manage')) {
             throw new InvalidArgumentException('You do not have permission to publish meeting minutes.', 403);
         }
 
@@ -242,12 +242,12 @@ class MeetingMinutesService
     }
 
     /**
-     * Reopen published minutes for amendment (meetings.minutes.amend).
+      * Reopen published minutes for amendment (meetings:manage).
      * Bumps the version, resets status to draft, records the reason.
      */
     public function reopen(int $meetingId, string $reason, int $userId): bool
     {
-        if (!$this->hasPermission('meetings.minutes.amend')) {
+        if (!$this->hasPermission('meetings:manage')) {
             throw new InvalidArgumentException('You do not have permission to amend meeting minutes.', 403);
         }
 
@@ -550,7 +550,7 @@ class MeetingMinutesService
      * Minutes management capability for the CURRENT user.
      *
      * Phase 2: aligned with the permission catalog. The legacy checks
-     * referenced non-existent 'meetings.minutes.*' actions (permission
+             * referenced non-existent permission-action strings (permission
      * drift), which silently locked everybody except super_admin out of
      * minutes management. The route gate uses meetings:manage as well;
      * per-record refinement (draft editing, publishing windows) stays here.

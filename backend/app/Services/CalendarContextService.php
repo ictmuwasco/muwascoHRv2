@@ -97,11 +97,12 @@ class CalendarContextService implements CalendarContextServiceInterface
     /** {@inheritDoc} */
     public function getClockedInEmployeeIds(string $date): array
     {
-        // DATE(clock_in) is the authoritative attendance day (MySQL
-        // session runs at +03:00; see migration 020 attendance_date).
+        // `attendance_date` is the STORED GENERATED projection of clock_in
+        // (migration 020), so filtering on it returns identical rows while
+        // staying sargable - DATE(clock_in) forced a full scan of the table.
         $rows = \db()->fetchAll(
             "SELECT DISTINCT employee_id FROM attendance
-             WHERE clock_in IS NOT NULL AND DATE(clock_in) = ?",
+             WHERE clock_in IS NOT NULL AND attendance_date = ?",
             's',
             [$date]
         );
@@ -116,9 +117,13 @@ class CalendarContextService implements CalendarContextServiceInterface
     /** {@inheritDoc} */
     public function hasClockedInOn(int $employeeId, string $date): bool
     {
+        // `attendance_date` is the STORED GENERATED projection of clock_in
+        // (migration 020), so this predicate is sargable against the
+        // (employee_id, attendance_date) unique index - DATE(clock_in) forced
+        // a full table scan on every clock-in check.
         $count = (int) \db()->fetchValue(
             "SELECT COUNT(*) FROM attendance
-             WHERE employee_id = ? AND clock_in IS NOT NULL AND DATE(clock_in) = ?",
+             WHERE employee_id = ? AND clock_in IS NOT NULL AND attendance_date = ?",
             'is',
             [$employeeId, $date]
         );
