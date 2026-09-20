@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import apiClient from '../../../api/client';
 import { useAuth } from '../../../context/AuthContext';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
@@ -48,9 +47,9 @@ export default function TierWorkplanPage({
   showOfficer = false, showIntegratedFlag = false, showCommitmentsPanel = false,
 }: Props) {
     const tier = useWorkplanTier(view);
-  const { user } = useAuth();
+  useAuth();
   // Shared session-scoped reference cache: plans/goals/targets/contracts/FYs/cycles.
-  const { data: strategyRef, loading: refLoading } = useStrategyReference();
+  const { data: strategyRef } = useStrategyReference();
   const [refs, setRefs] = useState<StrategyRefs>({ contracts: [], goals: [], targets: [] });
   const [fys, setFys] = useState<{ id: number; year_name: string }[]>([]);
   const [cycles, setCycles] = useState<AppraisalCycle[]>([]);

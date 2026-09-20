@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Card from '../ui/Card';
 import { securityService } from '../../api/services/securityService';
-import { Shield, AlertTriangle, AlertOctagon, Activity, CheckCircle, RefreshCw, Bot, MessageCircle, Send } from 'lucide-react';
+import { Shield, AlertTriangle, AlertOctagon, Activity, RefreshCw, Bot, MessageCircle, Send } from 'lucide-react';
 
 const SecurityTab = () => {
   const [overview, setOverview] = useState(null);

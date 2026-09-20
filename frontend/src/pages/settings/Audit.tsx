@@ -39,7 +39,7 @@ interface ResolvedUser {
   email: string;
   role: string;
   designation: string | null;
-  employee_id: string | null;
+  employee_id: number | null;
 }
 
 const Audit = () => {
@@ -157,7 +157,7 @@ const Audit = () => {
         email: user.email || '',
         role: user.role || '',
         designation: user.designation || null,
-        employee_id: user.employee_id || null,
+        employee_id: user.employee_id ?? null,
       };
       setResolvedUsers((prev) => ({ ...prev, [userId]: resolved }));
       return resolved;

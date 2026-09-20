@@ -239,7 +239,6 @@ const Dashboard = () => {
 
   // HR Policy & Procedures Manual dashboard card (§3)
   const [currentPolicy, setCurrentPolicy] = useState<CurrentPolicyResponse['policy']>(null)
-  const [policyLoading, setPolicyLoading] = useState(true)
 
     useEffect(() => {
     fetchAttendanceDashboard()
@@ -319,18 +318,25 @@ const Dashboard = () => {
     }
   }
 
+  interface NotificationsPayload {
+    notifications: Notification[]
+    unread_count?: number
+  }
+
   const fetchNotifications = async () => {
     try {
-      const response = await api.get('/notifications')
-      setNotifications(response.data.data || [])
-      setUnreadCount(response.data.unread_count || 0)
+      const response = await api.get<NotificationsPayload>('/notifications')
+      const raw = response.data?.data as NotificationsPayload | Notification[] | undefined
+      const list = Array.isArray(raw) ? raw : (raw?.notifications ?? [])
+      setNotifications(Array.isArray(list) ? list : [])
+      const unread = Array.isArray(raw) ? 0 : Number(raw?.unread_count) || 0
+      setUnreadCount(unread)
     } catch (error) {
       console.error('Failed to fetch notifications:', error)
     }
   }
 
   const fetchCurrentPolicy = async () => {
-    setPolicyLoading(true)
     try {
       const response = await hrPolicyService.getCurrent()
       setCurrentPolicy(response?.policy ?? null)
@@ -338,8 +344,6 @@ const Dashboard = () => {
       // Policy module is non-fatal: silently swallow on the dashboard.
       console.error('Failed to fetch current policy:', error)
       setCurrentPolicy(null)
-    } finally {
-      setPolicyLoading(false)
     }
   }
 
@@ -351,9 +355,9 @@ const Dashboard = () => {
         api.get('/dashboard/charts/leave')
       ])
       setAnalytics({
-        attendance: attendanceRes.data.data,
-        departments: departmentsRes.data.data,
-        leave: leaveRes.data.data
+        attendance: attendanceRes.data?.data ?? null,
+        departments: departmentsRes.data?.data ?? null,
+        leave: leaveRes.data?.data ?? null,
       })
     } catch (error) {
       console.error('Failed to fetch analytics:', error)
@@ -375,9 +379,19 @@ const Dashboard = () => {
   const fetchMyPendingLeaves = async () => {
     try {
       const response = await api.get('/dashboard/my-pending-leaves')
-      const data = response.data?.data
-      if (data && typeof data.count === 'number' && Array.isArray(data.items)) {
-        setMyPendingLeaves({ count: data.count, items: data.items as HrInsightItem[] })
+      const payload = response.data?.data
+      if (
+        payload &&
+        typeof payload === 'object' &&
+        'count' in payload &&
+        'items' in payload &&
+        typeof (payload as any).count === 'number' &&
+        Array.isArray((payload as any).items)
+      ) {
+        setMyPendingLeaves({
+          count: (payload as any).count,
+          items: (payload as any).items as HrInsightItem[],
+        })
       }
     } catch (error) {
       console.error('Failed to fetch my pending leaves:', error)
