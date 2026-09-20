@@ -210,7 +210,7 @@ jobs:
             tail -n 100 /tmp/phpunit_full.log || true
           fi
 
-    deploy-production:
+  deploy-production:
     name: Deploy to Production
     needs: [quality, tests, frontend-quality]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
