@@ -166,15 +166,48 @@ const EmployeeForm = () => {
   // Contract dates are only relevant for contract employment type
   const isContract = formData.employment_type === 'contract'
 
+  interface ReferencePayload {
+    departments?: Array<{ id: number; name: string }>
+    sections?: Array<{ id: number; name: string; department_id: number }>
+    subsections?: Array<{ id: number; name: string; section_id: number }>
+    offices?: Array<{ id: number; name: string }>
+  }
+
+  interface EmployeePayload {
+    employee_id?: string
+    first_name?: string
+    last_name?: string
+    surname?: string
+    email?: string
+    phone?: string
+    national_id?: string
+    gender?: string
+    date_of_birth?: string
+    address?: string
+    designation?: string
+    department_id?: string | number
+    section_id?: string | number
+    subsection_id?: string | number
+    office_id?: string | number
+    position?: string
+    employment_type?: string
+    employee_type?: string
+    employee_status?: string
+    hire_date?: string
+    scale_id?: string
+    contract_start_date?: string
+    contract_end_date?: string
+  }
+
   const fetchReferenceData = async () => {
     try {
-      const response = await api.get('/employees/reference')
-      const data = response.data?.data || {}
+      const response = await api.get<ReferencePayload>('/employees/reference')
+      const payload = response.data?.data
       setReferenceData({
-        departments: data.departments || [],
-        sections: data.sections || [],
-        subsections: data.subsections || [],
-        offices: data.offices || [],
+        departments: Array.isArray(payload?.departments) ? payload.departments : [],
+        sections: Array.isArray(payload?.sections) ? payload.sections : [],
+        subsections: Array.isArray(payload?.subsections) ? payload.subsections : [],
+        offices: Array.isArray(payload?.offices) ? payload.offices : [],
       })
     } catch (err) {
       console.error('Failed to fetch reference data:', err)
@@ -183,9 +216,10 @@ const EmployeeForm = () => {
 
   const fetchEmployee = async () => {
     try {
-      const response = await api.get(`/employees/${id}`)
-      const employee = response.data?.data || response.data
-      if (employee) {
+      const response = await api.get<EmployeePayload>(`/employees/${id}`)
+      const payload = response.data?.data
+      if (payload && typeof payload === 'object') {
+        const employee = payload as EmployeePayload
         setFormData({
           employee_id: employee.employee_id || '',
           first_name: employee.first_name || '',
@@ -198,10 +232,10 @@ const EmployeeForm = () => {
           date_of_birth: employee.date_of_birth || '',
           address: employee.address || '',
           designation: employee.designation || '',
-          department_id: employee.department_id || '',
-          section_id: employee.section_id || '',
-          subsection_id: employee.subsection_id || '',
-          office_id: employee.office_id || '',
+          department_id: employee.department_id ? String(employee.department_id) : '',
+          section_id: employee.section_id ? String(employee.section_id) : '',
+          subsection_id: employee.subsection_id ? String(employee.subsection_id) : '',
+          office_id: employee.office_id ? String(employee.office_id) : '',
           position: employee.position || '',
           employment_type: employee.employment_type || 'permanent',
           employee_type: employee.employee_type || 'officer',
