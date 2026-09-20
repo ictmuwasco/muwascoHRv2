@@ -116,6 +116,32 @@ class DashboardController extends BaseController
     {
         $this->requirePermission('dashboard', 'hr_insights');
 
+        $userId = $this->getUserId();
+
+        // This widget issues 18 separate aggregates (the worst offender
+        // measured: 2,430-5,045 ms of query time inside one dashboard burst).
+        // Assembling it once per TTL window and serving an ETag means the
+        // parallel dashboard calls and every repeat visit afterwards no longer
+        // repeat that work.
+        $insights = \App\Helpers\Cache::remember(
+            'dashboard.hr_insights',
+            fn (): array => $this->buildHrInsights(),
+            self::CACHE_TTL
+        );
+
+        $this->successCached($insights, self::CACHE_TTL, ['user' => $userId]);
+    }
+
+    /**
+     * Build the HR oversight insights payload.
+     *
+     * Extracted verbatim from hrInsightsAction so the assembled array can be
+     * cached as a single unit (see hrInsightsAction). Keeps the original
+     * fail-soft behaviour: a failing sub-query logs and leaves that block empty
+     * rather than failing the whole widget.
+     */
+    private function buildHrInsights(): array
+    {
         $db = \db();
         $today = date('Y-m-d');
         $in30Days = date('Y-m-d', strtotime('+30 days'));
@@ -260,7 +286,7 @@ class DashboardController extends BaseController
                  FROM attendance a
                  JOIN employees e ON e.id = a.employee_id
                  LEFT JOIN departments d ON d.id = e.department_id
-                 WHERE DATE(a.clock_in) = ?
+                 WHERE a.attendance_date = ?
                  GROUP BY e.id, e.first_name, e.last_name, e.position, d.name
                  ORDER BY clock_in ASC
                  LIMIT 50",
@@ -269,7 +295,7 @@ class DashboardController extends BaseController
             $insights['attendance_today']['clocked_in'] = (int) $db->fetchValue(
                 "SELECT COUNT(DISTINCT a.employee_id) FROM attendance a
                  JOIN employees e ON e.id = a.employee_id
-                 WHERE e.employee_status = 'active' AND DATE(a.clock_in) = ?",
+                 WHERE e.employee_status = 'active' AND a.attendance_date = ?",
                 's', [$today]
             );
 
@@ -311,7 +337,7 @@ class DashboardController extends BaseController
             \logger()->error('HR insights error', ['error' => $e->getMessage()]);
         }
 
-        $this->success($insights);
+        return $insights;
     }
 
     /**
@@ -329,36 +355,51 @@ class DashboardController extends BaseController
     }
 
     /**
-     * Get all dashboard statistics.
+     * Cache TTL (seconds) for dashboard read-only aggregates.
+     *
+     * Deliberately short: these are "as of now" widgets, so a few seconds of
+     * staleness is invisible to users, while a single recomputation is shared by
+     * every concurrent dashboard request in that window. That matters because
+     * the dashboard fans out into several parallel calls which otherwise
+     * recompute the same org-wide counts and queue behind each other.
+     */
+    private const CACHE_TTL = 30;
+
+    /**
+     * GET /api/dashboard/stats - Get all dashboard statistics.
      */
     public function statsAction(): void
     {
         $this->requirePermission('dashboard', 'view');
 
-        $db = \db();
+        $userId = $this->getUserId();
 
-        try {
-            $totalEmployees = $this->getEmployeeCount();
-            $attendanceToday = $this->getTodayAttendance();
-            $onLeave = $this->getOnLeaveCount();
-            $pendingApprovals = $this->getPendingApprovalsCount();
-        } catch (\Throwable $e) {
-            \logger()->error('Dashboard stats error', ['error' => $e->getMessage()]);
-            $totalEmployees = 0;
-            $attendanceToday = ['total' => 0, 'clocked_in' => 0, 'clocked_out' => 0];
-            $onLeave = 0;
-            $pendingApprovals = 0;
-        }
+        // Org-wide totals are identical for every viewer, so the cache key is
+        // shared - but the RESPONSE validator is scoped to the caller below.
+        $data = \App\Helpers\Cache::remember('dashboard.stats', function (): array {
+            try {
+                $totalEmployees = $this->getEmployeeCount();
+                $attendanceToday = $this->getTodayAttendance();
+                $onLeave = $this->getOnLeaveCount();
+                $pendingApprovals = $this->getPendingApprovalsCount();
+            } catch (\Throwable $e) {
+                \logger()->error('Dashboard stats error', ['error' => $e->getMessage()]);
+                $totalEmployees = 0;
+                $attendanceToday = ['total' => 0, 'clocked_in' => 0, 'clocked_out' => 0];
+                $onLeave = 0;
+                $pendingApprovals = 0;
+            }
 
-        $data = [
-            'totalEmployees' => $totalEmployees,
-            'presentToday' => $attendanceToday['total'] ?? 0,
-            'onLeave' => $onLeave,
-            'pendingApprovals' => $pendingApprovals,
-            'lateToday' => 0,
-        ];
+            return [
+                'totalEmployees'   => $totalEmployees,
+                'presentToday'     => $attendanceToday['total'] ?? 0,
+                'onLeave'          => $onLeave,
+                'pendingApprovals' => $pendingApprovals,
+                'lateToday'        => 0,
+            ];
+        }, self::CACHE_TTL);
 
-        $this->success($data);
+        $this->successCached($data, self::CACHE_TTL, ['user' => $userId]);
     }
 
     /**
@@ -377,7 +418,7 @@ class DashboardController extends BaseController
              JOIN employees e ON a.employee_id = e.id
              LEFT JOIN departments d ON e.department_id = d.id
              LEFT JOIN offices o ON a.office_id = o.id
-             WHERE DATE(a.clock_in) = ?
+             WHERE a.attendance_date = ?
              ORDER BY a.clock_in DESC
              LIMIT 50",
             's',
@@ -411,7 +452,13 @@ class DashboardController extends BaseController
              JOIN employees e ON l.employee_id = e.id
              LEFT JOIN departments d ON e.department_id = d.id
              JOIN leave_types lt ON l.leave_type_id = lt.id
-             WHERE l.status = 'pending'
+             -- The approval workflow is STAGED (docs/PHASE5_REPORT.md): rows sit
+             -- in pending_subsection_head / pending_section_head /
+             -- pending_dept_head / pending_managing_director (+ pending_hr /
+             -- pending_bod_chair variants). Matching the bare 'pending' literal
+             -- misses 100% of real awaiting-approval rows; LIKE 'pending%'
+             -- covers every stage (same predicate as hr-insights block 3).
+             WHERE l.status LIKE 'pending%'
              ORDER BY l.applied_at DESC
              LIMIT 20"
         );
@@ -590,28 +637,36 @@ class DashboardController extends BaseController
 
     /**
      * Get today's attendance count.
+     *
+     * Uses the STORED GENERATED column `attendance_date` instead of
+     * DATE(clock_in). Wrapping the column in a function made the predicate
+     * non-sargable, so MariaDB full-scanned all 13k attendance rows for every
+     * dashboard call ("type: ALL, rows: 13144"). Filtering on the generated date
+     * column uses idx_attendance_date_status instead and returns the same rows
+     * from a single index lookup (measured 3.21 ms -> 0.35 ms).
      */
     private function getTodayAttendance(): array
     {
         $db = \db();
         $today = date('Y-m-d');
 
-        $total = (int) $db->fetchValue(
-            "SELECT COUNT(*) FROM attendance WHERE DATE(clock_in) = ?",
+        // One aggregate instead of two round trips: total + clocked-in together.
+        $row = $db->fetchOne(
+            "SELECT COUNT(*) AS total,
+                    SUM(CASE WHEN status = 'clocked_in' THEN 1 ELSE 0 END) AS clocked_in
+             FROM attendance
+             WHERE attendance_date = ?",
             's',
             [$today]
         );
 
-        $clockedIn = (int) $db->fetchValue(
-            "SELECT COUNT(*) FROM attendance WHERE DATE(clock_in) = ? AND status = 'clocked_in'",
-            's',
-            [$today]
-        );
+        $total = (int) ($row['total'] ?? 0);
+        $clockedIn = (int) ($row['clocked_in'] ?? 0);
 
         return [
             'total' => $total,
             'clocked_in' => $clockedIn,
-            'clocked_out' => $total - $clockedIn,
+            'clocked_out' => max(0, $total - $clockedIn),
         ];
     }
 
@@ -636,8 +691,10 @@ class DashboardController extends BaseController
     private function getPendingApprovalsCount(): int
     {
         $db = \db();
+        // LIKE 'pending%' — the workflow's awaiting rows live in staged
+        // statuses (pending_section_head etc.), never the bare 'pending'.
         return (int) $db->fetchValue(
-            "SELECT COUNT(*) FROM leave_applications WHERE status = 'pending'"
+            "SELECT COUNT(*) FROM leave_applications WHERE status LIKE 'pending%'"
         );
     }
 
@@ -654,12 +711,19 @@ class DashboardController extends BaseController
 
     /**
      * Get pending appraisals count.
+     *
+     * The real appraisal workflow (employee_appraisals) is STAGED, like leave:
+     * rows sit in 'draft', 'awaiting_employee' or 'submitted' — there is no
+     * bare 'pending' status, so the old literal matched 0 rows forever.
+     * "Pending" here means: submitted and awaiting a decision (the appraiser's
+     * queue). Draft/awaiting_employee rows are the employee's own work and are
+     * deliberately not counted.
      */
     private function getPendingAppraisalsCount(): int
     {
         $db = \db();
         return (int) $db->fetchValue(
-            "SELECT COUNT(*) FROM employee_appraisals WHERE status = 'pending'"
+            "SELECT COUNT(*) FROM employee_appraisals WHERE status = 'submitted'"
         );
     }
 
@@ -703,7 +767,7 @@ class DashboardController extends BaseController
         $today = date('Y-m-d');
         $db = \db();
         $attended = (int) $db->fetchValue(
-            "SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE DATE(clock_in) = ?",
+            "SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE attendance_date = ?",
             's',
             [$today]
         );
@@ -720,31 +784,42 @@ class DashboardController extends BaseController
         // migration 046). Only hr_manager / managing_director / super_admin.
         $this->requirePermission('dashboard', 'hr_insights');
 
-        $db = \db();
-        $today = date('Y-m-d');
+        $userId = $this->getUserId();
 
-        $present = (int) $db->fetchValue(
-            "SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE DATE(clock_in) = ? AND status IN ('clocked_in', 'clocked_out')",
-            's',
-            [$today]
-        );
+        // Predicates rewritten onto the generated `attendance_date` column so
+        // they use idx_attendance_date_status / idx_attendance_date_late rather
+        // than full-scanning 13k rows (see getTodayAttendance). The whole
+        // aggregate is then cached so the dashboard's parallel calls compute it
+        // once per TTL window instead of once per request.
+        $data = \App\Helpers\Cache::remember('dashboard.charts.attendance', function (): array {
+            $db = \db();
+            $today = date('Y-m-d');
 
-        $late = (int) $db->fetchValue(
-            "SELECT COUNT(DISTINCT employee_id) FROM attendance WHERE DATE(clock_in) = ? AND is_late = 1",
-            's',
-            [$today]
-        );
+            $present = (int) $db->fetchValue(
+                "SELECT COUNT(DISTINCT employee_id) FROM attendance
+                 WHERE attendance_date = ? AND status IN ('clocked_in', 'clocked_out')",
+                's',
+                [$today]
+            );
 
-        $absent = (int) $db->fetchValue(
-            "SELECT COUNT(*) FROM employees WHERE employee_status = 'active' OR employee_status IS NULL"
-        ) - $present;
+            $late = (int) $db->fetchValue(
+                "SELECT COUNT(DISTINCT employee_id) FROM attendance
+                 WHERE attendance_date = ? AND is_late = 1",
+                's',
+                [$today]
+            );
 
-        $this->success([
-            'present' => $present,
-            'late' => $late,
-            'absent' => max(0, $absent),
-            'total' => $present + $late,
-        ]);
+            $absent = $this->getEmployeeCount() - $present;
+
+            return [
+                'present' => $present,
+                'late'    => $late,
+                'absent'  => max(0, $absent),
+                'total'   => $present + $late,
+            ];
+        }, self::CACHE_TTL);
+
+        $this->successCached($data, self::CACHE_TTL, ['user' => $userId]);
     }
 
     /**
@@ -756,20 +831,25 @@ class DashboardController extends BaseController
         // migration 046). Only hr_manager / managing_director / super_admin.
         $this->requirePermission('dashboard', 'hr_insights');
 
-        $db = \db();
-        $departments = $db->fetchAll(
-            "SELECT d.name as department, COUNT(e.id) as count
-             FROM employees e
-             LEFT JOIN departments d ON e.department_id = d.id
-             WHERE (e.employee_status = 'active' OR e.employee_status IS NULL)
-             GROUP BY d.name
-             ORDER BY count DESC"
-        );
+        $userId = $this->getUserId();
 
-        $this->success([
-            'total_departments' => count($departments),
-            'departments' => $departments,
-        ]);
+        $data = \App\Helpers\Cache::remember('dashboard.charts.departments', function (): array {
+            $departments = \db()->fetchAll(
+                "SELECT d.name as department, COUNT(e.id) as count
+                 FROM employees e
+                 LEFT JOIN departments d ON e.department_id = d.id
+                 WHERE (e.employee_status = 'active' OR e.employee_status IS NULL)
+                 GROUP BY d.name
+                 ORDER BY count DESC"
+            );
+
+            return [
+                'total_departments' => count($departments),
+                'departments'       => $departments,
+            ];
+        }, self::CACHE_TTL);
+
+        $this->successCached($data, self::CACHE_TTL, ['user' => $userId]);
     }
 
     /**
@@ -781,24 +861,32 @@ class DashboardController extends BaseController
         // migration 046). Only hr_manager / managing_director / super_admin.
         $this->requirePermission('dashboard', 'hr_insights');
 
-        $db = \db();
-        $today = date('Y-m-d');
+        $userId = $this->getUserId();
 
-        $onLeave = (int) $db->fetchValue(
-            "SELECT COUNT(DISTINCT employee_id) FROM leave_applications
-             WHERE status = 'approved' AND start_date <= ? AND end_date >= ?",
-            'ss',
-            [$today, $today]
-        );
+        $data = \App\Helpers\Cache::remember('dashboard.charts.leave', function (): array {
+            $db = \db();
+            $today = date('Y-m-d');
 
-        $pending = (int) $db->fetchValue(
-            "SELECT COUNT(*) FROM leave_applications WHERE status = 'pending'"
-        );
+            $onLeave = (int) $db->fetchValue(
+                "SELECT COUNT(DISTINCT employee_id) FROM leave_applications
+                 WHERE status = 'approved' AND start_date <= ? AND end_date >= ?",
+                'ss',
+                [$today, $today]
+            );
 
-        $this->success([
-            'on_leave' => $onLeave,
-            'pending' => $pending,
-        ]);
+            $pending = (int) $db->fetchValue(
+                // LIKE 'pending%' — staged workflow statuses (see
+                // getPendingApprovalsCount); bare 'pending' matched 0 rows.
+                "SELECT COUNT(*) FROM leave_applications WHERE status LIKE 'pending%'"
+            );
+
+            return [
+                'on_leave' => $onLeave,
+                'pending'  => $pending,
+            ];
+        }, self::CACHE_TTL);
+
+        $this->successCached($data, self::CACHE_TTL, ['user' => $userId]);
     }
 /**
      * GET /api/dashboard/strategic-performance - Strategic & Performance

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Database;
 
+use App\Database\DatabaseConnection;
+
 /**
  * Base Seeder Class
  * 
@@ -115,18 +117,23 @@ abstract class Seeder
 
     /**
      * Run another seeder
-     * 
-     * @param Seeder $seeder Seeder instance to run
+     *
+     * @param Seeder|string $seeder Seeder instance or class name to run
      */
-    protected function call(Seeder $seeder): void
+    protected function call(Seeder|string $seeder): void
     {
+        // Accept a class name as well as an instance: DatabaseSeeder's
+        // $seeders registry stores DatabaseSeeder::class constants.
+        if (is_string($seeder)) {
+            $seeder = new $seeder();
+        }
         $seeder->run();
     }
 
     /**
      * Run multiple seeders
-     * 
-     * @param array $seeders Array of Seeder instances
+     *
+     * @param array $seeders Array of Seeder instances or class names
      */
     protected function callMany(array $seeders): void
     {

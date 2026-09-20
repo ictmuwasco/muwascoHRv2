@@ -23,3 +23,41 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# ===========================================================================
+# Asset delivery (performance)
+#
+# This file is the complete web configuration when Apache's DocumentRoot points
+# directly at backend/public (rather than at the repository root with the app
+# under /hrdemo). In that layout the repository-root .htaccess is NOT read, so
+# the compression and cache rules are duplicated here. Directives are additive
+# and idempotent, so having both files active is harmless.
+# ===========================================================================
+
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css
+    AddOutputFilterByType DEFLATE text/javascript application/javascript
+    AddOutputFilterByType DEFLATE application/json application/manifest+json
+    AddOutputFilterByType DEFLATE application/xml image/svg+xml
+</IfModule>
+
+<IfModule mod_headers.c>
+    # The SPA shell names the current hashed bundle: revalidate it always.
+    # (Vite's fingerprinted files under /assets get a one-year immutable
+    # lifetime from assets/.htaccess.)
+    <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest)$">
+        Header set Cache-Control "no-cache, must-revalidate"
+    </FilesMatch>
+    <FilesMatch "\.(woff2?|ttf|png|jpe?g|gif|svg|webp|ico|avif)$">
+        Header append Vary Accept-Encoding
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>

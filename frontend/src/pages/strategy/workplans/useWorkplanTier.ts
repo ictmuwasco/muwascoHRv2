@@ -5,6 +5,11 @@ import {
   type WorkplanSummary,
 } from '../../../api/services/workplanService';
 
+/**
+ * The four organisational tiers a workplan page can render. Declaring the
+ * literal union here keeps every tier page's `view` prop type-checked against
+ * the values the backend accepts.
+ */
 export type TierView = 'md' | 'department' | 'section' | 'subsection';
 
 /**
@@ -30,7 +35,7 @@ export function useWorkplanTier(view: TierView) {
   // only the most recently started request may commit list / summary state.
   const requestIdRef = useRef(0);
 
-  const load = useCallback(async () => {
+            const load = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError('');
@@ -40,6 +45,10 @@ export function useWorkplanTier(view: TierView) {
       if (search) params.q = search;
       if (parentFilter) params.parent_id = parentFilter;
       if (fyId) params.financial_year_id = fyId;
+      // Section/subsection heads see only their own activities — ask the
+      // server to filter (pagination.total/last_page must agree with the
+      // row set the table actually renders).
+      if (view === 'section' || view === 'subsection') params.created_by_self = '1';
       const [listRes, sumRes] = await Promise.all([
         workplanService.list(params),
         workplanService.summary(view, fyId || undefined),
@@ -53,7 +62,7 @@ export function useWorkplanTier(view: TierView) {
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, [view, status, search, parentFilter, fyId, page]);
+    }, [view, status, search, parentFilter, fyId, page]);
 
   useEffect(() => {
     load();

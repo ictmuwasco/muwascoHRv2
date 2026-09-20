@@ -4,7 +4,12 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Database\Seeder;
+// The base Seeder lives in backend/database/Seeder.php (namespace Database\).
+// An earlier "App\Database\Seeder" import made DatabaseSeeder un-instantiable,
+// breaking the "run ALL seeders" path (php backend/database/seed.php without
+// arguments and POST /api/system/seeders/run) while individual seeder runs
+// kept working — which is why it went unnoticed.
+use Database\Seeder;
 
 /**
  * Main database seeder that runs all seeders in order
@@ -20,6 +25,8 @@ class DatabaseSeeder extends Seeder
         EmployeeSeeder::class,
         UserSeeder::class,
         SecurityPermissionsSeeder::class,
+        MeetingSeeder::class,
+        AttendanceSeeder::class,
     ];
 
     /**

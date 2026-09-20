@@ -75,6 +75,34 @@ use App\Controllers\System\QueryLogController;
 \App\Middleware\AuthenticationMiddleware::process();
 \App\Helpers\PerfTiming::mark('gate_end');
 
+// ===========================================================================
+// Release the session write lock for read-only API requests.
+//
+// PHP file sessions hold an EXCLUSIVE lock on the session file from
+// session_start() until session_write_close() (or script end). The dashboard
+// fires 4+ concurrent AJAX calls on load; without a release each one blocks
+// every other on that single lock, which surfaced as 6-13s "slow request"
+// events (ai/threats 13,195ms, ai/chat 8,356ms) that were pure lock
+// queueing — the DB and controllers behind them are millisecond-fast.
+//
+// WHY HERE and not in bootstrap.php: the gate above writes session state
+// (CSRF token seed, sliding last_activity refresh). Closing before the gate
+// silently discards those writes; closing after it persists them.
+//
+// WHY SAFE-METHODS ONLY: audited session writers that run after this point:
+//   - AuthService::login()          (POST /auth/login)          — writes session + regenerates id
+//   - AuthController::logoutAction() (POST /auth/logout)        — session_destroy()
+//   - AuthController::changePasswordAction() (POST /auth/change-password) — regenerates id
+//   - SecurityMiddleware::enforceSessionTimeout() expiry path     — runs inside the gate above
+// Every GET route in api.php's route table is read-only, so releasing the
+// lock for GET/HEAD/OPTIONS cannot lose state. State-changing methods keep
+// the lock for the remainder of the request (they are short-lived writes).
+// ===========================================================================
+if (in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'HEAD', 'OPTIONS'], true)
+    && session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
+}
+
 /**
  * Simple Router
  */
@@ -497,11 +525,17 @@ $router->add('GET', '/admin/financial-years/employees', FinancialYearController:
 // Appraisal routes
 $router->add('GET', '/appraisals', AppraisalController::class, 'index', 'performance:view');
 $router->add('POST', '/appraisals', AppraisalController::class, 'store', 'performance:manage');
+
+// Literal sub-paths MUST be registered BEFORE the "/appraisals/{id}" wildcard:
+// the router matches in registration order, so registering /appraisals/pending
+// after {id} let the wildcard capture it as id = "pending" and the request
+// 404'd with "Appraisal not found." instead of returning the pending queue.
+$router->add('GET', '/appraisals/pending', AppraisalController::class, 'pending', 'performance:view');
+$router->add('GET', '/appraisals/employee/{id}', AppraisalController::class, 'byEmployee', 'performance:view');
+
 $router->add('GET', '/appraisals/{id}', AppraisalController::class, 'show', 'performance:view');
 $router->add('PUT', '/appraisals/{id}', AppraisalController::class, 'update', 'performance:manage');
 $router->add('DELETE', '/appraisals/{id}', AppraisalController::class, 'destroy', 'performance:manage');
-$router->add('GET', '/appraisals/pending', AppraisalController::class, 'pending', 'performance:view');
-$router->add('GET', '/appraisals/employee/{id}', AppraisalController::class, 'byEmployee', 'performance:view');
 $router->add('PUT', '/appraisals/{id}/submit', AppraisalController::class, 'submit', 'performance:manage');
 $router->add('PUT', '/appraisals/{id}/approve', AppraisalController::class, 'approve', 'performance:manage');
 

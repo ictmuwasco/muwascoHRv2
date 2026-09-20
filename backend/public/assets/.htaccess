@@ -1,0 +1,28 @@
+# ---------------------------------------------------------------------------
+# Vite build output - immutable, CDN-ready caching.
+#
+# This directory contains ONLY fingerprinted build artefacts produced by
+# `npm run build` (index-<hash>.js, index-<hash>.css, <name>-<hash>.<ext>).
+# A content hash in the filename makes each URL immutable by construction:
+# changing the file changes the name, so a long lifetime can never serve stale
+# code. One year + `immutable` means repeat visits, and any CDN placed in front
+# of Apache, are answered without revalidation and without touching PHP.
+#
+# The rule is scoped to this directory on purpose. Applying the same lifetime to
+# /uploads (user-replaceable documents and profile images that keep their
+# filename) would pin clients to a stale file forever - those get a
+# revalidating policy instead.
+#
+# DELETE stale bundles after each deploy: assets are never overwritten (the
+# hash changes), so old files accumulate and only waste disk/CDN space.
+# ---------------------------------------------------------------------------
+<IfModule mod_headers.c>
+    # Content is fingerprinted - cache aggressively, never revalidate.
+    Header set Cache-Control "public, max-age=31536000, immutable"
+
+    # The compressed and identity representations differ; tell caches so.
+    Header append Vary Accept-Encoding
+</IfModule>
+
+# No directory listings, and don't let mod_negotiation pick a different file.
+Options -Indexes -MultiViews

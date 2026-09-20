@@ -140,7 +140,7 @@ class MeetingMinutesRepository
                 VALUES (?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?, ?,?,?,?)";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param(
-            'isssssisssisssssiss',
+            'isssssiisissssssisis',
             $m['meeting_id'], $m['reference_number'], $m['meeting_date'], $m['start_time'], $m['end_time'], $m['venue'],
             $m['chairperson_id'], $m['secretary_id'], $m['status'], $m['version'], $m['amendment_reason'], $m['aob'],
             $m['next_meeting_date'], $m['next_meeting_time'], $m['next_meeting_venue'], $m['next_meeting_notes'],
@@ -165,7 +165,7 @@ class MeetingMinutesRepository
                 WHERE id = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param(
-            'sssssssisssssssiiiiiiii',
+            'ssssiisissssssisisisisi',
             $m['meeting_date'], $m['start_time'], $m['end_time'], $m['venue'],
             $m['chairperson_id'], $m['secretary_id'], $m['status'], $m['version'],
             $m['amendment_reason'], $m['aob'],

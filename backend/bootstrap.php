@@ -61,12 +61,26 @@ if (file_exists($envFile)) {
 error_reporting(E_ALL);
 
 // Detect API requests early to suppress HTML error output
+//
+// The detection MUST be subdirectory-aware: this app is deployed under
+// /hrdemo/, so a real API request arrives as REQUEST_URI "/hrdemo/api/…"
+// and a naive leading-"/api/" check never matches. The same applies to
+// the Vite dev proxy. Falling back on the Accept header alone is not
+// enough because browser fetch() sends "Accept: */*". An unrecognized
+// API request here also means the session write lock is never released
+// (see the session_write_close() block below), so concurrent dashboard
+// AJAX calls serialize on the session file — the cause of multi-second
+// "slow request" spikes that look like DB/controller slowness but are
+// pure lock contention.
 $isApiRequest = false;
 if (isset($_SERVER['REQUEST_URI'])) {
     $requestUri = $_SERVER['REQUEST_URI'];
     $httpAccept = $_SERVER['HTTP_ACCEPT'] ?? '';
-    $isApiRequest = (strpos($requestUri, '/api/') === 0)
-        || (strpos($httpAccept, 'application/json') !== false);
+    $isApiRequest = (strpos($requestUri, '/api/') !== false)
+        || (strpos($requestUri, '/api') === 0 && strlen($requestUri) === 4)
+        || (strpos($httpAccept, 'application/json') !== false)
+        || !empty($_SERVER['HTTP_X_REQUESTED_WITH'])
+        || !empty($_SERVER['HTTP_X_REQUEST_ID']);
 }
 
 // Always disable display_errors to prevent HTML in JSON responses
@@ -142,8 +156,13 @@ set_exception_handler(function (\Throwable $e) {
 
     $requestUri = $_SERVER['REQUEST_URI'] ?? '';
     $httpAccept = $_SERVER['HTTP_ACCEPT'] ?? '';
-    $isApiRequest = (strpos($requestUri, '/api/') === 0)
-        || (strpos($httpAccept, 'application/json') !== false);
+    // Subdirectory-aware, matching the early detection at the top of this
+    // file (see that comment — "/hrdemo/api/…" must also count).
+    $isApiRequest = (strpos($requestUri, '/api/') !== false)
+        || (strpos($requestUri, '/api') === 0 && strlen($requestUri) === 4)
+        || (strpos($httpAccept, 'application/json') !== false)
+        || !empty($_SERVER['HTTP_X_REQUESTED_WITH'])
+        || !empty($_SERVER['HTTP_X_REQUEST_ID']);
 
     $requestId = is_array($reference) ? ($reference['request_id'] ?? null) : null;
 
@@ -230,23 +249,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') {
     exit();
 }
 
-// CRITICAL FIX: Release the session write lock for API requests.
-// PHP file-based sessions hold an exclusive lock on the session file
-// until the script ends or session_write_close() is called.
-// The Dashboard fires 4+ concurrent AJAX requests (stats, attendance,
-// notifications, analytics). Without this, each request blocks on the
-// session lock held by the previous request, causing cascading timeouts.
-//
-// IMPORTANT: We must NOT close the session for the login request.
-// AuthService::login() sets $_SESSION values (user_id, session_valid, etc.)
-// AFTER this point. If the session is already closed, those values are
-// never persisted to the session file, so subsequent API requests see an
-// empty session and return 401 Unauthorized.
-$requestPath = $_SERVER['REQUEST_URI'] ?? '';
-$isLoginRequest = strpos($requestPath, '/api/auth/login') !== false || strpos($requestPath, '/hrdemo/api/auth/login') !== false;
-if ($isApiRequest && !$isLoginRequest) {
-    session_write_close();
-}
+// NOTE: The session write lock is NOT released here. Closing it this early
+// (before SecurityMiddleware::run() / AuthenticationMiddleware::process())
+// would silently discard the gate's session writes — the sliding
+// last_activity refresh in enforceSessionTimeout() and the CSRF token seed.
+// The release now happens in api.php, immediately AFTER the security gate
+// and authentication, for safe-method (GET/HEAD/OPTIONS) requests only.
+// See api.php for the full rationale and the write-after-close audit.
 
 
 /**

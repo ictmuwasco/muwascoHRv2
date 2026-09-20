@@ -7,8 +7,7 @@ import { AlertTriangle, CheckCircle, Download, Plus, RefreshCw } from 'lucide-re
 import { WIDE_SCOPE_ROLES } from '../../../config/roles';
 import { workplanService } from '../../../api/services/workplanService';
 import type { WorkplanObjective } from '../../../api/services/workplanService';
-import { appraisalCycleService } from '../../../api/services/appraisalCycleService';
-import type { AppraisalCycle } from '../../../api/services/appraisalCycleService';
+import useStrategyReference from './useStrategyReference';
 import BulkWorkplanModal from './BulkWorkplanModal';
 import TierAddWorkplanModal from './TierAddWorkplanModal';
 import { useWorkplanTier, downloadWorkplanCsv, type TierView } from './useWorkplanTier';
@@ -16,6 +15,7 @@ import WorkplanDashboard from './WorkplanDashboard';
 import WorkplanFilters from './WorkplanFilters';
 import WorkplanActivityTable, { type ProgressPatch } from './WorkplanActivityTable';
 import WorkplanActivityFormModal, { type StrategyRefs } from './WorkplanActivityFormModal';
+import type { AppraisalCycle } from '../../../api/services/appraisalCycleService';
 import CascadeActivityDialog from './CascadeActivityDialog';
 import TraceabilityPanel from './TraceabilityPanel';
 import HistoryModal from './HistoryModal';
@@ -47,8 +47,10 @@ export default function TierWorkplanPage({
   allowContractless = false, showSection = false, showSubsection = false,
   showOfficer = false, showIntegratedFlag = false, showCommitmentsPanel = false,
 }: Props) {
-  const tier = useWorkplanTier(view);
+    const tier = useWorkplanTier(view);
   const { user } = useAuth();
+  // Shared session-scoped reference cache: plans/goals/targets/contracts/FYs/cycles.
+  const { data: strategyRef, loading: refLoading } = useStrategyReference();
   const [refs, setRefs] = useState<StrategyRefs>({ contracts: [], goals: [], targets: [] });
   const [fys, setFys] = useState<{ id: number; year_name: string }[]>([]);
   const [cycles, setCycles] = useState<AppraisalCycle[]>([]);
@@ -59,30 +61,13 @@ export default function TierWorkplanPage({
   const [traceId, setTraceId] = useState<number | null>(null);
   const [historyId, setHistoryId] = useState<number | null>(null);
 
-  // Strategy reference data (plans/goals/targets/FYs) + caller-scoped contracts.
+      // Hydrate local state from the shared reference cache when it loads.
   useEffect(() => {
-    let cancelled = false;
-    Promise.all([
-      apiClient.get('/strategic-plans'),
-      apiClient.get('/performance-contracts'),
-      appraisalCycleService.list(),
-    ]).then(([spRes, pcRes, cycRes]: any[]) => {
-      if (cancelled) return;
-      const sd = spRes.data?.data ?? {};
-      const contracts = (pcRes.data?.data?.contracts ?? []).map((c: any) => ({
-        id: c.id,
-        name: c.name,
-        goal_id: c.goal_id,
-        target_id: c.target_id,
-        department_id: c.department_id ?? null,
-        department_name: c.department_name ?? null,
-      }));
-      setRefs({ contracts, goals: sd.goals ?? [], targets: sd.targets ?? [] });
-      setFys(sd.financial_years ?? []);
-      setCycles((cycRes.data?.cycles ?? []) as AppraisalCycle[]);
-    }).catch(() => { /* reference pickers degrade gracefully */ });
-    return () => { cancelled = true; };
-  }, []);
+    if (!strategyRef) return;
+    setRefs({ contracts: strategyRef.contracts, goals: strategyRef.goals, targets: strategyRef.targets });
+    setFys(strategyRef.financial_years);
+    setCycles(strategyRef.cycles);
+  }, [strategyRef]);
 
   const saveProgress = useCallback(async (row: WorkplanObjective, patch: ProgressPatch) => {
     try {
@@ -127,11 +112,7 @@ export default function TierWorkplanPage({
   const pagination = tier.list?.pagination ?? null;
   const canManage = !!tier.list?.can_manage;
 
-  // Section heads review only the activities they personally created; sourced /
-  // cascaded items are managed through the add + cascade flows instead.
-  const visibleRows = view === 'section' && user?.id != null
-    ? rows.filter((r) => Number(r.created_by) === Number(user.id))
-    : rows;
+  const visibleRows = rows;
 
   // Pin reference data (contracts) and the create flows to the caller's own
   // department so a department head never sees a neighbour's workplan options.

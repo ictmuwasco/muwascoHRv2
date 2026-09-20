@@ -88,6 +88,30 @@ const NON_RETRIABLE_PATHS = ['/auth/login', '/auth/logout', '/auth/refresh'];
  */
 let refreshPromise = null;
 
+/**
+ * Definitive session death — the silent renewal already failed. Mirror the
+ * axios client's 401 handling (api/client.ts): drop the cached profile from
+ * localStorage and return the employee to the sign-in screen instead of
+ * leaving them stranded on a protected page where every request 401s.
+ *
+ * Runs at most once per page load and never loops on /login itself: the
+ * login/logout/refresh endpoints are non-retriable (NON_RETRIABLE_PATHS), so
+ * a wrong password can never mark the error isAuthError and re-trigger this.
+ */
+let authRedirectSent = false;
+
+const bounceToLogin = () => {
+  try {
+    localStorage.removeItem('user');
+  } catch {
+    /* storage may be unavailable — the redirect still runs */
+  }
+  if (authRedirectSent || typeof window === 'undefined') return;
+  if (window.location.pathname.startsWith('/login')) return;
+  authRedirectSent = true;
+  window.location.assign('/login');
+};
+
 const refreshSession = () => {
   if (!refreshPromise) {
     refreshPromise = (async () => {
@@ -112,7 +136,48 @@ const refreshSession = () => {
   return refreshPromise;
 };
 
-export const apiFetch = async (endpoint, options = {}) => {
+/**
+ * In-flight de-duplication for GET requests (single-flight).
+ *
+ * The dashboard fans out into several widgets that can legitimately request the
+ * same URL at the same moment (two components mounting together, a refresh
+ * racing a poll). Each duplicate is a full HTTP round trip through the PHP
+ * bootstrap, the auth gate and the database - and under concurrent load those
+ * requests serialize (measured: a trivial endpoint costs ~40 ms alone but
+ * 408-2,779 ms when 8 run in parallel). Sharing the first in-flight promise
+ * collapses the duplicates into one request.
+ *
+ * Scope is deliberately narrow, and this is NOT a data cache:
+ *   - GET only (safe/idempotent by the API contract).
+ *   - Never for a request carrying a caller AbortSignal: cancellation must stay
+ *     per-caller, otherwise one component unmounting would cancel another's data.
+ *   - No time-based reuse. The entry is dropped the moment the request settles,
+ *     so a write followed by an immediate re-read can never observe stale data.
+ *     Repeat *page loads* are handled server-side by ETag/304 instead.
+ *
+ * Callers that need to bypass sharing can pass `{ dedupe: false }`.
+ *
+ * @type {Map<string, Promise<any>>}
+ */
+const inFlightGets = new Map();
+
+/** Deterministic key for a GET: endpoint plus its serialized query params. */
+const dedupeKey = (endpoint, params) => {
+  if (!params || typeof params !== 'object') return endpoint;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) {
+      value.forEach((v) => query.append(key, String(v)));
+    } else {
+      query.append(key, String(value));
+    }
+  }
+  const serialized = query.toString();
+  return serialized ? `${endpoint}?${serialized}` : endpoint;
+};
+
+const performRequest = async (endpoint, options = {}) => {
   const {
     method = 'GET',
     body,
@@ -150,6 +215,9 @@ export const apiFetch = async (endpoint, options = {}) => {
   }
 
   const headers = {
+    // Content negotiation signal for the backend's API-vs-HTML heuristics
+    // (session-expiry handler) — fetch() alone would send Accept: */*.
+    Accept: 'application/json',
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(customHeaders || {}),
   };
@@ -243,6 +311,7 @@ export const apiFetch = async (endpoint, options = {}) => {
       const error = new Error('Your session has expired. Please sign in again.');
       error.isAuthError = true;
       error.response = { data: {}, status: 401, statusText: 'Unauthorized' };
+      bounceToLogin();
       throw error;
     }
   }
@@ -285,6 +354,44 @@ export const apiFetch = async (endpoint, options = {}) => {
     headers: response.headers,
     config: {},
   };
+};
+
+/**
+ * Public entry point.
+ *
+ * Identical concurrent GETs are collapsed into a single network round trip (see
+ * inFlightGets above); everything else goes straight to performRequest.
+ */
+export const apiFetch = (endpoint, options = {}) => {
+  // `dedupe` is a wrapper-only option: strip it so it never reaches fetch().
+  const { dedupe = true, ...requestOptions } = options;
+  const method = String(requestOptions.method || 'GET').toUpperCase();
+
+  const shareable =
+    method === 'GET' &&
+    dedupe !== false &&
+    !requestOptions.signal &&
+    requestOptions.body === undefined;
+
+  if (!shareable) {
+    return performRequest(endpoint, requestOptions);
+  }
+
+  const key = dedupeKey(endpoint, requestOptions.params);
+  const existing = inFlightGets.get(key);
+  if (existing) {
+    // Already in flight - join it instead of paying for a second round trip.
+    return existing;
+  }
+
+  const promise = performRequest(endpoint, requestOptions).finally(() => {
+    // Always release the slot, success or failure: a later caller must be able
+    // to retry rather than be handed a settled rejection.
+    inFlightGets.delete(key);
+  });
+
+  inFlightGets.set(key, promise);
+  return promise;
 };
 
 export const apiGet = (endpoint, config) => apiFetch(endpoint, { ...config });

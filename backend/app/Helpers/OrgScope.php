@@ -164,10 +164,16 @@ final class OrgScope
 
     /**
      * True when the user may manage organisation-level strategic plans.
+     *
+     * HR manager + super admin ONLY. PME and Audit are oversight functions:
+     * they keep organisation-wide READ visibility and their own
+     * contract/performance management rights (canManageContracts(),
+     * canManagePerformance()), but they must NOT outrank the HR manager on
+     * authoring the strategic plan itself.
      */
     public static function canManageStrategicPlan(array $scope): bool
     {
-        return $scope['is_hr'] || $scope['is_super_admin'] || $scope['is_pme_or_audit'];
+        return $scope['is_hr'] || $scope['is_super_admin'];
     }
 
     /**

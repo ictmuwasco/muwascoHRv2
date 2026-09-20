@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Database\Seeder;
+use Database\Seeder;
 
 class EmployeeSeeder extends Seeder
 {
