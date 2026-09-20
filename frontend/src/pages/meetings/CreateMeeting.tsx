@@ -21,7 +21,7 @@ interface Meeting {
   location: string
   status: string
   created_by: number
-    org_first_name: string
+  org_first_name: string
   org_last_name: string
   minutes?: { exists: boolean; can_manage: boolean; can_view_published: boolean; status: string | null }
 }
@@ -41,6 +41,26 @@ interface MeetingFormState {
   start_time: string
   end_time: string
   location: string
+}
+
+interface MeetingsEnvelope {
+  data: Meeting[]
+  total: number
+  per_page: number
+  current_page: number
+  last_page: number
+}
+
+interface MeetingDetailPayload {
+  id: number
+  title: string
+  description: string
+  agenda: string
+  meeting_date: string
+  start_time: string
+  end_time: string
+  location: string
+  invitations?: Array<{ employee_id: number }>
 }
 
 const EMPTY_FORM: MeetingFormState = {
@@ -68,7 +88,7 @@ const CreateMeeting = () => {
   const [selectedEmployees, setSelectedEmployees] = useState<number[]>([])
   const [employees, setEmployees] = useState<any[]>([])
   const [employeeSearch, setEmployeeSearch] = useState('')
-    const [actionLoading, setActionLoading] = useState<number | null>(null)
+  const [actionLoading, setActionLoading] = useState<number | null>(null)
   const [minutesMeeting, setMinutesMeeting] = useState<Meeting | null>(null)
 
   const loadMeetings = async (page = 1) => {
@@ -76,13 +96,15 @@ const CreateMeeting = () => {
     setError('')
     try {
       const params: Record<string, any> = { page, per_page: pagination.per_page }
-      const response = await api.get('/meetings', { params })
-      setMeetings(response.data?.data || [])
+      const response = await api.get<MeetingsEnvelope>('/meetings', { params })
+      const envelope = response.data?.data
+      const list = envelope?.data
+      setMeetings(Array.isArray(list) ? list : [])
       setPagination({
-        total: response.data?.total || 0,
-        per_page: response.data?.per_page || 20,
-        current_page: response.data?.current_page || 1,
-        last_page: response.data?.last_page || 1,
+        total: envelope?.total || 0,
+        per_page: envelope?.per_page || 20,
+        current_page: envelope?.current_page || 1,
+        last_page: envelope?.last_page || 1,
       })
     } catch (err: any) {
       const msg = err.response?.data?.message || err.response?.data?.error || 'Failed to load meetings'
@@ -94,8 +116,10 @@ const CreateMeeting = () => {
 
   const loadEmployees = async () => {
     try {
-      const response = await api.get('/meetings/eligible-employees')
-      setEmployees(response.data?.data || [])
+      const response = await api.get<any>('/meetings/eligible-employees')
+      const payload: any = response.data?.data
+      const list = Array.isArray(payload) ? payload : (payload?.data ?? [])
+      setEmployees(Array.isArray(list) ? list : [])
     } catch (err) {
       console.error('Failed to load employees:', err)
     }
@@ -105,7 +129,7 @@ const CreateMeeting = () => {
     setError('')
     setSuccess('')
     try {
-      const response = await api.get(`/meetings/${meetingId}`)
+      const response = await api.get<MeetingDetailPayload>(`/meetings/${meetingId}`)
       const data = response.data?.data
       if (data) {
         setForm({
@@ -117,7 +141,7 @@ const CreateMeeting = () => {
           end_time: data.end_time || '',
           location: data.location || '',
         })
-        const invitedIds = (data.invitations || []).map((inv: any) => inv.employee_id)
+        const invitedIds = (data.invitations || []).map((inv) => inv.employee_id)
         setSelectedEmployees(invitedIds)
         setEditingId(meetingId)
         setShowCreateModal(true)
