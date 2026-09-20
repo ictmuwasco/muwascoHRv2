@@ -251,7 +251,7 @@ class AttendanceController extends BaseController
                     o.name AS office_name
              FROM attendance a
              LEFT JOIN offices o ON a.office_id = o.id
-             WHERE a.employee_id = ? AND DATE(a.clock_in) = ?
+             WHERE a.employee_id = ? AND a.attendance_date = ?
              ORDER BY a.clock_in DESC LIMIT 1",
             'is',
             [$employeeDbId, $today]
@@ -329,7 +329,7 @@ class AttendanceController extends BaseController
              JOIN employees e ON a.employee_id = e.id
              LEFT JOIN departments d ON e.department_id = d.id
              LEFT JOIN offices o ON a.office_id = o.id
-             WHERE a.employee_id = ? AND DATE(a.clock_in) BETWEEN ? AND ?
+             WHERE a.employee_id = ? AND a.attendance_date BETWEEN ? AND ?
              ORDER BY a.clock_in DESC
              LIMIT 500",
             'iss',
@@ -524,7 +524,7 @@ class AttendanceController extends BaseController
              JOIN employees e ON a.employee_id = e.id
              LEFT JOIN departments d ON e.department_id = d.id
              LEFT JOIN offices o ON a.office_id = o.id
-             WHERE DATE(a.clock_in) = ? AND {$scopeWhere}
+             WHERE a.attendance_date = ? AND {$scopeWhere}
              ORDER BY a.clock_in DESC
              LIMIT 50";
 

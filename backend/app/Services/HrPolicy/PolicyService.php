@@ -204,6 +204,9 @@ class PolicyService
 
         \db()->update('hr_policy_documents', $updates, 'id = ?', 'i', [$id]);
 
+        // Title/version/effective dates are part of the cached payload.
+        self::invalidateActiveDocumentCache();
+
         AuditService::getInstance()->log(
             AuditService::MODULE_SETTINGS,
             AuditService::ACTION_UPDATE,
@@ -233,6 +236,8 @@ class PolicyService
         }
 
         \db()->update('hr_policy_documents', ['status' => $status], 'id = ?', 'i', [$id]);
+
+        self::invalidateActiveDocumentCache();
 
         AuditService::getInstance()->log(
             AuditService::MODULE_SETTINGS,
@@ -275,6 +280,8 @@ class PolicyService
             throw new \RuntimeException('Publishing failed — no changes were made.');
         }
 
+        self::invalidateActiveDocumentCache();
+
         $fresh = HrPolicyDocument::find($id) ?? $doc;
         $previousArchived = $doc['status'] !== HrPolicyDocument::STATUS_ARCHIVED
             && (int) $doc['is_active'] === 0
@@ -313,6 +320,24 @@ class PolicyService
         ) > 0;
     }
 
+    /**
+     * Drop the cached "active published document" used by
+     * HrPolicyController::currentAction.
+     *
+     * Kept in the service (rather than the controller) so EVERY mutation path -
+     * admin UI, CLI job or seeder - invalidates it. Without this, publishing a
+     * new policy could keep serving the previous document for up to the 300 s
+     * cache TTL.
+     */
+    private static function invalidateActiveDocumentCache(): void
+    {
+        try {
+            \App\Helpers\Cache::forget('hr_policy.active_document');
+        } catch (\Throwable $e) {
+            \logger()->warning('Policy cache invalidation failed', ['error' => $e->getMessage()]);
+        }
+    }
+
     /** Archive a version (removes it as the active policy if it was active). */
     public static function archive(int $id, int $userId): void
     {
@@ -335,6 +360,8 @@ class PolicyService
             \logger()->error('Policy archive failed', ['id' => $id, 'error' => $e->getMessage()]);
             throw new \RuntimeException('Archiving failed — no changes were made.');
         }
+
+        self::invalidateActiveDocumentCache();
 
         try {
             self::demoteKnowledgeBase($id);
@@ -377,6 +404,9 @@ class PolicyService
             ['deleted_at' => date('Y-m-d H:i:s'), 'active_token' => null],
             'id = ?', 'i', [$id]
         );
+
+        // A soft-deleted version must stop being served as the active policy.
+        self::invalidateActiveDocumentCache();
 
         AuditService::getInstance()->log(
             AuditService::MODULE_SETTINGS,

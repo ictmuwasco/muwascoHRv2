@@ -652,9 +652,28 @@ class SecurityMiddleware
                 session_destroy();
             }
 
-                        $uri = $_SERVER['REQUEST_URI'] ?? '';
+            $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
             $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-            if (str_starts_with($uri, '/api') || str_contains($accept, 'application/json')) {
+            $contentType = $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
+
+            // API vs HTML-flow detection must be prefix-aware: this app is
+            // deployed in a subdirectory and the Vite dev proxy rewrites
+            // /api/* to /hrdemo/api/*, so a raw REQUEST_URI of "/hrdemo/api/…"
+            // never matched a leading "/api" — expired API sessions fell
+            // through to the HTML redirect below, fetch() silently followed
+            // it to /hrdemo/api/auth/login.php, and the SPA surfaced an
+            // unexplainable "GET /api/auth/login.php 401". Browser fetch()
+            // sends Accept: */* (not application/json), so also honor JSON
+            // content types and the correlation headers the SPA attaches.
+            $isApiRequest = str_starts_with($path, '/api/')
+                || str_starts_with($path, '/hrdemo/api/')
+                || $path === '/api' || $path === '/hrdemo/api'
+                || str_contains($accept, 'application/json')
+                || str_contains($contentType, 'application/json')
+                || !empty($_SERVER['HTTP_X_REQUESTED_WITH'])
+                || !empty($_SERVER['HTTP_X_REQUEST_ID']);
+
+            if ($isApiRequest) {
                 \App\Helpers\ApiResponse::error(
                     'Session expired. Please sign in again.',
                     'SESSION_EXPIRED',

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Database\Seeder;
+use Database\Seeder;
 use App\Helpers\Hash;
 
 class UserSeeder extends Seeder

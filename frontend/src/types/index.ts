@@ -202,28 +202,57 @@ export interface Holiday {
 }
 
 // --- Appraisal ---
+//
+// Status vocabulary is the REAL one used by `employee_appraisals` (verified
+// against the live table and the workflow transitions in AppraisalController):
+// draft -> awaiting_employee -> submitted -> completed, with rejected/
+// under_review/cancelled as terminal or side states. The previous union
+// ('Pending' | 'In Progress' | 'Completed' | 'Escalated') existed only in the
+// frontend and never matched a single database row, so status badges and the
+// approve action were permanently dead.
+export type AppraisalStatus =
+  | 'draft'
+  | 'awaiting_employee'
+  | 'awaiting_submission'
+  | 'rejected'
+  | 'submitted'
+  | 'under_review'
+  | 'completed'
+  | 'cancelled';
+
+/** One scored indicator line inside an appraisal (GET /appraisals/{id}). */
+export interface AppraisalScore {
+  id: number;
+  performance_indicator_id: number;
+  indicator_name: string | null;
+  max_score: number | null;
+  score: number | null;
+  appraiser_comment: string | null;
+  created_at: string;
+}
+
 export interface Appraisal {
   id: number;
   employee_id: number;
-  employee_name: string;
-  cycle_id: number;
-  cycle_name: string;
-  supervisor_id: number;
-  supervisor_name: string;
+  employee_name: string | null;
+  /** FK column is `appraisal_cycle_id` in the database (API field: cycle_name). */
+  appraisal_cycle_id: number;
+  cycle_name: string | null;
+  supervisor_name: string | null;
   overall_score: number;
-  status: 'Pending' | 'In Progress' | 'Completed' | 'Escalated';
-  period_start: string;
-  period_end: string;
+  status: AppraisalStatus;
   created_at: string;
-  updated_at: string;
+  submitted_at: string | null;
+  /** Present on the detail endpoint only. */
+  scores?: AppraisalScore[];
 }
 
+/** POST /api/appraisals payload — matches AppraisalController::storeAction. */
 export interface AppraisalFormData {
   employee_id: number;
-  cycle_id: number;
-  supervisor_id: number;
-  scores: Record<string, number>;
-  comments: string;
+  appraisal_cycle_id: number;
+  appraiser_id?: number;
+  comments?: string;
 }
 
 // --- Strategic Plan ---

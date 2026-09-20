@@ -57,6 +57,136 @@ class ApiResponse
     }
 
     /**
+     * Echo a success envelope that participates in HTTP caching.
+     *
+     * Why: the dashboard re-requests the same read-only widgets (stats,
+     * charts/*, hr-insights, notifications, hr-policies/current) on every tab
+     * switch and every focus/refresh. Those responses are expensive to build and
+     * - under concurrent load - the requests queue behind each other. Emitting a
+     * strong validator lets the browser replay them from its own cache with a
+     * 304, so the server sends headers only and does no aggregation work.
+     *
+     * Correctness notes:
+     *   - `private` is mandatory: these payloads are authenticated and may be
+     *     permission-scoped, so no shared/intermediary cache may store them.
+     *   - `$scope` is folded into the validator. Pass the acting user (and any
+     *     other input that changes the payload) so two accounts can never share
+     *     a validator and receive each other's data.
+     *   - `Vary: Cookie, Authorization` keeps that promise true even if a proxy
+     *     ignores `private`.
+     *   - The request correlation header is deliberately NOT part of the entity
+     *     tag: it varies per request and would defeat every 304.
+     *
+     * @param mixed  $data    Payload placed under the `data` key.
+     * @param int    $maxAge  Freshness lifetime in seconds (0 => revalidate every time).
+     * @param array  $scope   Inputs that change the payload (e.g. ['user' => 7]).
+     * @param string $message Human-readable status message.
+     */
+    public static function cachedSuccess(
+        $data = null,
+        int $maxAge = 60,
+        array $scope = [],
+        string $message = 'Operation successful'
+    ): void {
+        self::clearOutputBuffers();
+
+        $payload = [
+            'success' => true,
+            'message' => $message,
+            'data'    => $data,
+        ];
+
+        $start = microtime(true);
+        $body  = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        PerfTiming::accumulate('serialization', (microtime(true) - $start) * 1000.0);
+
+        if ($body === false) {
+            // Serialization failure must not silently send an empty 200.
+            self::error('Failed to encode response', 'ENCODING_ERROR', [], 500);
+            return;
+        }
+
+        if ($scope !== []) {
+            // The scope is folded into the VALIDATOR ONLY. It must never reach
+            // the wire: $body is what gets echoed below, and appending the
+            // scope to $body itself (as an earlier revision did) produced a
+            // JSON document with a trailing `|{"user":N}` that no client could
+            // parse — every scoped cached response then degraded into a
+            // client-side "undefined payload" crash.
+            ksort($scope);
+            $validator = $body . '|' . (string) json_encode($scope);
+        } else {
+            $validator = $body;
+        }
+
+        $etag = '"' . md5($validator) . '"';
+
+        self::cacheHeaders($maxAge, $etag);
+        self::sendRequestIdHeader();
+
+        if (self::etagMatches($etag)) {
+            // 304 keeps the ETag + freshness headers and sends no body at all.
+            http_response_code(304);
+            exit;
+        }
+
+        http_response_code(200);
+        header('Content-Type: application/json; charset=utf-8');
+        header('X-Content-Type-Options: nosniff');
+
+        echo $body;
+        exit;
+    }
+
+    /**
+     * Emit the cacheability headers for an authenticated read-only response.
+     */
+    protected static function cacheHeaders(int $maxAge, string $etag): void
+    {
+        $maxAge = max(0, $maxAge);
+
+        // `private` because the payload is user/permission scoped.
+        header(sprintf(
+            'Cache-Control: private, max-age=%d%s',
+            $maxAge,
+            $maxAge > 0 ? ', must-revalidate' : ', no-cache, must-revalidate'
+        ));
+        header('Vary: Cookie, Authorization, Accept-Encoding');
+        header('ETag: ' . $etag);
+    }
+
+    /**
+     * RFC 9110 If-None-Match evaluation (handles W/ prefixes and wildcards).
+     */
+    protected static function etagMatches(string $etag): bool
+    {
+        $header = $_SERVER['HTTP_IF_NONE_MATCH'] ?? '';
+
+        if ($header === '') {
+            return false;
+        }
+
+        $header = trim($header);
+
+        if ($header === '*') {
+            return true;
+        }
+
+        foreach (explode(',', $header) as $candidate) {
+            $candidate = trim($candidate);
+            // Weak validators compare equal for If-None-Match purposes.
+            if (str_starts_with($candidate, 'W/')) {
+                $candidate = substr($candidate, 2);
+            }
+            if ($candidate === $etag) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Echo a failure envelope.
      *
      * @param string $message    Safe, user-facing error message.

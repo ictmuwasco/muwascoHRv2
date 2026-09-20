@@ -276,7 +276,14 @@ const Dashboard = () => {
   const fetchStats = async () => {
     try {
       const response = await api.get('/dashboard/stats')
-      setStats(response.data.data)
+      // Accept only a real object payload. An envelope-less 200 (e.g. a proxy
+      // error page) previously flowed into setStats(undefined), which replaced
+      // the zeroed default state and crashed the render on
+      // `stats.totalEmployees` ("Cannot read properties of undefined").
+      const payload = response.data?.data
+      if (payload && typeof payload === 'object') {
+        setStats(payload as Stats)
+      }
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error)
     }
@@ -585,8 +592,8 @@ const Dashboard = () => {
   const absentToday = Number(analytics.attendance?.absent || 0)
   const onLeaveToday = Number(analytics.leave?.on_leave || 0)
   /** Active employees neither present nor on leave today. */
-  const elsewhereToday = Math.max(0, stats.totalEmployees - presentToday - onLeaveToday)
-  const atWorkPct = stats.totalEmployees
+  const elsewhereToday = Math.max(0, (stats?.totalEmployees ?? 0) - presentToday - onLeaveToday)
+  const atWorkPct = stats?.totalEmployees
     ? Math.round((presentToday / stats.totalEmployees) * 100)
     : 0
   /** Present excluding late arrivals, so donut segments never overlap. */

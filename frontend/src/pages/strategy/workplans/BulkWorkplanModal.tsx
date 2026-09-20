@@ -28,6 +28,8 @@ const inputCls =
 
 interface RowState {
   objective: string;
+  kpi: string;
+  measure: string;
   section_id: string;
   subsection_id: string;
   cycle_ids: number[];
@@ -74,7 +76,11 @@ export default function BulkWorkplanModal({
   if (!isOpen) return null;
 
   const addRow = () => setRows((r) => [...r, {
-    objective: '', section_id: '', subsection_id: '', cycle_ids: [], planned_end_date: '',
+    objective: '', kpi: '', measure: '',
+    section_id: '', subsection_id: '',
+    // Typed explicitly: a bare [] infers never[], which is not assignable to
+    // RowState.cycle_ids (number[]).
+    cycle_ids: [] as number[], planned_end_date: '',
   }]);
   const updateRow = (idx: number, patch: Partial<RowState>) =>
     setRows((r) => r.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
