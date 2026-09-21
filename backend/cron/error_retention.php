@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+// CLI-only (S-SEC-07): must never execute over HTTP.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit('Not Found');
+}
+
 /**
  * Cron: nightly retention sweep for the error-tracking / observability layer.
  *

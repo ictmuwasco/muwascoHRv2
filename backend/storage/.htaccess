@@ -1,0 +1,17 @@
+# backend/storage — MUST NOT be web-accessible (S-SEC-07).
+# Holds error logs, framework cache, compiled views, and the backup.sh
+# shell script (which contains DB creds). Serve nothing here; the root
+# .htaccess also denies backend/ except backend/public/, but this file
+# is defense-in-depth for any backend/storage/ subtree in any deployment.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>
+<IfModule mod_php.c>
+    # Never execute anything in the cache tree.
+    php_flag engine off
+</IfModule>
+Options -ExecCGI -Indexes
