@@ -35,6 +35,17 @@ jobs:
       - name: Install dependencies
         run: composer install --no-progress --no-interaction
 
+      # ---- PSR-4 autoload compliance (case-exact paths) ------------------
+      # Windows dev machines resolve autoload paths case-insensitively, but this
+      # runner (and production) does not. A directory whose casing differs from
+      # its namespace - e.g. Database\Seeders\* living in
+      # backend/database/seeders/ - makes Composer skip the class ("does not
+      # comply with psr-4 autoloading standard ... Skipping") and every consumer
+      # then dies with a bare "Class not found". --strict-psr turns that into a
+      # loud, named failure here instead of a confusing runtime error later.
+      - name: PSR-4 autoload compliance (case-exact paths)
+        run: composer dump-autoload --optimize --strict-psr --no-interaction
+
       # ---- BLOCKING GATE 1: PHP syntax validation (Phase 1 / F-01) -------
       # A syntax-invalid PHP file must never reach production.
       - name: PHP syntax check (php -l)
@@ -144,7 +155,7 @@ jobs:
         run: composer install --no-progress --no-interaction
 
       - name: Dump optimized autoloader (CI classmap refresh)
-        run: composer dump-autoload --optimize --no-interaction
+        run: composer dump-autoload --optimize --strict-psr --no-interaction
 
       - name: Wait for MySQL to be ready
         run: |
