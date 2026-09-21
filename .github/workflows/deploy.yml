@@ -143,6 +143,21 @@ jobs:
       - name: Install dependencies
         run: composer install --no-progress --no-interaction
 
+      - name: Dump optimized autoloader (CI classmap refresh)
+        run: composer dump-autoload --optimize --no-interaction
+
+      - name: Wait for MySQL to be ready
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -u root -proot --silent 2>/dev/null; then
+              echo "MySQL is ready"
+              break
+            fi
+            echo "Waiting for MySQL... ($i/30)"
+            sleep 2
+            if [ "$i" = "30" ]; then echo "MySQL never became ready" >&2; exit 1; fi
+          done
+
       # ---- Run database migrations to create tables --------------------
       - name: Prepare storage dirs
         run: mkdir -p backend/storage/logs backend/storage/cache backend/storage/backups
@@ -157,14 +172,11 @@ jobs:
           DB_PORT: 3306
 
       # ---- Run security permission seeder (grants catalog modules to hr_manager) ----
+      # Uses backend/database/seed.php (dedicated runner with proper error
+      # reporting) instead of an inline `php -r` one-liner, whose YAML/bash/PHP
+      # triple-quoting is fragile and swallows the real error.
       - name: Run SecurityPermissionsSeeder
-        run: |
-          php -r "
-            require 'backend/bootstrap.php';
-            \$seeder = new Database\Seeders\SecurityPermissionsSeeder();
-            \$seeder->run();
-            echo 'SecurityPermissionsSeeder completed successfully\n';
-          "
+        run: php backend/database/seed.php SecurityPermissionsSeeder
         env:
           DB_DATABASE: muwasco
           DB_USERNAME: root
