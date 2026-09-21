@@ -17,7 +17,10 @@ export const attendanceService = {
     return response.data;
   },
 
-  update: async (id: number, data: Partial<AttendanceFormData>): Promise<ApiResponse<Attendance>> => {
+  update: async (
+    id: number,
+    data: Partial<AttendanceFormData>,
+  ): Promise<ApiResponse<Attendance>> => {
     const response = await apiClient.put<ApiResponse<Attendance>>(`/attendance/${id}`, data);
     return response.data;
   },
@@ -33,12 +36,19 @@ export const attendanceService = {
   },
 
   getByEmployee: async (employeeId: number): Promise<ApiResponse<Attendance[]>> => {
-    const response = await apiClient.get<ApiResponse<Attendance[]>>(`/attendance/employee/${employeeId}`);
+    const response = await apiClient.get<ApiResponse<Attendance[]>>(
+      `/attendance/employee/${employeeId}`,
+    );
     return response.data;
   },
 
-  getDashboard: async (): Promise<ApiResponse<{ present: number; absent: number; late: number; total: number }>> => {
-    const response = await apiClient.get<ApiResponse<{ present: number; absent: number; late: number; total: number }>>('/attendance/dashboard');
+  getDashboard: async (): Promise<
+    ApiResponse<{ present: number; absent: number; late: number; total: number }>
+  > => {
+    const response =
+      await apiClient.get<
+        ApiResponse<{ present: number; absent: number; late: number; total: number }>
+      >('/attendance/dashboard');
     return response.data;
   },
 };

@@ -8,7 +8,9 @@ export const dashboardService = {
   },
 
   getAttendanceChart: async (period?: string): Promise<ApiResponse<ChartData>> => {
-    const response = await apiClient.get<ApiResponse<ChartData>>('/dashboard/charts/attendance', { params: { period } });
+    const response = await apiClient.get<ApiResponse<ChartData>>('/dashboard/charts/attendance', {
+      params: { period },
+    });
     return response.data;
   },
 

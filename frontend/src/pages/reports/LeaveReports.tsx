@@ -1,44 +1,67 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-} from 'recharts'
-import { useSearchParams } from 'react-router-dom'
-import toast from 'react-hot-toast'
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
+import { useSearchParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import {
-  CalendarRange, RefreshCw, Download, ChevronLeft, ChevronRight,
-  FileText, Users, CheckCircle2, Clock, XCircle, CalendarDays, Filter, Search,
-  Loader2, Sparkles,
-} from 'lucide-react'
-import Card from '../../components/ui/Card'
-import Button from '../../components/ui/Button'
-import Badge from '../../components/ui/Badge'
-import leaveReportService from '../../api/services/leaveReportService'
+  CalendarRange,
+  RefreshCw,
+  Download,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Users,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  CalendarDays,
+  Filter,
+  Search,
+  Loader2,
+  Sparkles,
+} from 'lucide-react';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Badge from '../../components/ui/Badge';
+import leaveReportService from '../../api/services/leaveReportService';
 
 // ---- Types -----------------------------------------------------------------
 type Filters = {
-  date_basis: 'applied_at' | 'start_date' | 'end_date'
-  from: string
-  to: string
-  department_id: string
-  leave_type_id: string
-  financial_year_id: string
-  status: string
-  search: string
-}
+  date_basis: 'applied_at' | 'start_date' | 'end_date';
+  from: string;
+  to: string;
+  department_id: string;
+  leave_type_id: string;
+  financial_year_id: string;
+  status: string;
+  search: string;
+};
 
 type Kpi = {
-  total_applications: number
-  total_days: number
-  avg_duration: number
-  approved: number
-  pending: number
-  rejected: number
-  cancelled: number
-  invalidated: number
-  approved_pct: number
-  rejected_pct: number
-}
+  total_applications: number;
+  total_days: number;
+  avg_duration: number;
+  approved: number;
+  pending: number;
+  rejected: number;
+  cancelled: number;
+  invalidated: number;
+  approved_pct: number;
+  rejected_pct: number;
+};
 
 const STATUS_LABELS: Record<string, string> = {
   approved: 'Approved',
@@ -46,7 +69,7 @@ const STATUS_LABELS: Record<string, string> = {
   rejected: 'Rejected',
   cancelled: 'Cancelled',
   invalidated: 'Invalidated',
-}
+};
 
 const STATUS_COLORS: Record<string, string> = {
   approved: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
@@ -54,126 +77,126 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
   cancelled: 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300',
   invalidated: 'bg-gray-200 text-gray-700 dark:bg-slate-700 dark:text-gray-300',
-}
+};
 
-const PIE_COLORS = ['#3b82f6', '#f59e0b', '#ef4444', '#6b7280', '#8b5cf6']
+const PIE_COLORS = ['#3b82f6', '#f59e0b', '#ef4444', '#6b7280', '#8b5cf6'];
 
 // ---- Helpers ---------------------------------------------------------------
 const toISODate = (d: Date): string => {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
-const today = (): string => toISODate(new Date())
+const today = (): string => toISODate(new Date());
 
 /** Financial year period for a given date (July → June). Returns {start,end}. */
 const currentFinancialYear = (): { start: string; end: string } => {
-  const now = new Date()
-  const year = now.getFullYear()
-  const startYear = now.getMonth() >= 6 ? year : year - 1
+  const now = new Date();
+  const year = now.getFullYear();
+  const startYear = now.getMonth() >= 6 ? year : year - 1;
   return {
     start: `${startYear}-07-01`,
     end: `${startYear + 1}-06-30`,
-  }
-}
+  };
+};
 
 /** Resolve a quick period preset to a {from,to} date range. */
 const quickRange = (key: string): { from: string; to: string } | null => {
-  const now = new Date()
-  const startOf = (y: number, m: number) => toISODate(new Date(y, m, 1))
+  const now = new Date();
+  const startOf = (y: number, m: number) => toISODate(new Date(y, m, 1));
   const startOfWeek = (d: Date): Date => {
-    const day = (d.getDay() + 6) % 7 // Monday-first
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - day)
-  }
+    const day = (d.getDay() + 6) % 7; // Monday-first
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - day);
+  };
   switch (key) {
     case 'today':
-      return { from: today(), to: today() }
+      return { from: today(), to: today() };
     case 'week':
-      return { from: toISODate(startOfWeek(now)), to: today() }
+      return { from: toISODate(startOfWeek(now)), to: today() };
     case 'month':
-      return { from: startOf(now.getFullYear(), now.getMonth()), to: today() }
+      return { from: startOf(now.getFullYear(), now.getMonth()), to: today() };
     case 'last_month': {
-      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       return {
         from: toISODate(first),
         to: toISODate(new Date(now.getFullYear(), now.getMonth(), 0)),
-      }
+      };
     }
     case 'quarter': {
-      const q = Math.floor(now.getMonth() / 3)
-      const qStart = new Date(now.getFullYear(), q * 3, 1)
-      return { from: toISODate(qStart), to: today() }
+      const q = Math.floor(now.getMonth() / 3);
+      const qStart = new Date(now.getFullYear(), q * 3, 1);
+      return { from: toISODate(qStart), to: today() };
     }
     case 'year':
-      return { from: `${now.getFullYear()}-01-01`, to: today() }
+      return { from: `${now.getFullYear()}-01-01`, to: today() };
     case 'fy': {
-      const fy = endFinancialYear()
-      return { from: fy.start, to: today() }
+      const fy = endFinancialYear();
+      return { from: fy.start, to: today() };
     }
     default:
-      return null
+      return null;
   }
-}
+};
 
 const endFinancialYear = (): { start: string; end: string } => {
-  const now = new Date()
-  const year = now.getFullYear()
-  const startYear = now.getMonth() >= 6 ? year : year - 1
-  return { start: `${startYear}-07-01`, end: `${startYear + 1}-06-30` }
-}
+  const now = new Date();
+  const year = now.getFullYear();
+  const startYear = now.getMonth() >= 6 ? year : year - 1;
+  return { start: `${startYear}-07-01`, end: `${startYear + 1}-06-30` };
+};
 
 const formatDateLabel = (value: string): string => {
-  if (!value) return value
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return value
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-}
+  if (!value) return value;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
 
 const monthLabel = (value: string): string => {
-  if (!value || value.length < 7) return value
-  const [y, m] = value.split('-')
-  const d = new Date(Number(y), Number(m) - 1, 1)
-  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-}
+  if (!value || value.length < 7) return value;
+  const [y, m] = value.split('-');
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+};
 
 /** Format a trend label according to the chosen grouping. */
 const labelString = (grouping: string, value: string): string => {
-  if (!value) return value
-  if (grouping === 'monthly') return monthLabel(value)
-  return formatDateLabel(value)
-}
+  if (!value) return value;
+  if (grouping === 'monthly') return monthLabel(value);
+  return formatDateLabel(value);
+};
 
 /** Trigger a browser download for a blob returned by the API. */
 const downloadBlob = (blob: Blob, filename: string): void => {
-  const url = window.URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  window.URL.revokeObjectURL(url)
-}
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(url);
+};
 
-const PER_PAGE = 15
+const PER_PAGE = 15;
 
 // ---- Stat card -------------------------------------------------------------
 const StatCard = ({ title, value, icon: Icon, subtitle, accent = 'default' }: any) => (
   <Card className="p-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-          {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
-        </div>
-        <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${accent}`}>
-          <Icon className="h-5 w-5" />
-        </div>
+    <div className="flex items-start justify-between">
+      <div>
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
+        <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+        {subtitle && <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{subtitle}</p>}
       </div>
-    </Card>
-)
+      <div className={`h-10 w-10 rounded-lg flex items-center justify-center ${accent}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+    </div>
+  </Card>
+);
 
 // ---- Filter panel ----------------------------------------------------------
 const QUICK_PRESETS = [
@@ -184,24 +207,20 @@ const QUICK_PRESETS = [
   { key: 'quarter', label: 'This Quarter' },
   { key: 'year', label: 'This Year' },
   { key: 'fy', label: 'Financial Year' },
-]
+];
 
-const FilterPanel = ({
-  filters, options, onChange, onReset, onQuick, activeCount,
-}: any) => {
+const FilterPanel = ({ filters, options, onChange, onReset, onQuick, activeCount }: any) => {
   const basisOptions = [
     { value: 'applied_at', label: 'Application Date' },
     { value: 'start_date', label: 'Leave Start Date' },
     { value: 'end_date', label: 'Leave End Date' },
-  ]
+  ];
   return (
     <Card className="p-4">
       <div className="flex items-center gap-2 mb-3">
         <Filter className="h-4 w-4 text-gray-400" />
         <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200">Filters</h3>
-        {activeCount > 0 && (
-          <Badge className="ml-1">{activeCount} active</Badge>
-        )}
+        {activeCount > 0 && <Badge className="ml-1">{activeCount} active</Badge>}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -216,26 +235,44 @@ const FilterPanel = ({
             className="input"
           >
             {basisOptions.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
             ))}
           </select>
         </div>
 
         {/* From */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">From Date</label>
-          <input type="date" value={filters.from} onChange={(e) => onChange({ from: e.target.value })} className="input" />
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            From Date
+          </label>
+          <input
+            type="date"
+            value={filters.from}
+            onChange={(e) => onChange({ from: e.target.value })}
+            className="input"
+          />
         </div>
 
         {/* To */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">To Date</label>
-          <input type="date" value={filters.to} onChange={(e) => onChange({ to: e.target.value })} className="input" />
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            To Date
+          </label>
+          <input
+            type="date"
+            value={filters.to}
+            onChange={(e) => onChange({ to: e.target.value })}
+            className="input"
+          />
         </div>
 
         {/* Financial year */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Financial Year</label>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Financial Year
+          </label>
           <select
             value={filters.financial_year_id}
             onChange={(e) => onChange({ financial_year_id: e.target.value })}
@@ -243,14 +280,18 @@ const FilterPanel = ({
           >
             <option value="">All Years</option>
             {(options?.financial_years || []).map((fy: any) => (
-              <option key={fy.id} value={fy.id}>{fy.year_name}</option>
+              <option key={fy.id} value={fy.id}>
+                {fy.year_name}
+              </option>
             ))}
           </select>
         </div>
 
         {/* Department */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Department</label>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Department
+          </label>
           <select
             value={filters.department_id}
             onChange={(e) => onChange({ department_id: e.target.value })}
@@ -258,14 +299,18 @@ const FilterPanel = ({
           >
             <option value="">All Departments</option>
             {(options?.departments || []).map((d: any) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
             ))}
           </select>
         </div>
 
         {/* Leave type */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Leave Type</label>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Leave Type
+          </label>
           <select
             value={filters.leave_type_id}
             onChange={(e) => onChange({ leave_type_id: e.target.value })}
@@ -273,14 +318,18 @@ const FilterPanel = ({
           >
             <option value="">All Leave Types</option>
             {(options?.leave_types || []).map((t: any) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
             ))}
           </select>
         </div>
 
         {/* Status */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Status</label>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Status
+          </label>
           <select
             value={filters.status}
             onChange={(e) => onChange({ status: e.target.value })}
@@ -288,14 +337,18 @@ const FilterPanel = ({
           >
             <option value="">All Statuses</option>
             {(options?.statuses || []).map((s: string) => (
-              <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>
+              <option key={s} value={s}>
+                {STATUS_LABELS[s] || s}
+              </option>
             ))}
           </select>
         </div>
 
         {/* Search */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Search</label>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Search
+          </label>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
@@ -329,31 +382,36 @@ const FilterPanel = ({
         </div>
       </div>
     </Card>
-  )
-}
+  );
+};
 
 // ---- Main component --------------------------------------------------------
 const LeaveReports = () => {
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [options, setOptions] = useState<any>(null)
-  const [summary, setSummary] = useState<Kpi | null>(null)
-  const [trends, setTrends] = useState<any>({ grouping: 'monthly', points: [] })
-  const [byType, setByType] = useState<any[]>([])
-  const [byDept, setByDept] = useState<any[]>([])
-  const [byStatus, setByStatus] = useState<any[]>([])
-  const [duration, setDuration] = useState<any[]>([])
-  const [insights, setInsights] = useState<string[]>([])
+  const [options, setOptions] = useState<any>(null);
+  const [summary, setSummary] = useState<Kpi | null>(null);
+  const [trends, setTrends] = useState<any>({ grouping: 'monthly', points: [] });
+  const [byType, setByType] = useState<any[]>([]);
+  const [byDept, setByDept] = useState<any[]>([]);
+  const [byStatus, setByStatus] = useState<any[]>([]);
+  const [duration, setDuration] = useState<any[]>([]);
+  const [insights, setInsights] = useState<string[]>([]);
 
-  const [records, setRecords] = useState<any[]>([])
-  const [pagination, setPagination] = useState({ total: 0, page: 1, per_page: PER_PAGE, last_page: 1 })
+  const [records, setRecords] = useState<any[]>([]);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    per_page: PER_PAGE,
+    last_page: 1,
+  });
 
-  const [loading, setLoading] = useState(true)
-  const [loadingRecords, setLoadingRecords] = useState(false)
-  const [exporting, setExporting] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true);
+  const [loadingRecords, setLoadingRecords] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState('');
 
-  const fy = useMemo(() => currentFinancialYear(), [])
+  const fy = useMemo(() => currentFinancialYear(), []);
 
   // Initial filters from URL query params (deep-linkable / persisted).
   const [filters, setFilters] = useState<Filters>(() => ({
@@ -365,36 +423,39 @@ const LeaveReports = () => {
     financial_year_id: searchParams.get('financial_year_id') || '',
     status: searchParams.get('status') || '',
     search: searchParams.get('search') || '',
-  }))
-  const [page, setPage] = useState(1)
-  const debounceRef = useRef<any>(null)
+  }));
+  const [page, setPage] = useState(1);
+  const debounceRef = useRef<any>(null);
 
   // Sync filters to the URL query string.
-  const updateUrl = useCallback((next: Filters) => {
-    const params: Record<string, string> = {}
-    if (next.date_basis) params.date_basis = next.date_basis
-    if (next.from) params.from = next.from
-    if (next.to) params.to = next.to
-    if (next.department_id) params.department_id = next.department_id
-    if (next.leave_type_id) params.leave_type_id = next.leave_type_id
-    if (next.financial_year_id) params.financial_year_id = next.financial_year_id
-    if (next.status) params.status = next.status
-    if (next.search) params.search = next.search
-    setSearchParams(params, { replace: true })
-  }, [setSearchParams])
+  const updateUrl = useCallback(
+    (next: Filters) => {
+      const params: Record<string, string> = {};
+      if (next.date_basis) params.date_basis = next.date_basis;
+      if (next.from) params.from = next.from;
+      if (next.to) params.to = next.to;
+      if (next.department_id) params.department_id = next.department_id;
+      if (next.leave_type_id) params.leave_type_id = next.leave_type_id;
+      if (next.financial_year_id) params.financial_year_id = next.financial_year_id;
+      if (next.status) params.status = next.status;
+      if (next.search) params.search = next.search;
+      setSearchParams(params, { replace: true });
+    },
+    [setSearchParams],
+  );
 
   const queryParams = useCallback((f: Filters, extra: Record<string, any> = {}) => {
-    const p: Record<string, any> = { ...extra }
-    if (f.date_basis) p.date_basis = f.date_basis
-    if (f.from) p.from = f.from
-    if (f.to) p.to = f.to
-    if (f.department_id) p.department_id = f.department_id
-    if (f.leave_type_id) p.leave_type_id = f.leave_type_id
-    if (f.financial_year_id) p.financial_year_id = f.financial_year_id
-    if (f.status) p.status = f.status
-    if (f.search) p.search = f.search
-    return p
-  }, [])
+    const p: Record<string, any> = { ...extra };
+    if (f.date_basis) p.date_basis = f.date_basis;
+    if (f.from) p.from = f.from;
+    if (f.to) p.to = f.to;
+    if (f.department_id) p.department_id = f.department_id;
+    if (f.leave_type_id) p.leave_type_id = f.leave_type_id;
+    if (f.financial_year_id) p.financial_year_id = f.financial_year_id;
+    if (f.status) p.status = f.status;
+    if (f.search) p.search = f.search;
+    return p;
+  }, []);
 
   // Load filter options once.
   useEffect(() => {
@@ -402,16 +463,16 @@ const LeaveReports = () => {
       .options()
       .then(setOptions)
       .catch((err) => {
-        console.error('Failed to load report options', err)
-      })
-  }, [])
+        console.error('Failed to load report options', err);
+      });
+  }, []);
 
   // Load analytics whenever filters change.
   useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError('')
-    const params = queryParams(filters)
+    let cancelled = false;
+    setLoading(true);
+    setError('');
+    const params = queryParams(filters);
 
     const loadAll = async () => {
       try {
@@ -423,86 +484,93 @@ const LeaveReports = () => {
           leaveReportService.byStatus(params),
           leaveReportService.duration(params),
           leaveReportService.insights(params),
-        ])
-        if (cancelled) return
-        setSummary(sum)
-        setTrends(tr || { points: [] })
-        setByType(tp || [])
-        setByDept(dp || [])
-        setByStatus(st || [])
-        setDuration(dr || [])
-        setInsights(Array.isArray(ins) ? ins : [])
+        ]);
+        if (cancelled) return;
+        setSummary(sum);
+        setTrends(tr || { points: [] });
+        setByType(tp || []);
+        setByDept(dp || []);
+        setByStatus(st || []);
+        setDuration(dr || []);
+        setInsights(Array.isArray(ins) ? ins : []);
       } catch (err: any) {
-        if (!cancelled) setError(err?.response?.data?.message || 'Failed to load leave report analytics.')
+        if (!cancelled)
+          setError(err?.response?.data?.message || 'Failed to load leave report analytics.');
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled) setLoading(false);
       }
-    }
-    loadAll()
+    };
+    loadAll();
     return () => {
-      cancelled = true
-    }
-  }, [filters, queryParams])
+      cancelled = true;
+    };
+  }, [filters, queryParams]);
 
   // Load detail records (page-dependent).
   useEffect(() => {
-    let cancelled = false
-    setLoadingRecords(true)
-    const params = queryParams(filters, { page, per_page: PER_PAGE })
+    let cancelled = false;
+    setLoadingRecords(true);
+    const params = queryParams(filters, { page, per_page: PER_PAGE });
     leaveReportService
       .records(params)
       .then((data) => {
-        if (cancelled) return
-        setRecords(data?.items || [])
+        if (cancelled) return;
+        setRecords(data?.items || []);
         setPagination({
           total: data?.total || 0,
           page: data?.page || 1,
           per_page: data?.per_page || PER_PAGE,
           last_page: data?.last_page || 1,
-        })
+        });
       })
       .catch((err) => {
-        if (!cancelled) console.error('Failed to load leave records', err)
+        if (!cancelled) console.error('Failed to load leave records', err);
       })
       .finally(() => {
-        if (!cancelled) setLoadingRecords(false)
-      })
+        if (!cancelled) setLoadingRecords(false);
+      });
     return () => {
-      cancelled = true
-    }
-  }, [filters, page, queryParams])
+      cancelled = true;
+    };
+  }, [filters, page, queryParams]);
 
-  const applyFilters = useCallback((patch: Partial<Filters>) => {
-    setFilters((prev) => {
-      const next = { ...prev, ...patch }
-      // Debounce the free-text search so we don't re-query on every keystroke.
-      if ('search' in patch) {
-        if (debounceRef.current) clearTimeout(debounceRef.current)
-        debounceRef.current = setTimeout(() => {
-          setFilters((cur) => {
-            const merged = { ...cur, search: patch.search ?? '' }
-            updateUrl(merged)
-            return merged
-          })
-        }, 400)
-        return prev
-      }
-      updateUrl(next)
-      setPage(1)
-      return next
-    })
-  }, [updateUrl])
+  const applyFilters = useCallback(
+    (patch: Partial<Filters>) => {
+      setFilters((prev) => {
+        const next = { ...prev, ...patch };
+        // Debounce the free-text search so we don't re-query on every keystroke.
+        if ('search' in patch) {
+          if (debounceRef.current) clearTimeout(debounceRef.current);
+          debounceRef.current = setTimeout(() => {
+            setFilters((cur) => {
+              const merged = { ...cur, search: patch.search ?? '' };
+              updateUrl(merged);
+              return merged;
+            });
+          }, 400);
+          return prev;
+        }
+        updateUrl(next);
+        setPage(1);
+        return next;
+      });
+    },
+    [updateUrl],
+  );
 
-  const onQuick = useCallback((key: string) => {
-    const range = quickRange(key)
-    if (!range) return
-    setFilters((prev) => {
-      const next = { ...prev, from: range.from, to: range.to }
-      updateUrl(next)
-      setPage(1)
-      return next
-    })
-  }, [updateUrl])
+  const onQuick = useCallback(
+    (key: string) => {
+      const range = quickRange(key);
+      if (!range) return;
+      setFilters((prev) => {
+        const next = { ...prev, from: range.from, to: range.to };
+        updateUrl(next);
+        setPage(1);
+        return next;
+      });
+    },
+    [updateUrl],
+  );
 
   const resetFilters = useCallback(() => {
     const next: Filters = {
@@ -514,108 +582,121 @@ const LeaveReports = () => {
       financial_year_id: '',
       status: '',
       search: '',
-    }
-    setFilters(next)
-    updateUrl(next)
-    setPage(1)
-  }, [fy, updateUrl])
+    };
+    setFilters(next);
+    updateUrl(next);
+    setPage(1);
+  }, [fy, updateUrl]);
 
   const activeFilterCount = useMemo(() => {
-    let c = 0
-    const f = filters
-    if (f.date_basis !== 'start_date') c++
-    if (f.from || f.to) c++
-    if (f.department_id) c++
-    if (f.leave_type_id) c++
-    if (f.financial_year_id) c++
-    if (f.status) c++
-    if (f.search) c++
-    return c
-  }, [filters])
+    let c = 0;
+    const f = filters;
+    if (f.date_basis !== 'start_date') c++;
+    if (f.from || f.to) c++;
+    if (f.department_id) c++;
+    if (f.leave_type_id) c++;
+    if (f.financial_year_id) c++;
+    if (f.status) c++;
+    if (f.search) c++;
+    return c;
+  }, [filters]);
 
   const handleExport = useCallback(async () => {
-    setExporting(true)
+    setExporting(true);
     try {
-      const blob = await leaveReportService.exportCsv(queryParams(filters))
-      const filename = `leave_report_${today()}.csv`
-      downloadBlob(blob, filename)
-      toast.success('Leave report exported')
+      const blob = await leaveReportService.exportCsv(queryParams(filters));
+      const filename = `leave_report_${today()}.csv`;
+      downloadBlob(blob, filename);
+      toast.success('Leave report exported');
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Export failed. You may not have export permission.'
-      toast.error(msg)
+      const msg =
+        err?.response?.data?.message || 'Export failed. You may not have export permission.';
+      toast.error(msg);
     } finally {
-      setExporting(false)
+      setExporting(false);
     }
-  }, [filters, queryParams])
+  }, [filters, queryParams]);
 
   const trendData = useMemo(() => {
-    const points = Array.isArray(trends?.points) ? trends.points : []
+    const points = Array.isArray(trends?.points) ? trends.points : [];
     return points.map((p: any) => ({
       ...p,
-      label: (trends.grouping === 'monthly' || String(p.label).length >= 10) ? labelString(trends.grouping, p.label) : p.label,
-    }))
-  }, [trends])
+      label:
+        trends.grouping === 'monthly' || String(p.label).length >= 10
+          ? labelString(trends.grouping, p.label)
+          : p.label,
+    }));
+  }, [trends]);
 
   const statusData = useMemo(() => {
     return (byStatus || []).map((s: any) => ({
       name: STATUS_LABELS[s.status] || s.status,
       value: s.count,
-    }))
-  }, [byStatus])
+    }));
+  }, [byStatus]);
 
   const deptChartData = useMemo(() => {
     return (byDept || []).slice(0, 12).map((d: any) => ({
       name: d.department,
       Applications: d.count,
       'Leave Days': d.days,
-    }))
-  }, [byDept])
+    }));
+  }, [byDept]);
 
-  const durationData = useMemo(() => (duration || []), [duration])
+  const durationData = useMemo(() => duration || [], [duration]);
 
-  const tableColumns = useMemo(() => [
-    {
-      key: 'employee_name',
-      label: 'Employee',
-      render: (_: any, row: any) => (
-        <div>
-          <div className="font-medium text-gray-900 dark:text-gray-100">{row.employee_name}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">{row.employee_number}</div>
-        </div>
-      ),
-    },
-    { key: 'department', label: 'Department' },
-    { key: 'leave_type', label: 'Leave Type' },
-    { key: 'applied_at', label: 'Applied', render: (v: any) => v ? formatDateLabel(v) : '—' },
-    { key: 'start_date', label: 'Start', render: (v: any) => v ? formatDateLabel(v) : '—' },
-    { key: 'end_date', label: 'End', render: (v: any) => v ? formatDateLabel(v) : '—' },
-    { key: 'days', label: 'Days' },
-    {
-      key: 'status',
-      label: 'Status',
-      render: (v: any) => (
-        <Badge className={STATUS_COLORS[v] || 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300'}>
-          {STATUS_LABELS[v] || v}
-        </Badge>
-      ),
-    },
-  ], [])
+  const tableColumns = useMemo(
+    () => [
+      {
+        key: 'employee_name',
+        label: 'Employee',
+        render: (_: any, row: any) => (
+          <div>
+            <div className="font-medium text-gray-900 dark:text-gray-100">{row.employee_name}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">{row.employee_number}</div>
+          </div>
+        ),
+      },
+      { key: 'department', label: 'Department' },
+      { key: 'leave_type', label: 'Leave Type' },
+      { key: 'applied_at', label: 'Applied', render: (v: any) => (v ? formatDateLabel(v) : '—') },
+      { key: 'start_date', label: 'Start', render: (v: any) => (v ? formatDateLabel(v) : '—') },
+      { key: 'end_date', label: 'End', render: (v: any) => (v ? formatDateLabel(v) : '—') },
+      { key: 'days', label: 'Days' },
+      {
+        key: 'status',
+        label: 'Status',
+        render: (v: any) => (
+          <Badge
+            className={
+              STATUS_COLORS[v] || 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300'
+            }
+          >
+            {STATUS_LABELS[v] || v}
+          </Badge>
+        ),
+      },
+    ],
+    [],
+  );
 
   const reportPeriodLabel = useMemo(() => {
     if (filters.from && filters.to) {
-      return `${new Date(filters.from).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} – ${new Date(filters.to).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+      return `${new Date(filters.from).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} – ${new Date(filters.to).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
     }
-    return 'All dates'
-  }, [filters])
+    return 'All dates';
+  }, [filters]);
 
-  const emptyState = summary !== null && summary.total_applications === 0
+  const emptyState = summary !== null && summary.total_applications === 0;
 
   // ---- Charts --------------------------------------------------------------
   const renderCharts = !loading && !emptyState && (
     <div className="space-y-6">
       <Card title="Leave Applications Trend" subtitle={`Grouped ${trends.grouping}`}>
         {trendData.length === 0 ? (
-          <p className="text-center text-sm text-gray-400 py-8">No application data in this range.</p>
+          <p className="text-center text-sm text-gray-400 py-8">
+            No application data in this range.
+          </p>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={trendData}>
@@ -629,7 +710,13 @@ const LeaveReports = () => {
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
               <Tooltip />
-              <Area type="monotone" dataKey="count" name="Applications" stroke="#3b82f6" fill="url(#trendFill)" />
+              <Area
+                type="monotone"
+                dataKey="count"
+                name="Applications"
+                stroke="#3b82f6"
+                fill="url(#trendFill)"
+              />
             </AreaChart>
           </ResponsiveContainer>
         )}
@@ -644,7 +731,14 @@ const LeaveReports = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={byType}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="leave_type" tick={{ fontSize: 11 }} interval={0} angle={-20} textAnchor="end" height={60} />
+                  <XAxis
+                    dataKey="leave_type"
+                    tick={{ fontSize: 11 }}
+                    interval={0}
+                    angle={-20}
+                    textAnchor="end"
+                    height={60}
+                  />
                   <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
                   <Tooltip />
                   <Bar dataKey="count" name="Applications" fill="#3b82f6" radius={[4, 4, 0, 0]} />
@@ -661,7 +755,15 @@ const LeaveReports = () => {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={statusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                  <Pie
+                    data={statusData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    label
+                  >
                     {statusData.map((_, i) => (
                       <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                     ))}
@@ -713,17 +815,21 @@ const LeaveReports = () => {
         </div>
       </Card>
     </div>
-  )
+  );
 
   // ---- Detailed table ------------------------------------------------------
   const renderTable = (
     <Card title="Detailed Leave Report" subtitle={`${pagination.total} record(s)`}>
       {loadingRecords ? (
-        <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
+        <div className="flex justify-center py-10">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        </div>
       ) : records.length === 0 ? (
         <div className="py-12 text-center">
           <p className="text-gray-500 dark:text-gray-400 font-medium">No leave records found</p>
-          <p className="text-sm text-gray-400 mt-1">Try adjusting your filters or selecting a different reporting period.</p>
+          <p className="text-sm text-gray-400 mt-1">
+            Try adjusting your filters or selecting a different reporting period.
+          </p>
         </div>
       ) : (
         <>
@@ -732,7 +838,12 @@ const LeaveReports = () => {
               <thead className="bg-gray-50 dark:bg-slate-900">
                 <tr>
                   {tableColumns.map((c) => (
-                    <th key={c.key} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{c.label}</th>
+                    <th
+                      key={c.key}
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                    >
+                      {c.label}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -740,7 +851,10 @@ const LeaveReports = () => {
                 {records.map((row) => (
                   <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
                     {tableColumns.map((c) => (
-                      <td key={c.key} className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
+                      <td
+                        key={c.key}
+                        className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100"
+                      >
                         {c.render ? c.render(row[c.key], row) : row[c.key]}
                       </td>
                     ))}
@@ -755,10 +869,20 @@ const LeaveReports = () => {
                 Page {pagination.page} of {pagination.last_page} · {pagination.total} records
               </p>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="outline" size="sm" disabled={page >= pagination.last_page} onClick={() => setPage((p) => Math.min(pagination.last_page, p + 1))}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= pagination.last_page}
+                  onClick={() => setPage((p) => Math.min(pagination.last_page, p + 1))}
+                >
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -767,7 +891,7 @@ const LeaveReports = () => {
         </>
       )}
     </Card>
-  )
+  );
 
   return (
     <div className="space-y-6">
@@ -775,7 +899,9 @@ const LeaveReports = () => {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Leave Reports</h1>
-          <p className="text-gray-500 dark:text-gray-400">Analyze employee leave patterns, applications, approvals and leave trends.</p>
+          <p className="text-gray-500 dark:text-gray-400">
+            Analyze employee leave patterns, applications, approvals and leave trends.
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <span className="inline-flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md px-3 py-2">
@@ -819,12 +945,45 @@ const LeaveReports = () => {
         </div>
       ) : summary ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          <StatCard title="Total Applications" value={summary.total_applications} icon={FileText} accent="default" />
-          <StatCard title="Approved" value={`${summary.approved}`} icon={CheckCircle2} accent="success" subtitle={`${summary.approved_pct}%`} />
-          <StatCard title="Pending" value={summary.pending} icon={Clock} accent="warning" subtitle="Requires action" />
-          <StatCard title="Rejected" value={summary.rejected} icon={XCircle} accent="danger" subtitle={`${summary.rejected_pct}%`} />
-          <StatCard title="Total Leave Days" value={summary.total_days} icon={CalendarDays} accent="info" />
-          <StatCard title="Avg Duration" value={`${summary.avg_duration} Days`} icon={Users} accent="default" />
+          <StatCard
+            title="Total Applications"
+            value={summary.total_applications}
+            icon={FileText}
+            accent="default"
+          />
+          <StatCard
+            title="Approved"
+            value={`${summary.approved}`}
+            icon={CheckCircle2}
+            accent="success"
+            subtitle={`${summary.approved_pct}%`}
+          />
+          <StatCard
+            title="Pending"
+            value={summary.pending}
+            icon={Clock}
+            accent="warning"
+            subtitle="Requires action"
+          />
+          <StatCard
+            title="Rejected"
+            value={summary.rejected}
+            icon={XCircle}
+            accent="danger"
+            subtitle={`${summary.rejected_pct}%`}
+          />
+          <StatCard
+            title="Total Leave Days"
+            value={summary.total_days}
+            icon={CalendarDays}
+            accent="info"
+          />
+          <StatCard
+            title="Avg Duration"
+            value={`${summary.avg_duration} Days`}
+            icon={Users}
+            accent="default"
+          />
         </div>
       ) : null}
 
@@ -833,7 +992,10 @@ const LeaveReports = () => {
         <Card title="Leave Insights">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {insights.map((insight, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+              <div
+                key={i}
+                className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200"
+              >
                 <Sparkles className="h-4 w-4 mt-0.5 text-primary-500 shrink-0" />
                 <span>{insight}</span>
               </div>
@@ -850,14 +1012,16 @@ const LeaveReports = () => {
         <Card className="p-10 text-center">
           <FileText className="h-10 w-10 mx-auto text-gray-300 mb-2" />
           <p className="text-gray-700 dark:text-gray-200 font-medium">No leave records found</p>
-          <p className="text-sm text-gray-400 mt-1">Try adjusting your filters or selecting a different reporting period.</p>
+          <p className="text-sm text-gray-400 mt-1">
+            Try adjusting your filters or selecting a different reporting period.
+          </p>
         </Card>
       )}
 
       {/* Detailed table */}
       {!loading && renderTable}
     </div>
-  )
-}
+  );
+};
 
-export default LeaveReports
+export default LeaveReports;

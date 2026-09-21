@@ -9,11 +9,11 @@
  *   2. Falls back to low-accuracy (network-based) if high-accuracy times out
  */
 
-const HIGH_ACCURACY_TIMEOUT = 8000
-const LOW_ACCURACY_TIMEOUT = 10000
-const LAST_RESORT_TIMEOUT = 15000
-const MAXIMUM_AGE = 60000 // Allow cached positions up to 1 minute old
-const STALE_FIX_MAX_AGE = 900000 // Last resort: accept fixes up to 15 min old
+const HIGH_ACCURACY_TIMEOUT = 8000;
+const LOW_ACCURACY_TIMEOUT = 10000;
+const LAST_RESORT_TIMEOUT = 15000;
+const MAXIMUM_AGE = 60000; // Allow cached positions up to 1 minute old
+const STALE_FIX_MAX_AGE = 900000; // Last resort: accept fixes up to 15 min old
 
 /**
  * Escalating acquisition plan tuned for ALL devices. Stage 1 satisfies GPS
@@ -26,7 +26,7 @@ const ACQUISITION_ATTEMPTS = [
   { enableHighAccuracy: true, timeout: HIGH_ACCURACY_TIMEOUT, maximumAge: MAXIMUM_AGE },
   { enableHighAccuracy: false, timeout: LOW_ACCURACY_TIMEOUT, maximumAge: 300000 },
   { enableHighAccuracy: false, timeout: LAST_RESORT_TIMEOUT, maximumAge: STALE_FIX_MAX_AGE },
-]
+];
 
 /**
  * Translate a GeolocationPositionError into a stable reason code plus
@@ -39,21 +39,21 @@ const describeLocationError = (error) => {
         code: 'DENIED',
         message:
           'Location permission denied. Allow location for this site in your browser address bar, then try again.',
-      }
+      };
     case error.POSITION_UNAVAILABLE:
       return {
         code: 'UNAVAILABLE',
         message: 'Your device could not determine its position right now.',
-      }
+      };
     case error.TIMEOUT:
       return {
         code: 'TIMEOUT',
         message: 'No location fix was received in time.',
-      }
+      };
     default:
-      return { code: 'ERROR', message: 'Unable to determine your location.' }
+      return { code: 'ERROR', message: 'Unable to determine your location.' };
   }
-}
+};
 
 /**
  * Request the device location WITHOUT throwing.
@@ -77,17 +77,17 @@ export const requestLocation = () => {
         ok: false,
         code: 'UNSUPPORTED',
         message: 'Geolocation is not supported by this browser',
-      })
-      return
+      });
+      return;
     }
 
-    let settled = false
+    let settled = false;
     const finish = (result) => {
       if (!settled) {
-        settled = true
-        resolve(result)
+        settled = true;
+        resolve(result);
       }
-    }
+    };
 
     const onSuccess = (position) => {
       finish({
@@ -96,41 +96,41 @@ export const requestLocation = () => {
         lng: position.coords.longitude,
         accuracy: position.coords.accuracy,
         timestamp: position.timestamp,
-      })
-    }
+      });
+    };
 
     // Remember why the last attempt failed so the final reason is accurate.
-    let lastReason = { code: 'TIMEOUT', message: 'No location fix was received in time.' }
+    let lastReason = { code: 'TIMEOUT', message: 'No location fix was received in time.' };
 
     const attempt = (index) => {
-      if (settled) return
+      if (settled) return;
 
       if (index >= ACQUISITION_ATTEMPTS.length) {
-        finish({ ok: false, code: lastReason.code, message: lastReason.message })
-        return
+        finish({ ok: false, code: lastReason.code, message: lastReason.message });
+        return;
       }
 
       navigator.geolocation.getCurrentPosition(
         onSuccess,
         (error) => {
-          const info = describeLocationError(error)
+          const info = describeLocationError(error);
 
           // A denied permission will never improve by retrying.
           if (info.code === 'DENIED') {
-            finish({ ok: false, ...info })
-            return
+            finish({ ok: false, ...info });
+            return;
           }
 
-          lastReason = info
-          attempt(index + 1)
+          lastReason = info;
+          attempt(index + 1);
         },
-        ACQUISITION_ATTEMPTS[index]
-      )
-    }
+        ACQUISITION_ATTEMPTS[index],
+      );
+    };
 
-    attempt(0)
-  })
-}
+    attempt(0);
+  });
+};
 
 /**
  * Throwing variant kept for backward compatibility with existing callers.
@@ -138,16 +138,16 @@ export const requestLocation = () => {
  * @returns {Promise<{lat: number, lng: number, accuracy: number, timestamp: number}>}
  */
 export const getCurrentPosition = async () => {
-  const result = await requestLocation()
+  const result = await requestLocation();
   if (!result.ok) {
-    throw new Error(result.message)
+    throw new Error(result.message);
   }
-  return result
-}
+  return result;
+};
 
 /**
  * Check if geolocation is available.
  */
 export const isGeolocationSupported = () => {
-  return typeof navigator !== 'undefined' && !!navigator.geolocation
-}
+  return typeof navigator !== 'undefined' && !!navigator.geolocation;
+};

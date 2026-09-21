@@ -6,7 +6,21 @@ import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
-import { FileText, Download, BarChart3, Users, Search, ChevronLeft, ChevronRight, RefreshCw, Loader2, CalendarDays, UserCheck, UserX, X } from 'lucide-react';
+import {
+  FileText,
+  Download,
+  BarChart3,
+  Users,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Loader2,
+  CalendarDays,
+  UserCheck,
+  UserX,
+  X,
+} from 'lucide-react';
 import { toCsv, downloadCsv, csvFilenameWithDate } from '../../utils/csvUtils';
 import { Link } from 'react-router-dom';
 import type { ElementType } from 'react';
@@ -99,7 +113,15 @@ const monthsFromNow = (months: number): Date => {
 };
 
 // ---- Components ----------------------------------------------------------
-const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, subtitle, variant = 'default', onClick, selected = false }) => {
+const StatCard: React.FC<StatCardProps> = ({
+  title,
+  value,
+  icon: Icon,
+  subtitle,
+  variant = 'default',
+  onClick,
+  selected = false,
+}) => {
   const variantClasses = {
     default: 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700',
     warning: 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30',
@@ -132,9 +154,13 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, subtitle,
         <Icon className={`h-5 w-5 ${iconColor[variant]}`} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">{title}</p>
+        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider truncate">
+          {title}
+        </p>
         <p className="text-2xl font-bold text-gray-900 dark:text-white break-normal">{value}</p>
-        {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{subtitle}</p>}
+        {subtitle && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{subtitle}</p>
+        )}
       </div>
     </button>
   );
@@ -168,7 +194,8 @@ const Reports = () => {
     setError(null);
     try {
       const response = await apiClient.get('/reports/employees');
-      const payload = (response.data as { success?: boolean; data?: ReportData }).data ?? response.data;
+      const payload =
+        (response.data as { success?: boolean; data?: ReportData }).data ?? response.data;
       setData(payload as ReportData);
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Failed to load report data');
@@ -184,7 +211,6 @@ const Reports = () => {
     }
   }, [activeTab, fetchData]);
 
-
   // Derived data ----------------------------------------------------------
   const records = data?.records ?? [];
 
@@ -192,25 +218,27 @@ const Reports = () => {
   // Employees already marked "retired" are excluded - they are outside active
   // retirement planning (HR asked not to fetch them here).
   const nearRetirement = useMemo(
-    () => records.filter((e) => {
-      const a = getAge(e.date_of_birth);
-      if (a === null || a < RETIREMENT_AGE - RETIREMENT_WINDOW_YEARS) return false;
-      return String(e.employee_status ?? '').toLowerCase() !== 'retired';
-    }),
-    [records]
+    () =>
+      records.filter((e) => {
+        const a = getAge(e.date_of_birth);
+        if (a === null || a < RETIREMENT_AGE - RETIREMENT_WINDOW_YEARS) return false;
+        return String(e.employee_status ?? '').toLowerCase() !== 'retired';
+      }),
+    [records],
   );
 
   const atRetirement = useMemo(
     () => nearRetirement.filter((e) => (getAge(e.date_of_birth) ?? 0) >= RETIREMENT_AGE),
-    [nearRetirement]
+    [nearRetirement],
   );
 
   const approachingRetirement = useMemo(
-    () => nearRetirement.filter((e) => {
-      const a = getAge(e.date_of_birth) ?? 0;
-      return a >= RETIREMENT_AGE - RETIREMENT_WINDOW_YEARS && a < RETIREMENT_AGE;
-    }),
-    [nearRetirement]
+    () =>
+      nearRetirement.filter((e) => {
+        const a = getAge(e.date_of_birth) ?? 0;
+        return a >= RETIREMENT_AGE - RETIREMENT_WINDOW_YEARS && a < RETIREMENT_AGE;
+      }),
+    [nearRetirement],
   );
 
   const contractsNearExpiry = useMemo(() => {
@@ -236,9 +264,7 @@ const Reports = () => {
   }, [records]);
 
   const avgAge = useMemo(() => {
-    const ages = records
-      .map((e) => getAge(e.date_of_birth))
-      .filter((a): a is number => a !== null);
+    const ages = records.map((e) => getAge(e.date_of_birth)).filter((a): a is number => a !== null);
     if (ages.length === 0) return null;
     return Math.round((ages.reduce((s, a) => s + a, 0) / ages.length) * 10) / 10;
   }, [records]);
@@ -250,7 +276,8 @@ const Reports = () => {
     const s = search.trim().toLowerCase();
     let base = records;
     if (quickFilter === 'active') base = records.filter((e) => e.employee_status === 'active');
-    else if (quickFilter === 'inactive') base = records.filter((e) => e.employee_status !== 'active');
+    else if (quickFilter === 'inactive')
+      base = records.filter((e) => e.employee_status !== 'active');
     else if (quickFilter === 'nearRetirement') base = nearRetirement;
     else if (quickFilter === 'contractsExpiring') base = contractsNearExpiry;
     else if (quickFilter === 'contractsExpired') base = contractsExpired;
@@ -269,7 +296,17 @@ const Reports = () => {
       const matchesType = typeFilter ? e.employee_type === typeFilter : true;
       return matchesSearch && matchesDept && matchesStatus && matchesType;
     });
-  }, [records, search, deptFilter, statusFilter, typeFilter, quickFilter, nearRetirement, contractsNearExpiry, contractsExpired]);
+  }, [
+    records,
+    search,
+    deptFilter,
+    statusFilter,
+    typeFilter,
+    quickFilter,
+    nearRetirement,
+    contractsNearExpiry,
+    contractsExpired,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PER_PAGE));
   const paginatedRecords = useMemo(() => {
@@ -277,7 +314,9 @@ const Reports = () => {
     return filteredRecords.slice(start, start + PER_PAGE);
   }, [filteredRecords, currentPage]);
 
-  const departments = Array.from(new Set(records.map((e) => e.department_name ?? 'Unassigned'))).sort();
+  const departments = Array.from(
+    new Set(records.map((e) => e.department_name ?? 'Unassigned')),
+  ).sort();
   const statuses = Array.from(new Set(records.map((e) => e.employee_status))).sort();
   const empTypes = Array.from(new Set(records.map((e) => e.employee_type))).sort();
 
@@ -314,7 +353,21 @@ const Reports = () => {
   };
 
   const handleCsvExport = () => {
-    const headers = ['Employee ID', 'Name', 'Email', 'Phone', 'Department', 'Section', 'Designation', 'Employment Type', 'Status', 'DOB', 'Contract Start', 'Contract End', 'Hire Date'];
+    const headers = [
+      'Employee ID',
+      'Name',
+      'Email',
+      'Phone',
+      'Department',
+      'Section',
+      'Designation',
+      'Employment Type',
+      'Status',
+      'DOB',
+      'Contract Start',
+      'Contract End',
+      'Hire Date',
+    ];
     const rows = filteredRecords.map((e) => ({
       'Employee ID': e.employee_id,
       Name: `${e.first_name} ${e.last_name}${e.surname ? ' ' + e.surname : ''}`,
@@ -332,10 +385,9 @@ const Reports = () => {
     }));
     const csv = toCsv(headers, rows);
     downloadCsv(csv, csvFilenameWithDate(`${activeTab}-employees`));
-    };
+  };
 
   // -----------------------------------------------------------------------
-
 
   if (loading) {
     return (
@@ -399,11 +451,26 @@ const Reports = () => {
 
   // Columns
   const nearRetirementColumns = [
-    { key: 'employee', label: 'Employee', render: (_v: any, e: EmployeeRecord) => <span>{employeeName(e)} <span className="text-gray-400">({e.employee_id})</span></span> },
+    {
+      key: 'employee',
+      label: 'Employee',
+      render: (_v: any, e: EmployeeRecord) => (
+        <span>
+          {employeeName(e)} <span className="text-gray-400">({e.employee_id})</span>
+        </span>
+      ),
+    },
     { key: 'department_name', label: 'Department' },
     { key: 'designation', label: 'Designation' },
     { key: 'date_of_birth', label: 'DOB', render: (v: any) => formatISODate(v) },
-    { key: 'age', label: 'Age', render: (_v: any, e: EmployeeRecord) => { const a = getAge(e.date_of_birth); return a !== null ? a : '-'; } },
+    {
+      key: 'age',
+      label: 'Age',
+      render: (_v: any, e: EmployeeRecord) => {
+        const a = getAge(e.date_of_birth);
+        return a !== null ? a : '-';
+      },
+    },
     { key: 'employee_type', label: 'Type' },
     { key: 'employee_status', label: 'Status', render: (v: any) => statusBadge(v) },
     { key: 'contract_end_date', label: 'Contract End', render: (v: any) => formatISODate(v) },
@@ -418,12 +485,24 @@ const Reports = () => {
   ];
 
   const contractColumns = [
-    { key: 'employee', label: 'Employee', render: (_v: any, e: EmployeeRecord) => <span>{employeeName(e)} <span className="text-gray-400">({e.employee_id})</span></span> },
+    {
+      key: 'employee',
+      label: 'Employee',
+      render: (_v: any, e: EmployeeRecord) => (
+        <span>
+          {employeeName(e)} <span className="text-gray-400">({e.employee_id})</span>
+        </span>
+      ),
+    },
     { key: 'department_name', label: 'Department' },
     { key: 'employee_type', label: 'Employment Type', render: (v: any) => v ?? '-' },
     { key: 'contract_start_date', label: 'Contract Start', render: (v: any) => formatISODate(v) },
     { key: 'contract_end_date', label: 'Contract End', render: (v: any) => formatISODate(v) },
-    { key: 'days_remaining', label: 'Days Remaining', render: (_v: any, e: EmployeeRecord) => contractBadge(e) },
+    {
+      key: 'days_remaining',
+      label: 'Days Remaining',
+      render: (_v: any, e: EmployeeRecord) => contractBadge(e),
+    },
   ];
 
   const allEmployeesColumns = [
@@ -432,7 +511,10 @@ const Reports = () => {
       key: 'id',
       label: 'Name',
       render: (_v: any, e: EmployeeRecord) => (
-        <a href={`/employees/${e.id}/profile`} className="font-medium text-gray-900 dark:text-white hover:underline">
+        <a
+          href={`/employees/${e.id}/profile`}
+          className="font-medium text-gray-900 dark:text-white hover:underline"
+        >
           {employeeName(e)}
         </a>
       ),
@@ -521,10 +603,22 @@ const Reports = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <Card title="Summary">
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Total Employees</span><span className="font-medium">{summary.total}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Active</span><span className="font-medium text-green-600">{summary.active}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Inactive</span><span className="font-medium text-red-600">{summary.inactive}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Avg. Age</span><span className="font-medium">{avgAge !== null ? `${avgAge} yrs` : '-'}</span></div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Total Employees</span>
+                <span className="font-medium">{summary.total}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Active</span>
+                <span className="font-medium text-green-600">{summary.active}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Inactive</span>
+                <span className="font-medium text-red-600">{summary.inactive}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Avg. Age</span>
+                <span className="font-medium">{avgAge !== null ? `${avgAge} yrs` : '-'}</span>
+              </div>
             </div>
           </Card>
 
@@ -552,14 +646,20 @@ const Reports = () => {
         </div>
 
         {/* Near Retirement */}
-        <Card title={`Near Retirement (within ${RETIREMENT_WINDOW_YEARS} years of age ${RETIREMENT_AGE})`}>
+        <Card
+          title={`Near Retirement (within ${RETIREMENT_WINDOW_YEARS} years of age ${RETIREMENT_AGE})`}
+        >
           <p className="text-sm text-gray-500 mb-3">
-            {nearRetirement.length} employee(s) are within {RETIREMENT_WINDOW_YEARS} years of retirement (retired employees excluded).
+            {nearRetirement.length} employee(s) are within {RETIREMENT_WINDOW_YEARS} years of
+            retirement (retired employees excluded).
             {atRetirement.length > 0 && ` ${atRetirement.length} at/over ${RETIREMENT_AGE}.`}
-            {approachingRetirement.length > 0 && ` ${approachingRetirement.length} between ${RETIREMENT_AGE - RETIREMENT_WINDOW_YEARS}–${RETIREMENT_AGE - 1}.`}
+            {approachingRetirement.length > 0 &&
+              ` ${approachingRetirement.length} between ${RETIREMENT_AGE - RETIREMENT_WINDOW_YEARS}–${RETIREMENT_AGE - 1}.`}
           </p>
           {nearRetirement.length === 0 ? (
-            <p className="text-gray-400">No employees within {RETIREMENT_WINDOW_YEARS} years of retirement.</p>
+            <p className="text-gray-400">
+              No employees within {RETIREMENT_WINDOW_YEARS} years of retirement.
+            </p>
           ) : (
             <Table columns={nearRetirementColumns} data={nearRetirement} />
           )}
@@ -622,7 +722,13 @@ const Reports = () => {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => { setSearch(''); setDeptFilter(''); setStatusFilter(''); setTypeFilter(''); setQuickFilter(''); }}
+                  onClick={() => {
+                    setSearch('');
+                    setDeptFilter('');
+                    setStatusFilter('');
+                    setTypeFilter('');
+                    setQuickFilter('');
+                  }}
                   className="flex-1"
                 >
                   Clear
@@ -658,7 +764,9 @@ const Reports = () => {
             {filteredRecords.length > PER_PAGE && (
               <div className="flex items-center justify-between pt-3 border-t">
                 <p className="text-sm text-gray-500">
-                  Showing {Math.min((currentPage - 1) * PER_PAGE + 1, filteredRecords.length)}–{Math.min(currentPage * PER_PAGE, filteredRecords.length)} of {filteredRecords.length}
+                  Showing {Math.min((currentPage - 1) * PER_PAGE + 1, filteredRecords.length)}–
+                  {Math.min(currentPage * PER_PAGE, filteredRecords.length)} of{' '}
+                  {filteredRecords.length}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button
@@ -669,7 +777,9 @@ const Reports = () => {
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
-                  <span className="text-sm">Page {currentPage} of {totalPages}</span>
+                  <span className="text-sm">
+                    Page {currentPage} of {totalPages}
+                  </span>
                   <Button
                     variant="outline"
                     size="sm"
@@ -687,7 +797,8 @@ const Reports = () => {
         {/* Export (server) */}
         <div className="flex gap-2 justify-end">
           <Button variant="outline" onClick={() => handleExport('csv')} disabled={exporting}>
-            <Download className="h-4 w-4 mr-2" /> {exporting ? 'Exporting...' : 'Export CSV (Server)'}
+            <Download className="h-4 w-4 mr-2" />{' '}
+            {exporting ? 'Exporting...' : 'Export CSV (Server)'}
           </Button>
           <Button variant="outline" onClick={() => handleExport('pdf')} disabled={exporting}>
             <Download className="h-4 w-4 mr-2" /> Export PDF
@@ -726,7 +837,8 @@ const Reports = () => {
                   tab.id === 'employees' && activeTab === 'employees'
                     ? 'border-primary-600 text-primary-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}>
+                }`}
+              >
                 <tab.icon className="h-4 w-4 mr-2" />
                 {tab.label}
               </Link>
@@ -740,7 +852,8 @@ const Reports = () => {
                 activeTab === tab.id
                   ? 'border-primary-600 text-primary-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}>
+              }`}
+            >
               <tab.icon className="h-4 w-4 mr-2" />
               {tab.label}
             </button>

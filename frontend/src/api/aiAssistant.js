@@ -16,7 +16,7 @@
  *   POST /ai/conversations/{id}/clear   → {}
  *   POST /ai/feedback                   { message_id, rating: 'up'|'down', comment? }
  */
-import api from '../utils/api'
+import api from '../utils/api';
 
 /**
  * AI generations can legitimately take longer than ordinary pages. This must
@@ -24,35 +24,35 @@ import api from '../utils/api'
  * per-attempt timeout × retries (e.g. 45s × 2 + backoff ≈ 91s) so a slow but
  * successful answer is never masked by an opaque client-side abort.
  */
-const CHAT_TIMEOUT_MS = 120000
+const CHAT_TIMEOUT_MS = 120000;
 
 /** Mirrors the server-side AI_MAX_REQUEST_CHARS guard (config/ai.php). */
-export const MAX_CHAT_MESSAGE_LENGTH = 2000
+export const MAX_CHAT_MESSAGE_LENGTH = 2000;
 
-const unwrap = (response) => response?.data?.data ?? response?.data ?? {}
+const unwrap = (response) => response?.data?.data ?? response?.data ?? {};
 
 export async function sendChatMessage({ conversationId, message, signal }) {
-  const payload = { message: String(message ?? '').trim() }
-  if (conversationId) payload.conversation_id = conversationId
+  const payload = { message: String(message ?? '').trim() };
+  if (conversationId) payload.conversation_id = conversationId;
   const response = await api.post('/ai/chat', payload, {
     signal,
     timeout: CHAT_TIMEOUT_MS,
-  })
-  const data = unwrap(response)
+  });
+  const data = unwrap(response);
   return {
     conversationId: data?.conversation_id ?? null,
     message: data?.message ?? null,
-  }
+  };
 }
 
 export async function fetchConversation(conversationId) {
-  const response = await api.get(`/ai/conversations/${encodeURIComponent(conversationId)}`)
-  return unwrap(response)
+  const response = await api.get(`/ai/conversations/${encodeURIComponent(conversationId)}`);
+  return unwrap(response);
 }
 
 export async function clearConversation(conversationId) {
-  const response = await api.post(`/ai/conversations/${encodeURIComponent(conversationId)}/clear`)
-  return unwrap(response)
+  const response = await api.post(`/ai/conversations/${encodeURIComponent(conversationId)}/clear`);
+  return unwrap(response);
 }
 
 export async function sendFeedback({ messageId, rating, comment = null }) {
@@ -60,8 +60,8 @@ export async function sendFeedback({ messageId, rating, comment = null }) {
     message_id: messageId,
     rating,
     comment,
-  })
-  return unwrap(response)
+  });
+  return unwrap(response);
 }
 
 /**
@@ -69,33 +69,33 @@ export async function sendFeedback({ messageId, rating, comment = null }) {
  * Never leaks provider names, keys, stack traces or server internals.
  */
 export function describeChatError(error) {
-  const status = error?.response?.status
+  const status = error?.response?.status;
   if (error?.isAuthError || status === 401) {
-    return 'Your session has expired. Please sign in again.'
+    return 'Your session has expired. Please sign in again.';
   }
   if (status === 403) {
-    return 'You are not authorised to use the AI assistant. Contact HR if you believe this is a mistake.'
+    return 'You are not authorised to use the AI assistant. Contact HR if you believe this is a mistake.';
   }
   if (status === 404) {
-    return 'The AI assistant is not available yet on this deployment.'
+    return 'The AI assistant is not available yet on this deployment.';
   }
   if (status === 422) {
-    return 'That question could not be processed. Please try rephrasing it.'
+    return 'That question could not be processed. Please try rephrasing it.';
   }
   if (status === 429) {
-    return 'You are sending questions too quickly. Please wait a moment and try again.'
+    return 'You are sending questions too quickly. Please wait a moment and try again.';
   }
   if (status === 503 || status === 502 || status === 504) {
-    return 'The AI assistant is unavailable right now. Please try again shortly.'
+    return 'The AI assistant is unavailable right now. Please try again shortly.';
   }
   if (error?.isTimeout) {
-    return 'The assistant took too long to respond. Please try again.'
+    return 'The assistant took too long to respond. Please try again.';
   }
   if (!error?.response) {
-    return 'Cannot reach the server. Check your connection and try again.'
+    return 'Cannot reach the server. Check your connection and try again.';
   }
-  const serverMessage = error?.response?.data?.error || error?.response?.data?.message
+  const serverMessage = error?.response?.data?.error || error?.response?.data?.message;
   return typeof serverMessage === 'string' && serverMessage
     ? serverMessage
-    : 'Something went wrong while contacting the assistant. Please try again.'
+    : 'Something went wrong while contacting the assistant. Please try again.';
 }

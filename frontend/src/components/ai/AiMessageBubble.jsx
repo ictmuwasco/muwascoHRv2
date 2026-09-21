@@ -6,17 +6,9 @@
  * see whether an answer came from HR data or an approved policy document) and
  * thumbs feedback once the message has a server-side id.
  */
-import {
-  Bot,
-  User,
-  ThumbsUp,
-  ThumbsDown,
-  Database,
-  BookOpen,
-  Info,
-} from 'lucide-react'
+import { Bot, User, ThumbsUp, ThumbsDown, Database, BookOpen, Info } from 'lucide-react';
 
-const SOURCE_ICONS = { data: Database, policy: BookOpen }
+const SOURCE_ICONS = { data: Database, policy: BookOpen };
 
 const AiMessageBubble = ({ message, feedbackRating = null, onFeedback }) => {
   if (message.role === 'user') {
@@ -26,11 +18,11 @@ const AiMessageBubble = ({ message, feedbackRating = null, onFeedback }) => {
           <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
       </div>
-    )
+    );
   }
 
   const showFeedback =
-    !message.isWelcome && message.serverId != null && typeof onFeedback === 'function'
+    !message.isWelcome && message.serverId != null && typeof onFeedback === 'function';
 
   return (
     <div className="flex justify-start" data-role="assistant">
@@ -50,7 +42,7 @@ const AiMessageBubble = ({ message, feedbackRating = null, onFeedback }) => {
         {Array.isArray(message.sources) && message.sources.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1" aria-label="Data sources">
             {message.sources.map((source, index) => {
-              const Icon = SOURCE_ICONS[source.type] ?? Info
+              const Icon = SOURCE_ICONS[source.type] ?? Info;
               return (
                 <span
                   key={`${source.label}-${index}`}
@@ -59,7 +51,7 @@ const AiMessageBubble = ({ message, feedbackRating = null, onFeedback }) => {
                   <Icon className="h-3 w-3" aria-hidden="true" />
                   {source.label}
                 </span>
-              )
+              );
             })}
           </div>
         )}
@@ -100,7 +92,7 @@ const AiMessageBubble = ({ message, feedbackRating = null, onFeedback }) => {
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default AiMessageBubble
+export default AiMessageBubble;

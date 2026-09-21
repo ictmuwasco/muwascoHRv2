@@ -5,11 +5,11 @@
  * Shows: "X of Y employees scheduled" + bar + percentage + "Z employees still require scheduling"
  */
 const CoverageBar = ({ stats, label = 'PLANNING COVERAGE', showDetails = true }) => {
-  const scheduled = stats?.total_scheduled || 0
-  const active = stats?.total_active || 0
-  const notScheduled = stats?.not_scheduled || 0
+  const scheduled = stats?.total_scheduled || 0;
+  const active = stats?.total_active || 0;
+  const notScheduled = stats?.not_scheduled || 0;
 
-  const percentage = active > 0 ? Math.round((scheduled / active) * 1000) / 10 : 0
+  const percentage = active > 0 ? Math.round((scheduled / active) * 1000) / 10 : 0;
 
   return (
     <div className="space-y-2">
@@ -32,7 +32,8 @@ const CoverageBar = ({ stats, label = 'PLANNING COVERAGE', showDetails = true })
       {showDetails && (
         <div className="flex items-center justify-between text-sm">
           <span className="text-gray-600 dark:text-gray-300">
-            <span className="font-medium">{scheduled}</span> of <span className="font-medium">{active}</span> employees scheduled
+            <span className="font-medium">{scheduled}</span> of{' '}
+            <span className="font-medium">{active}</span> employees scheduled
           </span>
           {notScheduled > 0 && (
             <span className="text-gray-500 dark:text-gray-400">
@@ -42,7 +43,7 @@ const CoverageBar = ({ stats, label = 'PLANNING COVERAGE', showDetails = true })
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default CoverageBar
+export default CoverageBar;

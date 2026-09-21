@@ -1,5 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Eye, RefreshCw, CheckCircle, XCircle, Clock, FileText, AlertCircle, User, Shield, Globe, MapPin, Calendar, Hash, Tag, Info } from 'lucide-react';
+import {
+  Search,
+  Eye,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  Clock,
+  FileText,
+  AlertCircle,
+  User,
+  Shield,
+  Globe,
+  MapPin,
+  Calendar,
+  Hash,
+  Tag,
+  Info,
+} from 'lucide-react';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Select from '../../components/ui/Select';
@@ -141,31 +158,37 @@ const Audit = () => {
    * Resolve a user ID to a real display name by calling the users API.
    * Results are cached in `resolvedUsers` so we don't refetch the same user.
    */
-  const resolveUserName = useCallback(async (userId: number | null | undefined): Promise<ResolvedUser | null> => {
-    if (!userId) return null;
+  const resolveUserName = useCallback(
+    async (userId: number | null | undefined): Promise<ResolvedUser | null> => {
+      if (!userId) return null;
 
-    // Return cached result if available
-    if (resolvedUsers[userId]) {
-      return resolvedUsers[userId];
-    }
+      // Return cached result if available
+      if (resolvedUsers[userId]) {
+        return resolvedUsers[userId];
+      }
 
-    try {
-      const response = await userService.getById(userId);
-      const user: UserType = response.data;
-      const resolved: ResolvedUser = {
-        name: [user.first_name, user.last_name, user.surname].filter(Boolean).join(' ') || user.email || `User #${userId}`,
-        email: user.email || '',
-        role: user.role || '',
-        designation: user.designation || null,
-        employee_id: user.employee_id ?? null,
-      };
-      setResolvedUsers((prev) => ({ ...prev, [userId]: resolved }));
-      return resolved;
-    } catch (error) {
-      console.error(`Failed to resolve user ${userId}:`, error);
-      return null;
-    }
-  }, [resolvedUsers]);
+      try {
+        const response = await userService.getById(userId);
+        const user: UserType = response.data;
+        const resolved: ResolvedUser = {
+          name:
+            [user.first_name, user.last_name, user.surname].filter(Boolean).join(' ') ||
+            user.email ||
+            `User #${userId}`,
+          email: user.email || '',
+          role: user.role || '',
+          designation: user.designation || null,
+          employee_id: user.employee_id ?? null,
+        };
+        setResolvedUsers((prev) => ({ ...prev, [userId]: resolved }));
+        return resolved;
+      } catch (error) {
+        console.error(`Failed to resolve user ${userId}:`, error);
+        return null;
+      }
+    },
+    [resolvedUsers],
+  );
 
   const handleViewDetails = async (log: AuditLog) => {
     setSelectedLog(log);
@@ -256,9 +279,7 @@ const Audit = () => {
       key: 'status',
       label: 'Status',
       render: (value: AuditStatus) => (
-        <Badge variant={value === 'SUCCESS' ? 'success' : 'danger'}>
-          {value}
-        </Badge>
+        <Badge variant={value === 'SUCCESS' ? 'success' : 'danger'}>{value}</Badge>
       ),
     },
     { key: 'description', label: 'Description' },
@@ -347,9 +368,7 @@ const Audit = () => {
 
   const renderJsonData = (data: Record<string, any> | null | undefined, _label: string) => {
     if (!data || Object.keys(data).length === 0) {
-      return (
-        <p className="text-sm text-gray-400 dark:text-gray-500 italic">No data recorded</p>
-      );
+      return <p className="text-sm text-gray-400 dark:text-gray-500 italic">No data recorded</p>;
     }
     return (
       <div className="space-y-1">
@@ -357,9 +376,7 @@ const Audit = () => {
           <div
             key={key}
             className={`grid grid-cols-1 md:grid-cols-3 gap-2 py-2 px-3 rounded-md text-sm ${
-              idx % 2 === 0
-                ? 'bg-gray-50 dark:bg-slate-700/30'
-                : 'bg-white dark:bg-slate-800/30'
+              idx % 2 === 0 ? 'bg-gray-50 dark:bg-slate-700/30' : 'bg-white dark:bg-slate-800/30'
             }`}
           >
             <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -458,7 +475,10 @@ const Audit = () => {
               type="text"
               placeholder="Search audit logs..."
               value={search}
-              onChange={(e) => { setSearch(e.target.value); setPagination((p) => ({ ...p, page: 1 })); }}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPagination((p) => ({ ...p, page: 1 }));
+              }}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-slate-900 dark:border-slate-600 dark:text-gray-100"
             />
           </div>
@@ -518,7 +538,8 @@ const Audit = () => {
         {pagination.pages > 1 && (
           <div className="flex items-center justify-between mt-4 pt-4 border-t dark:border-slate-700">
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Showing page {pagination.page} of {pagination.pages} ({pagination.total} total records)
+              Showing page {pagination.page} of {pagination.pages} ({pagination.total} total
+              records)
             </p>
             <div className="flex items-center space-x-2">
               <Button
@@ -611,12 +632,18 @@ const Audit = () => {
                     Audit Log Details
                   </h2>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                    Log ID: <span className="font-mono font-medium text-gray-700 dark:text-gray-300">#{selectedLog.id}</span>
+                    Log ID:{' '}
+                    <span className="font-mono font-medium text-gray-700 dark:text-gray-300">
+                      #{selectedLog.id}
+                    </span>
                   </p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Badge variant={selectedLog.status === 'SUCCESS' ? 'success' : 'danger'} className="text-xs">
+                <Badge
+                  variant={selectedLog.status === 'SUCCESS' ? 'success' : 'danger'}
+                  className="text-xs"
+                >
                   {selectedLog.status}
                 </Badge>
                 <Badge variant="primary" className="text-xs">
@@ -677,7 +704,10 @@ const Audit = () => {
                     Status
                   </span>
                 </div>
-                <Badge variant={selectedLog.status === 'SUCCESS' ? 'success' : 'danger'} className="text-sm">
+                <Badge
+                  variant={selectedLog.status === 'SUCCESS' ? 'success' : 'danger'}
+                  className="text-sm"
+                >
                   {selectedLog.status}
                 </Badge>
               </div>
@@ -896,4 +926,3 @@ const Audit = () => {
 };
 
 export default Audit;
-

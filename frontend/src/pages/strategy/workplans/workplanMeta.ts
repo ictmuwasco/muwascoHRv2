@@ -2,10 +2,7 @@
 
 export type BadgeVariant = 'success' | 'warning' | 'danger' | 'primary' | 'default';
 
-export const STATUS_META: Record<
-  string,
-  { label: string; variant: BadgeVariant }
-> = {
+export const STATUS_META: Record<string, { label: string; variant: BadgeVariant }> = {
   not_started: { label: 'Not Started', variant: 'default' },
   in_progress: { label: 'In Progress', variant: 'primary' },
   completed: { label: 'Completed', variant: 'success' },

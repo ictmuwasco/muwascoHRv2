@@ -1,4 +1,4 @@
-import type { FC } from 'react'
+import type { FC } from 'react';
 
-declare const EmployeeTabs: FC<{}>
-export default EmployeeTabs
+declare const EmployeeTabs: FC<{}>;
+export default EmployeeTabs;

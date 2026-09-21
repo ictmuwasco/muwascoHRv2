@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import {
   Eye,
   EyeOff,
@@ -12,64 +12,62 @@ import {
   BarChart3,
   Sparkles,
   AlertCircle,
-} from 'lucide-react'
-import Logo from '../../components/Logo'
+} from 'lucide-react';
+import Logo from '../../components/Logo';
 
 // Note: Consent check is handled by ProtectedRoute component
 
 const Login = () => {
-  const navigate = useNavigate()
-  const { login, isAuthenticated } = useAuth()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [touched, setTouched] = useState({ email: false, password: false })
+  const navigate = useNavigate();
+  const { login, isAuthenticated } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [touched, setTouched] = useState({ email: false, password: false });
 
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true })
+      navigate('/dashboard', { replace: true });
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, navigate]);
 
   const emailError =
     touched.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
       ? 'Please enter a valid email address'
-      : ''
+      : '';
   const passwordError =
-    touched.password && password.length < 8
-      ? 'Password must be at least 8 characters'
-      : ''
+    touched.password && password.length < 8 ? 'Password must be at least 8 characters' : '';
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setTouched({ email: true, password: true })
-    setError('')
+    e.preventDefault();
+    setTouched({ email: true, password: true });
+    setError('');
 
     if (emailError || passwordError || !email || !password) {
-      return
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
 
     try {
-      const result = await login(email, password)
+      const result = await login(email, password);
 
       if (result.success) {
         // Navigate to dashboard; ProtectedRoute will handle consent check
-        navigate('/dashboard', { replace: true })
+        navigate('/dashboard', { replace: true });
       } else {
-        setError(result.message)
+        setError(result.message);
       }
     } catch (err) {
-      setError('An unexpected error occurred. Please try again.')
+      setError('An unexpected error occurred. Please try again.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen w-full flex bg-slate-50 dark:bg-slate-900">
@@ -98,8 +96,8 @@ const Login = () => {
                 Manage your team with confidence.
               </h2>
               <p className="mt-3 text-white/80 leading-relaxed">
-                A modern HR platform for employees, attendance, leave,
-                appraisals and reports — all in one secure place.
+                A modern HR platform for employees, attendance, leave, appraisals and reports — all
+                in one secure place.
               </p>
             </div>
 
@@ -136,7 +134,9 @@ const Login = () => {
             <Logo className="h-14 w-14" />
             <div>
               <p className="text-xs text-slate-500 dark:text-slate-400">Welcome to</p>
-              <h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">MUWASCO HR</h1>
+              <h1 className="text-base font-semibold text-slate-900 dark:text-slate-100">
+                MUWASCO HR
+              </h1>
             </div>
           </div>
 
@@ -179,8 +179,9 @@ const Login = () => {
                     onBlur={() => setTouched((t) => ({ ...t, email: true }))}
                     aria-invalid={!!emailError}
                     aria-describedby={emailError ? 'email-error' : undefined}
-                    className={`w-full pl-10 pr-3 py-2.5 bg-white dark:bg-slate-900 text-sm dark:text-slate-100 rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${emailError ? 'border-red-300' : 'border-slate-200 dark:border-slate-600'
-                      }`}
+                    className={`w-full pl-10 pr-3 py-2.5 bg-white dark:bg-slate-900 text-sm dark:text-slate-100 rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${
+                      emailError ? 'border-red-300' : 'border-slate-200 dark:border-slate-600'
+                    }`}
                     placeholder="you@muwasco.co.ke"
                   />
                 </div>
@@ -221,8 +222,9 @@ const Login = () => {
                     onBlur={() => setTouched((t) => ({ ...t, password: true }))}
                     aria-invalid={!!passwordError}
                     aria-describedby={passwordError ? 'password-error' : undefined}
-                    className={`w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900 text-sm dark:text-slate-100 rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${passwordError ? 'border-red-300' : 'border-slate-200 dark:border-slate-600'
-                      }`}
+                    className={`w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900 text-sm dark:text-slate-100 rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${
+                      passwordError ? 'border-red-300' : 'border-slate-200 dark:border-slate-600'
+                    }`}
                     placeholder="Enter your password"
                   />
                   <button
@@ -231,11 +233,7 @@ const Login = () => {
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                     className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                   >
-                    {showPassword ? (
-                      <EyeOff className="h-5 w-5" />
-                    ) : (
-                      <Eye className="h-5 w-5" />
-                    )}
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
                 {passwordError && (
@@ -281,8 +279,8 @@ const Login = () => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
 const Feature = ({ icon, title, desc }) => (
   <div className="flex items-start gap-3 rounded-lg bg-white/10 ring-1 ring-white/15 p-3 backdrop-blur-sm">
@@ -294,6 +292,6 @@ const Feature = ({ icon, title, desc }) => (
       <p className="text-xs text-white/75">{desc}</p>
     </div>
   </div>
-)
+);
 
-export default Login
+export default Login;

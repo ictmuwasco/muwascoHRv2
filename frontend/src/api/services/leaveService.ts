@@ -1,5 +1,13 @@
 import apiClient from '../client';
-import type { ApiResponse, PaginatedResponse, LeaveRequest, LeaveFormData, LeaveType, LeaveBalance, Holiday } from '../../types';
+import type {
+  ApiResponse,
+  PaginatedResponse,
+  LeaveRequest,
+  LeaveFormData,
+  LeaveType,
+  LeaveBalance,
+  Holiday,
+} from '../../types';
 
 export const leaveService = {
   // List own leaves (uses /leave — same as Leave.jsx fetch).
@@ -30,18 +38,12 @@ export const leaveService = {
   },
 
   reject: async (id: number, reason: string): Promise<ApiResponse<any>> => {
-    const response = await apiClient.put<ApiResponse<any>>(
-      `/leave/${id}/reject`,
-      { reason }
-    );
+    const response = await apiClient.put<ApiResponse<any>>(`/leave/${id}/reject`, { reason });
     return response.data;
   },
 
   invalidate: async (id: number, reason: string): Promise<ApiResponse<any>> => {
-    const response = await apiClient.put<ApiResponse<any>>(
-      `/leave/${id}/invalidate`,
-      { reason }
-    );
+    const response = await apiClient.put<ApiResponse<any>>(`/leave/${id}/invalidate`, { reason });
     return response.data;
   },
 
@@ -56,7 +58,9 @@ export const leaveService = {
   },
 
   getBalance: async (employeeId: number): Promise<ApiResponse<LeaveBalance[]>> => {
-    const response = await apiClient.get<ApiResponse<LeaveBalance[]>>(`/leave/balance/${employeeId}`);
+    const response = await apiClient.get<ApiResponse<LeaveBalance[]>>(
+      `/leave/balance/${employeeId}`,
+    );
     return response.data;
   },
 
@@ -71,7 +75,9 @@ export const leaveService = {
   },
 
   getByEmployee: async (employeeId: number): Promise<ApiResponse<LeaveRequest[]>> => {
-    const response = await apiClient.get<ApiResponse<LeaveRequest[]>>(`/leave/employee/${employeeId}`);
+    const response = await apiClient.get<ApiResponse<LeaveRequest[]>>(
+      `/leave/employee/${employeeId}`,
+    );
     return response.data;
   },
 
@@ -83,7 +89,9 @@ export const leaveService = {
    */
   getProfileEmployees: async (search?: string): Promise<ApiResponse<any[]>> => {
     const params = search ? { search } : {};
-    const response = await apiClient.get<ApiResponse<any[]>>('/leave/profile/employees', { params });
+    const response = await apiClient.get<ApiResponse<any[]>>('/leave/profile/employees', {
+      params,
+    });
     return response.data;
   },
 
@@ -92,40 +100,68 @@ export const leaveService = {
    * @param employeeId  Employee record ID
    * @param params      { financial_year_id?, status?, leave_type_id?, date_from?, date_to? }
    */
-  getProfile: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any>> => {
-    const response = await apiClient.get<ApiResponse<any>>(`/leave/profile/${employeeId}`, { params });
+  getProfile: async (
+    employeeId: number,
+    params?: Record<string, any>,
+  ): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>(`/leave/profile/${employeeId}`, {
+      params,
+    });
     return response.data;
   },
 
   /**
    * Get leave balances for an employee in a financial year.
    */
-  getProfileBalances: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any[]>> => {
-    const response = await apiClient.get<ApiResponse<any[]>>(`/leave/profile/${employeeId}/balances`, { params });
+  getProfileBalances: async (
+    employeeId: number,
+    params?: Record<string, any>,
+  ): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>(
+      `/leave/profile/${employeeId}/balances`,
+      { params },
+    );
     return response.data;
   },
 
   /**
    * Get leave applications for an employee with optional filters.
    */
-  getProfileApplications: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any[]>> => {
-    const response = await apiClient.get<ApiResponse<any[]>>(`/leave/profile/${employeeId}/applications`, { params });
+  getProfileApplications: async (
+    employeeId: number,
+    params?: Record<string, any>,
+  ): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get<ApiResponse<any[]>>(
+      `/leave/profile/${employeeId}/applications`,
+      { params },
+    );
     return response.data;
   },
 
   /**
    * Get the balance timeline (buildBalanceTimeline) for an employee.
    */
-  getProfileTimeline: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any>> => {
-    const response = await apiClient.get<ApiResponse<any>>(`/leave/profile/${employeeId}/timeline`, { params });
+  getProfileTimeline: async (
+    employeeId: number,
+    params?: Record<string, any>,
+  ): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>(
+      `/leave/profile/${employeeId}/timeline`,
+      { params },
+    );
     return response.data;
   },
 
   /**
    * Get summary statistics for an employee's leave account.
    */
-  getProfileSummary: async (employeeId: number, params?: Record<string, any>): Promise<ApiResponse<any>> => {
-    const response = await apiClient.get<ApiResponse<any>>(`/leave/profile/${employeeId}/summary`, { params });
+  getProfileSummary: async (
+    employeeId: number,
+    params?: Record<string, any>,
+  ): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get<ApiResponse<any>>(`/leave/profile/${employeeId}/summary`, {
+      params,
+    });
     return response.data;
   },
 
@@ -168,7 +204,9 @@ export const leaveService = {
   },
 
   getRosterDistribution: async (params?: Record<string, any>): Promise<ApiResponse<any>> => {
-    const response = await apiClient.get<ApiResponse<any>>('/leave/roster/distribution', { params });
+    const response = await apiClient.get<ApiResponse<any>>('/leave/roster/distribution', {
+      params,
+    });
     return response.data;
   },
 
@@ -178,7 +216,9 @@ export const leaveService = {
   },
 
   getRosterDepartments: async (params?: Record<string, any>): Promise<ApiResponse<any[]>> => {
-    const response = await apiClient.get<ApiResponse<any[]>>('/leave/roster/departments', { params });
+    const response = await apiClient.get<ApiResponse<any[]>>('/leave/roster/departments', {
+      params,
+    });
     return response.data;
   },
 

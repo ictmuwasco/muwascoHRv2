@@ -1,4 +1,4 @@
-import Card from '../ui/Card'
+import Card from '../ui/Card';
 
 const AuditTab = () => {
   return (
@@ -7,8 +7,7 @@ const AuditTab = () => {
         Audit logs and monitoring settings will be available here.
       </div>
     </Card>
-  )
-}
+  );
+};
 
-export default AuditTab
-
+export default AuditTab;
