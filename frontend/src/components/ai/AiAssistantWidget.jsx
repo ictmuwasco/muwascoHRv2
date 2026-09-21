@@ -10,37 +10,37 @@
  * action preparation arrives (Phase 10) it MUST pass through this same
  * confirmation-dialog pattern and the existing backend workflow.
  */
-import { useEffect, useRef, useState } from 'react'
-import { MessageCircle, X } from 'lucide-react'
-import toast from 'react-hot-toast'
-import Modal from '../ui/Modal'
-import Button from '../ui/Button'
-import { useAuth } from '../../context/AuthContext'
-import useAiChat from './useAiChat'
-import AiChatPanel from './AiChatPanel'
+import { useEffect, useRef, useState } from 'react';
+import { MessageCircle, X } from 'lucide-react';
+import toast from 'react-hot-toast';
+import Modal from '../ui/Modal';
+import Button from '../ui/Button';
+import { useAuth } from '../../context/AuthContext';
+import useAiChat from './useAiChat';
+import AiChatPanel from './AiChatPanel';
 
 const AiAssistantWidget = () => {
-  const { user } = useAuth()
-  const chat = useAiChat()
-  const [open, setOpen] = useState(false)
-  const [confirmClear, setConfirmClear] = useState(false)
-  const inputRef = useRef(null)
+  const { user } = useAuth();
+  const chat = useAiChat();
+  const [open, setOpen] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const inputRef = useRef(null);
 
   // Escape closes the panel (but not while the confirmation modal is open —
   // the modal owns Escape then).
   useEffect(() => {
-    if (!open) return undefined
+    if (!open) return undefined;
     const onKeyDown = (event) => {
-      if (event.key === 'Escape' && !confirmClear) setOpen(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [open, confirmClear])
+      if (event.key === 'Escape' && !confirmClear) setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, confirmClear]);
 
-    // Focus the composer when the panel opens.
+  // Focus the composer when the panel opens.
   useEffect(() => {
-    if (open) inputRef.current?.focus()
-  }, [open])
+    if (open) inputRef.current?.focus();
+  }, [open]);
 
   // Global event: "Ask AI About This Policy" (§19). Another component dispatches
   // `muwasco:ask-ai` with { question, section } — we open the panel, ensure the
@@ -48,28 +48,28 @@ const AiAssistantWidget = () => {
   // widget decoupled from any specific page (it lives in Layout.jsx).
   useEffect(() => {
     const handler = (e) => {
-      const detail = e?.detail
-      if (!detail || !detail.question) return
-      setOpen(true)
-      chat.initialize().then(() => chat.seedOutgoing(detail.question))
-    }
-    window.addEventListener('muwasco:ask-ai', handler)
-    return () => window.removeEventListener('muwasco:ask-ai', handler)
-  }, [chat])
+      const detail = e?.detail;
+      if (!detail || !detail.question) return;
+      setOpen(true);
+      chat.initialize().then(() => chat.seedOutgoing(detail.question));
+    };
+    window.addEventListener('muwasco:ask-ai', handler);
+    return () => window.removeEventListener('muwasco:ask-ai', handler);
+  }, [chat]);
 
-  if (!user) return null
+  if (!user) return null;
 
   const toggle = () => {
-    const next = !open
-    setOpen(next)
-    if (next) chat.initialize()
-  }
+    const next = !open;
+    setOpen(next);
+    if (next) chat.initialize();
+  };
 
   const handleConfirmClear = async () => {
-    setConfirmClear(false)
-    await chat.reset()
-    toast.success('Conversation cleared')
-  }
+    setConfirmClear(false);
+    await chat.reset();
+    toast.success('Conversation cleared');
+  };
 
   return (
     <>
@@ -123,7 +123,7 @@ const AiAssistantWidget = () => {
         </div>
       </Modal>
     </>
-  )
-}
+  );
+};
 
-export default AiAssistantWidget
+export default AiAssistantWidget;

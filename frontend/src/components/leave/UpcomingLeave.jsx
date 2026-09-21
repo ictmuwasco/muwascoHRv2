@@ -1,5 +1,5 @@
-import { Calendar, User } from 'lucide-react'
-import Badge from '../ui/Badge'
+import { Calendar, User } from 'lucide-react';
+import Badge from '../ui/Badge';
 
 /**
  * Upcoming planned leave section.
@@ -18,7 +18,7 @@ const UpcomingLeave = ({ upcoming = null }) => {
       <div className="text-center py-8">
         <p className="text-gray-500 dark:text-gray-400">No upcoming leave data available.</p>
       </div>
-    )
+    );
   }
 
   const {
@@ -27,7 +27,7 @@ const UpcomingLeave = ({ upcoming = null }) => {
     current_month_employees = [],
     next_month_employees = [],
     next_month_count = 0,
-  } = upcoming
+  } = upcoming;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -65,9 +65,7 @@ const UpcomingLeave = ({ upcoming = null }) => {
                   <Badge variant="success">Planned</Badge>
                 </div>
                 {emp.notes && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-11">
-                    {emp.notes}
-                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-11">{emp.notes}</p>
                 )}
               </div>
             ))}
@@ -119,7 +117,7 @@ const UpcomingLeave = ({ upcoming = null }) => {
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default UpcomingLeave
+export default UpcomingLeave;

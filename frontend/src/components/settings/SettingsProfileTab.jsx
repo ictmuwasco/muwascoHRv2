@@ -1,5 +1,5 @@
-import Card from '../ui/Card'
-import { Settings as SettingsIcon } from 'lucide-react'
+import Card from '../ui/Card';
+import { Settings as SettingsIcon } from 'lucide-react';
 
 const ProfileSettings = () => {
   return (
@@ -24,9 +24,7 @@ const ProfileSettings = () => {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Email & Phone</h3>
-            <p className="text-sm text-gray-500 mt-1">
-              Manage how MUWASCO contacts you
-            </p>
+            <p className="text-sm text-gray-500 mt-1">Manage how MUWASCO contacts you</p>
           </div>
         </div>
       </Card>
@@ -37,15 +35,12 @@ const ProfileSettings = () => {
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-900">Appearance</h3>
-            <p className="text-sm text-gray-500 mt-1">
-              Theme, language and date format
-            </p>
+            <p className="text-sm text-gray-500 mt-1">Theme, language and date format</p>
           </div>
         </div>
       </Card>
     </div>
-  )
-}
+  );
+};
 
-export default ProfileSettings
-
+export default ProfileSettings;

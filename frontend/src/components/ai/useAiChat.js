@@ -9,16 +9,16 @@
  * tab) so a shared/borrowed machine never leaks HR content from storage.
  * Every answer's authorization is enforced server-side; this hook is UX only.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAuth } from '../../context/AuthContext'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import {
   sendChatMessage,
   fetchConversation,
   clearConversation,
   sendFeedback,
   describeChatError,
-} from '../../api/aiAssistant'
-import { buildSuggestedQuestions } from './suggestedQuestions'
+} from '../../api/aiAssistant';
+import { buildSuggestedQuestions } from './suggestedQuestions';
 
 // sessionStorage is per-TAB, not per-account: an account switch in the same
 // tab must never probe the PREVIOUS account's conversation id. The server
@@ -26,8 +26,8 @@ import { buildSuggestedQuestions } from './suggestedQuestions'
 // enumerated), but the client should not send it at all. Keys are therefore
 // scoped by user id; the unscoped legacy key is migrated once in initialize()
 // and then removed.
-const storageKey = (userId) => `muwasco_ai_conversation_id_${Number(userId) || 'anon'}`
-const LEGACY_STORAGE_KEY = 'muwasco_ai_conversation_id'
+const storageKey = (userId) => `muwasco_ai_conversation_id_${Number(userId) || 'anon'}`;
+const LEGACY_STORAGE_KEY = 'muwasco_ai_conversation_id';
 
 const WELCOME_MESSAGE = {
   id: 'welcome',
@@ -40,31 +40,31 @@ const WELCOME_MESSAGE = {
   sources: [],
   stopped: false,
   isWelcome: true,
-}
+};
 
 /** Normalise the server's sources array (strings or {type,label} objects). */
 const normalizeSources = (raw) => {
-  if (!Array.isArray(raw)) return []
+  if (!Array.isArray(raw)) return [];
   return raw
     .map((source) => {
-      if (typeof source === 'string') return { type: 'data', label: source }
+      if (typeof source === 'string') return { type: 'data', label: source };
       if (source && typeof source === 'object') {
         return {
           type: String(source.type ?? 'data'),
           label: String(source.label ?? source.name ?? source.title ?? 'source'),
-        }
+        };
       }
-      return null
+      return null;
     })
-    .filter(Boolean)
-}
+    .filter(Boolean);
+};
 
 /** Normalise a server message (history or live reply) into view state. */
 const normalizeHistoryMessage = (raw) => {
-  if (!raw || typeof raw !== 'object') return null
-  const content = String(raw.content ?? '').trim()
-  if (!content) return null
-  const role = raw.role === 'user' ? 'user' : 'assistant'
+  if (!raw || typeof raw !== 'object') return null;
+  const content = String(raw.content ?? '').trim();
+  if (!content) return null;
+  const role = raw.role === 'user' ? 'user' : 'assistant';
   return {
     id: raw.id != null ? `srv-${raw.id}` : `srv-${Math.random().toString(36).slice(2)}`,
     serverId: raw.id ?? null,
@@ -73,23 +73,23 @@ const normalizeHistoryMessage = (raw) => {
     sources: role === 'assistant' ? normalizeSources(raw.sources) : [],
     stopped: false,
     isWelcome: false,
-  }
-}
+  };
+};
 
 const useAiChat = () => {
-  const { user, can } = useAuth()
-  const [messages, setMessages] = useState([WELCOME_MESSAGE])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [lastFailedQuestion, setLastFailedQuestion] = useState(null)
-  const [feedback, setFeedback] = useState({})
+  const { user, can } = useAuth();
+  const [messages, setMessages] = useState([WELCOME_MESSAGE]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastFailedQuestion, setLastFailedQuestion] = useState(null);
+  const [feedback, setFeedback] = useState({});
 
-  const conversationIdRef = useRef(null)
-  const abortRef = useRef(null)
-  const stopRequestedRef = useRef(false)
-  const initializedRef = useRef(false)
-  const loadingRef = useRef(false)
-  const mountedRef = useRef(true)
+  const conversationIdRef = useRef(null);
+  const abortRef = useRef(null);
+  const stopRequestedRef = useRef(false);
+  const initializedRef = useRef(false);
+  const loadingRef = useRef(false);
+  const mountedRef = useRef(true);
 
   // Track mount state. IMPORTANT: the setup must RE-ARM `mountedRef` — under
   // React StrictMode (development) effects run setup -> cleanup -> setup, and
@@ -99,95 +99,95 @@ const useAiChat = () => {
   // setLoading(false)`), which looked exactly like "the assistant is loading
   // forever" while the backend answered perfectly every time.
   useEffect(() => {
-    mountedRef.current = true
+    mountedRef.current = true;
     return () => {
-      mountedRef.current = false
-      abortRef.current?.abort()
-    }
-  }, [])
+      mountedRef.current = false;
+      abortRef.current?.abort();
+    };
+  }, []);
 
   /** Restore an existing conversation (id from sessionStorage) once. */
   const initialize = useCallback(async () => {
-    if (initializedRef.current) return
-    initializedRef.current = true
-    const key = storageKey(user?.id)
-    let storedId = null
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    const key = storageKey(user?.id);
+    let storedId = null;
     try {
-      storedId = sessionStorage.getItem(key)
+      storedId = sessionStorage.getItem(key);
       if (!storedId) {
         // One-time migration from the pre-user-scoped key. A foreign-owner id
         // is harmless here: the 404 recovery below starts a fresh chat.
-        storedId = sessionStorage.getItem(LEGACY_STORAGE_KEY)
-        if (storedId) sessionStorage.setItem(key, storedId)
+        storedId = sessionStorage.getItem(LEGACY_STORAGE_KEY);
+        if (storedId) sessionStorage.setItem(key, storedId);
       }
-      sessionStorage.removeItem(LEGACY_STORAGE_KEY)
+      sessionStorage.removeItem(LEGACY_STORAGE_KEY);
     } catch {
-      storedId = null
+      storedId = null;
     }
-    if (!storedId) return
-    conversationIdRef.current = storedId
+    if (!storedId) return;
+    conversationIdRef.current = storedId;
     try {
-      const conversation = await fetchConversation(storedId)
-      if (!mountedRef.current) return
+      const conversation = await fetchConversation(storedId);
+      if (!mountedRef.current) return;
       const history = (Array.isArray(conversation?.messages) ? conversation.messages : [])
         .map(normalizeHistoryMessage)
-        .filter(Boolean)
-      if (history.length > 0) setMessages([WELCOME_MESSAGE, ...history])
+        .filter(Boolean);
+      if (history.length > 0) setMessages([WELCOME_MESSAGE, ...history]);
     } catch (err) {
       if (err?.response?.status === 404) {
         // Server no longer knows this conversation (expired/retention/other
         // account) — start fresh.
-        conversationIdRef.current = null
+        conversationIdRef.current = null;
         try {
-          sessionStorage.removeItem(key)
+          sessionStorage.removeItem(key);
         } catch {
           /* storage unavailable */
         }
       }
       // Other failures start a fresh view silently; server retention applies.
     }
-  }, [user?.id])
+  }, [user?.id]);
 
-  const send = useCallback(async (rawText) => {
-    const text = String(rawText ?? '').trim()
-    if (!text || loadingRef.current) return
-    if (text.length > 2000) return // server-side guard mirror; input is capped anyway
-    loadingRef.current = true
-    setError(null)
-    setLastFailedQuestion(null)
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `local-u-${Date.now()}`,
-        serverId: null,
-        role: 'user',
-        content: text,
-        sources: [],
-        stopped: false,
-        isWelcome: false,
-      },
-    ])
-    setLoading(true)
-    stopRequestedRef.current = false
-    const controller = new AbortController()
-    abortRef.current = controller
-    try {
-      const result = await sendChatMessage({
-        conversationId: conversationIdRef.current,
-        message: text,
-        signal: controller.signal,
-      })
-      if (!mountedRef.current) return
-      if (result?.conversationId) {
-        conversationIdRef.current = result.conversationId
-        try {
-          sessionStorage.setItem(storageKey(user?.id), String(result.conversationId))
-        } catch {
-          /* storage unavailable — id stays in memory for this tab only */
+  const send = useCallback(
+    async (rawText) => {
+      const text = String(rawText ?? '').trim();
+      if (!text || loadingRef.current) return;
+      if (text.length > 2000) return; // server-side guard mirror; input is capped anyway
+      loadingRef.current = true;
+      setError(null);
+      setLastFailedQuestion(null);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-u-${Date.now()}`,
+          serverId: null,
+          role: 'user',
+          content: text,
+          sources: [],
+          stopped: false,
+          isWelcome: false,
+        },
+      ]);
+      setLoading(true);
+      stopRequestedRef.current = false;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      try {
+        const result = await sendChatMessage({
+          conversationId: conversationIdRef.current,
+          message: text,
+          signal: controller.signal,
+        });
+        if (!mountedRef.current) return;
+        if (result?.conversationId) {
+          conversationIdRef.current = result.conversationId;
+          try {
+            sessionStorage.setItem(storageKey(user?.id), String(result.conversationId));
+          } catch {
+            /* storage unavailable — id stays in memory for this tab only */
+          }
         }
-      }
-      const reply =
-        normalizeHistoryMessage(result?.message) ?? {
+        const reply = normalizeHistoryMessage(result?.message) ?? {
           id: `local-a-${Date.now()}`,
           serverId: null,
           role: 'assistant',
@@ -195,97 +195,96 @@ const useAiChat = () => {
           sources: [],
           stopped: false,
           isWelcome: false,
+        };
+        setMessages((prev) => [...prev, reply]);
+      } catch (err) {
+        if (!mountedRef.current) return;
+        if (stopRequestedRef.current) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `local-s-${Date.now()}`,
+              serverId: null,
+              role: 'assistant',
+              content: 'Generation stopped. Ask another question or try again.',
+              sources: [],
+              stopped: true,
+              isWelcome: false,
+            },
+          ]);
+        } else {
+          setError(describeChatError(err));
+          setLastFailedQuestion(text);
         }
-      setMessages((prev) => [...prev, reply])
-    } catch (err) {
-      if (!mountedRef.current) return
-      if (stopRequestedRef.current) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `local-s-${Date.now()}`,
-            serverId: null,
-            role: 'assistant',
-            content: 'Generation stopped. Ask another question or try again.',
-            sources: [],
-            stopped: true,
-            isWelcome: false,
-          },
-        ])
-      } else {
-        setError(describeChatError(err))
-        setLastFailedQuestion(text)
+      } finally {
+        loadingRef.current = false;
+        abortRef.current = null;
+        if (mountedRef.current) setLoading(false);
       }
-    } finally {
-      loadingRef.current = false
-      abortRef.current = null
-      if (mountedRef.current) setLoading(false)
-    }
-  }, [user?.id])
+    },
+    [user?.id],
+  );
 
   const stop = useCallback(() => {
-    if (!abortRef.current) return
-    stopRequestedRef.current = true
-    abortRef.current.abort()
-  }, [])
+    if (!abortRef.current) return;
+    stopRequestedRef.current = true;
+    abortRef.current.abort();
+  }, []);
 
   const retry = useCallback(() => {
-    if (lastFailedQuestion) send(lastFailedQuestion)
-  }, [lastFailedQuestion, send])
+    if (lastFailedQuestion) send(lastFailedQuestion);
+  }, [lastFailedQuestion, send]);
 
   const clearError = useCallback(() => {
-    setError(null)
-    setLastFailedQuestion(null)
-  }, [])
+    setError(null);
+    setLastFailedQuestion(null);
+  }, []);
 
   /** Clear the conversation locally (always) and server-side (best effort). */
   const reset = useCallback(async () => {
-    const previousId = conversationIdRef.current
-    conversationIdRef.current = null
+    const previousId = conversationIdRef.current;
+    conversationIdRef.current = null;
     try {
-      sessionStorage.removeItem(storageKey(user?.id))
+      sessionStorage.removeItem(storageKey(user?.id));
     } catch {
       /* storage unavailable */
     }
-    stopRequestedRef.current = false
-    setError(null)
-    setLastFailedQuestion(null)
-    setFeedback({})
-    setMessages([WELCOME_MESSAGE])
+    stopRequestedRef.current = false;
+    setError(null);
+    setLastFailedQuestion(null);
+    setFeedback({});
+    setMessages([WELCOME_MESSAGE]);
     if (previousId) {
       try {
-        await clearConversation(previousId)
+        await clearConversation(previousId);
       } catch {
         /* local view already reset; server history follows retention policy */
       }
     }
-  }, [user?.id])
+  }, [user?.id]);
 
   /** Optimistic thumbs feedback on an assistant message; reverts on failure. */
   const submitFeedback = useCallback(async (message, rating) => {
-    if (!message || message.serverId == null) return false
-    if (rating !== 'up' && rating !== 'down') return false
-    setFeedback((prev) => ({ ...prev, [message.id]: rating }))
+    if (!message || message.serverId == null) return false;
+    if (rating !== 'up' && rating !== 'down') return false;
+    setFeedback((prev) => ({ ...prev, [message.id]: rating }));
     try {
-      await sendFeedback({ messageId: message.serverId, rating })
-      return true
+      await sendFeedback({ messageId: message.serverId, rating });
+      return true;
     } catch {
-      if (!mountedRef.current) return false
+      if (!mountedRef.current) return false;
       setFeedback((prev) => {
-        const next = { ...prev }
-        delete next[message.id]
-        return next
-      })
-      return false
+        const next = { ...prev };
+        delete next[message.id];
+        return next;
+      });
+      return false;
     }
-  }, [])
+  }, []);
 
-  const getFeedbackRating = useCallback(
-    (message) => feedback[message?.id] ?? null,
-    [feedback]
-  )
+  const getFeedbackRating = useCallback((message) => feedback[message?.id] ?? null, [feedback]);
 
-  const suggestions = useMemo(() => buildSuggestedQuestions(user, can), [user, can])
+  const suggestions = useMemo(() => buildSuggestedQuestions(user, can), [user, can]);
 
   // Queue a question to send automatically after initialise() resolves.
   // Used by the "Ask AI About This Policy" flow (§19): the PolicyReader
@@ -293,13 +292,16 @@ const useAiChat = () => {
   // calls initialize(), then calls seedOutgoing(). initialise() returns a
   // promise, so .then(seedOutgoing) guarantees the conversation id is ready
   // before send() is invoked.
-  const seedOutgoing = useCallback((text) => {
-    const trimmed = String(text ?? '').trim()
-    if (!trimmed) return
-    // initialize() already resolved by the caller; send() handles a null
-    // conversationId by starting a fresh conversation.
-    send(trimmed)
-  }, [send])
+  const seedOutgoing = useCallback(
+    (text) => {
+      const trimmed = String(text ?? '').trim();
+      if (!trimmed) return;
+      // initialize() already resolved by the caller; send() handles a null
+      // conversationId by starting a fresh conversation.
+      send(trimmed);
+    },
+    [send],
+  );
 
   return {
     messages,
@@ -316,7 +318,7 @@ const useAiChat = () => {
     clearError,
     submitFeedback,
     getFeedbackRating,
-  }
-}
+  };
+};
 
-export default useAiChat
+export default useAiChat;

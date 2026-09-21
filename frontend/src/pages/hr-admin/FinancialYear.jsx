@@ -11,7 +11,7 @@ import LeaveAllocationCard from '../../components/financial-year/LeaveAllocation
 import FinancialYearTable from '../../components/financial-year/FinancialYearTable';
 
 const FinancialYear = () => {
-      // Read navigation state handed over from the Contracts tab
+  // Read navigation state handed over from the Contracts tab
   // "Convert to Permanent" flow (pre-selected employee for leave allocation).
   const location = useLocation();
   const preselectedEmployeeId = location.state?.allocateEmployeeId ?? null;
@@ -73,8 +73,7 @@ const FinancialYear = () => {
         const data = error.response.data;
 
         if (status === 403) {
-          message =
-            data?.message || 'You do not have permission to create a financial year.';
+          message = data?.message || 'You do not have permission to create a financial year.';
         } else if (status === 422) {
           message = data?.message || 'Invalid data provided. Please check your input.';
         } else if (status === 500) {
@@ -98,7 +97,9 @@ const FinancialYear = () => {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Financial Year Management</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            Financial Year Management
+          </h1>
           <p className="text-gray-500 dark:text-gray-400">Manage financial years and periods</p>
         </div>
         <div className="flex items-center justify-center h-64">
@@ -111,7 +112,9 @@ const FinancialYear = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Financial Year Management</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+          Financial Year Management
+        </h1>
         <p className="text-gray-500 dark:text-gray-400">Manage financial years and periods</p>
       </div>
 
@@ -133,11 +136,16 @@ const FinancialYear = () => {
       {preselectedEmployeeId && (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
           <p className="text-sm text-blue-800 dark:text-blue-200">
-            {preselectedEmployeeName
-              ? <><strong className="font-semibold">{preselectedEmployeeName}</strong> was converted to Permanent employment — </>
-              : 'An employee was converted to Permanent employment — '}
-            pick the financial year below and allocate their leave days. The employee is pre-selected in the
-            allocation form.
+            {preselectedEmployeeName ? (
+              <>
+                <strong className="font-semibold">{preselectedEmployeeName}</strong> was converted
+                to Permanent employment —{' '}
+              </>
+            ) : (
+              'An employee was converted to Permanent employment — '
+            )}
+            pick the financial year below and allocate their leave days. The employee is
+            pre-selected in the allocation form.
           </p>
         </div>
       )}

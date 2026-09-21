@@ -1,82 +1,90 @@
-import { useState, useEffect } from 'react'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import Button from '../../components/ui/Button'
-import { CheckCircle, XCircle, FileX, Inbox } from 'lucide-react'
-import { badgeClass, formatDate, formatStatus, ROWS_PER_PAGE, Pagination } from './leaveManageShared.jsx'
-import { useManageContext } from './ManageLeaveLayout.jsx'
+import { useState, useEffect } from 'react';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import { CheckCircle, XCircle, FileX, Inbox } from 'lucide-react';
+import {
+  badgeClass,
+  formatDate,
+  formatStatus,
+  ROWS_PER_PAGE,
+  Pagination,
+} from './leaveManageShared.jsx';
+import { useManageContext } from './ManageLeaveLayout.jsx';
 
 const PendingTab = () => {
-  const { refreshCounts } = useManageContext()
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [offset, setOffset] = useState(0)
-  const [count, setCount] = useState(0)
-  const [modal, setModal] = useState({ open: false, action: null, row: null, reason: '' })
-  const [banner, setBanner] = useState({ kind: '', message: '' })
+  const { refreshCounts } = useManageContext();
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [count, setCount] = useState(0);
+  const [modal, setModal] = useState({ open: false, action: null, row: null, reason: '' });
+  const [banner, setBanner] = useState({ kind: '', message: '' });
 
   useEffect(() => {
-    fetchRows()
-     
-  }, [offset])
+    fetchRows();
+  }, [offset]);
 
   const fetchRows = async () => {
-    setLoading(true)
-    setError('')
+    setLoading(true);
+    setError('');
     try {
       const response = await api.get('/leave/manage', {
         params: { limit: ROWS_PER_PAGE, pending_offset: offset },
-      })
-      const data = response.data?.data || {}
-      setRows(data.pending || [])
-      setCount(data.counts?.pending ?? 0)
+      });
+      const data = response.data?.data || {};
+      setRows(data.pending || []);
+      setCount(data.counts?.pending ?? 0);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load pending leaves.')
+      setError(err.response?.data?.message || 'Failed to load pending leaves.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const openModal = (action, row) => {
-    setModal({ open: true, action, row, reason: '' })
-    setBanner({ kind: '', message: '' })
-  }
+    setModal({ open: true, action, row, reason: '' });
+    setBanner({ kind: '', message: '' });
+  };
 
   const closeModal = () => {
-    setModal({ open: false, action: null, row: null, reason: '' })
-  }
+    setModal({ open: false, action: null, row: null, reason: '' });
+  };
 
   const submitModal = async () => {
-    if (!modal.row) return
+    if (!modal.row) return;
     if ((modal.action === 'reject' || modal.action === 'invalidate') && !modal.reason.trim()) {
-      setBanner({ kind: 'error', message: 'A reason is required.' })
-      return
+      setBanner({ kind: 'error', message: 'A reason is required.' });
+      return;
     }
-    setLoading(true)
+    setLoading(true);
     try {
-      const url = `/leave/${modal.row.id}/${modal.action}`
-      const payload = (modal.action === 'reject' || modal.action === 'invalidate')
-        ? { reason: modal.reason.trim() }
-        : undefined
-      const response = modal.action === 'approve'
-        ? await api.put(url)
-        : await api.put(url, payload)
-      const data = response.data
+      const url = `/leave/${modal.row.id}/${modal.action}`;
+      const payload =
+        modal.action === 'reject' || modal.action === 'invalidate'
+          ? { reason: modal.reason.trim() }
+          : undefined;
+      const response =
+        modal.action === 'approve' ? await api.put(url) : await api.put(url, payload);
+      const data = response.data;
       setBanner({
         kind: data?.success ? 'success' : 'error',
         message: data?.message || (data?.success ? 'Action completed.' : 'Action failed.'),
-      })
-      closeModal()
-      setOffset(0)
-      await fetchRows()
-      if (typeof refreshCounts === 'function') refreshCounts()
+      });
+      closeModal();
+      setOffset(0);
+      await fetchRows();
+      if (typeof refreshCounts === 'function') refreshCounts();
     } catch (err) {
-      setBanner({ kind: 'error', message: err.response?.data?.message || `Failed to ${modal.action} leave.` })
+      setBanner({
+        kind: 'error',
+        message: err.response?.data?.message || `Failed to ${modal.action} leave.`,
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const renderRows = () => {
     if (!rows.length) {
@@ -87,16 +95,20 @@ const PendingTab = () => {
             No pending leave applications.
           </td>
         </tr>
-      )
+      );
     }
     return rows.map((row) => {
-      const stageLabel = row.pending_approver_label || 'Approver'
-      const stageName = row.pending_approver_name || 'Not Assigned'
+      const stageLabel = row.pending_approver_label || 'Approver';
+      const stageName = row.pending_approver_name || 'Not Assigned';
       return (
         <tr key={row.id} className="border-t border-gray-200 dark:border-slate-700">
           <td className="px-4 py-2">
-            <div className="font-medium text-gray-900 dark:text-gray-100">{row.first_name} {row.last_name}</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">{row.emp_no || row.employee_id}</div>
+            <div className="font-medium text-gray-900 dark:text-gray-100">
+              {row.first_name} {row.last_name}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              {row.emp_no || row.employee_id}
+            </div>
           </td>
           <td className="px-4 py-2">{row.leave_type_name}</td>
           <td className="px-4 py-2 text-sm">
@@ -104,7 +116,9 @@ const PendingTab = () => {
           </td>
           <td className="px-4 py-2 text-sm">{row.days_requested || '—'}</td>
           <td className="px-4 py-2">
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${badgeClass(row.status)}`}>
+            <span
+              className={`px-2 py-1 rounded-full text-xs font-medium ${badgeClass(row.status)}`}
+            >
               {formatStatus(row.status)}
             </span>
           </td>
@@ -126,11 +140,11 @@ const PendingTab = () => {
             </div>
           </td>
         </tr>
-      )
-    })
-  }
+      );
+    });
+  };
 
-  const pages = Math.max(1, Math.ceil(count / ROWS_PER_PAGE))
+  const pages = Math.max(1, Math.ceil(count / ROWS_PER_PAGE));
 
   return (
     <>
@@ -167,11 +181,7 @@ const PendingTab = () => {
             <tbody>{renderRows()}</tbody>
           </table>
         </div>
-        <Pagination
-          pages={pages}
-          offset={offset}
-          onChange={(newOffset) => setOffset(newOffset)}
-        />
+        <Pagination pages={pages} offset={offset} onChange={(newOffset) => setOffset(newOffset)} />
       </Card>
 
       {modal.open && (
@@ -184,7 +194,10 @@ const PendingTab = () => {
             </h3>
             {modal.row && (
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                <strong>{modal.row.first_name} {modal.row.last_name}</strong> — {modal.row.leave_type_name}
+                <strong>
+                  {modal.row.first_name} {modal.row.last_name}
+                </strong>{' '}
+                — {modal.row.leave_type_name}
                 <br />
                 {formatDate(modal.row.start_date)} → {formatDate(modal.row.end_date)}
               </p>
@@ -206,17 +219,21 @@ const PendingTab = () => {
             )}
             {modal.action === 'approve' && (
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                Approving this application will advance it to the next stage in the chain
-                (or mark it fully approved if this is the final stage).
+                Approving this application will advance it to the next stage in the chain (or mark
+                it fully approved if this is the final stage).
               </p>
             )}
             <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={closeModal}>Cancel</Button>
+              <Button variant="outline" onClick={closeModal}>
+                Cancel
+              </Button>
               <Button
                 variant={
-                  modal.action === 'approve' ? 'success'
-                    : modal.action === 'reject' ? 'danger'
-                    : 'secondary'
+                  modal.action === 'approve'
+                    ? 'success'
+                    : modal.action === 'reject'
+                      ? 'danger'
+                      : 'secondary'
                 }
                 onClick={submitModal}
                 disabled={loading}
@@ -230,8 +247,7 @@ const PendingTab = () => {
         </div>
       )}
     </>
-  )
-}
+  );
+};
 
-export default PendingTab
-
+export default PendingTab;

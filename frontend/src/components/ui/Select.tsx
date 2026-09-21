@@ -38,11 +38,9 @@ const Select = ({ label, error, options = [], className = '', ...props }: Select
           </option>
         ))}
       </select>
-      {error && (
-        <p className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>
-      )}
+      {error && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>}
     </div>
-  )
-}
+  );
+};
 
-export default Select
+export default Select;

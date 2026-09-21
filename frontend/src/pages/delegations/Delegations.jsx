@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import { useAuth } from '../../context/AuthContext'
-import { formatDate } from '../leave/leaveManageShared.jsx'
+import { useEffect, useState } from 'react';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import { useAuth } from '../../context/AuthContext';
+import { formatDate } from '../leave/leaveManageShared.jsx';
 
 /**
  * Delegations — Temporary Delegation / Acting Authority management (§24-§26).
@@ -23,29 +23,29 @@ const TABS = [
   { key: 'active', label: 'Active' },
   { key: 'upcoming', label: 'Upcoming' },
   { key: 'history', label: 'History' },
-]
+];
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => new Date().toISOString().slice(0, 10);
 
 const filterRows = (rows, tab) => {
-  const now = today()
+  const now = today();
   switch (tab) {
     case 'pending':
-      return rows.filter((r) => r.status === 'pending')
+      return rows.filter((r) => r.status === 'pending');
     case 'active':
       return rows.filter(
         (r) =>
           r.status === 'active' ||
-          (r.status === 'approved' && r.start_date <= now && r.end_date >= now)
-      )
+          (r.status === 'approved' && r.start_date <= now && r.end_date >= now),
+      );
     case 'upcoming':
-      return rows.filter((r) => r.status === 'approved' && r.start_date > now)
+      return rows.filter((r) => r.status === 'approved' && r.start_date > now);
     case 'history':
-      return rows.filter((r) => ['expired', 'cancelled', 'rejected'].includes(r.status))
+      return rows.filter((r) => ['expired', 'cancelled', 'rejected'].includes(r.status));
     default:
-      return rows
+      return rows;
   }
-}
+};
 
 const statusBadge = (status) => {
   const map = {
@@ -55,71 +55,71 @@ const statusBadge = (status) => {
     expired: 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300',
     cancelled: 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-gray-300',
     rejected: 'bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300',
-  }
-  return map[status] || map.expired
-}
+  };
+  return map[status] || map.expired;
+};
 
 const prettyPermission = (perm) => {
-  const [module, action] = String(perm || '').split(':')
-  return `${module} · ${action}`
-}
+  const [module, action] = String(perm || '').split(':');
+  return `${module} · ${action}`;
+};
 
 const Delegations = () => {
-  const { can, user } = useAuth()
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [tab, setTab] = useState('pending')
-  const [actionError, setActionError] = useState('')
+  const { can, user } = useAuth();
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [tab, setTab] = useState('pending');
+  const [actionError, setActionError] = useState('');
 
   // Create form state
-  const [showCreate, setShowCreate] = useState(false)
-  const [delegates, setDelegates] = useState([])
-  const [delegatable, setDelegatable] = useState({ flat: [], grouped: {} })
+  const [showCreate, setShowCreate] = useState(false);
+  const [delegates, setDelegates] = useState([]);
+  const [delegatable, setDelegatable] = useState({ flat: [], grouped: {} });
   const [form, setForm] = useState({
     delegate_user_id: '',
     start_date: '',
     end_date: '',
     permissions: [],
     reason: '',
-  })
-  const [submitting, setSubmitting] = useState(false)
+  });
+  const [submitting, setSubmitting] = useState(false);
 
-  const canCreate = can('delegations', 'create')
-  const canApprove = can('delegations', 'approve')
+  const canCreate = can('delegations', 'create');
+  const canApprove = can('delegations', 'approve');
 
   const fetchRows = async () => {
-    setLoading(true)
-    setError('')
+    setLoading(true);
+    setError('');
     try {
-      const response = await api.get('/delegations')
-      setRows(response.data?.data?.delegations || [])
+      const response = await api.get('/delegations');
+      setRows(response.data?.data?.delegations || []);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load delegations.')
+      setError(err.response?.data?.message || 'Failed to load delegations.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchRows()
-  }, [])
+    fetchRows();
+  }, []);
 
   const openCreate = async () => {
-    setActionError('')
-    setForm({ delegate_user_id: '', start_date: '', end_date: '', permissions: [], reason: '' })
-    setShowCreate(true)
+    setActionError('');
+    setForm({ delegate_user_id: '', start_date: '', end_date: '', permissions: [], reason: '' });
+    setShowCreate(true);
     try {
       const [delegatesRes, permsRes] = await Promise.all([
         api.get('/delegations/eligible-delegates'),
         api.get('/delegations/delegatable-permissions'),
-      ])
-      setDelegates(delegatesRes.data?.data?.delegates || [])
-      setDelegatable(permsRes.data?.data?.permissions || { flat: [], grouped: {} })
+      ]);
+      setDelegates(delegatesRes.data?.data?.delegates || []);
+      setDelegatable(permsRes.data?.data?.permissions || { flat: [], grouped: {} });
     } catch (err) {
-      setActionError(err.response?.data?.message || 'Failed to load delegation options.')
+      setActionError(err.response?.data?.message || 'Failed to load delegation options.');
     }
-  }
+  };
 
   const togglePermission = (perm) => {
     setForm((prev) => ({
@@ -127,42 +127,44 @@ const Delegations = () => {
       permissions: prev.permissions.includes(perm)
         ? prev.permissions.filter((p) => p !== perm)
         : [...prev.permissions, perm],
-    }))
-  }
+    }));
+  };
 
   const submitCreate = async (event) => {
-    event.preventDefault()
-    setSubmitting(true)
-    setActionError('')
+    event.preventDefault();
+    setSubmitting(true);
+    setActionError('');
     try {
-      await api.post('/delegations', form)
-      setShowCreate(false)
-      await fetchRows()
-      setTab('pending')
+      await api.post('/delegations', form);
+      setShowCreate(false);
+      await fetchRows();
+      setTab('pending');
     } catch (err) {
-      setActionError(err.response?.data?.message || 'Failed to create the delegation.')
+      setActionError(err.response?.data?.message || 'Failed to create the delegation.');
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
-  }
+  };
 
   const decide = async (id, action) => {
-    setActionError('')
+    setActionError('');
     const reason =
       action === 'approve'
         ? ''
-        : window.prompt(`Reason for ${action === 'reject' ? 'rejecting' : 'cancelling'} this delegation (optional):`) || ''
+        : window.prompt(
+            `Reason for ${action === 'reject' ? 'rejecting' : 'cancelling'} this delegation (optional):`,
+          ) || '';
     try {
-      await api.put(`/delegations/${id}/${action}`, { reason })
-      await fetchRows()
+      await api.put(`/delegations/${id}/${action}`, { reason });
+      await fetchRows();
     } catch (err) {
-      setActionError(err.response?.data?.message || `Failed to ${action} the delegation.`)
+      setActionError(err.response?.data?.message || `Failed to ${action} the delegation.`);
     }
-  }
+  };
 
-  const visibleRows = filterRows(rows, tab)
-  const pendingCount = rows.filter((r) => r.status === 'pending').length
-  const userId = user?.id
+  const visibleRows = filterRows(rows, tab);
+  const pendingCount = rows.filter((r) => r.status === 'pending').length;
+  const userId = user?.id;
 
   return (
     <div className="space-y-4">
@@ -181,10 +183,14 @@ const Delegations = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Delegations <span className="text-sm font-normal text-gray-500 dark:text-gray-400">(Acting Authority)</span>
+              Delegations{' '}
+              <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                (Acting Authority)
+              </span>
             </h2>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Temporary, time-bound transfer of approval authority. Your permanent role never changes.
+              Temporary, time-bound transfer of approval authority. Your permanent role never
+              changes.
             </p>
           </div>
           {canCreate && (
@@ -210,7 +216,9 @@ const Delegations = () => {
             >
               {t.label}
               {t.key === 'pending' && pendingCount > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-xs bg-red-600 text-white">{pendingCount}</span>
+                <span className="ml-1.5 px-1.5 py-0.5 rounded-full text-xs bg-red-600 text-white">
+                  {pendingCount}
+                </span>
               )}
             </button>
           ))}
@@ -232,35 +240,49 @@ const Delegations = () => {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td
+                    colSpan={7}
+                    className="px-4 py-8 text-center text-gray-500 dark:text-gray-400"
+                  >
                     Loading delegations…
                   </td>
                 </tr>
               ) : visibleRows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td
+                    colSpan={7}
+                    className="px-4 py-8 text-center text-gray-500 dark:text-gray-400"
+                  >
                     No delegations in this view.
                   </td>
                 </tr>
               ) : (
                 visibleRows.map((row) => {
-                  const iAmDelegator = userId === row.delegator_user_id
+                  const iAmDelegator = userId === row.delegator_user_id;
                   const cancellable =
                     ['pending', 'approved', 'active'].includes(row.status) &&
-                    (iAmDelegator || can('delegations', 'cancel'))
+                    (iAmDelegator || can('delegations', 'cancel'));
                   return (
                     <tr key={row.id} className="border-t border-gray-200 dark:border-slate-700">
-                      <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{row.delegator_name}</td>
-                      <td className="px-4 py-2 text-gray-900 dark:text-gray-100">{row.delegate_name}</td>
+                      <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
+                        {row.delegator_name}
+                      </td>
+                      <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
+                        {row.delegate_name}
+                      </td>
                       <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300">
                         {(row.permissions || []).map(prettyPermission).join(', ')}
                       </td>
-                      <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300">{row.scope_label}</td>
+                      <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300">
+                        {row.scope_label}
+                      </td>
                       <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300">
                         {formatDate(row.start_date)} → {formatDate(row.end_date)}
                       </td>
                       <td className="px-4 py-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge(row.status)}`}>
+                        <span
+                          className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge(row.status)}`}
+                        >
                           {row.status}
                         </span>
                       </td>
@@ -291,7 +313,7 @@ const Delegations = () => {
                         )}
                       </td>
                     </tr>
-                  )
+                  );
                 })
               )}
             </tbody>
@@ -300,20 +322,27 @@ const Delegations = () => {
       </Card>
 
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowCreate(false)}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setShowCreate(false)}
+        >
           <form
             onClick={(e) => e.stopPropagation()}
             onSubmit={submitCreate}
             className="w-full max-w-lg bg-white dark:bg-slate-800 rounded-xl shadow-xl border dark:border-slate-700 p-5 space-y-4 max-h-[90vh] overflow-y-auto"
           >
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">New Delegation</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              New Delegation
+            </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Explicitly choose who acts for you, what authority they receive, and for how long. The request
-              requires HR approval before it becomes effective.
+              Explicitly choose who acts for you, what authority they receive, and for how long. The
+              request requires HR approval before it becomes effective.
             </p>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Delegate *</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Delegate *
+              </label>
               <select
                 required
                 value={form.delegate_user_id}
@@ -328,13 +357,17 @@ const Delegations = () => {
                 ))}
               </select>
               {delegates.length === 0 && (
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">No eligible delegates in your scope.</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  No eligible delegates in your scope.
+                </p>
               )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start date *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Start date *
+                </label>
                 <input
                   type="date"
                   required
@@ -345,7 +378,9 @@ const Delegations = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End date *</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  End date *
+                </label>
                 <input
                   type="date"
                   required
@@ -359,7 +394,10 @@ const Delegations = () => {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Delegated authority * <span className="font-normal text-gray-500 dark:text-gray-400">(only what your role may delegate)</span>
+                Delegated authority *{' '}
+                <span className="font-normal text-gray-500 dark:text-gray-400">
+                  (only what your role may delegate)
+                </span>
               </label>
               <div className="space-y-1.5">
                 {delegatable.flat.length === 0 && (
@@ -368,7 +406,10 @@ const Delegations = () => {
                   </p>
                 )}
                 {delegatable.flat.map((perm) => (
-                  <label key={perm} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <label
+                    key={perm}
+                    className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"
+                  >
                     <input
                       type="checkbox"
                       checked={form.permissions.includes(perm)}
@@ -382,7 +423,9 @@ const Delegations = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reason *</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Reason *
+              </label>
               <textarea
                 required
                 rows={2}
@@ -414,7 +457,7 @@ const Delegations = () => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default Delegations
+export default Delegations;

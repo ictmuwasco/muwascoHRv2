@@ -3,7 +3,10 @@ import type { ApiResponse, LoginResponse, User } from '../../types';
 
 export const authService = {
   login: async (email: string, password: string): Promise<ApiResponse<LoginResponse>> => {
-    const response = await apiClient.post<ApiResponse<LoginResponse>>('/auth/login', { email, password });
+    const response = await apiClient.post<ApiResponse<LoginResponse>>('/auth/login', {
+      email,
+      password,
+    });
     return response.data;
   },
 
@@ -28,7 +31,10 @@ export const authService = {
   },
 
   resetPassword: async (token: string, password: string): Promise<ApiResponse<null>> => {
-    const response = await apiClient.post<ApiResponse<null>>('/auth/reset-password', { token, password });
+    const response = await apiClient.post<ApiResponse<null>>('/auth/reset-password', {
+      token,
+      password,
+    });
     return response.data;
   },
 };

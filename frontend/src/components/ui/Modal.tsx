@@ -10,14 +10,7 @@ interface ModalProps {
   className?: string;
 }
 
-const Modal = ({
-  isOpen,
-  onClose,
-  title,
-  children,
-  size = 'lg',
-  className = '',
-}: ModalProps) => {
+const Modal = ({ isOpen, onClose, title, children, size = 'lg', className = '' }: ModalProps) => {
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return;
@@ -54,9 +47,7 @@ const Modal = ({
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b dark:border-slate-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {title}
-          </h3>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
           <button
             onClick={onClose}
             className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-md hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
@@ -67,9 +58,7 @@ const Modal = ({
         </div>
 
         {/* Body */}
-        <div className="p-6 overflow-y-auto max-h-[calc(100vh-200px)]">
-          {children}
-        </div>
+        <div className="p-6 overflow-y-auto max-h-[calc(100vh-200px)]">{children}</div>
       </div>
     </div>
   );

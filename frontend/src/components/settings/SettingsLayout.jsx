@@ -1,4 +1,4 @@
-﻿import { NavLink, Outlet, Navigate } from 'react-router-dom'
+﻿import { NavLink, Outlet, Navigate } from 'react-router-dom';
 import {
   FileText,
   Users as UsersIcon,
@@ -8,9 +8,9 @@ import {
   Lock,
   Activity,
   ShieldAlert,
-} from 'lucide-react'
-import { useAuth } from '../../context/AuthContext'
-import { SETTINGS_TABS, parsePermission, firstPermittedRoute } from '../../config/pagePermissions'
+} from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { SETTINGS_TABS, parsePermission, firstPermittedRoute } from '../../config/pagePermissions';
 
 /**
  * Settings module layout (Phase: Role, Page & Permission restriction).
@@ -39,7 +39,7 @@ const TAB_ICONS = {
   permissions: <Shield className="h-4 w-4" />,
   monitoring: <Activity className="h-4 w-4" />,
   'hr-policies': <FileText className="h-4 w-4" />,
-}
+};
 
 /**
  * Index route for /settings: land the user on the first settings tab they
@@ -47,26 +47,26 @@ const TAB_ICONS = {
  * first permitted route (never a redirect loop).
  */
 export function SettingsIndexRedirect() {
-  const { can } = useAuth()
+  const { can } = useAuth();
   const allowed = SETTINGS_TABS.filter((tab) => {
-    const [module, action] = parsePermission(tab.permission)
-    return can(module, action)
-  })
+    const [module, action] = parsePermission(tab.permission);
+    return can(module, action);
+  });
 
   if (allowed.length === 0) {
-    return <Navigate to={firstPermittedRoute(can)} replace />
+    return <Navigate to={firstPermittedRoute(can)} replace />;
   }
-  return <Navigate to={`/settings/${allowed[0].id}`} replace />
+  return <Navigate to={`/settings/${allowed[0].id}`} replace />;
 }
 
 const SettingsLayout = () => {
-  const { can } = useAuth()
+  const { can } = useAuth();
 
   // Permission-driven tab visibility (replaces the hardcoded role list).
   const tabs = SETTINGS_TABS.filter((tab) => {
-    const [module, action] = parsePermission(tab.permission)
-    return can(module, action)
-  })
+    const [module, action] = parsePermission(tab.permission);
+    return can(module, action);
+  });
 
   // Complete Settings lockdown (e.g. Officer/Sub-section Head/Section Head/
   // Department Head/HR Manager/Managing Director by default): fail fast with
@@ -85,14 +85,16 @@ const SettingsLayout = () => {
           </p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h1>
-        <p className="text-gray-500 dark:text-gray-400">Manage your account, users, and system configuration</p>
+        <p className="text-gray-500 dark:text-gray-400">
+          Manage your account, users, and system configuration
+        </p>
       </div>
 
       {/* Horizontal tab nav - only permitted tabs are rendered. */}
@@ -121,7 +123,7 @@ const SettingsLayout = () => {
       {/* The tab routes are individually permission-guarded in App.jsx. */}
       <Outlet />
     </div>
-  )
-}
+  );
+};
 
-export default SettingsLayout
+export default SettingsLayout;

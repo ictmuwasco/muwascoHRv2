@@ -1,59 +1,57 @@
-import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import Input from '../../components/ui/Input'
-import Select from '../../components/ui/Select'
-import Button from '../../components/ui/Button'
-import EmployeeTabs from '../../components/EmployeeTabs'
-import { ArrowLeft, Save, Loader2 } from 'lucide-react'
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import Input from '../../components/ui/Input';
+import Select from '../../components/ui/Select';
+import Button from '../../components/ui/Button';
+import EmployeeTabs from '../../components/EmployeeTabs';
+import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 
 interface FormData {
-  employee_id: string
-  first_name: string
-  last_name: string
-  surname: string
-  email: string
-  phone: string
-  national_id: string
-  gender: string
-  date_of_birth: string
-  address: string
-  designation: string
-  department_id: string
-  section_id: string
-  subsection_id: string
-  office_id: string
-  position: string
-  employment_type: string
-  employee_type: string
-  employee_status: string
-  hire_date: string
-  scale_id: string
-  contract_start_date: string
-  contract_end_date: string
+  employee_id: string;
+  first_name: string;
+  last_name: string;
+  surname: string;
+  email: string;
+  phone: string;
+  national_id: string;
+  gender: string;
+  date_of_birth: string;
+  address: string;
+  designation: string;
+  department_id: string;
+  section_id: string;
+  subsection_id: string;
+  office_id: string;
+  position: string;
+  employment_type: string;
+  employee_type: string;
+  employee_status: string;
+  hire_date: string;
+  scale_id: string;
+  contract_start_date: string;
+  contract_end_date: string;
 }
 
 interface ReferenceData {
-  departments: Array<{ id: number; name: string }>
-  sections: Array<{ id: number; name: string; department_id: number }>
-  subsections: Array<{ id: number; name: string; section_id: number }>
-  offices: Array<{ id: number; name: string }>
+  departments: Array<{ id: number; name: string }>;
+  sections: Array<{ id: number; name: string; department_id: number }>;
+  subsections: Array<{ id: number; name: string; section_id: number }>;
+  offices: Array<{ id: number; name: string }>;
 }
 
 // Roles that don't need department/section/subsection
-const NO_ORG_ROLES = ['managing_director', 'bod_chairman', 'super_admin']
+const NO_ORG_ROLES = ['managing_director', 'bod_chairman', 'super_admin'];
 // Roles that only need department (hr_manager is like dept_head but more powerful)
-const DEPT_ONLY_ROLES = ['dept_head', 'hr_manager']
+const DEPT_ONLY_ROLES = ['dept_head', 'hr_manager'];
 // Roles that need department + section
-const SECTION_ROLES = ['section_head']
-
-
+const SECTION_ROLES = ['section_head'];
 
 const EmployeeForm = () => {
-  const { id } = useParams()
-  const navigate = useNavigate()
-  const isEdit = Boolean(id)
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const isEdit = Boolean(id);
 
   const [formData, setFormData] = useState<FormData>({
     employee_id: '',
@@ -79,65 +77,75 @@ const EmployeeForm = () => {
     scale_id: '',
     contract_start_date: '',
     contract_end_date: '',
-  })
+  });
 
   const [referenceData, setReferenceData] = useState<ReferenceData>({
     departments: [],
     sections: [],
     subsections: [],
     offices: [],
-  })
-  const [availableSections, setAvailableSections] = useState<Array<{ id: number; name: string }>>([])
-  const [availableSubsections, setAvailableSubsections] = useState<Array<{ id: number; name: string }>>([])
-  const [loading, setLoading] = useState(isEdit)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  });
+  const [availableSections, setAvailableSections] = useState<Array<{ id: number; name: string }>>(
+    [],
+  );
+  const [availableSubsections, setAvailableSubsections] = useState<
+    Array<{ id: number; name: string }>
+  >([]);
+  const [loading, setLoading] = useState(isEdit);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
-    fetchReferenceData()
+    fetchReferenceData();
     if (isEdit) {
-      fetchEmployee()
+      fetchEmployee();
     }
-  }, [id])
+  }, [id]);
 
   // When department changes, filter sections
   useEffect(() => {
     if (formData.department_id) {
       const filtered = referenceData.sections.filter(
-        (s) => String(s.department_id) === String(formData.department_id)
-      )
-      setAvailableSections(filtered)
+        (s) => String(s.department_id) === String(formData.department_id),
+      );
+      setAvailableSections(filtered);
       // If current section is not in the filtered list, reset it
-      if (formData.section_id && !filtered.some((s) => String(s.id) === String(formData.section_id))) {
-        setFormData((prev) => ({ ...prev, section_id: '', subsection_id: '' }))
+      if (
+        formData.section_id &&
+        !filtered.some((s) => String(s.id) === String(formData.section_id))
+      ) {
+        setFormData((prev) => ({ ...prev, section_id: '', subsection_id: '' }));
       }
     } else {
-      setAvailableSections([])
-      setFormData((prev) => ({ ...prev, section_id: '', subsection_id: '' }))
+      setAvailableSections([]);
+      setFormData((prev) => ({ ...prev, section_id: '', subsection_id: '' }));
     }
-  }, [formData.department_id, referenceData.sections])
+  }, [formData.department_id, referenceData.sections]);
 
   // When section changes, filter subsections
   useEffect(() => {
     if (formData.section_id) {
       const filtered = referenceData.subsections.filter(
-        (s) => String(s.section_id) === String(formData.section_id)
-      )
-      setAvailableSubsections(filtered)
+        (s) => String(s.section_id) === String(formData.section_id),
+      );
+      setAvailableSubsections(filtered);
       // If current subsection is not in the filtered list, reset it
-      if (formData.subsection_id && !filtered.some((s) => String(s.id) === String(formData.subsection_id))) {
-        setFormData((prev) => ({ ...prev, subsection_id: '' }))
+      if (
+        formData.subsection_id &&
+        !filtered.some((s) => String(s.id) === String(formData.subsection_id))
+      ) {
+        setFormData((prev) => ({ ...prev, subsection_id: '' }));
       }
     } else {
-      setAvailableSubsections([])
-      setFormData((prev) => ({ ...prev, subsection_id: '' }))
+      setAvailableSubsections([]);
+      setFormData((prev) => ({ ...prev, subsection_id: '' }));
     }
-  }, [formData.section_id, referenceData.subsections])
+  }, [formData.section_id, referenceData.subsections]);
 
   // When employee_type changes, apply role-based field visibility
   useEffect(() => {
-    const type = formData.employee_type
+    const type = formData.employee_type;
     if (NO_ORG_ROLES.includes(type)) {
       // No department, section, or subsection needed
       setFormData((prev) => ({
@@ -145,81 +153,81 @@ const EmployeeForm = () => {
         department_id: '',
         section_id: '',
         subsection_id: '',
-      }))
+      }));
     } else if (DEPT_ONLY_ROLES.includes(type)) {
       // Only department needed
       setFormData((prev) => ({
         ...prev,
         section_id: '',
         subsection_id: '',
-      }))
+      }));
     } else if (SECTION_ROLES.includes(type)) {
       // Department + section needed
       setFormData((prev) => ({
         ...prev,
         subsection_id: '',
-      }))
+      }));
     }
     // sub_section_head and officer need all levels
-  }, [formData.employee_type])
+  }, [formData.employee_type]);
 
   // Contract dates are only relevant for contract employment type
-  const isContract = formData.employment_type === 'contract'
+  const isContract = formData.employment_type === 'contract';
 
   interface ReferencePayload {
-    departments?: Array<{ id: number; name: string }>
-    sections?: Array<{ id: number; name: string; department_id: number }>
-    subsections?: Array<{ id: number; name: string; section_id: number }>
-    offices?: Array<{ id: number; name: string }>
+    departments?: Array<{ id: number; name: string }>;
+    sections?: Array<{ id: number; name: string; department_id: number }>;
+    subsections?: Array<{ id: number; name: string; section_id: number }>;
+    offices?: Array<{ id: number; name: string }>;
   }
 
   interface EmployeePayload {
-    employee_id?: string
-    first_name?: string
-    last_name?: string
-    surname?: string
-    email?: string
-    phone?: string
-    national_id?: string
-    gender?: string
-    date_of_birth?: string
-    address?: string
-    designation?: string
-    department_id?: string | number
-    section_id?: string | number
-    subsection_id?: string | number
-    office_id?: string | number
-    position?: string
-    employment_type?: string
-    employee_type?: string
-    employee_status?: string
-    hire_date?: string
-    scale_id?: string
-    contract_start_date?: string
-    contract_end_date?: string
+    employee_id?: string;
+    first_name?: string;
+    last_name?: string;
+    surname?: string;
+    email?: string;
+    phone?: string;
+    national_id?: string;
+    gender?: string;
+    date_of_birth?: string;
+    address?: string;
+    designation?: string;
+    department_id?: string | number;
+    section_id?: string | number;
+    subsection_id?: string | number;
+    office_id?: string | number;
+    position?: string;
+    employment_type?: string;
+    employee_type?: string;
+    employee_status?: string;
+    hire_date?: string;
+    scale_id?: string;
+    contract_start_date?: string;
+    contract_end_date?: string;
   }
 
   const fetchReferenceData = async () => {
     try {
-      const response = await api.get<ReferencePayload>('/employees/reference')
-      const payload = response.data?.data
+      const response = await api.get<ReferencePayload>('/employees/reference');
+      const payload = response.data?.data;
       setReferenceData({
         departments: Array.isArray(payload?.departments) ? payload.departments : [],
         sections: Array.isArray(payload?.sections) ? payload.sections : [],
         subsections: Array.isArray(payload?.subsections) ? payload.subsections : [],
         offices: Array.isArray(payload?.offices) ? payload.offices : [],
-      })
+      });
     } catch (err) {
-      console.error('Failed to fetch reference data:', err)
+      console.error('Failed to fetch reference data:', err);
     }
-  }
+  };
 
   const fetchEmployee = async () => {
     try {
-      const response = await api.get<EmployeePayload>(`/employees/${id}`)
-      const payload = response.data?.data
+      const response = await api.get<EmployeePayload>(`/employees/${id}`);
+      const payload = response.data?.data;
       if (payload && typeof payload === 'object') {
-        const employee = payload as EmployeePayload
+        const employee = payload as EmployeePayload;
         setFormData({
           employee_id: employee.employee_id || '',
           first_name: employee.first_name || '',
@@ -244,26 +252,26 @@ const EmployeeForm = () => {
           scale_id: employee.scale_id || '',
           contract_start_date: employee.contract_start_date || '',
           contract_end_date: employee.contract_end_date || '',
-        })
+        });
       }
     } catch (err) {
-      console.error('Failed to fetch employee:', err)
-      setError('Failed to load employee data')
+      console.error('Failed to fetch employee:', err);
+      setError('Failed to load employee data');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    setError('')
-    setSuccess('')
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setSuccess('');
 
     try {
       const payload: Record<string, unknown> = {
@@ -272,39 +280,44 @@ const EmployeeForm = () => {
         section_id: formData.section_id ? Number(formData.section_id) : null,
         subsection_id: formData.subsection_id ? Number(formData.subsection_id) : null,
         office_id: formData.office_id ? Number(formData.office_id) : null,
-      }
+      };
 
       if (isContract) {
-        payload.contract_start_date = formData.contract_start_date || null
-        payload.contract_end_date = formData.contract_end_date || null
+        payload.contract_start_date = formData.contract_start_date || null;
+        payload.contract_end_date = formData.contract_end_date || null;
       }
 
       if (isEdit) {
-        await api.put(`/employees/${id}`, payload)
-        setSuccess('Employee updated successfully')
+        await api.put(`/employees/${id}`, payload);
+        setSuccess('Employee updated successfully');
       } else {
-        await api.post('/employees', payload)
-        setSuccess('Employee created successfully')
+        await api.post('/employees', payload);
+        setSuccess('Employee created successfully');
       }
 
       setTimeout(() => {
-        navigate('/employees')
-      }, 1500)
+        navigate('/employees');
+      }, 1500);
     } catch (err) {
-      const errorMessage = err && typeof err === 'object' && 'response' in err
-        ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-        : undefined
-      setError(errorMessage || 'Failed to save employee')
+      const errorMessage =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : undefined;
+      setError(errorMessage || 'Failed to save employee');
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   // Determine which org fields to show based on employee_type
-  const employeeType = formData.employee_type
-  const showDepartment = !NO_ORG_ROLES.includes(employeeType)
-  const showSection = !NO_ORG_ROLES.includes(employeeType) && !DEPT_ONLY_ROLES.includes(employeeType)
-  const showSubsection = !NO_ORG_ROLES.includes(employeeType) && !DEPT_ONLY_ROLES.includes(employeeType) && !SECTION_ROLES.includes(employeeType)
+  const employeeType = formData.employee_type;
+  const showDepartment = !NO_ORG_ROLES.includes(employeeType);
+  const showSection =
+    !NO_ORG_ROLES.includes(employeeType) && !DEPT_ONLY_ROLES.includes(employeeType);
+  const showSubsection =
+    !NO_ORG_ROLES.includes(employeeType) &&
+    !DEPT_ONLY_ROLES.includes(employeeType) &&
+    !SECTION_ROLES.includes(employeeType);
 
   if (loading) {
     return (
@@ -314,7 +327,7 @@ const EmployeeForm = () => {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -391,12 +404,7 @@ const EmployeeForm = () => {
               onChange={handleChange}
               required
             />
-            <Input
-              label="Phone"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-            />
+            <Input label="Phone" name="phone" value={formData.phone} onChange={handleChange} />
             <Input
               label="National ID *"
               name="national_id"
@@ -565,11 +573,7 @@ const EmployeeForm = () => {
         </Card>
 
         <div className="flex items-center justify-end space-x-3 mt-6">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => navigate('/employees')}
-          >
+          <Button type="button" variant="outline" onClick={() => navigate('/employees')}>
             Cancel
           </Button>
           <Button type="submit" disabled={saving}>
@@ -588,7 +592,7 @@ const EmployeeForm = () => {
         </div>
       </form>
     </div>
-  )
-}
+  );
+};
 
-export default EmployeeForm
+export default EmployeeForm;

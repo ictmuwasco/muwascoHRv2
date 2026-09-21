@@ -28,7 +28,9 @@ export const employeeService = {
   },
 
   search: async (query: string): Promise<ApiResponse<Employee[]>> => {
-    const response = await apiClient.get<ApiResponse<Employee[]>>('/employees/search', { params: { q: query } });
+    const response = await apiClient.get<ApiResponse<Employee[]>>('/employees/search', {
+      params: { q: query },
+    });
     return response.data;
   },
 };

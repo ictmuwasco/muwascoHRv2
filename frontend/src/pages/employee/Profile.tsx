@@ -4,7 +4,23 @@ import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
-import { User, Briefcase, Users, FileText, Key, Loader2, Plus, Trash2, Upload, Eye, Download, UserRound, Calendar, Clock, RefreshCw } from 'lucide-react';
+import {
+  User,
+  Briefcase,
+  Users,
+  FileText,
+  Key,
+  Loader2,
+  Plus,
+  Trash2,
+  Upload,
+  Eye,
+  Download,
+  UserRound,
+  Calendar,
+  Clock,
+  RefreshCw,
+} from 'lucide-react';
 import Badge from '../../components/ui/Badge';
 import type { EmployeeProfile } from '../../types';
 
@@ -55,11 +71,22 @@ const Profile = () => {
 
   // Next of Kin list state - the backend stores MULTIPLE rows per employee
   // (next_of_kin table), so records are added, listed and deleted individually.
-  const [nextOfKinList, setNextOfKinList] = useState<Array<{ id?: number; name: string; relationship: string; contact: string }>>([]);
+  const [nextOfKinList, setNextOfKinList] = useState<
+    Array<{ id?: number; name: string; relationship: string; contact: string }>
+  >([]);
   const [nokForm, setNokForm] = useState({ name: '', relationship: '', contact: '' });
 
   // Dependants form state
-  const [dependants, setDependants] = useState<Array<{ name: string; relationship: string; date_of_birth: string; gender: string; id_no: string; contact: string }>>([]);
+  const [dependants, setDependants] = useState<
+    Array<{
+      name: string;
+      relationship: string;
+      date_of_birth: string;
+      gender: string;
+      id_no: string;
+      contact: string;
+    }>
+  >([]);
   const [dependantForm, setDependantForm] = useState({
     name: '',
     relationship: '',
@@ -70,15 +97,30 @@ const Profile = () => {
   });
 
   // Documents state
-  const [documents, setDocuments] = useState<Array<{ id: number; name: string; type: string; uploaded_at: string; document_name?: string; category?: string }>>([]);
-  const [newDocument, setNewDocument] = useState<{ name: string; category: string; file: File | null }>({
+  const [documents, setDocuments] = useState<
+    Array<{
+      id: number;
+      name: string;
+      type: string;
+      uploaded_at: string;
+      document_name?: string;
+      category?: string;
+    }>
+  >([]);
+  const [newDocument, setNewDocument] = useState<{
+    name: string;
+    category: string;
+    file: File | null;
+  }>({
     name: '',
     category: 'other',
     file: null,
   });
 
   // Contract state
-  const [contracts, setContracts] = useState<Array<{ id: number; name: string; start_date: string; end_date: string }>>([]);
+  const [contracts, setContracts] = useState<
+    Array<{ id: number; name: string; start_date: string; end_date: string }>
+  >([]);
   const [contractCount, setContractCount] = useState(0);
   const [renewingContract, setRenewingContract] = useState(false);
 
@@ -120,15 +162,21 @@ const Profile = () => {
         // so nothing is silently dropped.
         let nokRows: any = data.next_of_kin;
         if (typeof nokRows === 'string') {
-          try { nokRows = JSON.parse(nokRows || '[]'); } catch { nokRows = []; }
+          try {
+            nokRows = JSON.parse(nokRows || '[]');
+          } catch {
+            nokRows = [];
+          }
         }
         if (!Array.isArray(nokRows)) nokRows = nokRows ? [nokRows] : [];
-        setNextOfKinList(nokRows.map((r: any) => ({
-          id: r?.id ?? undefined,
-          name: r?.name || '',
-          relationship: r?.relationship || '',
-          contact: r?.contact || r?.phone || '',
-        })));
+        setNextOfKinList(
+          nokRows.map((r: any) => ({
+            id: r?.id ?? undefined,
+            name: r?.name || '',
+            relationship: r?.relationship || '',
+            contact: r?.contact || r?.phone || '',
+          })),
+        );
         setDocuments(data.documents || []);
 
         // Fetch contract information
@@ -145,7 +193,9 @@ const Profile = () => {
 
         // Parse dependants (from separate table via dependants_data)
         if (data.dependants) {
-          const parsed = Array.isArray(data.dependants) ? data.dependants : JSON.parse(data.dependants || '[]');
+          const parsed = Array.isArray(data.dependants)
+            ? data.dependants
+            : JSON.parse(data.dependants || '[]');
           setDependants(parsed);
         }
       }
@@ -190,7 +240,11 @@ const Profile = () => {
       // Force image refresh with cache-busting
       setProfileImage(`${API_BASE}/profile/profile-image?t=${Date.now()}`);
     } catch (err: any) {
-      setError(err?.response?.data?.error || err?.response?.data?.message || 'Failed to upload profile picture');
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          'Failed to upload profile picture',
+      );
       console.error('Failed to upload profile picture:', err);
     } finally {
       setProfileImageUploading(false);
@@ -209,7 +263,7 @@ const Profile = () => {
    * kept - then re-fetches so the table mirrors the database exactly.
    */
   const saveNextOfKinList = async (
-    list: Array<{ name: string; relationship: string; contact: string }>
+    list: Array<{ name: string; relationship: string; contact: string }>,
   ): Promise<boolean> => {
     setSaving(true);
     setError('');
@@ -233,11 +287,14 @@ const Profile = () => {
       setError('Next of kin name is required');
       return;
     }
-    const ok = await saveNextOfKinList([...nextOfKinList, {
-      name: nokForm.name.trim(),
-      relationship: nokForm.relationship.trim(),
-      contact: nokForm.contact.trim(),
-    }]);
+    const ok = await saveNextOfKinList([
+      ...nextOfKinList,
+      {
+        name: nokForm.name.trim(),
+        relationship: nokForm.relationship.trim(),
+        contact: nokForm.contact.trim(),
+      },
+    ]);
     if (ok) {
       setSuccess('Next of kin added successfully');
       setNokForm({ name: '', relationship: '', contact: '' });
@@ -269,7 +326,14 @@ const Profile = () => {
       const updatedDependants = [...dependants, { ...dependantForm }];
       await apiClient.put('/profile', { dependants: updatedDependants });
       setDependants(updatedDependants);
-      setDependantForm({ name: '', relationship: '', date_of_birth: '', gender: '', id_no: '', contact: '' });
+      setDependantForm({
+        name: '',
+        relationship: '',
+        date_of_birth: '',
+        gender: '',
+        id_no: '',
+        contact: '',
+      });
       setSuccess('Dependant added successfully');
       setDepModalOpen(false);
       // Re-sync from the database so the visible list can never drift from
@@ -354,7 +418,12 @@ const Profile = () => {
 
   // Contract renewal function
   const handleRenewContract = async (contractId: number) => {
-    if (!confirm('Are you sure you want to renew this contract? This will extend the contract end date.')) return;
+    if (
+      !confirm(
+        'Are you sure you want to renew this contract? This will extend the contract end date.',
+      )
+    )
+      return;
     setRenewingContract(true);
     setError('');
     setSuccess('');
@@ -431,11 +500,7 @@ const Profile = () => {
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="h-20 w-20 rounded-full bg-primary-600 flex items-center justify-center overflow-hidden shrink-0">
               {profileImage ? (
-                <img
-                  src={profileImage}
-                  alt="Profile"
-                  className="h-full w-full object-cover"
-                />
+                <img src={profileImage} alt="Profile" className="h-full w-full object-cover" />
               ) : (
                 <UserRound className="h-10 w-10 text-white" />
               )}
@@ -444,7 +509,9 @@ const Profile = () => {
               <p className="text-sm font-medium text-gray-900">
                 {personal.first_name} {personal.last_name}
               </p>
-              <p className="text-xs text-gray-500">Upload a professional photo (JPG, PNG, GIF or WebP, max 5MB)</p>
+              <p className="text-xs text-gray-500">
+                Upload a professional photo (JPG, PNG, GIF or WebP, max 5MB)
+              </p>
               <label className="inline-flex items-center px-3 py-2 text-xs font-medium border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors">
                 {profileImageUploading ? (
                   <>
@@ -474,49 +541,13 @@ const Profile = () => {
       {activeTab === 'personal' && profile && (
         <Card title="Personal Information">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="First Name"
-              name="first_name"
-              value={personal.first_name}
-              disabled
-            />
-            <Input
-              label="Last Name"
-              name="last_name"
-              value={personal.last_name}
-              disabled
-            />
-            <Input
-              label="Surname"
-              name="surname"
-              value={personal.surname}
-              disabled
-            />
-            <Input
-              label="Email"
-              name="email"
-              type="email"
-              value={personal.email}
-              disabled
-            />
-            <Input
-              label="Phone"
-              name="phone"
-              value={personal.phone}
-              disabled
-            />
-            <Input
-              label="National ID"
-              name="national_id"
-              value={personal.national_id}
-              disabled
-            />
-            <Input
-              label="Gender"
-              name="gender"
-              value={personal.gender}
-              disabled
-            />
+            <Input label="First Name" name="first_name" value={personal.first_name} disabled />
+            <Input label="Last Name" name="last_name" value={personal.last_name} disabled />
+            <Input label="Surname" name="surname" value={personal.surname} disabled />
+            <Input label="Email" name="email" type="email" value={personal.email} disabled />
+            <Input label="Phone" name="phone" value={personal.phone} disabled />
+            <Input label="National ID" name="national_id" value={personal.national_id} disabled />
+            <Input label="Gender" name="gender" value={personal.gender} disabled />
             <Input
               label="Marital Status"
               name="marital_status"
@@ -531,7 +562,9 @@ const Profile = () => {
               className="md:col-span-2"
             />
           </div>
-          <p className="text-sm text-gray-500 mt-4">Personal information is managed by HR department.</p>
+          <p className="text-sm text-gray-500 mt-4">
+            Personal information is managed by HR department.
+          </p>
         </Card>
       )}
 
@@ -539,30 +572,10 @@ const Profile = () => {
       {activeTab === 'employment' && profile && (
         <Card title="Employment Information">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              label="Department"
-              name="department"
-              value={employment.department}
-              disabled
-            />
-            <Input
-              label="Section"
-              name="section"
-              value={employment.section}
-              disabled
-            />
-            <Input
-              label="Office"
-              name="office"
-              value={employment.office}
-              disabled
-            />
-            <Input
-              label="Designation"
-              name="designation"
-              value={employment.designation}
-              disabled
-            />
+            <Input label="Department" name="department" value={employment.department} disabled />
+            <Input label="Section" name="section" value={employment.section} disabled />
+            <Input label="Office" name="office" value={employment.office} disabled />
+            <Input label="Designation" name="designation" value={employment.designation} disabled />
             <Input
               label="Employee Type"
               name="employee_type"
@@ -627,7 +640,9 @@ const Profile = () => {
                       {contracts.map((contract) => {
                         const endDate = contract.end_date ? new Date(contract.end_date) : null;
                         const isActive = !endDate || endDate > new Date();
-                        const daysLeft = endDate ? Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                        const daysLeft = endDate
+                          ? Math.ceil((endDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                          : null;
                         return (
                           <div
                             key={contract.id}
@@ -643,10 +658,20 @@ const Profile = () => {
                             </div>
                             <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
                               <div>
-                                <p>Start: <span className="font-medium text-gray-900">{contract.start_date || 'N/A'}</span></p>
+                                <p>
+                                  Start:{' '}
+                                  <span className="font-medium text-gray-900">
+                                    {contract.start_date || 'N/A'}
+                                  </span>
+                                </p>
                               </div>
                               <div>
-                                <p>End: <span className="font-medium text-gray-900">{contract.end_date || 'N/A'}</span></p>
+                                <p>
+                                  End:{' '}
+                                  <span className="font-medium text-gray-900">
+                                    {contract.end_date || 'N/A'}
+                                  </span>
+                                </p>
                               </div>
                               {daysLeft !== null && daysLeft > 0 && (
                                 <div className="col-span-2">
@@ -685,7 +710,6 @@ const Profile = () => {
                     </div>
                   </div>
 
-
                   {/* Contract Renewal Info */}
                   <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-start space-x-3">
@@ -693,9 +717,11 @@ const Profile = () => {
                       <div>
                         <p className="text-sm font-medium text-blue-900">About Contract Renewal</p>
                         <p className="text-sm text-blue-700 mt-1">
-                          When your contract term is about to expire, you can request renewal by clicking the
-                          <span className="font-medium"> "Renew Contract"</span> button on any active contract.
-                          This will extend your contract end date. Please contact HR for the new contract terms before renewing.
+                          When your contract term is about to expire, you can request renewal by
+                          clicking the
+                          <span className="font-medium"> "Renew Contract"</span> button on any
+                          active contract. This will extend your contract end date. Please contact
+                          HR for the new contract terms before renewing.
                         </p>
                       </div>
                     </div>
@@ -710,17 +736,22 @@ const Profile = () => {
             </div>
           )}
 
-          <p className="text-sm text-gray-500 mt-4">Employment information is managed by HR department.</p>
+          <p className="text-sm text-gray-500 mt-4">
+            Employment information is managed by HR department.
+          </p>
         </Card>
       )}
 
-{/* Next of Kin */}
+      {/* Next of Kin */}
       {activeTab === 'next_of_kin' && profile && (
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Next of Kin Records ({nextOfKinList.length})</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Next of Kin Records ({nextOfKinList.length})
+            </h3>
             <Button size="sm" onClick={() => setNokModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />Add
+              <Plus className="h-4 w-4 mr-1" />
+              Add
             </Button>
           </div>
           {nextOfKinList.length > 0 ? (
@@ -728,10 +759,18 @@ const Profile = () => {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
                 <thead className="bg-gray-50 dark:bg-slate-900">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">#</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Name</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Relationship</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Contact</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      #
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Name
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Relationship
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Contact
+                    </th>
                     <th className="px-4 py-2"></th>
                   </tr>
                 </thead>
@@ -739,11 +778,21 @@ const Profile = () => {
                   {nextOfKinList.map((nok, idx) => (
                     <tr key={nok.id ?? idx} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{idx + 1}</td>
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{nok.name || '—'}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{nok.relationship || '—'}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{nok.contact || '—'}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                        {nok.name || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {nok.relationship || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {nok.contact || '—'}
+                      </td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="danger" size="sm" onClick={() => handleDeleteNextOfKin(idx)}>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDeleteNextOfKin(idx)}
+                        >
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </td>
@@ -753,18 +802,23 @@ const Profile = () => {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 dark:text-gray-400 text-center py-8">No next of kin on record yet.</p>
+            <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+              No next of kin on record yet.
+            </p>
           )}
         </Card>
       )}
 
-{/* Dependants */}
+      {/* Dependants */}
       {activeTab === 'dependants' && (
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">My Dependants ({dependants.length})</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              My Dependants ({dependants.length})
+            </h3>
             <Button size="sm" onClick={() => setDepModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />Add
+              <Plus className="h-4 w-4 mr-1" />
+              Add
             </Button>
           </div>
           {dependants.length > 0 ? (
@@ -772,26 +826,57 @@ const Profile = () => {
               <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700 text-sm">
                 <thead className="bg-gray-50 dark:bg-slate-900">
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Name</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Relationship</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date of Birth</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Gender</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">ID Number</th>
-                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Contact</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Name
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Relationship
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Date of Birth
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Gender
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      ID Number
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                      Contact
+                    </th>
                     <th className="px-4 py-2"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
                   {dependants.map((dep, index) => (
-                    <tr key={(dep as any).id ?? index} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{dep.name || `Dependant ${index + 1}`}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{dep.relationship || '—'}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">{dep.date_of_birth || '—'}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{dep.gender || '—'}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{(dep as any).id_no || '—'}</td>
-                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">{dep.contact || '—'}</td>
+                    <tr
+                      key={(dep as any).id ?? index}
+                      className="hover:bg-gray-50 dark:hover:bg-slate-700/30"
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
+                        {dep.name || `Dependant ${index + 1}`}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {dep.relationship || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                        {dep.date_of_birth || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {dep.gender || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {(dep as any).id_no || '—'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
+                        {dep.contact || '—'}
+                      </td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="danger" size="sm" onClick={() => handleDeleteDependant(index)}>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDeleteDependant(index)}
+                        >
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </td>
@@ -801,34 +886,59 @@ const Profile = () => {
               </table>
             </div>
           ) : (
-            <p className="text-gray-500 dark:text-gray-400 text-center py-8">No dependants on record.</p>
+            <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+              No dependants on record.
+            </p>
           )}
         </Card>
       )}
 
-{/* Documents */}
+      {/* Documents */}
       {activeTab === 'documents' && (
         <Card>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">My Documents ({documents.length})</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              My Documents ({documents.length})
+            </h3>
             <Button size="sm" onClick={() => setDocModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />Add
+              <Plus className="h-4 w-4 mr-1" />
+              Add
             </Button>
           </div>
           <div className="space-y-3">
             {documents.length > 0 ? (
               documents.map((doc) => (
-                <div key={doc.id} className="flex items-center justify-between p-3 border border-gray-200 dark:border-slate-700 rounded-lg">
+                <div
+                  key={doc.id}
+                  className="flex items-center justify-between p-3 border border-gray-200 dark:border-slate-700 rounded-lg"
+                >
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">{doc.name || doc.document_name}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{doc.type || doc.category} · {doc.uploaded_at}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">
+                      {doc.name || doc.document_name}
+                    </p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {doc.type || doc.category} · {doc.uploaded_at}
+                    </p>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Button size="sm" variant="outline" onClick={() => window.open(`${API_BASE}/profile/documents/${doc.id}/view`, '_blank')} title="View document">
-                      <Eye className="h-3 w-3 mr-1" />View
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        window.open(`${API_BASE}/profile/documents/${doc.id}/view`, '_blank')
+                      }
+                      title="View document"
+                    >
+                      <Eye className="h-3 w-3 mr-1" />
+                      View
                     </Button>
-                    <a href={`${API_BASE}/profile/documents/${doc.id}`} download className="inline-flex items-center px-2 py-1 text-xs font-medium border border-gray-300 dark:border-slate-600 rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors">
-                      <Download className="h-3 w-3 mr-1" />Download
+                    <a
+                      href={`${API_BASE}/profile/documents/${doc.id}`}
+                      download
+                      className="inline-flex items-center px-2 py-1 text-xs font-medium border border-gray-300 dark:border-slate-600 rounded-md text-gray-700 dark:text-gray-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+                    >
+                      <Download className="h-3 w-3 mr-1" />
+                      Download
                     </a>
                     <Button size="sm" variant="danger" onClick={() => handleDeleteDocument(doc.id)}>
                       <Trash2 className="h-3 w-3" />
@@ -837,7 +947,9 @@ const Profile = () => {
                 </div>
               ))
             ) : (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8">No documents uploaded.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+                No documents uploaded.
+              </p>
             )}
           </div>
         </Card>
@@ -858,14 +970,47 @@ const Profile = () => {
       <Modal isOpen={nokModalOpen} onClose={() => setNokModalOpen(false)} title="Add Next of Kin">
         <form onSubmit={handleAddNextOfKin}>
           <div className="grid grid-cols-1 gap-4">
-            <Input label="Name" name="name" value={nokForm.name} onChange={handleNokFormChange} required />
-            <Input label="Relationship" name="relationship" value={nokForm.relationship} onChange={handleNokFormChange} />
-            <Input label="Contact" name="contact" value={nokForm.contact} onChange={handleNokFormChange} />
+            <Input
+              label="Name"
+              name="name"
+              value={nokForm.name}
+              onChange={handleNokFormChange}
+              required
+            />
+            <Input
+              label="Relationship"
+              name="relationship"
+              value={nokForm.relationship}
+              onChange={handleNokFormChange}
+            />
+            <Input
+              label="Contact"
+              name="contact"
+              value={nokForm.contact}
+              onChange={handleNokFormChange}
+            />
           </div>
           <div className="flex items-center justify-end gap-2 mt-6">
-            <Button variant="outline" type="button" onClick={() => setNokModalOpen(false)} disabled={saving}>Cancel</Button>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setNokModalOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>) : (<><Plus className="h-4 w-4 mr-2" />Add Next of Kin</>)}
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Next of Kin
+                </>
+              )}
             </Button>
           </div>
         </form>
@@ -874,17 +1019,66 @@ const Profile = () => {
       <Modal isOpen={depModalOpen} onClose={() => setDepModalOpen(false)} title="Add Dependant">
         <form onSubmit={handleAddDependant} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input label="Name" name="name" value={dependantForm.name} onChange={handleDependantChange} required />
-            <Input label="Relationship" name="relationship" value={dependantForm.relationship} onChange={handleDependantChange} />
-            <Input label="Date of Birth" name="date_of_birth" type="date" value={dependantForm.date_of_birth} onChange={handleDependantChange} />
-            <Input label="Gender" name="gender" value={dependantForm.gender} onChange={handleDependantChange} />
-            <Input label="ID Number" name="id_no" value={dependantForm.id_no} onChange={handleDependantChange} />
-            <Input label="Contact" name="contact" value={dependantForm.contact} onChange={handleDependantChange} />
+            <Input
+              label="Name"
+              name="name"
+              value={dependantForm.name}
+              onChange={handleDependantChange}
+              required
+            />
+            <Input
+              label="Relationship"
+              name="relationship"
+              value={dependantForm.relationship}
+              onChange={handleDependantChange}
+            />
+            <Input
+              label="Date of Birth"
+              name="date_of_birth"
+              type="date"
+              value={dependantForm.date_of_birth}
+              onChange={handleDependantChange}
+            />
+            <Input
+              label="Gender"
+              name="gender"
+              value={dependantForm.gender}
+              onChange={handleDependantChange}
+            />
+            <Input
+              label="ID Number"
+              name="id_no"
+              value={dependantForm.id_no}
+              onChange={handleDependantChange}
+            />
+            <Input
+              label="Contact"
+              name="contact"
+              value={dependantForm.contact}
+              onChange={handleDependantChange}
+            />
           </div>
           <div className="flex items-center justify-end gap-2 mt-2">
-            <Button variant="outline" type="button" onClick={() => setDepModalOpen(false)} disabled={saving}>Cancel</Button>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setDepModalOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Adding...</>) : (<><Plus className="h-4 w-4 mr-2" />Add Dependant</>)}
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Dependant
+                </>
+              )}
             </Button>
           </div>
         </form>
@@ -892,9 +1086,17 @@ const Profile = () => {
       {/* Upload Document popup */}
       <Modal isOpen={docModalOpen} onClose={() => setDocModalOpen(false)} title="Upload Document">
         <form onSubmit={handleUploadDocument} className="space-y-4">
-          <Input label="Document Name" name="document_name" value={newDocument.name} onChange={(e) => setNewDocument((prev) => ({ ...prev, name: e.target.value }))} placeholder="e.g. National ID, KRA PIN, Certificate" />
+          <Input
+            label="Document Name"
+            name="document_name"
+            value={newDocument.name}
+            onChange={(e) => setNewDocument((prev) => ({ ...prev, name: e.target.value }))}
+            placeholder="e.g. National ID, KRA PIN, Certificate"
+          />
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Category
+            </label>
             <select
               value={newDocument.category}
               onChange={(e) => setNewDocument((prev) => ({ ...prev, category: e.target.value }))}
@@ -911,7 +1113,9 @@ const Profile = () => {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">File</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              File
+            </label>
             <input
               type="file"
               onChange={handleDocumentFileChange}
@@ -919,9 +1123,26 @@ const Profile = () => {
             />
           </div>
           <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" type="button" onClick={() => setDocModalOpen(false)} disabled={saving}>Cancel</Button>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => setDocModalOpen(false)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
             <Button type="submit" disabled={saving || !newDocument.file}>
-              {saving ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading...</>) : (<><Upload className="h-4 w-4 mr-2" />Upload Document</>)}
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload Document
+                </>
+              )}
             </Button>
           </div>
         </form>

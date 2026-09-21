@@ -1,31 +1,31 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react';
 
 const ConnectionStatus = () => {
-  const [isOnline, setIsOnline] = useState(navigator.onLine)
-  const [showStatus, setShowStatus] = useState(false)
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [showStatus, setShowStatus] = useState(false);
 
   useEffect(() => {
     const handleOnline = () => {
-      setIsOnline(true)
-      setShowStatus(true)
-      setTimeout(() => setShowStatus(false), 3000)
-    }
+      setIsOnline(true);
+      setShowStatus(true);
+      setTimeout(() => setShowStatus(false), 3000);
+    };
 
     const handleOffline = () => {
-      setIsOnline(false)
-      setShowStatus(true)
-    }
+      setIsOnline(false);
+      setShowStatus(true);
+    };
 
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [])
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
-  if (!showStatus && isOnline) return null
+  if (!showStatus && isOnline) return null;
 
   return (
     <div
@@ -58,12 +58,14 @@ const ConnectionStatus = () => {
                 clipRule="evenodd"
               />
             </svg>
-            <span className="text-sm font-medium">You are offline. Please check your connection.</span>
+            <span className="text-sm font-medium">
+              You are offline. Please check your connection.
+            </span>
           </>
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default ConnectionStatus
+export default ConnectionStatus;

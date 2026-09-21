@@ -1,4 +1,4 @@
-import { FY_MONTH_SHORT } from '../../constants/leaveConstants'
+import { FY_MONTH_SHORT } from '../../constants/leaveConstants';
 
 /**
  * Monthly distribution bar chart (July → June).
@@ -12,27 +12,32 @@ import { FY_MONTH_SHORT } from '../../constants/leaveConstants'
  *   - lowest: { month, count } | null
  *   - maxHeight: number (max bar height in px)
  */
-const DistributionChart = ({ distribution = [], highest = null, lowest = null, maxHeight = 120 }) => {
-  const maxCount = Math.max(...distribution.map((d) => d.count), 1)
+const DistributionChart = ({
+  distribution = [],
+  highest = null,
+  lowest = null,
+  maxHeight = 120,
+}) => {
+  const maxCount = Math.max(...distribution.map((d) => d.count), 1);
 
   return (
     <div className="space-y-4">
       {/* Chart */}
       <div className="flex items-end gap-2 h-40 px-2">
         {distribution.map((item, idx) => {
-          const height = maxCount > 0 ? (item.count / maxCount) * maxHeight : 0
-          const isHighest = highest && item.month === highest.month
-          const isLowest = lowest && item.month === lowest.month
+          const height = maxCount > 0 ? (item.count / maxCount) * maxHeight : 0;
+          const isHighest = highest && item.month === highest.month;
+          const isLowest = lowest && item.month === lowest.month;
 
-          let barColor = 'bg-gray-300 dark:bg-slate-600'
+          let barColor = 'bg-gray-300 dark:bg-slate-600';
           if (item.count > 0) {
-            barColor = 'bg-primary-500 dark:bg-primary-400'
+            barColor = 'bg-primary-500 dark:bg-primary-400';
           }
           if (isHighest) {
-            barColor = 'bg-amber-500 dark:bg-amber-400'
+            barColor = 'bg-amber-500 dark:bg-amber-400';
           }
           if (isLowest && item.count > 0) {
-            barColor = 'bg-blue-400 dark:bg-blue-300'
+            barColor = 'bg-blue-400 dark:bg-blue-300';
           }
 
           return (
@@ -49,7 +54,7 @@ const DistributionChart = ({ distribution = [], highest = null, lowest = null, m
                 {item.count}
               </span>
             </div>
-          )
+          );
         })}
       </div>
 
@@ -89,7 +94,7 @@ const DistributionChart = ({ distribution = [], highest = null, lowest = null, m
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default DistributionChart
+export default DistributionChart;
