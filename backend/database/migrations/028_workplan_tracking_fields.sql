@@ -13,7 +13,6 @@
 -- ====================================================================
 
 DROP PROCEDURE IF EXISTS wp_add_col_if_missing;
-DELIMITER //
 CREATE PROCEDURE wp_add_col_if_missing(
     IN p_table VARCHAR(64),
     IN p_column VARCHAR(64),
@@ -34,8 +33,7 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
     END IF;
-END //
-DELIMITER ;
+END;
 
 -- === Strategic alignment (denormalised for fast grouping in the integrated view) ===
 -- strategic_target_id placed FIRST so it is adjacent to performance_contract_id

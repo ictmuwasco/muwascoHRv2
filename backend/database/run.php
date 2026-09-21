@@ -98,7 +98,12 @@ foreach ($toRun as $file) {
     if ($isCiMysql && in_array($file, $ciSkipped, true)) {
         echo "[~] {$file} ... SKIPPED on CI MySQL (MariaDB-only syntax)\n";
         $duration = 0;
-        $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, status) VALUES (?, ?, 'completed')");
+        // Three placeholders (migration, batch, duration_ms) + literal status,
+        // so bind_param() must receive exactly three arguments. A previous
+        // version prepped only two placeholders while binding three, which made
+        // mysqli raise ArgumentCountError and abort the runner on CI
+        // (GITHUB_ACTIONS=true is what enables this skip branch).
+        $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, duration_ms, status) VALUES (?, ?, ?, 'completed')");
         $stmt->bind_param("ssi", $file, $batch, $duration);
         $stmt->execute();
         $success++;
@@ -136,7 +141,12 @@ foreach ($toRun as $file) {
         
         echo "✓ ({$duration}ms)\n";
         $success++;
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
+        // Throwable (not Exception): a PHP-level error such as
+        // ArgumentCountError / TypeError / mysqli_sql_exception must be recorded
+        // as a FAILED migration and fail the runner with exit 1. Catching only
+        // Exception let Error subclasses escape as a bare "PHP Fatal error",
+        // which aborted the runner mid-way and left later tables uncreated.
         $duration = (int)((microtime(true) - $start) * 1000);
         $errorMsg = $e->getMessage();
         
