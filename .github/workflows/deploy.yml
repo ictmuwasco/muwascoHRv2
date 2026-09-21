@@ -26,7 +26,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
+          php-version: "8.3"
           tools: composer, phpcs, phpstan
 
       - name: Validate composer.json
@@ -136,7 +136,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
+          php-version: "8.3"
           extensions: mbstring, mysqli, pdo_mysql, intl
           tools: composer
 
@@ -184,24 +184,34 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
 
-      # ---- BLOCKING GATE 3: automated tests (canonical: backend/phpunit.xml) ----
-      # Gracefully skip only when no config AND no test dirs exist.
-      # Paths are repo-root-relative: backend/phpunit.xml, phpunit.xml.dist,
-      # backend/tests. (The old guard checked root phpunit.xml.dist which never
-      # exists, and ran phpunit without -c, so it never found backend/phpunit.xml.)
+      # ---- BLOCKING GATE 3: automated tests (canonical: backend/phpunit.xml.dist) ----
+      # Skip conditions are deliberately conservative:
+      #   * backend/phpunit.xml (untracked, gitignored) boots tests/bootstrap.php —
+      #     running it on a checkout where tests/ is not tracked fails with a
+      #     "bootstrap not found" error instead of skipping, so a config file
+      #     alone is never enough to start the run.
+      #   * The gate only activates when at least one *Test.php file exists.
       - name: Run PHPUnit tests
         run: |
           set -eo pipefail
+          # `|| true` keeps `set -e` from aborting when neither dir exists yet,
+          # and `tr -d '[:space:]'` strips wc's padding so the -gt test is safe.
+          TESTS=$(find backend/tests tests -name '*Test.php' -type f 2>/dev/null | wc -l | tr -d '[:space:]') || true
           CONFIG=""
-          if [ -f "backend/phpunit.xml" ]; then CONFIG="backend/phpunit.xml";
-          elif [ -f "phpunit.xml.dist" ]; then CONFIG="phpunit.xml.dist";
+          if [ -f "phpunit.xml.dist" ]; then CONFIG="phpunit.xml.dist";
           elif [ -f "backend/phpunit.xml.dist" ]; then CONFIG="backend/phpunit.xml.dist";
+          elif [ -f "backend/phpunit.xml" ]; then CONFIG="backend/phpunit.xml";
           fi
-          if [ -n "$CONFIG" ] || [ -d "backend/tests" ]; then
-            echo "Running PHPUnit ($CONFIG)..."
-            vendor/bin/phpunit -c "$CONFIG" --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
+          if [ "$TESTS" -gt 0 ]; then
+            if [ -n "$CONFIG" ]; then
+              echo "Found $TESTS test file(s) - running PHPUnit with $CONFIG..."
+              vendor/bin/phpunit -c "$CONFIG" --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
+            else
+              echo "Found $TESTS test file(s) - running PHPUnit with auto-discovered config..."
+              vendor/bin/phpunit --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
+            fi
           else
-            echo "No PHPUnit config or backend/tests found - skipping (test suite not tracked)"
+            echo "No *Test.php files found - skipping PHPUnit (test suite is not tracked in this repo)"
             echo "PHPUnit skipped - no tests to run" > /tmp/phpunit_full.log
           fi
         env:
@@ -248,7 +258,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: "8.2"
+          php-version: "8.3"
           tools: composer
 
       - name: Setup Node.js
