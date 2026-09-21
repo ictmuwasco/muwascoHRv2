@@ -4,16 +4,31 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
     
-    # Redirect HTTP to HTTPS (PRODUCTION).
+        # Redirect HTTP to HTTPS (PRODUCTION).
     # Uncomment AFTER TLS is configured. If a load balancer terminates TLS
     # and forwards plain HTTP, enforce HTTPS at the LB/WAF layer instead.
     # RewriteCond %{HTTPS} off
     # RewriteRule ^(.*)$ https://%{HTTP_HOST}/$1 [R=301,L]
-    
+
+    # ---- Block sensitive directories from HTTP access (Phase 7, S-SEC-07) ----
+    # These trees hold repository metadata, third-party binaries, CI secrets,
+    # dev/ops scripts, or application source that must never be served. The web
+    # request path executes ONLY from api.php / index.php (docroot) and
+    # backend/public/. All other backend paths are loaded server-side via PHP
+    # require (e.g. api.php -> backend/bootstrap.php), so denying HTTP access
+    # does NOT affect application logic. 404 (not 403) avoids confirming
+    # existence. Handles both bare-root and /hrdemo/ subdirectory layouts.
+    RewriteCond %{REQUEST_URI} ^/(hrdemo/)?(\.git|tools|vendor|node_modules|\.github|scripts)/ [NC]
+    RewriteRule ^ - [R=404,L]
+    RewriteCond %{REQUEST_URI} ^/(hrdemo/)?backend/(?!public/) [NC]
+    RewriteRule ^ - [R=404,L]
+    RewriteCond %{REQUEST_URI} ^/(hrdemo/)?frontend/src/ [NC]
+    RewriteRule ^ - [R=404,L]
+
     # Pass Authorization header to PHP (needed for JWT token authentication)
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-    
+
     # API Routes (handle subdirectory installation)
     RewriteRule ^(hrdemo/)?api/(.*)$ api.php [QSA,L,E=API_ROUTE:1]
     
@@ -78,8 +93,23 @@ Options -Indexes
     </IfModule>
 </FilesMatch>
 
-# Note: Backend directory access is controlled by application routing
-# The backend contains controllers and views that are accessed through index.php
+# Deny source, config and script-injection file types at the extension level.
+    # These are never served at runtime (TypeScript source is transpiled by Vite;
+    # YAML/INI/SH/BAT are ops files). Catches the standalone copy
+    # .deploy-workflow.yml and any stray baseline dumps in the docroot root.
+    <FilesMatch "\.(ya?ml|sh|bat|ps1|ini|toml|ts|tsx|jsx|bak|backup|orig|swp|save)$">
+        <IfModule mod_authz_core.c>
+            Require all denied
+        </IfModule>
+        <IfModule !mod_authz_core.c>
+            Deny from all
+        </IfModule>
+    </FilesMatch>
+
+    # Sensitive directories and source trees (.git/, vendor/, backend/ except
+    # backend/public/, scripts/, tools/, frontend/src/) are denied above by
+    # RewriteRule. The backend application is reached only server-side through
+    # api.php / backend/public/index.php.
 
 # PHP settings
 <IfModule mod_php.c>
