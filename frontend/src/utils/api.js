@@ -27,23 +27,21 @@ const DEFAULT_TIMEOUT_MS = 30000;
 // Metrics are intentionally kept in-memory (no network calls, no new API
 // usage) and are safe to leave enabled: no PII, no query strings, no ids.
 // ---------------------------------------------------------------------------
-const PERF_ENABLED =
-  typeof performance !== 'undefined' &&
-  typeof performance.now === 'function';
+const PERF_ENABLED = typeof performance !== 'undefined' && typeof performance.now === 'function';
 
 /** @type {Map<string, number[]>} endpoint path -> round-trip ms samples */
 const perfSamples = new Map();
 
 function samplePerf(endpointPath, startedAt) {
-  if (!PERF_ENABLED) return
+  if (!PERF_ENABLED) return;
   try {
-    const elapsed = performance.now() - startedAt
-    if (elapsed < 0) return
-    const samples = perfSamples.get(endpointPath) || []
-    samples.push(elapsed)
+    const elapsed = performance.now() - startedAt;
+    if (elapsed < 0) return;
+    const samples = perfSamples.get(endpointPath) || [];
+    samples.push(elapsed);
     // Cap samples per endpoint so a long-lived tab never grows unbounded.
-    if (samples.length > 500) samples.shift()
-    perfSamples.set(endpointPath, samples)
+    if (samples.length > 500) samples.shift();
+    perfSamples.set(endpointPath, samples);
   } catch {
     /* observability must never break the request path */
   }
@@ -51,25 +49,28 @@ function samplePerf(endpointPath, startedAt) {
 
 /** p95 of a sorted copy; null when empty. */
 function percentile(sortedSamples, p) {
-  if (sortedSamples.length === 0) return null
-  const idx = Math.min(sortedSamples.length - 1, Math.max(0, Math.ceil((p / 100) * sortedSamples.length) - 1))
-  return Math.round(sortedSamples[idx] * 10) / 10
+  if (sortedSamples.length === 0) return null;
+  const idx = Math.min(
+    sortedSamples.length - 1,
+    Math.max(0, Math.ceil((p / 100) * sortedSamples.length) - 1),
+  );
+  return Math.round(sortedSamples[idx] * 10) / 10;
 }
 
 /** Aggregate round-trip timing report for the Phase 2 deliverables. */
 export function getPerfTimingReport() {
-  const out = {}
+  const out = {};
   perfSamples.forEach((samples, path) => {
-    const sorted = [...samples].sort((a, b) => a - b)
-    const sum = sorted.reduce((acc, v) => acc + v, 0)
+    const sorted = [...samples].sort((a, b) => a - b);
+    const sum = sorted.reduce((acc, v) => acc + v, 0);
     out[path] = {
       sample_count: sorted.length,
       mean_ms: Math.round((sum / sorted.length) * 10) / 10,
       p95_ms: percentile(sorted, 95),
       max_ms: Math.round(sorted[sorted.length - 1] * 10) / 10,
-    }
-  })
-  return out
+    };
+  });
+  return out;
 }
 /**
  * Endpoints that must never trigger the automatic refresh-retry loop
@@ -259,22 +260,24 @@ const performRequest = async (endpoint, options = {}) => {
       credentials,
       signal: controller.signal,
       ...restOptions,
-    }).then((response) => {
-      // Passive round-trip timing (Phase 2): keyed by the endpoint path
-      // only — never body, headers, query string or ids.
-      samplePerf(url.split('?')[0], perfStart);
-      return response;
-    }).finally(() => {
-      clearTimeout(timer);
-      if (onCallerAbort && callerSignal) {
-        callerSignal.removeEventListener('abort', onCallerAbort);
-      }
-    });
+    })
+      .then((response) => {
+        // Passive round-trip timing (Phase 2): keyed by the endpoint path
+        // only — never body, headers, query string or ids.
+        samplePerf(url.split('?')[0], perfStart);
+        return response;
+      })
+      .finally(() => {
+        clearTimeout(timer);
+        if (onCallerAbort && callerSignal) {
+          callerSignal.removeEventListener('abort', onCallerAbort);
+        }
+      });
   };
 
   const toTimeoutError = () => {
     const error = new Error(
-      `Request timed out after ${Math.round(timeout / 1000)}s. Check your connection and try again.`
+      `Request timed out after ${Math.round(timeout / 1000)}s. Check your connection and try again.`,
     );
     error.isTimeout = true;
     error.response = { data: {}, status: 0, statusText: 'Timeout' };
@@ -395,8 +398,10 @@ export const apiFetch = (endpoint, options = {}) => {
 };
 
 export const apiGet = (endpoint, config) => apiFetch(endpoint, { ...config });
-export const apiPost = (endpoint, data, config) => apiFetch(endpoint, { method: 'POST', body: data, ...config });
-export const apiPut = (endpoint, data, config) => apiFetch(endpoint, { method: 'PUT', body: data, ...config });
+export const apiPost = (endpoint, data, config) =>
+  apiFetch(endpoint, { method: 'POST', body: data, ...config });
+export const apiPut = (endpoint, data, config) =>
+  apiFetch(endpoint, { method: 'PUT', body: data, ...config });
 export const apiDelete = (endpoint, config) => apiFetch(endpoint, { method: 'DELETE', ...config });
 
 export default {

@@ -109,7 +109,12 @@ export const permissionService = {
   /**
    * Get all permission overrides
    */
-  getOverrides: async (params?: { user_id?: number; module?: string; action?: string; permission_type?: string }) => {
+  getOverrides: async (params?: {
+    user_id?: number;
+    module?: string;
+    action?: string;
+    permission_type?: string;
+  }) => {
     const response = await apiClient.get('/permissions/overrides', { params });
     return response.data.data;
   },
@@ -119,7 +124,7 @@ export const permissionService = {
    */
   setOverride: async (
     userId: number,
-    data: { module: string; action: string; permission_type: 'allow' | 'deny'; notes?: string }
+    data: { module: string; action: string; permission_type: 'allow' | 'deny'; notes?: string },
   ) => {
     const response = await apiClient.post(`/permissions/users/${userId}/overrides`, data);
     return response.data;

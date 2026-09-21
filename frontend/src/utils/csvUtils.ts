@@ -10,15 +10,15 @@
  */
 export const escapeCsvField = (value: unknown): string => {
   if (value === null || value === undefined) {
-    return ''
+    return '';
   }
 
-  const str = String(value)
+  const str = String(value);
   if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return `"${str.replace(/"/g, '""')}"`
+    return `"${str.replace(/"/g, '""')}"`;
   }
-  return str
-}
+  return str;
+};
 
 /**
  * Convert an array of objects to a CSV string.
@@ -29,21 +29,21 @@ export const escapeCsvField = (value: unknown): string => {
 export const toCsv = (
   headers: string[],
   rows: Record<string, unknown>[],
-  getValue?: (row: Record<string, unknown>, header: string) => unknown
+  getValue?: (row: Record<string, unknown>, header: string) => unknown,
 ): string => {
-  const headerLine = headers.map(escapeCsvField).join(',')
+  const headerLine = headers.map(escapeCsvField).join(',');
 
   const bodyLines = rows.map((row) => {
     return headers
       .map((header) => {
-        const value = getValue ? getValue(row, header) : row[header]
-        return escapeCsvField(value)
+        const value = getValue ? getValue(row, header) : row[header];
+        return escapeCsvField(value);
       })
-      .join(',')
-  })
+      .join(',');
+  });
 
-  return [headerLine, ...bodyLines].join('\n')
-}
+  return [headerLine, ...bodyLines].join('\n');
+};
 
 /**
  * Trigger a browser download of a CSV string.
@@ -52,16 +52,16 @@ export const toCsv = (
  */
 export const downloadCsv = (csv: string, filename: string): void => {
   // Add BOM for proper Excel UTF-8 handling
-  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-  const url = window.URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  document.body.appendChild(link)
-  link.click()
-  document.body.removeChild(link)
-  window.URL.revokeObjectURL(url)
-}
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
 
 /**
  * Generate a filename with today's date.
@@ -69,9 +69,9 @@ export const downloadCsv = (csv: string, filename: string): void => {
  * @returns e.g. 'meetings_2026-08-21.csv'
  */
 export const csvFilenameWithDate = (prefix: string): string => {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = String(today.getMonth() + 1).padStart(2, '0')
-  const day = String(today.getDate()).padStart(2, '0')
-  return `${prefix}_${year}-${month}-${day}.csv`
-}
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${prefix}_${year}-${month}-${day}.csv`;
+};

@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "lint": "eslint . --report-unused-disable-directives --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write \"src/**/*.{js,jsx,css}\""
+    "format": "prettier --write \"src/**/*.{js,jsx,ts,tsx,css}\""
   },
   "dependencies": {
     "react": "^18.2.0",

@@ -3,13 +3,22 @@ import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import { workplanService } from '../../../api/services/workplanService';
 import type {
-  AssignableEmployee, UnitRef, WorkplanObjective,
+  AssignableEmployee,
+  UnitRef,
+  WorkplanObjective,
 } from '../../../api/services/workplanService';
 import type { AppraisalCycle } from '../../../api/services/appraisalCycleService';
 import { appraisalCycleService, cycleLabel } from '../../../api/services/appraisalCycleService';
 
 export interface StrategyRefs {
-  contracts: { id: number; name: string; goal_id: number; target_id: number | null; department_id?: number | null; department_name?: string | null }[];
+  contracts: {
+    id: number;
+    name: string;
+    goal_id: number;
+    target_id: number | null;
+    department_id?: number | null;
+    department_name?: string | null;
+  }[];
   goals: { id: number; name: string }[];
   targets: { id: number; name: string; goal_id?: number }[];
 }
@@ -40,7 +49,8 @@ interface Props {
 
 const MEASURE_SUGGESTIONS = ['Percentage', 'Number', 'Days', 'KES', 'Rate', 'Score'];
 
-const labelCls = 'block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1';
+const labelCls =
+  'block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1';
 const inputCls =
   'w-full rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-200';
 
@@ -51,9 +61,25 @@ const inputCls =
  * (which are already scoped to the caller's organisational reach).
  */
 export default function WorkplanActivityFormModal({
-  isOpen, mode, record, refs, sections, subsections, employees,
-  allowContractless, showSection, showSubsection, showOfficer, showIntegratedFlag,
-  mdMode = false, cycles = [], presetContractId, departmentId, onClose, onSaved, onError,
+  isOpen,
+  mode,
+  record,
+  refs,
+  sections,
+  subsections,
+  employees,
+  allowContractless,
+  showSection,
+  showSubsection,
+  showOfficer,
+  showIntegratedFlag,
+  mdMode = false,
+  cycles = [],
+  presetContractId,
+  departmentId,
+  onClose,
+  onSaved,
+  onError,
 }: Props) {
   const [objective, setObjective] = useState('');
   const [kpi, setKpi] = useState('');
@@ -88,16 +114,28 @@ export default function WorkplanActivityFormModal({
       setPEnd(record.planned_end_date?.slice(0, 10) ?? '');
       setBudget(record.budget_amount ? String(record.budget_amount) : '');
       setNotes(record.resource_notes ?? '');
-      setCycleIds((record.cycle_ids ?? '')
-        .split(',')
-        .map((n) => parseInt(n, 10))
-        .filter((n) => !Number.isNaN(n) && n > 0));
+      setCycleIds(
+        (record.cycle_ids ?? '')
+          .split(',')
+          .map((n) => parseInt(n, 10))
+          .filter((n) => !Number.isNaN(n) && n > 0),
+      );
       setIntegrated(!!record.is_integrated);
     } else {
-      setObjective(''); setKpi(''); setMeasure('');
+      setObjective('');
+      setKpi('');
+      setMeasure('');
       setContractId(presetContractId ? String(presetContractId) : '');
-      setGoalId(''); setTargetId(''); setSectionId(''); setSubsectionId(''); setOfficerId('');
-      setPStart(''); setPEnd(''); setBudget(''); setNotes(''); setCycleIds([]);
+      setGoalId('');
+      setTargetId('');
+      setSectionId('');
+      setSubsectionId('');
+      setOfficerId('');
+      setPStart('');
+      setPEnd('');
+      setBudget('');
+      setNotes('');
+      setCycleIds([]);
       setIntegrated(false);
     }
   }, [isOpen, mode, record, presetContractId]);
@@ -108,17 +146,25 @@ export default function WorkplanActivityFormModal({
   useEffect(() => {
     if (!isOpen) return;
     let alive = true;
-    appraisalCycleService.list()
-      .then((r) => { if (alive) setLiveCycles(r.data?.cycles ?? []); })
-      .catch(() => { /* keep whatever the parent already supplied */ });
-    return () => { alive = false; };
+    appraisalCycleService
+      .list()
+      .then((r) => {
+        if (alive) setLiveCycles(r.data?.cycles ?? []);
+      })
+      .catch(() => {
+        /* keep whatever the parent already supplied */
+      });
+    return () => {
+      alive = false;
+    };
   }, [isOpen]);
 
   // Department-pinned contract list: a head's form only ever offers the
   // performance contracts that belong to their own department.
-  const visibleContracts = departmentId == null
-    ? refs.contracts
-    : refs.contracts.filter((c) => c.department_id === departmentId);
+  const visibleContracts =
+    departmentId == null
+      ? refs.contracts
+      : refs.contracts.filter((c) => c.department_id === departmentId);
   const allCycles = liveCycles ?? cycles;
 
   const submit = async () => {
@@ -184,16 +230,26 @@ export default function WorkplanActivityFormModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose}
-      title={mode === 'edit' ? 'Edit Activity' : 'New Workplan Activity'} size="xl">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={mode === 'edit' ? 'Edit Activity' : 'New Workplan Activity'}
+      size="xl"
+    >
       <div className="space-y-4">
         <div>
           <label className={labelCls}>Activity / Objective *</label>
-          <textarea rows={2} className={inputCls} value={objective}
+          <textarea
+            rows={2}
+            className={inputCls}
+            value={objective}
             onChange={(e) => setObjective(e.target.value)}
-            placeholder={mdMode
-              ? 'Optional — legacy MD goal assignments leave this blank'
-              : 'Describe the activity to be performed'} />
+            placeholder={
+              mdMode
+                ? 'Optional — legacy MD goal assignments leave this blank'
+                : 'Describe the activity to be performed'
+            }
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -203,15 +259,26 @@ export default function WorkplanActivityFormModal({
           </div>
           <div>
             <label className={labelCls}>Measure Unit *</label>
-            <input className={inputCls} list="wp-measures" value={measure}
-              onChange={(e) => setMeasure(e.target.value)} />
+            <input
+              className={inputCls}
+              list="wp-measures"
+              value={measure}
+              onChange={(e) => setMeasure(e.target.value)}
+            />
             <datalist id="wp-measures">
-              {MEASURE_SUGGESTIONS.map((m) => <option key={m} value={m} />)}
+              {MEASURE_SUGGESTIONS.map((m) => (
+                <option key={m} value={m} />
+              ))}
             </datalist>
           </div>
           <div>
             <label className={labelCls}>Target Date</label>
-            <input type="date" className={inputCls} value={pEnd} onChange={(e) => setPEnd(e.target.value)} />
+            <input
+              type="date"
+              className={inputCls}
+              value={pEnd}
+              onChange={(e) => setPEnd(e.target.value)}
+            />
           </div>
         </div>
 
@@ -220,41 +287,70 @@ export default function WorkplanActivityFormModal({
             <label className={labelCls}>
               Source Performance Contract {allowContractless ? '(optional)' : '*'}
             </label>
-            <select className={inputCls} value={contractId} onChange={(e) => {
-              setContractId(e.target.value);
-              const c = visibleContracts.find((x) => String(x.id) === e.target.value);
-              setGoalId(c?.goal_id ? String(c.goal_id) : '');
-              setTargetId(c?.target_id ? String(c.target_id) : '');
-            }}>
+            <select
+              className={inputCls}
+              value={contractId}
+              onChange={(e) => {
+                setContractId(e.target.value);
+                const c = visibleContracts.find((x) => String(x.id) === e.target.value);
+                setGoalId(c?.goal_id ? String(c.goal_id) : '');
+                setTargetId(c?.target_id ? String(c.target_id) : '');
+              }}
+            >
               {allowContractless && <option value="">— Organisation-level (no contract) —</option>}
               {visibleContracts.map((c) => (
                 <option key={c.id} value={String(c.id)}>
-                  {c.name}{c.department_name ? ` — ${c.department_name}` : ''}
+                  {c.name}
+                  {c.department_name ? ` — ${c.department_name}` : ''}
                 </option>
               ))}
             </select>
           </div>
           <div>
             <label className={labelCls}>Start Date</label>
-            <input type="date" className={inputCls} value={pStart} onChange={(e) => setPStart(e.target.value)} />
+            <input
+              type="date"
+              className={inputCls}
+              value={pStart}
+              onChange={(e) => setPStart(e.target.value)}
+            />
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Strategic Goal</label>
-            <select className={inputCls} value={goalId} onChange={(e) => { setGoalId(e.target.value); setTargetId(''); }}>
+            <select
+              className={inputCls}
+              value={goalId}
+              onChange={(e) => {
+                setGoalId(e.target.value);
+                setTargetId('');
+              }}
+            >
               <option value="">— Select goal perspective —</option>
-              {refs.goals.map((g) => <option key={g.id} value={String(g.id)}>{g.name}</option>)}
+              {refs.goals.map((g) => (
+                <option key={g.id} value={String(g.id)}>
+                  {g.name}
+                </option>
+              ))}
             </select>
           </div>
           <div>
             <label className={labelCls}>Strategic Target</label>
-            <select className={inputCls} value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+            <select
+              className={inputCls}
+              value={targetId}
+              onChange={(e) => setTargetId(e.target.value)}
+            >
               <option value="">— Select target —</option>
               {refs.targets
                 .filter((t) => !goalId || !t.goal_id || String(t.goal_id) === goalId)
-                .map((t) => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
+                .map((t) => (
+                  <option key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </option>
+                ))}
             </select>
           </div>
         </div>
@@ -264,32 +360,57 @@ export default function WorkplanActivityFormModal({
             {showSection && (
               <div>
                 <label className={labelCls}>Responsible Section</label>
-                <select className={inputCls} value={sectionId}
-                  onChange={(e) => { setSectionId(e.target.value); setSubsectionId(''); }}>
+                <select
+                  className={inputCls}
+                  value={sectionId}
+                  onChange={(e) => {
+                    setSectionId(e.target.value);
+                    setSubsectionId('');
+                  }}
+                >
                   <option value="">— Whole department —</option>
-                  {sections.map((s) => <option key={s.id} value={String(s.id)}>{s.name}</option>)}
+                  {sections.map((s) => (
+                    <option key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </option>
+                  ))}
                 </select>
               </div>
             )}
             {showSubsection && (
               <div>
                 <label className={labelCls}>Responsible Subsection</label>
-                <select className={inputCls} value={subsectionId} onChange={(e) => setSubsectionId(e.target.value)}>
+                <select
+                  className={inputCls}
+                  value={subsectionId}
+                  onChange={(e) => setSubsectionId(e.target.value)}
+                >
                   <option value="">— None —</option>
                   {subsections
-                    .filter((ss) => !sectionId || !ss.section_id || String(ss.section_id) === sectionId)
-                    .map((ss) => <option key={ss.id} value={String(ss.id)}>{ss.name}</option>)}
+                    .filter(
+                      (ss) => !sectionId || !ss.section_id || String(ss.section_id) === sectionId,
+                    )
+                    .map((ss) => (
+                      <option key={ss.id} value={String(ss.id)}>
+                        {ss.name}
+                      </option>
+                    ))}
                 </select>
               </div>
             )}
             {showOfficer && (
               <div>
                 <label className={labelCls}>Responsible Employee</label>
-                <select className={inputCls} value={officerId} onChange={(e) => setOfficerId(e.target.value)}>
+                <select
+                  className={inputCls}
+                  value={officerId}
+                  onChange={(e) => setOfficerId(e.target.value)}
+                >
                   <option value="">— Unassigned —</option>
                   {employees.map((emp) => (
                     <option key={emp.id} value={String(emp.id)}>
-                      {emp.name}{emp.position ? ` (${emp.position})` : ''}
+                      {emp.name}
+                      {emp.position ? ` (${emp.position})` : ''}
                     </option>
                   ))}
                 </select>
@@ -301,20 +422,37 @@ export default function WorkplanActivityFormModal({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className={labelCls}>Budget (KES)</label>
-            <input type="number" min="0" step="0.01" className={inputCls} value={budget}
-              onChange={(e) => setBudget(e.target.value)} />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className={inputCls}
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+            />
           </div>
           <div className="md:col-span-2">
             <label className={labelCls}>Appraisal Cycle(s) *</label>
             <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 min-h-[42px] items-center">
               {allCycles.length === 0 ? (
-                <span className="text-sm text-gray-400">No appraisal cycles yet — HR Admin must create quarterly cycles first.</span>
+                <span className="text-sm text-gray-400">
+                  No appraisal cycles yet — HR Admin must create quarterly cycles first.
+                </span>
               ) : (
                 allCycles.map((c) => (
-                  <label key={c.id} className="inline-flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200">
-                    <input type="checkbox" checked={cycleIds.includes(c.id)}
-                      onChange={(e) => setCycleIds((prev) =>
-                        e.target.checked ? [...prev, c.id] : prev.filter((n) => n !== c.id))} />
+                  <label
+                    key={c.id}
+                    className="inline-flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={cycleIds.includes(c.id)}
+                      onChange={(e) =>
+                        setCycleIds((prev) =>
+                          e.target.checked ? [...prev, c.id] : prev.filter((n) => n !== c.id),
+                        )
+                      }
+                    />
                     {cycleLabel(c)}
                   </label>
                 ))
@@ -323,7 +461,11 @@ export default function WorkplanActivityFormModal({
           </div>
           {showIntegratedFlag && (
             <label className="flex items-end gap-2 pb-2 text-sm text-gray-700 dark:text-gray-200">
-              <input type="checkbox" checked={integrated} onChange={(e) => setIntegrated(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={integrated}
+                onChange={(e) => setIntegrated(e.target.checked)}
+              />
               Show in organisation integrated view
             </label>
           )}
@@ -331,12 +473,19 @@ export default function WorkplanActivityFormModal({
 
         <div>
           <label className={labelCls}>Resource Notes</label>
-          <textarea rows={2} className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)}
-            placeholder="Funding, dependencies, remarks…" />
+          <textarea
+            rows={2}
+            className={inputCls}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Funding, dependencies, remarks…"
+          />
         </div>
 
         <div className="flex justify-end gap-2 pt-2 border-t dark:border-slate-700">
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button onClick={submit} disabled={saving}>
             {saving ? 'Saving…' : mode === 'edit' ? 'Save Changes' : 'Create Activity'}
           </Button>

@@ -1,4 +1,4 @@
-import { FY_MONTHS, FY_MONTH_SHORT } from '../../constants/leaveConstants'
+import { FY_MONTHS, FY_MONTH_SHORT } from '../../constants/leaveConstants';
 
 /**
  * Compact month pills in July → June financial-year order.
@@ -11,8 +11,8 @@ import { FY_MONTHS, FY_MONTH_SHORT } from '../../constants/leaveConstants'
  */
 const MonthPills = ({ selectedMonth, scheduledMonths = [], onChange, financialYear = '' }) => {
   const handleSelect = (month) => {
-    onChange(month === selectedMonth ? '' : month)
-  }
+    onChange(month === selectedMonth ? '' : month);
+  };
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
@@ -24,21 +24,21 @@ const MonthPills = ({ selectedMonth, scheduledMonths = [], onChange, financialYe
 
       <div className="flex flex-wrap gap-1">
         {FY_MONTHS.map((month, idx) => {
-          const short = FY_MONTH_SHORT[idx]
-          const isScheduled = scheduledMonths.includes(month)
-          const isSelected = selectedMonth === month
+          const short = FY_MONTH_SHORT[idx];
+          const isScheduled = scheduledMonths.includes(month);
+          const isSelected = selectedMonth === month;
 
-          let bgColor = 'bg-gray-100 dark:bg-slate-700'
-          let textColor = 'text-gray-600 dark:text-gray-400'
-          let dotColor = 'bg-gray-400 dark:bg-gray-500'
+          let bgColor = 'bg-gray-100 dark:bg-slate-700';
+          let textColor = 'text-gray-600 dark:text-gray-400';
+          let dotColor = 'bg-gray-400 dark:bg-gray-500';
 
           if (isScheduled) {
-            dotColor = 'bg-green-500 dark:bg-green-400'
+            dotColor = 'bg-green-500 dark:bg-green-400';
           }
           if (isSelected) {
-            bgColor = 'bg-primary-600 dark:bg-primary-500'
-            textColor = 'text-white'
-            dotColor = 'bg-white dark:bg-gray-100'
+            bgColor = 'bg-primary-600 dark:bg-primary-500';
+            textColor = 'text-white';
+            dotColor = 'bg-white dark:bg-gray-100';
           }
 
           return (
@@ -63,11 +63,11 @@ const MonthPills = ({ selectedMonth, scheduledMonths = [], onChange, financialYe
                 `}
               />
             </button>
-          )
+          );
         })}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default MonthPills
+export default MonthPills;

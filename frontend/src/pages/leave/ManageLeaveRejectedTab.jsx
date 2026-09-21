@@ -1,36 +1,41 @@
-import { useState, useEffect } from 'react'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import { badgeClass, formatDate, formatStatus, ROWS_PER_PAGE, Pagination } from './leaveManageShared.jsx'
+import { useState, useEffect } from 'react';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import {
+  badgeClass,
+  formatDate,
+  formatStatus,
+  ROWS_PER_PAGE,
+  Pagination,
+} from './leaveManageShared.jsx';
 
 const RejectedTab = () => {
-  const [rows, setRows] = useState([])
-  const [, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [offset, setOffset] = useState(0)
-  const [count, setCount] = useState(0)
+  const [rows, setRows] = useState([]);
+  const [, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [count, setCount] = useState(0);
 
   useEffect(() => {
-    fetchRows()
-     
-  }, [offset])
+    fetchRows();
+  }, [offset]);
 
   const fetchRows = async () => {
-    setLoading(true)
-    setError('')
+    setLoading(true);
+    setError('');
     try {
       const response = await api.get('/leave/manage', {
         params: { limit: ROWS_PER_PAGE, rejected_offset: offset },
-      })
-      const data = response.data?.data || {}
-      setRows(data.rejected || [])
-      setCount(data.counts?.rejected ?? 0)
+      });
+      const data = response.data?.data || {};
+      setRows(data.rejected || []);
+      setCount(data.counts?.rejected ?? 0);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load rejected leaves.')
+      setError(err.response?.data?.message || 'Failed to load rejected leaves.');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const renderRows = () => {
     if (!rows.length) {
@@ -40,13 +45,17 @@ const RejectedTab = () => {
             No rejected or invalidated leaves on record.
           </td>
         </tr>
-      )
+      );
     }
     return rows.map((row) => (
       <tr key={row.id} className="border-t border-gray-200 dark:border-slate-700">
         <td className="px-4 py-2">
-          <div className="font-medium text-gray-900 dark:text-gray-100">{row.first_name} {row.last_name}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">{row.emp_no || row.employee_id}</div>
+          <div className="font-medium text-gray-900 dark:text-gray-100">
+            {row.first_name} {row.last_name}
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {row.emp_no || row.employee_id}
+          </div>
         </td>
         <td className="px-4 py-2">{row.leave_type_name}</td>
         <td className="px-4 py-2 text-sm">
@@ -60,16 +69,18 @@ const RejectedTab = () => {
         </td>
         <td className="px-4 py-2 text-sm">
           <div className="text-gray-900 dark:text-gray-100">{row.approver_name || 'System'}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">{formatDate(row.action_date)}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            {formatDate(row.action_date)}
+          </div>
         </td>
         <td className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
           {row.rejection_reason || row.invalidation_reason || '—'}
         </td>
       </tr>
-    ))
-  }
+    ));
+  };
 
-  const pages = Math.max(1, Math.ceil(count / ROWS_PER_PAGE))
+  const pages = Math.max(1, Math.ceil(count / ROWS_PER_PAGE));
 
   return (
     <Card>
@@ -94,14 +105,9 @@ const RejectedTab = () => {
           <tbody>{renderRows()}</tbody>
         </table>
       </div>
-      <Pagination
-        pages={pages}
-        offset={offset}
-        onChange={(newOffset) => setOffset(newOffset)}
-      />
+      <Pagination pages={pages} offset={offset} onChange={(newOffset) => setOffset(newOffset)} />
     </Card>
-  )
-}
+  );
+};
 
-export default RejectedTab
-
+export default RejectedTab;

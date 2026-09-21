@@ -26,7 +26,7 @@ const CreateFinancialYearCard = ({ canCreate, nextFY, onCreate, creating }) => {
     <>
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
         <h3 className="text-lg font-semibold mb-4">Add New Financial Year</h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -69,11 +69,7 @@ const CreateFinancialYearCard = ({ canCreate, nextFY, onCreate, creating }) => {
         </div>
 
         <div className="flex items-center space-x-2">
-          <Button
-            onClick={() => setShowConfirmation(true)}
-            disabled={creating}
-            loading={creating}
-          >
+          <Button onClick={() => setShowConfirmation(true)} disabled={creating} loading={creating}>
             Create Financial Year {nextFY.year_name}
           </Button>
         </div>

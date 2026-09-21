@@ -1,4 +1,4 @@
-import Badge from '../ui/Badge'
+import Badge from '../ui/Badge';
 
 /**
  * Department planning status table.
@@ -17,22 +17,22 @@ const DepartmentTable = ({ departments = [] }) => {
       <div className="text-center py-8">
         <p className="text-gray-500 dark:text-gray-400">No department data available.</p>
       </div>
-    )
+    );
   }
 
   const getCoverageBadge = (coverage) => {
-    if (coverage >= 90) return 'success'
-    if (coverage >= 75) return 'default'
-    if (coverage >= 50) return 'warning'
-    return 'danger'
-  }
+    if (coverage >= 90) return 'success';
+    if (coverage >= 75) return 'default';
+    if (coverage >= 50) return 'warning';
+    return 'danger';
+  };
 
   const getCoverageLabel = (coverage) => {
-    if (coverage >= 90) return '✓ Well planned'
-    if (coverage >= 75) return '• On track'
-    if (coverage >= 50) return '! Needs attention'
-    return '! Critical'
-  }
+    if (coverage >= 90) return '✓ Well planned';
+    if (coverage >= 75) return '• On track';
+    if (coverage >= 50) return '! Needs attention';
+    return '! Critical';
+  };
 
   return (
     <div className="overflow-x-auto">
@@ -81,7 +81,7 @@ const DepartmentTable = ({ departments = [] }) => {
         </tbody>
       </table>
     </div>
-  )
-}
+  );
+};
 
-export default DepartmentTable
+export default DepartmentTable;

@@ -1,7 +1,7 @@
-import { AlertTriangle, ArrowLeft, ShieldX } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
-import Button from './ui/Button'
-import Card from './ui/Card'
+import { AlertTriangle, ArrowLeft, ShieldX } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import Button from './ui/Button';
+import Card from './ui/Card';
 
 /**
  * Access Denied screen (Phase: Role, Page & Permission restriction system).
@@ -13,7 +13,7 @@ import Card from './ui/Card'
  * Place: frontend/src/components/AccessDenied.jsx
  */
 const AccessDenied = ({ permission, message }) => {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-6">
@@ -42,7 +42,7 @@ const AccessDenied = ({ permission, message }) => {
         </div>
       </Card>
     </div>
-  )
-}
+  );
+};
 
-export default AccessDenied
+export default AccessDenied;

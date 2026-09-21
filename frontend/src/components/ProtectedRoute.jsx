@@ -1,7 +1,7 @@
-﻿import { Navigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
-import AccessDenied from './AccessDenied'
-import { firstPermittedRoute, parsePermission } from '../config/pagePermissions'
+﻿import { Navigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import AccessDenied from './AccessDenied';
+import { firstPermittedRoute, parsePermission } from '../config/pagePermissions';
 
 /**
  * Route guard (Phase 2 Section 12, hardened by the Role/Page/Permission
@@ -24,38 +24,38 @@ import { firstPermittedRoute, parsePermission } from '../config/pagePermissions'
  * feedback instead of an empty or erroring screen.
  */
 const ProtectedRoute = ({ children, permission, fallbackPermission }) => {
-  const { isAuthenticated, loading: authLoading, can } = useAuth()
+  const { isAuthenticated, loading: authLoading, can } = useAuth();
 
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
-    )
+    );
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />
+    return <Navigate to="/login" replace />;
   }
 
   if (permission) {
-    const [module, action] = parsePermission(permission)
+    const [module, action] = parsePermission(permission);
     if (module && !can(module, action)) {
-      return <AccessDenied permission={permission} />
+      return <AccessDenied permission={permission} />;
     }
   }
 
   if (fallbackPermission) {
-    const [module, action] = parsePermission(fallbackPermission)
+    const [module, action] = parsePermission(fallbackPermission);
     if (module && !can(module, action)) {
       // Safe redirect - never /dashboard blindly (that page may itself be
       // denied), so the user lands on the first route they may open.
-      return <Navigate to={firstPermittedRoute(can)} replace />
+      return <Navigate to={firstPermittedRoute(can)} replace />;
     }
   }
 
   // Authenticated (and permitted, when required) - render protected content
-  return children
-}
+  return children;
+};
 
-export default ProtectedRoute
+export default ProtectedRoute;

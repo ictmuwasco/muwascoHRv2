@@ -44,7 +44,7 @@ const Table = ({ columns, data, className = '' }: TableProps) => {
         </tbody>
       </table>
     </div>
-  )
-}
+  );
+};
 
-export default Table
+export default Table;

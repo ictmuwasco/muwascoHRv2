@@ -1,326 +1,366 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Users, Download, Plus, LayoutGrid, List } from 'lucide-react'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import Button from '../../components/ui/Button'
+import { useState, useEffect, useCallback } from 'react';
+import { Users, Download, Plus, LayoutGrid, List } from 'lucide-react';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
 
-import LeaveInfoBanner from '../../components/leave/LeaveInfoBanner'
-import CoverageBar from '../../components/leave/CoverageBar'
-import MonthPills from '../../components/leave/MonthPills'
-import PlanningMatrix from '../../components/leave/PlanningMatrix'
-import ScheduleSlideOver from '../../components/leave/ScheduleSlideOver'
-import EmployeeRosterTable from '../../components/leave/EmployeeRosterTable'
-import FilterBar from '../../components/leave/FilterBar'
-
+import LeaveInfoBanner from '../../components/leave/LeaveInfoBanner';
+import CoverageBar from '../../components/leave/CoverageBar';
+import MonthPills from '../../components/leave/MonthPills';
+import PlanningMatrix from '../../components/leave/PlanningMatrix';
+import ScheduleSlideOver from '../../components/leave/ScheduleSlideOver';
+import EmployeeRosterTable from '../../components/leave/EmployeeRosterTable';
+import FilterBar from '../../components/leave/FilterBar';
 
 const LeaveRoster = () => {
-
   // Data state
-  const [rosterEntries, setRosterEntries] = useState([])
-  const [financialYears, setFinancialYears] = useState([])
-  const [departments, setDepartments] = useState([])
-  const [sections, setSections] = useState([])
-  const [stats, setStats] = useState(null)
-  const [, setDistribution] = useState({ distribution: [], highest: null, lowest: null })
-  const [, setUpcoming] = useState(null)
-  const [matrixData, setMatrixData] = useState(null)
+  const [rosterEntries, setRosterEntries] = useState([]);
+  const [financialYears, setFinancialYears] = useState([]);
+  const [departments, setDepartments] = useState([]);
+  const [sections, setSections] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [, setDistribution] = useState({ distribution: [], highest: null, lowest: null });
+  const [, setUpcoming] = useState(null);
+  const [matrixData, setMatrixData] = useState(null);
 
   // UI state
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [selectedFinancialYear, setSelectedFinancialYear] = useState('')
-  const [selectedDepartment, setSelectedDepartment] = useState('')
-  const [selectedSection, setSelectedSection] = useState('')
-  const [selectedMonth, setSelectedMonth] = useState('')
-  const [selectedStatus, setSelectedStatus] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [viewMode, setViewMode] = useState('matrix')
-  const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const [, setSelectedEmployeeForSchedule] = useState(null)
-  const [pagination, setPagination] = useState({ total: 0, per_page: 20, current_page: 1, last_page: 1 })
-  const [, setActionLoading] = useState(null)
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selectedFinancialYear, setSelectedFinancialYear] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [selectedSection, setSelectedSection] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('matrix');
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [, setSelectedEmployeeForSchedule] = useState(null);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    per_page: 20,
+    current_page: 1,
+    last_page: 1,
+  });
+  const [, setActionLoading] = useState(null);
 
   // ─── Data Loading ───────────────────────────────────────────────
 
   const loadFinancialYears = useCallback(async () => {
     try {
-      const response = await api.get('/leave/roster/financial-years')
-      const years = response.data?.data || []
-      setFinancialYears(years)
+      const response = await api.get('/leave/roster/financial-years');
+      const years = response.data?.data || [];
+      setFinancialYears(years);
       if (years.length > 0 && !selectedFinancialYear) {
-        setSelectedFinancialYear(years[0]?.id || years[0])
+        setSelectedFinancialYear(years[0]?.id || years[0]);
       }
     } catch (err) {
-      console.error('Failed to load financial years:', err)
+      console.error('Failed to load financial years:', err);
     }
-  }, [selectedFinancialYear])
+  }, [selectedFinancialYear]);
 
   const loadDepartments = useCallback(async () => {
     try {
-      const response = await api.get('/leave/roster/departments')
-      setDepartments(response.data?.data || [])
+      const response = await api.get('/leave/roster/departments');
+      setDepartments(response.data?.data || []);
     } catch (err) {
-      console.error('Failed to load departments:', err)
+      console.error('Failed to load departments:', err);
     }
-  }, [])
+  }, []);
 
   const loadSections = useCallback(async () => {
     try {
-      const response = await api.get('/sections')
-      setSections(response.data?.data || [])
+      const response = await api.get('/sections');
+      setSections(response.data?.data || []);
     } catch (err) {
-      console.error('Failed to load sections:', err)
+      console.error('Failed to load sections:', err);
     }
-  }, [])
+  }, []);
 
   const loadStats = useCallback(async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      const response = await api.get('/leave/roster/stats', { params })
-      setStats(response.data?.data || null)
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      const response = await api.get('/leave/roster/stats', { params });
+      setStats(response.data?.data || null);
     } catch (err) {
-      console.error('Failed to load stats:', err)
+      console.error('Failed to load stats:', err);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection])
+  }, [selectedFinancialYear, selectedDepartment, selectedSection]);
 
   const loadDistribution = useCallback(async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      const response = await api.get('/leave/roster/distribution', { params })
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      const response = await api.get('/leave/roster/distribution', { params });
       setDistribution({
         distribution: response.data?.data?.distribution || [],
         highest: response.data?.data?.highest || null,
         lowest: response.data?.data?.lowest || null,
-      })
+      });
     } catch (err) {
-      console.error('Failed to load distribution:', err)
+      console.error('Failed to load distribution:', err);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection])
+  }, [selectedFinancialYear, selectedDepartment, selectedSection]);
 
   const loadUpcoming = useCallback(async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      const response = await api.get('/leave/roster/upcoming', { params })
-      setUpcoming(response.data?.data || null)
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      const response = await api.get('/leave/roster/upcoming', { params });
+      setUpcoming(response.data?.data || null);
     } catch (err) {
-      console.error('Failed to load upcoming:', err)
+      console.error('Failed to load upcoming:', err);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection])
+  }, [selectedFinancialYear, selectedDepartment, selectedSection]);
 
   const loadMatrix = useCallback(async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      const response = await api.get('/leave/roster/matrix', { params })
-      setMatrixData(response.data?.data || null)
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      const response = await api.get('/leave/roster/matrix', { params });
+      setMatrixData(response.data?.data || null);
     } catch (err) {
-      console.error('Failed to load matrix:', err)
+      console.error('Failed to load matrix:', err);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection])
+  }, [selectedFinancialYear, selectedDepartment, selectedSection]);
 
-  const loadRoster = useCallback(async (page = 1) => {
-    if (!selectedFinancialYear) return
-    setLoading(true)
-    setError('')
-    try {
-      const params = { page, per_page: pagination.per_page }
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      if (selectedMonth) params.month = selectedMonth
-      if (selectedStatus) params.status = selectedStatus
-      if (searchTerm) params.search = searchTerm
-      const response = await api.get('/leave/roster', { params })
-      setRosterEntries(response.data?.data || [])
-      setPagination({
-        total: response.data?.total || 0,
-        per_page: response.data?.per_page || 20,
-        current_page: response.data?.current_page || 1,
-        last_page: response.data?.last_page || 1,
-      })
-    } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to load roster'
-      setError(msg)
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection, selectedMonth, selectedStatus, searchTerm, pagination.per_page])
+  const loadRoster = useCallback(
+    async (page = 1) => {
+      if (!selectedFinancialYear) return;
+      setLoading(true);
+      setError('');
+      try {
+        const params = { page, per_page: pagination.per_page };
+        if (selectedDepartment) params.department_id = selectedDepartment;
+        if (selectedSection) params.section_id = selectedSection;
+        if (selectedMonth) params.month = selectedMonth;
+        if (selectedStatus) params.status = selectedStatus;
+        if (searchTerm) params.search = searchTerm;
+        const response = await api.get('/leave/roster', { params });
+        setRosterEntries(response.data?.data || []);
+        setPagination({
+          total: response.data?.total || 0,
+          per_page: response.data?.per_page || 20,
+          current_page: response.data?.current_page || 1,
+          last_page: response.data?.last_page || 1,
+        });
+      } catch (err) {
+        const msg = err.response?.data?.message || 'Failed to load roster';
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      selectedFinancialYear,
+      selectedDepartment,
+      selectedSection,
+      selectedMonth,
+      selectedStatus,
+      searchTerm,
+      pagination.per_page,
+    ],
+  );
 
   // Initial load
   useEffect(() => {
-    loadFinancialYears()
-    loadDepartments()
-    loadSections()
-  }, [loadFinancialYears, loadDepartments, loadSections])
+    loadFinancialYears();
+    loadDepartments();
+    loadSections();
+  }, [loadFinancialYears, loadDepartments, loadSections]);
 
   // Load dependent data when filters change
   useEffect(() => {
     if (selectedFinancialYear) {
-      loadStats()
-      loadDistribution()
-      loadUpcoming()
-      loadMatrix()
+      loadStats();
+      loadDistribution();
+      loadUpcoming();
+      loadMatrix();
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection, loadStats, loadDistribution, loadUpcoming, loadMatrix])
+  }, [
+    selectedFinancialYear,
+    selectedDepartment,
+    selectedSection,
+    loadStats,
+    loadDistribution,
+    loadUpcoming,
+    loadMatrix,
+  ]);
 
   // Load roster list when FY or filters change
   useEffect(() => {
     if (selectedFinancialYear) {
-      loadRoster(1)
+      loadRoster(1);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection, selectedMonth, selectedStatus, searchTerm, loadRoster])
+  }, [
+    selectedFinancialYear,
+    selectedDepartment,
+    selectedSection,
+    selectedMonth,
+    selectedStatus,
+    searchTerm,
+    loadRoster,
+  ]);
 
   // ─── Actions ────────────────────────────────────────────────────
 
   const handleDelete = async (emp) => {
     const confirmed = window.confirm(
-      `Remove Leave Roster Entry?\n\n${emp.employee_name}\n${emp.emp_code}\nPlanned month: ${emp.scheduled_month || '—'}\n\nThis will remove the planned leave allocation from the roster.\nIt will NOT delete or affect any actual leave application.`
-    )
-    if (!confirmed) return
+      `Remove Leave Roster Entry?\n\n${emp.employee_name}\n${emp.emp_code}\nPlanned month: ${emp.scheduled_month || '—'}\n\nThis will remove the planned leave allocation from the roster.\nIt will NOT delete or affect any actual leave application.`,
+    );
+    if (!confirmed) return;
 
-    setActionLoading(emp.roster_id)
+    setActionLoading(emp.roster_id);
     try {
-      await api.delete(`/leave/roster/${emp.roster_id}`)
-      setRosterEntries((prev) => prev.filter((e) => e.roster_id !== emp.roster_id))
-      loadStats()
-      loadMatrix()
+      await api.delete(`/leave/roster/${emp.roster_id}`);
+      setRosterEntries((prev) => prev.filter((e) => e.roster_id !== emp.roster_id));
+      loadStats();
+      loadMatrix();
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to delete entry'
-      setError(msg)
+      const msg = err.response?.data?.message || 'Failed to delete entry';
+      setError(msg);
     } finally {
-      setActionLoading(null)
+      setActionLoading(null);
     }
-  }
+  };
 
   const handleScheduleSuccess = () => {
-    loadStats()
-    loadMatrix()
-    loadRoster(1)
-  }
+    loadStats();
+    loadMatrix();
+    loadRoster(1);
+  };
 
   const handleExport = async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      if (selectedMonth) params.month = selectedMonth
-      if (selectedStatus) params.status = selectedStatus
-      if (searchTerm) params.search = searchTerm
-      const response = await api.get('/leave/roster/export', { params, responseType: 'blob' })
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', 'leave-roster-export.csv')
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      if (selectedMonth) params.month = selectedMonth;
+      if (selectedStatus) params.status = selectedStatus;
+      if (searchTerm) params.search = searchTerm;
+      const response = await api.get('/leave/roster/export', { params, responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'leave-roster-export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to export'
-      setError(msg)
+      const msg = err.response?.data?.message || 'Failed to export';
+      setError(msg);
     }
-  }
+  };
 
   const handleFilterChange = (field, value) => {
     switch (field) {
-      case 'selectedFinancialYear': setSelectedFinancialYear(value); break
-      case 'selectedDepartment': setSelectedDepartment(value); break
-      case 'selectedSection': setSelectedSection(value); break
-      case 'selectedMonth': setSelectedMonth(value); break
-      case 'selectedStatus': setSelectedStatus(value); break
-      case 'searchTerm': setSearchTerm(value); break
+      case 'selectedFinancialYear':
+        setSelectedFinancialYear(value);
+        break;
+      case 'selectedDepartment':
+        setSelectedDepartment(value);
+        break;
+      case 'selectedSection':
+        setSelectedSection(value);
+        break;
+      case 'selectedMonth':
+        setSelectedMonth(value);
+        break;
+      case 'selectedStatus':
+        setSelectedStatus(value);
+        break;
+      case 'searchTerm':
+        setSearchTerm(value);
+        break;
     }
-  }
+  };
 
   const handleResetFilters = () => {
-    setSelectedDepartment('')
-    setSelectedSection('')
-    setSelectedMonth('')
-    setSelectedStatus('')
-    setSearchTerm('')
-  }
+    setSelectedDepartment('');
+    setSelectedSection('');
+    setSelectedMonth('');
+    setSelectedStatus('');
+    setSearchTerm('');
+  };
 
   const handleMonthPillClick = (month) => {
-    setSelectedMonth(month === selectedMonth ? '' : month)
-  }
+    setSelectedMonth(month === selectedMonth ? '' : month);
+  };
 
   const handleScheduleClick = (emp) => {
-    setSelectedEmployeeForSchedule(emp)
-    setShowScheduleModal(true)
-  }
+    setSelectedEmployeeForSchedule(emp);
+    setShowScheduleModal(true);
+  };
 
   const handleNotScheduledClick = () => {
     // Apply "Not Scheduled" filter — show only unscheduled employees
-    setSelectedStatus('not_scheduled')
-    setSelectedDepartment('')
-    setSelectedSection('')
-    setSelectedMonth('')
-    setSearchTerm('')
-  }
+    setSelectedStatus('not_scheduled');
+    setSelectedDepartment('');
+    setSelectedSection('');
+    setSelectedMonth('');
+    setSearchTerm('');
+  };
 
   const handleScheduledClick = () => {
     // Show only scheduled employees
-    setSelectedStatus('scheduled')
-    setSelectedDepartment('')
-    setSelectedSection('')
-    setSelectedMonth('')
-    setSearchTerm('')
-  }
+    setSelectedStatus('scheduled');
+    setSelectedDepartment('');
+    setSelectedSection('');
+    setSelectedMonth('');
+    setSearchTerm('');
+  };
 
   const handleAllClick = () => {
     // Show all employees (clear status filter)
-    setSelectedStatus('')
-    setSelectedDepartment('')
-    setSelectedSection('')
-    setSelectedMonth('')
-    setSearchTerm('')
-  }
+    setSelectedStatus('');
+    setSelectedDepartment('');
+    setSelectedSection('');
+    setSelectedMonth('');
+    setSearchTerm('');
+  };
 
   // Get scheduled months for month pills
   const scheduledMonths = Array.from(
     new Set(
-      (matrixData?.employees || [])
-        .filter((e) => e.scheduled_month)
-        .map((e) => e.scheduled_month)
-    )
-  )
+      (matrixData?.employees || []).filter((e) => e.scheduled_month).map((e) => e.scheduled_month),
+    ),
+  );
 
   // Get current financial year name
-  const currentFy = financialYears.find((y) => y.id == selectedFinancialYear)
-  const fyName = currentFy?.year_name || currentFy?.name || ''
+  const currentFy = financialYears.find((y) => y.id == selectedFinancialYear);
+  const fyName = currentFy?.year_name || currentFy?.name || '';
 
   // Get matrix employees (filtered by month and status if selected)
-  const matrixEmployees = matrixData?.employees || []
+  const matrixEmployees = matrixData?.employees || [];
   const filteredMatrixEmployees = matrixEmployees.filter((e) => {
-    const hasScheduled = !!e.scheduled_month
+    const hasScheduled = !!e.scheduled_month;
     // Status filter
-    if (selectedStatus === 'scheduled' && !hasScheduled) return false
-    if (selectedStatus === 'not_scheduled' && hasScheduled) return false
+    if (selectedStatus === 'scheduled' && !hasScheduled) return false;
+    if (selectedStatus === 'not_scheduled' && hasScheduled) return false;
     // Month filter - when a month is selected, show employees scheduled for that month
     // plus unscheduled employees (so you can see who still needs scheduling)
-    if (selectedMonth && hasScheduled && e.scheduled_month !== selectedMonth) return false
-    return true
-  })
+    if (selectedMonth && hasScheduled && e.scheduled_month !== selectedMonth) return false;
+    return true;
+  });
 
   // Get list view employees (from roster entries)
-  const listViewEmployees = rosterEntries
+  const listViewEmployees = rosterEntries;
 
   if (loading && rosterEntries.length === 0 && !stats) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
-    )
+    );
   }
 
   return (
@@ -383,11 +423,7 @@ const LeaveRoster = () => {
 
           {stats.not_scheduled > 0 && (
             <div className="flex justify-end">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleNotScheduledClick}
-              >
+              <Button size="sm" variant="outline" onClick={handleNotScheduledClick}>
                 View {stats.not_scheduled} Unscheduled Employees
               </Button>
             </div>
@@ -399,7 +435,10 @@ const LeaveRoster = () => {
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Active Employees - clickable (shows all) */}
-          <Card className="cursor-pointer transition-transform hover:scale-[1.02]" onClick={handleAllClick}>
+          <Card
+            className="cursor-pointer transition-transform hover:scale-[1.02]"
+            onClick={handleAllClick}
+          >
             <div className="flex items-center space-x-3">
               <div className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center">
                 <Users className="h-5 w-5 text-gray-600 dark:text-gray-300" />
@@ -414,7 +453,10 @@ const LeaveRoster = () => {
           </Card>
 
           {/* Scheduled - clickable */}
-          <Card className="cursor-pointer transition-transform hover:scale-[1.02] border-green-200 dark:border-green-800" onClick={handleScheduledClick}>
+          <Card
+            className="cursor-pointer transition-transform hover:scale-[1.02] border-green-200 dark:border-green-800"
+            onClick={handleScheduledClick}
+          >
             <div className="flex items-center space-x-3">
               <div className="h-10 w-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                 <span className="text-green-600 dark:text-green-400 text-lg">✓</span>
@@ -559,8 +601,9 @@ const LeaveRoster = () => {
                 {pagination.last_page > 1 && (
                   <div className="flex items-center justify-between mt-4 px-2">
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      Showing {((pagination.current_page - 1) * pagination.per_page) + 1} -{' '}
-                      {Math.min(pagination.current_page * pagination.per_page, pagination.total)} of {pagination.total}
+                      Showing {(pagination.current_page - 1) * pagination.per_page + 1} -{' '}
+                      {Math.min(pagination.current_page * pagination.per_page, pagination.total)} of{' '}
+                      {pagination.total}
                     </div>
                     <div className="flex items-center space-x-2">
                       <Button
@@ -594,14 +637,16 @@ const LeaveRoster = () => {
       {/* Schedule Slide-over (Spec #6) */}
       <ScheduleSlideOver
         isOpen={showScheduleModal}
-        onClose={() => { setShowScheduleModal(false); setSelectedEmployeeForSchedule(null) }}
+        onClose={() => {
+          setShowScheduleModal(false);
+          setSelectedEmployeeForSchedule(null);
+        }}
         financialYearId={selectedFinancialYear}
         financialYears={financialYears}
         onSuccess={handleScheduleSuccess}
       />
     </div>
-  )
-}
+  );
+};
 
-export default LeaveRoster
-
+export default LeaveRoster;

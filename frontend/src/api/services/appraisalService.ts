@@ -38,7 +38,9 @@ export const appraisalService = {
   },
 
   getByEmployee: async (employeeId: number): Promise<ApiResponse<Appraisal[]>> => {
-    const response = await apiClient.get<ApiResponse<Appraisal[]>>(`/appraisals/employee/${employeeId}`);
+    const response = await apiClient.get<ApiResponse<Appraisal[]>>(
+      `/appraisals/employee/${employeeId}`,
+    );
     return response.data;
   },
 };

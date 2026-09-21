@@ -1,15 +1,15 @@
-import { useState } from 'react'
-import { BellRing, BellOff, Loader2, Smartphone, MonitorSmartphone } from 'lucide-react'
-import toast from 'react-hot-toast'
-import Card from '../../ui/Card'
+import { useState } from 'react';
+import { BellRing, BellOff, Loader2, Smartphone, MonitorSmartphone } from 'lucide-react';
+import toast from 'react-hot-toast';
+import Card from '../../ui/Card';
 import {
   isPushSupported,
   getPermissionState,
   wasPermissionDenied,
   enablePushForThisDevice,
   disablePushForThisDevice,
-} from '../../../utils/pushNotifications'
-import { notificationService } from '../../../api/services/notificationService'
+} from '../../../utils/pushNotifications';
+import { notificationService } from '../../../api/services/notificationService';
 
 /**
  * @typedef {Object} PushDevicesCardProps
@@ -25,48 +25,48 @@ import { notificationService } from '../../../api/services/notificationService'
  * @param {PushDevicesCardProps} props
  */
 const PushDevicesCard = ({ devices, hasVapid, onDevicesChange }) => {
-  const [busy, setBusy] = useState(false)
-  const supported = isPushSupported()
-  const permission = getPermissionState()
-  const subscribedHere = devices.length >= 0 && !wasPermissionDenied() && permission === 'granted'
+  const [busy, setBusy] = useState(false);
+  const supported = isPushSupported();
+  const permission = getPermissionState();
+  const subscribedHere = devices.length >= 0 && !wasPermissionDenied() && permission === 'granted';
 
-  const blocked = !supported || !hasVapid || wasPermissionDenied() || permission === 'denied'
+  const blocked = !supported || !hasVapid || wasPermissionDenied() || permission === 'denied';
 
   const handleEnable = async () => {
-    setBusy(true)
+    setBusy(true);
     try {
-      const outcome = await enablePushForThisDevice()
+      const outcome = await enablePushForThisDevice();
       if (outcome.ok) {
-        toast.success(outcome.message)
-        const list = await notificationService.listDevices()
-        onDevicesChange(list?.data?.devices ?? [])
+        toast.success(outcome.message);
+        const list = await notificationService.listDevices();
+        onDevicesChange(list?.data?.devices ?? []);
       } else {
-        toast.error(outcome.message)
+        toast.error(outcome.message);
       }
     } catch {
-      toast.error('Could not enable notifications. Please try again.')
+      toast.error('Could not enable notifications. Please try again.');
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
+  };
 
   const handleDisable = async () => {
-    setBusy(true)
+    setBusy(true);
     try {
-      const outcome = await disablePushForThisDevice()
+      const outcome = await disablePushForThisDevice();
       if (outcome.ok) {
-        toast.success(outcome.message)
-        const list = await notificationService.listDevices()
-        onDevicesChange(list?.data?.devices ?? [])
+        toast.success(outcome.message);
+        const list = await notificationService.listDevices();
+        onDevicesChange(list?.data?.devices ?? []);
       } else {
-        toast.error(outcome.message)
+        toast.error(outcome.message);
       }
     } catch {
-      toast.error('Could not disable notifications. Please try again.')
+      toast.error('Could not disable notifications. Please try again.');
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
+  };
 
   return (
     <Card className="p-6">
@@ -77,14 +77,14 @@ const PushDevicesCard = ({ devices, hasVapid, onDevicesChange }) => {
         <div className="flex-1">
           <h3 className="text-lg font-semibold text-gray-900">Web Push Notifications</h3>
           <p className="text-sm text-gray-500 mt-1">
-            Get a reminder on this device&apos;s browser when you have not clocked in
-            by the scheduled time.
+            Get a reminder on this device&apos;s browser when you have not clocked in by the
+            scheduled time.
           </p>
 
           {!supported && (
             <p className="mt-3 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md p-3">
-              This browser does not support push notifications. You can still use
-              SMS reminders and clock in normally.
+              This browser does not support push notifications. You can still use SMS reminders and
+              clock in normally.
             </p>
           )}
           {supported && !hasVapid && (
@@ -94,8 +94,8 @@ const PushDevicesCard = ({ devices, hasVapid, onDevicesChange }) => {
           )}
           {supported && permission === 'denied' && (
             <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md p-3">
-              Notifications are blocked for this site. Allow them in your browser
-              settings, then reload.
+              Notifications are blocked for this site. Allow them in your browser settings, then
+              reload.
             </p>
           )}
 
@@ -106,7 +106,11 @@ const PushDevicesCard = ({ devices, hasVapid, onDevicesChange }) => {
               disabled={busy || blocked}
               onClick={handleEnable}
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MonitorSmartphone className="h-4 w-4" />}
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MonitorSmartphone className="h-4 w-4" />
+              )}
               Enable on this device
             </button>
             <button
@@ -115,7 +119,11 @@ const PushDevicesCard = ({ devices, hasVapid, onDevicesChange }) => {
               disabled={busy}
               onClick={handleDisable}
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellOff className="h-4 w-4" />}
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <BellOff className="h-4 w-4" />
+              )}
               Disable here
             </button>
             {subscribedHere && permission === 'granted' && (
@@ -133,7 +141,10 @@ const PushDevicesCard = ({ devices, hasVapid, onDevicesChange }) => {
             ) : (
               <ul className="divide-y divide-gray-100 border border-gray-100 rounded-md">
                 {devices.map((device) => (
-                  <li key={device.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                  <li
+                    key={device.id}
+                    className="flex items-center justify-between px-3 py-2 text-sm"
+                  >
                     <span className="flex items-center gap-2 text-gray-700">
                       <Smartphone className="h-4 w-4 text-gray-400" />
                       {device.device_name}
@@ -152,7 +163,7 @@ const PushDevicesCard = ({ devices, hasVapid, onDevicesChange }) => {
         </div>
       </div>
     </Card>
-  )
-}
+  );
+};
 
-export default PushDevicesCard
+export default PushDevicesCard;

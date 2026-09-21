@@ -1,78 +1,78 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import Table from '../../components/ui/Table'
-import Badge from '../../components/ui/Badge'
-import Button from '../../components/ui/Button'
-import EmployeeTabs from '../../components/EmployeeTabs'
-import { Plus, Search, Eye, Pencil, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import Table from '../../components/ui/Table';
+import Badge from '../../components/ui/Badge';
+import Button from '../../components/ui/Button';
+import EmployeeTabs from '../../components/EmployeeTabs';
+import { Plus, Search, Eye, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 
-const PER_PAGE = 50
+const PER_PAGE = 50;
 
 const Employees = () => {
-  const navigate = useNavigate()
-  const [employees, setEmployees] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [total, setTotal] = useState(0)
-  const requestIdRef = useRef(0)
+  const navigate = useNavigate();
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    const requestId = ++requestIdRef.current
-    
+    const requestId = ++requestIdRef.current;
+
     const fetchEmployees = async () => {
-      setLoading(true)
+      setLoading(true);
       try {
-        const params = { 
-          page, 
-          limit: PER_PAGE
-        }
+        const params = {
+          page,
+          limit: PER_PAGE,
+        };
         if (searchTerm) {
-          params.search = searchTerm
+          params.search = searchTerm;
         }
-        const response = await api.get('/employees', { params })
-        
+        const response = await api.get('/employees', { params });
+
         // Ignore stale responses from previous page requests
-        if (requestId !== requestIdRef.current) return
-        
-        const data = response.data?.data
+        if (requestId !== requestIdRef.current) return;
+
+        const data = response.data?.data;
         // Handle both paginated {data: [...], total, page} and plain array formats
-        const employeeList = Array.isArray(data) ? data : (data?.data || [])
-        const totalCount = Array.isArray(data) ? data.length : (data?.total || employeeList.length)
-        
-        setEmployees(employeeList)
-        setTotal(totalCount)
-        setTotalPages(Math.ceil(totalCount / PER_PAGE))
+        const employeeList = Array.isArray(data) ? data : data?.data || [];
+        const totalCount = Array.isArray(data) ? data.length : data?.total || employeeList.length;
+
+        setEmployees(employeeList);
+        setTotal(totalCount);
+        setTotalPages(Math.ceil(totalCount / PER_PAGE));
       } catch (error) {
         // Only log error if this is still the current request
         if (requestId === requestIdRef.current) {
-          console.error('Failed to fetch employees:', error)
+          console.error('Failed to fetch employees:', error);
         }
       } finally {
         if (requestId === requestIdRef.current) {
-          setLoading(false)
+          setLoading(false);
         }
       }
-    }
-    
-    fetchEmployees()
-  }, [page, searchTerm])
+    };
+
+    fetchEmployees();
+  }, [page, searchTerm]);
 
   const handleSearch = (e) => {
-    e.preventDefault()
-    setPage(1)
-    setSearchTerm(search)
-  }
+    e.preventDefault();
+    setPage(1);
+    setSearchTerm(search);
+  };
 
   const handleReset = () => {
-    setSearch('')
-    setSearchTerm('')
-    setPage(1)
-  }
+    setSearch('');
+    setSearchTerm('');
+    setPage(1);
+  };
 
   const columns = [
     { key: 'employee_id', label: 'Employee ID' },
@@ -90,7 +90,7 @@ const Employees = () => {
       label: 'Status',
       render: (value) => (
         <Badge variant={String(value).toLowerCase() === 'active' ? 'success' : 'danger'}>
-          { value || 'Active' }
+          {value || 'Active'}
         </Badge>
       ),
     },
@@ -118,7 +118,7 @@ const Employees = () => {
         </div>
       ),
     },
-  ]
+  ];
 
   if (loading) {
     return (
@@ -128,7 +128,7 @@ const Employees = () => {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -177,7 +177,7 @@ const Employees = () => {
         {/* Pagination */}
         <div className="flex items-center justify-between mt-4 px-2 py-3">
           <p className="text-sm text-gray-500">
-            Showing {employees.length > 0 ? ((page - 1) * PER_PAGE) + 1 : 0} to{' '}
+            Showing {employees.length > 0 ? (page - 1) * PER_PAGE + 1 : 0} to{' '}
             {Math.min(page * PER_PAGE, total)} of {total} employees
           </p>
           <div className="flex items-center space-x-2">
@@ -206,7 +206,7 @@ const Employees = () => {
         </div>
       </Card>
     </div>
-  )
-}
+  );
+};
 
-export default Employees
+export default Employees;

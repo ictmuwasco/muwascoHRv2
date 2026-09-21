@@ -1,97 +1,97 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import Button from '../../components/ui/Button'
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
 
 const LeaveApplication = () => {
-  const navigate = useNavigate()
-  const { user } = useAuth()
-  const [employeeId, setEmployeeId] = useState('')
-  const [leaveTypeId, setLeaveTypeId] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [reason, setReason] = useState('')
-  const [document, setDocument] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [calculating, setCalculating] = useState(false)
-  const [submitted, setSubmitted] = useState(false)
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const [eligibleDays, setEligibleDays] = useState(0)
-  const [primaryDeduction, setPrimaryDeduction] = useState(0)
-  const [annualDeduction, setAnnualDeduction] = useState(0)
-  const [unpaidDays, setUnpaidDays] = useState(0)
-  const [calendarDays, setCalendarDays] = useState(0)
-  const [leaveTypes, setLeaveTypes] = useState([])
-  const [delegates, setDelegates] = useState([])
-  const [delegateEmpId, setDelegateEmpId] = useState('')
-  const [employees, setEmployees] = useState([])
-  const [existingApplications, setExistingApplications] = useState([])
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const [employeeId, setEmployeeId] = useState('');
+  const [leaveTypeId, setLeaveTypeId] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [reason, setReason] = useState('');
+  const [document, setDocument] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [calculating, setCalculating] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [eligibleDays, setEligibleDays] = useState(0);
+  const [primaryDeduction, setPrimaryDeduction] = useState(0);
+  const [annualDeduction, setAnnualDeduction] = useState(0);
+  const [unpaidDays, setUnpaidDays] = useState(0);
+  const [calendarDays, setCalendarDays] = useState(0);
+  const [leaveTypes, setLeaveTypes] = useState([]);
+  const [delegates, setDelegates] = useState([]);
+  const [delegateEmpId, setDelegateEmpId] = useState('');
+  const [employees, setEmployees] = useState([]);
+  const [existingApplications, setExistingApplications] = useState([]);
 
   // Load employees and delegates on mount
   useEffect(() => {
-    loadEmployees()
-  }, [])
+    loadEmployees();
+  }, []);
 
   useEffect(() => {
     if (employeeId) {
-      loadDelegates()
+      loadDelegates();
     }
-  }, [employeeId])
+  }, [employeeId]);
 
   useEffect(() => {
     if (employeeId) {
-      loadLeaveTypes()
-      loadExistingApplications()
+      loadLeaveTypes();
+      loadExistingApplications();
     }
-  }, [employeeId])
+  }, [employeeId]);
 
   useEffect(() => {
     if (employeeId && leaveTypeId && startDate && endDate) {
-      calculatePreview()
+      calculatePreview();
     }
-  }, [employeeId, leaveTypeId, startDate, endDate])
+  }, [employeeId, leaveTypeId, startDate, endDate]);
 
   // Today's date in YYYY-MM-DD format (local timezone, for minDate on date pickers)
   const today = useMemo(() => {
-    const d = new Date()
-    const yyyy = d.getFullYear()
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const dd = String(d.getDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}`
-  }, [])
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  }, []);
 
   // Policy flags for the selected leave type (delivered by the backend).
   const selectedLeaveType = useMemo(
     () => leaveTypes.find((t) => Number(t.leave_type_id) === Number(leaveTypeId)),
-    [leaveTypes, leaveTypeId]
-  )
-  const typePolicy = selectedLeaveType?.policy || {}
+    [leaveTypes, leaveTypeId],
+  );
+  const typePolicy = selectedLeaveType?.policy || {};
 
   // Backdating (past start dates) is allowed only for the leave types the
   // backend marks as allows_backdate (Sick, Study, Claim-a-Day).
-  const canBackdate = typePolicy.allows_backdate === true
+  const canBackdate = typePolicy.allows_backdate === true;
 
   // Sick Leave is exempt from the "cannot apply while on leave / pending"
   // block — but NOT from the date-overlap check (see checkDateOverlap).
-  const exemptFromOverlapBlock = typePolicy.exempt_from_overlap_block === true
+  const exemptFromOverlapBlock = typePolicy.exempt_from_overlap_block === true;
 
   // The min date for the start date picker.
   // Allows backdating only for exempted leave types.
-  const minStartDate = canBackdate ? '' : today
+  const minStartDate = canBackdate ? '' : today;
 
   // When the leave type is changed, if the start date is before the new
   // min date and backdating is not allowed, clear it.
   useEffect(() => {
     if (!canBackdate && startDate && startDate < today) {
-      setStartDate('')
+      setStartDate('');
     }
     if (!canBackdate && endDate && endDate < startDate) {
-      setEndDate('')
+      setEndDate('');
     }
-  }, [leaveTypeId, startDate, endDate, canBackdate, today])
+  }, [leaveTypeId, startDate, endDate, canBackdate, today]);
 
   /**
    * Fetch existing leave applications for the selected employee to check
@@ -99,17 +99,17 @@ const LeaveApplication = () => {
    */
   const loadExistingApplications = async () => {
     if (!employeeId) {
-      setExistingApplications([])
-      return
+      setExistingApplications([]);
+      return;
     }
     try {
-      const response = await api.get(`/leave?employee_id=${employeeId}`)
-      setExistingApplications(response.data.data || [])
+      const response = await api.get(`/leave?employee_id=${employeeId}`);
+      setExistingApplications(response.data.data || []);
     } catch (err) {
-      console.error('Failed to load existing leave applications:', err)
-      setExistingApplications([])
+      console.error('Failed to load existing leave applications:', err);
+      setExistingApplications([]);
     }
-  }
+  };
 
   /**
    * Check if the employee is currently on approved leave or has a pending
@@ -119,38 +119,35 @@ const LeaveApplication = () => {
    * @returns {string|null} Conflict message if blocked, null otherwise.
    */
   const checkLeaveConflict = () => {
-    if (exemptFromOverlapBlock) return null
+    if (exemptFromOverlapBlock) return null;
 
-    if (!employeeId) return null
+    if (!employeeId) return null;
 
     const hasActiveOrPending = existingApplications.some((app) => {
-      const status = String(app.status || '').toLowerCase()
-      const start = new Date(app.start_date + 'T00:00:00')
-      const end = new Date(app.end_date + 'T00:00:00')
-      const newStart = startDate ? new Date(startDate + 'T00:00:00') : null
-      const newEnd = endDate ? new Date(endDate + 'T00:00:00') : null
-      const todayDate = new Date(today + 'T00:00:00')
+      const status = String(app.status || '').toLowerCase();
+      const start = new Date(app.start_date + 'T00:00:00');
+      const end = new Date(app.end_date + 'T00:00:00');
+      const newStart = startDate ? new Date(startDate + 'T00:00:00') : null;
+      const newEnd = endDate ? new Date(endDate + 'T00:00:00') : null;
+      const todayDate = new Date(today + 'T00:00:00');
 
       // Any pending application blocks a new application regardless of dates.
-      const isPending = status === 'pending' || status.startsWith('pending')
+      const isPending = status === 'pending' || status.startsWith('pending');
 
       // "On leave" = an approved application that overlaps the requested
       // dates, or that covers today (currently on leave).
-      const isApproved = status === 'approved'
-      const overlapsRequested =
-        newStart && newEnd && newStart <= end && newEnd >= start
-      const coversToday = isApproved
-        ? start <= todayDate && todayDate <= end
-        : false
+      const isApproved = status === 'approved';
+      const overlapsRequested = newStart && newEnd && newStart <= end && newEnd >= start;
+      const coversToday = isApproved ? start <= todayDate && todayDate <= end : false;
 
-      return isPending || (isApproved && (overlapsRequested || coversToday))
-    })
+      return isPending || (isApproved && (overlapsRequested || coversToday));
+    });
 
     if (hasActiveOrPending) {
-      return 'You are currently on leave or have a pending leave application. You cannot submit a new application for this leave type. Sick leave can still be applied.'
+      return 'You are currently on leave or have a pending leave application. You cannot submit a new application for this leave type. Sick leave can still be applied.';
     }
-    return null
-  }
+    return null;
+  };
 
   /**
    * Date-overlap check against existing applications. Unlike the
@@ -161,184 +158,186 @@ const LeaveApplication = () => {
    * @returns {string|null} Conflict message, or null when no overlap.
    */
   const checkDateOverlap = () => {
-    if (!employeeId || !startDate || !endDate) return null
+    if (!employeeId || !startDate || !endDate) return null;
 
-    const newStart = new Date(startDate + 'T00:00:00')
-    const newEnd = new Date(endDate + 'T00:00:00')
-    const isFinal = (status) => ['rejected', 'cancelled', 'invalidated'].includes(status)
+    const newStart = new Date(startDate + 'T00:00:00');
+    const newEnd = new Date(endDate + 'T00:00:00');
+    const isFinal = (status) => ['rejected', 'cancelled', 'invalidated'].includes(status);
 
     const conflicting = existingApplications.find((app) => {
-      const status = String(app.status || '').toLowerCase()
-      if (isFinal(status)) return false
-      const start = new Date(app.start_date + 'T00:00:00')
-      const end = new Date(app.end_date + 'T00:00:00')
-      return newStart <= end && newEnd >= start
-    })
-    if (!conflicting) return null
+      const status = String(app.status || '').toLowerCase();
+      if (isFinal(status)) return false;
+      const start = new Date(app.start_date + 'T00:00:00');
+      const end = new Date(app.end_date + 'T00:00:00');
+      return newStart <= end && newEnd >= start;
+    });
+    if (!conflicting) return null;
 
     const fmt = (d) =>
       new Date(d + 'T00:00:00').toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'short',
         year: 'numeric',
-      })
+      });
 
-    return `The requested dates overlap an existing leave application (${fmt(conflicting.start_date)} to ${fmt(conflicting.end_date)}). Overlapping leave dates cannot be submitted. Please choose different dates or contact HR if this sick leave occurred during an existing approved leave.`
-  }
+    return `The requested dates overlap an existing leave application (${fmt(conflicting.start_date)} to ${fmt(conflicting.end_date)}). Overlapping leave dates cannot be submitted. Please choose different dates or contact HR if this sick leave occurred during an existing approved leave.`;
+  };
 
   const loadEmployees = async () => {
     try {
       // Get eligible employees based on logged-in user's role
-      const response = await api.get('/leave/eligible-employees')
-      const empList = response.data.data || []
-      setEmployees(empList)
-      
+      const response = await api.get('/leave/eligible-employees');
+      const empList = response.data.data || [];
+      setEmployees(empList);
+
       // Pre-fill with current user if available
       // Try multiple ways to find the current user
       if (empList.length > 0) {
         // First try: match by user.employee_id
         if (user?.employee_id) {
-          const currentUserEmp = empList.find(emp => emp.employee_id === user.employee_id)
+          const currentUserEmp = empList.find((emp) => emp.employee_id === user.employee_id);
           if (currentUserEmp) {
-            setEmployeeId(currentUserEmp.id)
-            return
+            setEmployeeId(currentUserEmp.id);
+            return;
           }
         }
-        
+
         // Second try: if only one employee, select it (likely the user themselves)
         if (empList.length === 1) {
-          setEmployeeId(empList[0].id)
+          setEmployeeId(empList[0].id);
         }
       }
     } catch (err) {
-      console.error('Failed to load employees:', err)
+      console.error('Failed to load employees:', err);
     }
-  }
+  };
 
   const loadDelegates = async () => {
     try {
       // Get eligible delegates based on logged-in user's role
-      const response = await api.get('/leave/eligible-delegates')
-      const delegateList = response.data.data || []
-      setDelegates(delegateList)
-      
+      const response = await api.get('/leave/eligible-delegates');
+      const delegateList = response.data.data || [];
+      setDelegates(delegateList);
+
       // Auto-select first delegate if only one available
       if (delegateList.length === 1 && !delegateEmpId) {
-        setDelegateEmpId(delegateList[0].id)
+        setDelegateEmpId(delegateList[0].id);
       }
     } catch (err) {
-      console.error('Failed to load delegates:', err)
+      console.error('Failed to load delegates:', err);
       // Don't show error to user - empty delegate list is valid
-      setDelegates([])
+      setDelegates([]);
     }
-  }
+  };
 
   const loadLeaveTypes = async () => {
     try {
-      const response = await api.get(`/leave/types?employee_id=${employeeId}`)
-      setLeaveTypes(response.data.data || [])
+      const response = await api.get(`/leave/types?employee_id=${employeeId}`);
+      setLeaveTypes(response.data.data || []);
     } catch (err) {
-      console.error('Failed to load leave types:', err)
+      console.error('Failed to load leave types:', err);
     }
-  }
+  };
 
   const calculatePreview = async () => {
     if (!employeeId) {
-      console.error('Cannot calculate preview: No employee selected')
-      return
+      console.error('Cannot calculate preview: No employee selected');
+      return;
     }
-    setCalculating(true)
+    setCalculating(true);
     try {
-      const formData = new FormData()
-      formData.append('employee_id', employeeId)
-      formData.append('leave_type_id', leaveTypeId)
-      formData.append('start_date', startDate)
-      formData.append('end_date', endDate)
+      const formData = new FormData();
+      formData.append('employee_id', employeeId);
+      formData.append('leave_type_id', leaveTypeId);
+      formData.append('start_date', startDate);
+      formData.append('end_date', endDate);
 
-      const response = await api.post('/leave/calculate', formData)
-      const data = response.data.data
-      setEligibleDays(data.eligible_days || 0)
-      setPrimaryDeduction(data.deduction_plan.primary_deduction || 0)
-      setAnnualDeduction(data.deduction_plan.annual_deduction || 0)
-      setUnpaidDays(data.deduction_plan.unpaid_days || 0)
+      const response = await api.post('/leave/calculate', formData);
+      const data = response.data.data;
+      setEligibleDays(data.eligible_days || 0);
+      setPrimaryDeduction(data.deduction_plan.primary_deduction || 0);
+      setAnnualDeduction(data.deduction_plan.annual_deduction || 0);
+      setUnpaidDays(data.deduction_plan.unpaid_days || 0);
 
       // Calendar days calculation
-      const start = new Date(startDate)
-      const end = new Date(endDate)
-      const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1
-      setCalendarDays(days)
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+      setCalendarDays(days);
     } catch (err) {
-      console.error('Failed to calculate preview:', err)
+      console.error('Failed to calculate preview:', err);
     } finally {
-      setCalculating(false)
+      setCalculating(false);
     }
-  }
+  };
 
   const handleSubmit = async (e) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    setSuccess('')
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
 
     if (eligibleDays <= 0) {
-      setError('No eligible leave days. Please select a valid date range.')
-      setLoading(false)
-      return
+      setError('No eligible leave days. Please select a valid date range.');
+      setLoading(false);
+      return;
     }
 
     // Business rule: cannot apply for most leave types while on leave or
     // with a pending application. Sick leave is exempt from this block.
-    const conflictMessage = checkLeaveConflict()
+    const conflictMessage = checkLeaveConflict();
     if (conflictMessage) {
-      setError(conflictMessage)
-      setLoading(false)
-      return
+      setError(conflictMessage);
+      setLoading(false);
+      return;
     }
 
     // Business rule: date overlaps are rejected for ALL leave types,
     // including Sick Leave (block-exempt but not overlap-exempt).
-    const overlapMessage = checkDateOverlap()
+    const overlapMessage = checkDateOverlap();
     if (overlapMessage) {
-      setError(overlapMessage)
-      setLoading(false)
-      return
+      setError(overlapMessage);
+      setLoading(false);
+      return;
     }
 
-    const formData = new FormData()
-    formData.append('employee_id', employeeId)
-    formData.append('leave_type_id', leaveTypeId)
-    formData.append('start_date', startDate)
-    formData.append('end_date', endDate)
-    formData.append('delegate_emp_id', delegateEmpId)
-    formData.append('reason', reason)
+    const formData = new FormData();
+    formData.append('employee_id', employeeId);
+    formData.append('leave_type_id', leaveTypeId);
+    formData.append('start_date', startDate);
+    formData.append('end_date', endDate);
+    formData.append('delegate_emp_id', delegateEmpId);
+    formData.append('reason', reason);
     if (document) {
-      formData.append('document', document)
+      formData.append('document', document);
     }
 
     try {
-      await api.post('/leave/apply', formData)
-      setSuccess('Leave application submitted successfully!')
-      setSubmitted(true)
-      setTimeout(() => navigate('/leave'), 1500)
+      await api.post('/leave/apply', formData);
+      setSuccess('Leave application submitted successfully!');
+      setSubmitted(true);
+      setTimeout(() => navigate('/leave'), 1500);
     } catch (err) {
-      console.error('Submit error:', err)
-      setError(err.response?.data?.message || 'Failed to submit application')
+      console.error('Submit error:', err);
+      setError(err.response?.data?.message || 'Failed to submit application');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   if (submitted) {
     return (
       <div className="space-y-6">
         <Card>
           <div className="text-center py-8">
-            <div className="text-green-600 text-lg font-semibold">Leave application submitted successfully!</div>
+            <div className="text-green-600 text-lg font-semibold">
+              Leave application submitted successfully!
+            </div>
             <p className="text-gray-500 mt-2">Redirecting...</p>
           </div>
         </Card>
       </div>
-    )
+    );
   }
 
   return (
@@ -399,13 +398,15 @@ const LeaveApplication = () => {
 
             {!canBackdate && startDate && startDate < today && (
               <div className="bg-amber-50 border border-amber-400 text-amber-700 px-4 py-3 rounded-md">
-                Backdating is not allowed for this leave type. The start date must be today or later.
+                Backdating is not allowed for this leave type. The start date must be today or
+                later.
               </div>
             )}
 
             {!exemptFromOverlapBlock && checkLeaveConflict() && (
               <div className="bg-red-50 border border-red-400 text-red-700 px-4 py-3 rounded-md">
-                You are currently on leave or have a pending leave application. You cannot submit a new application for this leave type. Sick leave can still be applied.
+                You are currently on leave or have a pending leave application. You cannot submit a
+                new application for this leave type. Sick leave can still be applied.
               </div>
             )}
 
@@ -450,7 +451,8 @@ const LeaveApplication = () => {
                 <option value="">Select Delegate</option>
                 {delegates.map((delegate, index) => (
                   <option key={`${delegate.id}-${index}`} value={delegate.id}>
-                    {delegate.first_name} {delegate.last_name} ({delegate.employee_id}) - {delegate.role}
+                    {delegate.first_name} {delegate.last_name} ({delegate.employee_id}) -{' '}
+                    {delegate.role}
                   </option>
                 ))}
               </select>
@@ -477,9 +479,7 @@ const LeaveApplication = () => {
                 className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 required={typePolicy.requires_document === true}
               />
-              <p className="text-xs text-gray-500 mt-1">
-                Allowed: PDF, JPG, PNG. Max size: 5MB.
-              </p>
+              <p className="text-xs text-gray-500 mt-1">Allowed: PDF, JPG, PNG. Max size: 5MB.</p>
             </div>
           )}
 
@@ -496,7 +496,7 @@ const LeaveApplication = () => {
         </Card>
 
         {/* Preview Card */}
-        {(employeeId && startDate && endDate && leaveTypeId) && (
+        {employeeId && startDate && endDate && leaveTypeId && (
           <Card>
             <h3 className="text-lg font-semibold mb-4">Leave Preview</h3>
             {calculating ? (
@@ -531,7 +531,8 @@ const LeaveApplication = () => {
                 )}
                 {eligibleDays <= 0 && (
                   <div className="text-red-600 font-medium">
-                    No Eligible Leave Days. The selected dates fall on excluded days for this leave type.
+                    No Eligible Leave Days. The selected dates fall on excluded days for this leave
+                    type.
                   </div>
                 )}
               </div>
@@ -554,7 +555,7 @@ const LeaveApplication = () => {
         </div>
       </form>
     </div>
-  )
-}
+  );
+};
 
-export default LeaveApplication
+export default LeaveApplication;
