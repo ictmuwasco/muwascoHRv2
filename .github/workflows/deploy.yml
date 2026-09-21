@@ -36,13 +36,14 @@ jobs:
         run: composer install --no-progress --no-interaction
 
       # ---- PSR-4 autoload compliance (case-exact paths) ------------------
-      # Windows dev machines resolve autoload paths case-insensitively, but this
-      # runner (and production) does not. A directory whose casing differs from
-      # its namespace - e.g. Database\Seeders\* living in
-      # backend/database/seeders/ - makes Composer skip the class ("does not
-      # comply with psr-4 autoloading standard ... Skipping") and every consumer
-      # then dies with a bare "Class not found". --strict-psr turns that into a
-      # loud, named failure here instead of a confusing runtime error later.
+      # Windows dev machines resolve autoload paths case-insensitively, but CI
+      # (and production) does not. A directory whose casing differs from its
+      # namespace - e.g. Database\Seeders\* living in backend/database/seeders/ -
+      # makes Composer silently SKIP the class ("does not comply with psr-4 ...
+      # Skipping") and every consumer dies with a bare "Class not found".
+      # --strict-psr turns that case mismatch into a loud, named build failure
+      # here instead of a confusing runtime error later. (Re-applied after it
+      # was stripped alongside the PHP 8.3 bump; it is independent of the bump.)
       - name: PSR-4 autoload compliance (case-exact paths)
         run: composer dump-autoload --optimize --strict-psr --no-interaction
 
@@ -195,13 +196,7 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
 
-      # ---- BLOCKING GATE 3: automated tests (canonical: backend/phpunit.xml.dist) ----
-      # Skip conditions are deliberately conservative:
-      #   * backend/phpunit.xml (untracked, gitignored) boots tests/bootstrap.php —
-      #     running it on a checkout where tests/ is not tracked fails with a
-      #     "bootstrap not found" error instead of skipping, so a config file
-      #     alone is never enough to start the run.
-      #   * The gate only activates when at least one *Test.php file exists.
+                             
       - name: Run PHPUnit tests
         run: |
           set -eo pipefail
