@@ -2,6 +2,14 @@
 
 declare(strict_types=1);
 
+// CLI-only (S-SEC-07): executes SQL migrations and must never run over HTTP.
+// The root .htaccess denies backend/ except backend/public/, but this guard
+// protects any deployment where .htaccess is absent or unreadable.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit('Not Found');
+}
+
 /**
  * Unified Database Migration Runner
  * Runs all SQL migrations in order from the migrations/ directory.
