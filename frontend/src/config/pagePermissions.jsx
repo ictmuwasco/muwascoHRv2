@@ -99,6 +99,7 @@ export const PAGE_PERMISSIONS = {
   '/strategy/workplans/department-head': { id: 'workplans_dept', permission: 'workplan:view' },
   '/strategy/workplans/section-head': { id: 'workplans_sec', permission: 'workplan:view' },
   '/strategy/workplans/subsection-head': { id: 'workplans_sub', permission: 'workplan:view' },
+  '/strategy/kpis': { id: 'sectional_objectives', permission: 'sectional_objective:view' },
   '/strategy/reports': { id: 'strategy_reports', permission: 'strategic_plan:view' },
 
   // --- Reports ---------------------------------------------------------------------

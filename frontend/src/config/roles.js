@@ -115,6 +115,16 @@ export const SECTION_ROLES = ['section_head'];
 export const WIDE_SCOPE_ROLES = ['super_admin', 'hr_manager', 'managing_director'];
 
 /**
+ * Wide-scope roles whose DEPARTMENTAL workplan forms must still be pinned to
+ * their own department (TierWorkplanPage.tsx): an HR manager manages the
+ * performance contracts of every department on the Performance Contracts
+ * page, but "Create Departmental Workplan" / the activity add-edit form /
+ * the cascade dialog must only offer their OWN (HR) department's contracts —
+ * otherwise every other department's commitments appear in the HR workplan.
+ */
+export const WORKPLAN_DEPT_PINNED_ROLES = ['hr_manager'];
+
+/**
  * Roles allowed to manage system monitoring (ErrorMonitoring.tsx): the
  * acknowledge/resolve workflow actions.
  */
