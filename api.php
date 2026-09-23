@@ -171,6 +171,28 @@ class ApiRouter
         return self::$currentRoute;
     }
 
+    /** Route URI params for the dispatch in progress (e.g. ['id' => '535']). */
+    private static ?array $currentParams = null;
+
+    public static function currentRouteParams(): ?array
+    {
+        return self::$currentParams;
+    }
+
+    /**
+     * Map positional regex matches back to named {placeholder} params so the
+     * audit safety-net can record the target id of a mutating request.
+     */
+    private static function bindRouteParams(string $path, array $values): array
+    {
+        preg_match_all('#\{([a-zA-Z_]+)\}#', $path, $names);
+        $params = [];
+        foreach ($names[1] as $i => $name) {
+            $params[$name] = $values[$i] ?? null;
+        }
+        return $params;
+    }
+
     public function dispatch(): void
     {
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -194,10 +216,13 @@ class ApiRouter
 
             if (preg_match($pattern, $path, $matches)) {
                 array_shift($matches);
-
                 // Expose the matched route definition (permission/throttle) to
                 // lower layers for security-event context before enforcement.
                 self::$currentRoute = $route;
+                // Expose matched URI params (e.g. {"id":"535"}) so the audit
+                // safety-net can record the target id of mutating requests.
+                self::$currentParams = self::bindRouteParams($route['path'], $matches);
+
 
                 // Server-side authorization gate (Phase 2): the required
                 // permission comes from the route definition above — never
@@ -286,6 +311,17 @@ class ApiRouter
         $controller->$methodName(...$args);
     }
 }
+
+// Governance safety-net: ensure every authenticated mutating request is audited.
+// Runs at shutdown so the final HTTP status code is known.
+// See AuditService::recordUncoveredMutation().
+register_shutdown_function(function () {
+    try {
+        \App\Services\AuditService::recordUncoveredMutation();
+    } catch (\Throwable) {
+        // Telemetry must never surface to the client.
+    }
+});
 
 $router = new ApiRouter();
 
@@ -583,37 +619,41 @@ $router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::c
 // OrgScope-managed (organizational scope logic in the controllers).
 $router->add('GET',    '/strategic-plans/{id}/workplans', WorkplanController::class, 'index', 'workplan:view');
 $router->add('GET',    '/workplans',                    WorkplanController::class, 'list', 'workplan:view');
-$router->add('POST',   '/workplans',                    WorkplanController::class, 'store', 'workplan:manage');
+$router->add('POST',   '/workplans',                    WorkplanController::class, 'store', 'workplan:view');
 // Legacy-parity batch creation: one contract -> many activities (dept heads).
-$router->add('POST',   '/workplans/bulk',               WorkplanController::class, 'bulk', 'workplan:manage');
+$router->add('POST',   '/workplans/bulk',               WorkplanController::class, 'bulk', 'workplan:view');
 // Workplan extension routes (must be declared BEFORE the /workplans/{id} wildcard)
 $router->add('GET',    '/workplans/integrated-view',    WorkplanController::class, 'integratedView', 'workplan:view');
 $router->add('GET',    '/workplans/export',             WorkplanController::class, 'export', 'workplan:view', '20:300');
 // Cascading workplan system: dashboard summary, downward cascade, lineage.
 $router->add('GET',    '/workplans/summary',            WorkplanController::class, 'summary', 'workplan:view');
 $router->add('GET',    '/workplans/section-sources',    WorkplanController::class, 'sectionSources', 'workplan:view');
-$router->add('POST',   '/workplans/{id}/cascade',       WorkplanController::class, 'cascade', 'workplan:manage');
+$router->add('POST',   '/workplans/{id}/cascade',       WorkplanController::class, 'cascade', 'workplan:view');
 $router->add('GET',    '/workplans/{id}/traceability',  WorkplanController::class, 'traceability', 'workplan:view');
 $router->add('GET',    '/workplans/{id}/progress-history', WorkplanController::class, 'progressHistory', 'workplan:view');
-$router->add('PUT',    '/workplans/{id}/progress',      WorkplanController::class, 'progressUpdate', 'workplan:manage');
+$router->add('PUT',    '/workplans/{id}/progress',      WorkplanController::class, 'progressUpdate', 'workplan:view');
 $router->add('GET',    '/workplans/{id}/dependencies',  WorkplanController::class, 'dependencies', 'workplan:view');
 $router->add('GET',    '/workplans/{id}',               WorkplanController::class, 'show', 'workplan:view');
-$router->add('PUT',    '/workplans/{id}',               WorkplanController::class, 'update', 'workplan:manage');
-$router->add('DELETE', '/workplans/{id}',               WorkplanController::class, 'destroy', 'workplan:manage');
+$router->add('PUT',    '/workplans/{id}',               WorkplanController::class, 'update', 'workplan:view');
+$router->add('DELETE', '/workplans/{id}',               WorkplanController::class, 'destroy', 'workplan:view');
 
 // KPIs (linked to performance contracts)
+// Permission is 'view' because OrgScope::canManagePerformance() enforces the
+// business-level authorization inside KPIController (same pattern as workplans).
 $router->add('GET',    '/contracts/{id}/kpis',          KPIController::class, 'index', 'kpi:view');
-$router->add('POST',   '/contracts/{id}/kpis',          KPIController::class, 'store', 'kpi:manage');
+$router->add('POST',   '/contracts/{id}/kpis',          KPIController::class, 'store', 'kpi:view');
 $router->add('GET',    '/kpis',                         KPIController::class, 'list', 'kpi:view');
-$router->add('PUT',    '/kpis/{id}',                    KPIController::class, 'update', 'kpi:manage');
-$router->add('DELETE', '/kpis/{id}',                    KPIController::class, 'destroy', 'kpi:manage');
+$router->add('PUT',    '/kpis/{id}',                    KPIController::class, 'update', 'kpi:view');
+$router->add('DELETE', '/kpis/{id}',                    KPIController::class, 'destroy', 'kpi:view');
 
 // Sectional objectives / KPIs (performance indicators)
+// Permission is 'view' because OrgScope::canManagePerformance() enforces the
+// business-level authorization inside SectionalObjectiveController.
 $router->add('GET',    '/sectional-objectives',         SectionalObjectiveController::class, 'index', 'sectional_objective:view');
-$router->add('POST',   '/sectional-objectives',         SectionalObjectiveController::class, 'store', 'sectional_objective:manage');
+$router->add('POST',   '/sectional-objectives',         SectionalObjectiveController::class, 'store', 'sectional_objective:view');
 $router->add('GET',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'show', 'sectional_objective:view');
-$router->add('PUT',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'update', 'sectional_objective:manage');
-$router->add('DELETE', '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'destroy', 'sectional_objective:manage');
+$router->add('PUT',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'update', 'sectional_objective:view');
+$router->add('DELETE', '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'destroy', 'sectional_objective:view');
 
 // Strategy & Performance dashboard + report endpoints
 $router->add('GET',    '/dashboard/strategic-performance', DashboardController::class, 'strategicPerformance', 'dashboard:view');
@@ -766,15 +806,15 @@ $router->add('POST', '/ai/feedback', \App\Controllers\AI\AiAssistantController::
 $router->add('GET', '/system/query-log/statistics', QueryLogController::class, 'statistics', 'system:view');
 $router->add('GET', '/system/query-log/slow', QueryLogController::class, 'slow', 'system:view');
 $router->add('GET', '/system/query-log', QueryLogController::class, 'index', 'system:view');
-$router->add('POST', '/system/query-log/reset', QueryLogController::class, 'reset', 'system:view');
+$router->add('POST', '/system/query-log/reset', QueryLogController::class, 'reset', 'system:manage', '10:300');
 
 // ============================================================================
 // Database Seeder Management (system:view permission)
 // ============================================================================
 $router->add('GET', '/system/seeders', \App\Controllers\System\SeederController::class, 'index', 'system:view');
-$router->add('POST', '/system/seeders/run', \App\Controllers\System\SeederController::class, 'runAll', 'system:view');
-$router->add('POST', '/system/seeders/run/{name}', \App\Controllers\System\SeederController::class, 'run', 'system:view');
-$router->add('POST', '/system/seeders/truncate/{table}', \App\Controllers\System\SeederController::class, 'truncate', 'system:view');
+$router->add('POST', '/system/seeders/run', \App\Controllers\System\SeederController::class, 'runAll', 'system:manage', '10:300');
+$router->add('POST', '/system/seeders/run/{name}', \App\Controllers\System\SeederController::class, 'run', 'system:manage', '10:300');
+$router->add('POST', '/system/seeders/truncate/{table}', \App\Controllers\System\SeederController::class, 'truncate', 'system:manage', '10:300');
 $router->add('GET', '/system/seeders/status/{table}', \App\Controllers\System\SeederController::class, 'status', 'system:view');
 
 // ============================================================================

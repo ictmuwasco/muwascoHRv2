@@ -13,16 +13,16 @@
  * All data is fetched via hrPolicyService. Unpublished/Draft/Review sections
  * are never returned to employees - the backend enforces this.
  */
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { hrPolicyService } from '../../api/services/hrPolicyService'
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { hrPolicyService } from '../../api/services/hrPolicyService';
 import type {
   PolicySectionNode,
   PolicySectionDetail,
   PolicyBreadcrumb,
   PolicySearchHit,
-} from '../../api/services/hrPolicyService'
-import Button from '../../components/ui/Button'
+} from '../../api/services/hrPolicyService';
+import Button from '../../components/ui/Button';
 import {
   Search,
   Bookmark,
@@ -35,7 +35,7 @@ import {
   HelpCircle,
   List,
   BookOpen,
-} from 'lucide-react'
+} from 'lucide-react';
 
 /**
  * Format raw section content (plain text with \n breaks) into rich HTML.
@@ -44,79 +44,77 @@ import {
  */
 const formatSectionContent = (content: string | null | undefined): string => {
   if (!content || !content.trim()) {
-    return '<p class="text-gray-500 italic">No content available for this section.</p>'
+    return '<p class="text-gray-500 italic">No content available for this section.</p>';
   }
 
   // Split into lines and normalize
-  const rawLines = String(content).replace(/\r/g, '').split('\n')
-  const lines = rawLines.map((l) => l.trim())
-  const blocks: string[] = []
-  let listBuffer: string[] = []
-  let listType: 'ul' | 'ol' | null = null
-  let paragraphBuffer: string[] = []
+  const rawLines = String(content).replace(/\r/g, '').split('\n');
+  const lines = rawLines.map((l) => l.trim());
+  const blocks: string[] = [];
+  let listBuffer: string[] = [];
+  let listType: 'ul' | 'ol' | null = null;
+  let paragraphBuffer: string[] = [];
 
   const flushList = () => {
-    if (listBuffer.length === 0) return
-    const tag = listType === 'ol' ? 'ol' : 'ul'
-    const listItems = listBuffer
-      .map((text) => `<li>${text}</li>`)
-      .join('')
-    blocks.push(`<${tag} class="policy-list">${listItems}</${tag}>`)
-    listBuffer = []
-    listType = null
-  }
+    if (listBuffer.length === 0) return;
+    const tag = listType === 'ol' ? 'ol' : 'ul';
+    const listItems = listBuffer.map((text) => `<li>${text}</li>`).join('');
+    blocks.push(`<${tag} class="policy-list">${listItems}</${tag}>`);
+    listBuffer = [];
+    listType = null;
+  };
 
   const flushParagraphs = () => {
-    if (paragraphBuffer.length === 0) return
-    const text = paragraphBuffer.join(' ')
+    if (paragraphBuffer.length === 0) return;
+    const text = paragraphBuffer.join(' ');
     // Detect ALL-CAPS heading lines (likely sub-headings inside content)
     if (/^[A-Z][A-Z\s\d.-:]{3,}$/.test(text) && text.length < 60) {
-      blocks.push(`<h3 class="policy-subheading">${esc(text)}</h3>`)
+      blocks.push(`<h3 class="policy-subheading">${esc(text)}</h3>`);
     } else {
-      blocks.push(`<p>${esc(text)}</p>`)
+      blocks.push(`<p>${esc(text)}</p>`);
     }
-    paragraphBuffer = []
-  }
+    paragraphBuffer = [];
+  };
 
   for (const line of lines) {
     if (line === '') {
-      flushList()
-      flushParagraphs()
-      continue
+      flushList();
+      flushParagraphs();
+      continue;
     }
 
     // Numbered list item (starts with number + . or ))
-    const olMatch = line.match(/^(\d+[.)])\s+(.*)$/)
+    const olMatch = line.match(/^(\d+[.)])\s+(.*)$/);
     // Bullet list item
-    const ulMatch = line.match(/^[-•*\u2022\u25aa\u25cf\u00b7]\s+(.*)$/)
+    const ulMatch = line.match(/^[-•*\u2022\u25aa\u25cf\u00b7]\s+(.*)$/);
 
     if (olMatch) {
-      flushParagraphs()
+      flushParagraphs();
       if (listType !== 'ol') {
-        flushList()
-        listType = 'ol'
+        flushList();
+        listType = 'ol';
       }
-      listBuffer.push(`<strong>${esc(olMatch[1])}</strong> ${esc(olMatch[2])}`)
+      listBuffer.push(`<strong>${esc(olMatch[1])}</strong> ${esc(olMatch[2])}`);
     } else if (ulMatch) {
-      flushParagraphs()
+      flushParagraphs();
       if (listType !== 'ul') {
-        flushList()
-        listType = 'ul'
+        flushList();
+        listType = 'ul';
       }
-      listBuffer.push(esc(ulMatch[2]))
+      listBuffer.push(esc(ulMatch[2]));
     } else {
       // Regular paragraph line
-      flushList()
-      paragraphBuffer.push(line)
+      flushList();
+      paragraphBuffer.push(line);
     }
   }
 
   // Flush any remaining buffers
-  flushList()
-  flushParagraphs()
+  flushList();
+  flushParagraphs();
 
-  return blocks.join('')
-}
+  return blocks.join('');
+};
 
 /** Escape HTML entities so content can never break layout. */
 const esc = (str: string): string =>
@@ -125,170 +123,165 @@ const esc = (str: string): string =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
+    .replace(/'/g, '&#039;');
 
 const HrPolicyReader = () => {
-  const { id: sectionIdParam } = useParams()
-  const navigate = useNavigate()
+  const { id: sectionIdParam } = useParams();
+  const navigate = useNavigate();
 
-  const [docTitle, setDocTitle] = useState<string>('MUWASCO HR Policy & Procedures Manual')
-  const [docVersion, setDocVersion] = useState<string>('')
-  const [documentId, setDocumentId] = useState<number | null>(null)
-  const [sections, setSections] = useState<PolicySectionNode[]>([])
-  const [currentSection, setCurrentSection] = useState<PolicySectionDetail | null>(null)
-  const [breadcrumbs, setBreadcrumbs] = useState<PolicyBreadcrumb[]>([])
-  const [bookmarked, setBookmarked] = useState<boolean>(false)
-  const [loading, setLoading] = useState<boolean>(true)
-  const [sectionLoading, setSectionLoading] = useState<boolean>(false)
-  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set())
+  const [docTitle, setDocTitle] = useState<string>('MUWASCO HR Policy & Procedures Manual');
+  const [docVersion, setDocVersion] = useState<string>('');
+  const [documentId, setDocumentId] = useState<number | null>(null);
+  const [sections, setSections] = useState<PolicySectionNode[]>([]);
+  const [currentSection, setCurrentSection] = useState<PolicySectionDetail | null>(null);
+  const [breadcrumbs, setBreadcrumbs] = useState<PolicyBreadcrumb[]>([]);
+  const [bookmarked, setBookmarked] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [sectionLoading, setSectionLoading] = useState<boolean>(false);
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set());
 
   // Search
-  const [searchQuery, setSearchQuery] = useState<string>('')
-  const [searchResults, setSearchResults] = useState<PolicySearchHit[]>([])
-  const [searchLoading, setSearchLoading] = useState<boolean>(false)
-  const [showSearch, setShowSearch] = useState<boolean>(false)
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<PolicySearchHit[]>([]);
+  const [searchLoading, setSearchLoading] = useState<boolean>(false);
+  const [showSearch, setShowSearch] = useState<boolean>(false);
 
   // Mobile two-view layout: phones show EITHER the table of contents OR the
   // section reader (a fixed-height flex-col container cannot fit both — the
   // contents panel used to consume all the height and hide the content).
   // Desktop (md+) ignores this state and shows both panels side-by-side.
-  const [mobileView, setMobileView] = useState<'contents' | 'section'>('contents')
-  const contentScrollRef = useRef<HTMLDivElement | null>(null)
+  const [mobileView, setMobileView] = useState<'contents' | 'section'>('contents');
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
 
   // Sync mobile view with the URL: opening a section shows the reader,
   // going back to /hr/policies shows the table of contents.
   useEffect(() => {
-    setMobileView(sectionIdParam ? 'section' : 'contents')
-  }, [sectionIdParam])
+    setMobileView(sectionIdParam ? 'section' : 'contents');
+  }, [sectionIdParam]);
 
   // When a new section loads on mobile, scroll the reader back to the top.
   useEffect(() => {
-    contentScrollRef.current?.scrollTo({ top: 0 })
-  }, [sectionIdParam])
+    contentScrollRef.current?.scrollTo({ top: 0 });
+  }, [sectionIdParam]);
 
   // Fetch current policy metadata
   useEffect(() => {
     const loadCurrentPolicy = async () => {
       try {
-        const res = await hrPolicyService.getCurrent()
+        const res = await hrPolicyService.getCurrent();
         if (res?.policy) {
-          setDocTitle(res.policy.title)
-          setDocVersion(res.policy.version)
-          setDocumentId(res.policy.id)
+          setDocTitle(res.policy.title);
+          setDocVersion(res.policy.version);
+          setDocumentId(res.policy.id);
         }
       } catch (err) {
-        console.error('Failed to fetch current policy:', err)
+        console.error('Failed to fetch current policy:', err);
       }
-    }
-    loadCurrentPolicy()
-  }, [])
+    };
+    loadCurrentPolicy();
+  }, []);
 
   // Fetch the section tree when documentId is known
   useEffect(() => {
-    if (!documentId) return
+    if (!documentId) return;
     const loadSections = async () => {
-      setLoading(true)
+      setLoading(true);
       try {
-        const tree = await hrPolicyService.getSections(documentId)
-        setSections(tree)
+        const tree = await hrPolicyService.getSections(documentId);
+        setSections(tree);
       } catch (err) {
-        console.error('Failed to fetch sections:', err)
+        console.error('Failed to fetch sections:', err);
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
-    loadSections()
-  }, [documentId])
+    };
+    loadSections();
+  }, [documentId]);
 
   // Load section content when URL has a section id
   useEffect(() => {
     if (!sectionIdParam) {
-      setCurrentSection(null)
-      setBreadcrumbs([])
-      setBookmarked(false)
-      return
+      setCurrentSection(null);
+      setBreadcrumbs([]);
+      setBookmarked(false);
+      return;
     }
-    const sectionId = parseInt(sectionIdParam, 10)
-    if (isNaN(sectionId)) return
+    const sectionId = parseInt(sectionIdParam, 10);
+    if (isNaN(sectionId)) return;
 
     const loadSection = async () => {
-      setSectionLoading(true)
+      setSectionLoading(true);
       try {
-        const res = await hrPolicyService.getSection(sectionId)
-        setCurrentSection(res.section)
-        setBreadcrumbs(res.breadcrumbs || [])
-        setBookmarked(res.bookmarked || false)
+        const res = await hrPolicyService.getSection(sectionId);
+        setCurrentSection(res.section);
+        setBreadcrumbs(res.breadcrumbs || []);
+        setBookmarked(res.bookmarked || false);
       } catch (err) {
-        console.error('Failed to fetch section:', err)
+        console.error('Failed to fetch section:', err);
       } finally {
-        setSectionLoading(false)
+        setSectionLoading(false);
       }
-    }
-    loadSection()
-    }, [sectionIdParam])
+    };
+    loadSection();
+  }, [sectionIdParam]);
 
   // Search with debounce
-  const handleSearch = useCallback(
-    async (query: string) => {
-      setSearchQuery(query)
-      if (!query.trim()) {
-        setSearchResults([])
-        return
-      }
-      setSearchLoading(true)
-      try {
-        const results = await hrPolicyService.search(query)
-        setSearchResults(results)
-      } catch (err) {
-        console.error('Search failed:', err)
-      } finally {
-        setSearchLoading(false)
-      }
-    },
-    []
-  )
+  const handleSearch = useCallback(async (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const results = await hrPolicyService.search(query);
+      setSearchResults(results);
+    } catch (err) {
+      console.error('Search failed:', err);
+    } finally {
+      setSearchLoading(false);
+    }
+  }, []);
 
   // Bookmark toggle
   const toggleBookmark = async () => {
-    if (!currentSection) return
+    if (!currentSection) return;
     try {
       if (bookmarked) {
-        await hrPolicyService.removeBookmark(currentSection.id)
-        setBookmarked(false)
+        await hrPolicyService.removeBookmark(currentSection.id);
+        setBookmarked(false);
       } else {
-        await hrPolicyService.addBookmark(currentSection.id)
-        setBookmarked(true)
+        await hrPolicyService.addBookmark(currentSection.id);
+        setBookmarked(true);
       }
     } catch (err) {
-      console.error('Bookmark failed:', err)
+      console.error('Bookmark failed:', err);
     }
-  }
+  };
 
   const toggleSectionExpand = (sectionId: number) => {
     setExpandedSections((prev) => {
-      const next = new Set(prev)
-      if (next.has(sectionId)) next.delete(sectionId)
-      else next.add(sectionId)
-      return next
-    })
-  }
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      return next;
+    });
+  };
 
   const renderSectionTree = (_nodes: PolicySectionNode[]) => {
     const children = (nodeId: number | null) =>
-      sections
-        .filter((s) => s.parent_id === nodeId)
-        .sort((a, b) => a.sort_order - b.sort_order)
+      sections.filter((s) => s.parent_id === nodeId).sort((a, b) => a.sort_order - b.sort_order);
 
     const roots = sections
       .filter((s) => s.parent_id === null)
-      .sort((a, b) => a.sort_order - b.sort_order)
+      .sort((a, b) => a.sort_order - b.sort_order);
 
     const renderNodes = (nodes: PolicySectionNode[], d: number) =>
       nodes.map((node) => {
-        const hasChildren = sections.some((s) => s.parent_id === node.id)
-        const isExpanded = expandedSections.has(node.id)
-        const isActive = currentSection?.id === node.id
-        const paddingLeft = d * 12 + 8
+        const hasChildren = sections.some((s) => s.parent_id === node.id);
+        const isExpanded = expandedSections.has(node.id);
+        const isActive = currentSection?.id === node.id;
+        const paddingLeft = d * 12 + 8;
 
         return (
           <div key={node.id}>
@@ -305,8 +298,8 @@ const HrPolicyReader = () => {
                 <span
                   className="mr-1"
                   onClick={(e) => {
-                    e.stopPropagation()
-                    toggleSectionExpand(node.id)
+                    e.stopPropagation();
+                    toggleSectionExpand(node.id);
                   }}
                 >
                   {isExpanded ? (
@@ -325,36 +318,36 @@ const HrPolicyReader = () => {
             </div>
             {hasChildren && isExpanded && renderNodes(children(node.id), d + 1)}
           </div>
-        )
-      })
+        );
+      });
 
-    return renderNodes(roots, 0)
-  }
+    return renderNodes(roots, 0);
+  };
 
   // Ask AI about current section (§19)
   const askAiAboutSection = () => {
-    if (!currentSection) return
-    const question = `What does section ${currentSection.section_number || ''} — "${currentSection.title}" mean?`
+    if (!currentSection) return;
+    const question = `What does section ${currentSection.section_number || ''} — "${currentSection.title}" mean?`;
     window.dispatchEvent(
       new CustomEvent('muwasco:ask-ai', {
         detail: { question, section: currentSection.section_number },
-      })
-    )
-  }
+      }),
+    );
+  };
 
   // Open full manual (browser inline viewer)
   const openFullManual = () => {
     if (documentId) {
-      window.open(hrPolicyService.fileUrl(documentId, false), '_blank')
+      window.open(hrPolicyService.fileUrl(documentId, false), '_blank');
     }
-  }
+  };
 
   if (loading && !currentSection) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
       </div>
-    )
+    );
   }
 
   return (
@@ -392,7 +385,9 @@ const HrPolicyReader = () => {
         <div className="p-4 border-b dark:border-slate-700 flex-shrink-0">
           <h2 className="font-semibold text-gray-900 dark:text-gray-100">Table of Contents</h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">{docTitle}</p>
-          {docVersion && <p className="text-xs text-gray-400 dark:text-gray-500">Version {docVersion}</p>}
+          {docVersion && (
+            <p className="text-xs text-gray-400 dark:text-gray-500">Version {docVersion}</p>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto min-h-0">
           {sections.length > 0 ? (
@@ -401,7 +396,6 @@ const HrPolicyReader = () => {
             <p className="p-4 text-xs text-gray-400">No sections available.</p>
           )}
         </div>
-
       </div>
 
       {/* Main content (hidden on mobile when browsing contents) */}
@@ -433,7 +427,10 @@ const HrPolicyReader = () => {
           <div className="p-6">
             {/* Breadcrumbs */}
             <nav className="flex items-center space-x-1 text-xs text-gray-500 dark:text-gray-400 mb-4">
-              <span className="cursor-pointer hover:text-gray-700 dark:hover:text-gray-300" onClick={() => navigate('/hr/policies')}>
+              <span
+                className="cursor-pointer hover:text-gray-700 dark:hover:text-gray-300"
+                onClick={() => navigate('/hr/policies')}
+              >
                 Home
               </span>
               {breadcrumbs.map((bc, i) => (
@@ -441,7 +438,9 @@ const HrPolicyReader = () => {
                   <ChevronRight className="h-3 w-3 mx-1" />
                   <span
                     className={`cursor-pointer hover:text-gray-700 dark:hover:text-gray-300 ${
-                      i === breadcrumbs.length - 1 ? 'text-gray-700 dark:text-gray-300 font-medium' : ''
+                      i === breadcrumbs.length - 1
+                        ? 'text-gray-700 dark:text-gray-300 font-medium'
+                        : ''
                     }`}
                     onClick={() => navigate(`/hr/policies/sections/${bc.id}`)}
                   >
@@ -451,7 +450,6 @@ const HrPolicyReader = () => {
                 </span>
               ))}
             </nav>
-
 
             {/* Section header */}
             <div className="section-header-wrap bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:from-slate-800/50 dark:via-slate-800 dark:to-slate-800/50 border border-gray-200 dark:border-slate-700 rounded-xl p-4 md:p-6 mb-6">
@@ -472,9 +470,10 @@ const HrPolicyReader = () => {
                       <span className="inline-flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full">
                         <FileText className="h-3.5 w-3.5 mr-1" />
                         Page {currentSection.page_start}
-                        {currentSection.page_end && currentSection.page_end !== currentSection.page_start && (
-                          <span>–{currentSection.page_end}</span>
-                        )}
+                        {currentSection.page_end &&
+                          currentSection.page_end !== currentSection.page_start && (
+                            <span>–{currentSection.page_end}</span>
+                          )}
                       </span>
                     )}
                     <span className="inline-flex items-center text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-slate-700/50 px-2.5 py-1 rounded-full">
@@ -490,7 +489,11 @@ const HrPolicyReader = () => {
                     onClick={toggleBookmark}
                     title={bookmarked ? 'Remove bookmark' : 'Bookmark this section'}
                   >
-                    {bookmarked ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+                    {bookmarked ? (
+                      <BookmarkCheck className="h-4 w-4" />
+                    ) : (
+                      <Bookmark className="h-4 w-4" />
+                    )}
                     {bookmarked ? 'Bookmarked' : 'Bookmark'}
                   </Button>
                   <Button variant="outline" size="sm" onClick={askAiAboutSection}>
@@ -516,7 +519,9 @@ const HrPolicyReader = () => {
               <div
                 className="policy-content prose prose-lg dark:prose-invert max-w-none text-gray-800 dark:text-gray-200"
                 dangerouslySetInnerHTML={{
-                  __html: formatSectionContent(currentSection.content) || '<p class="text-gray-500 italic">No content available.</p>',
+                  __html:
+                    formatSectionContent(currentSection.content) ||
+                    '<p class="text-gray-500 italic">No content available.</p>',
                 }}
               />
 
@@ -565,10 +570,10 @@ const HrPolicyReader = () => {
                       key={`${hit.document_id}-${hit.section_id}`}
                       className="border dark:border-slate-700 rounded-lg p-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50"
                       onClick={() => {
-                        navigate(`/hr/policies/sections/${hit.section_id}`)
-                        setShowSearch(false)
-                        setSearchQuery('')
-                        setSearchResults([])
+                        navigate(`/hr/policies/sections/${hit.section_id}`);
+                        setShowSearch(false);
+                        setSearchQuery('');
+                        setSearchResults([]);
                       }}
                     >
                       <div className="flex items-start justify-between">
@@ -621,7 +626,7 @@ const HrPolicyReader = () => {
         </Button>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default HrPolicyReader
+export default HrPolicyReader;

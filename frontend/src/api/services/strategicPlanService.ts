@@ -3,7 +3,9 @@ import type { ApiResponse, StrategicPlan, Workplan, KPI } from '../../types';
 
 export const strategicPlanService = {
   getAll: async (params?: Record<string, any>): Promise<ApiResponse<StrategicPlan[]>> => {
-    const response = await apiClient.get<ApiResponse<StrategicPlan[]>>('/strategic-plans', { params });
+    const response = await apiClient.get<ApiResponse<StrategicPlan[]>>('/strategic-plans', {
+      params,
+    });
     return response.data;
   },
 
@@ -18,17 +20,28 @@ export const strategicPlanService = {
   },
 
   update: async (id: number, data: Partial<StrategicPlan>): Promise<ApiResponse<StrategicPlan>> => {
-    const response = await apiClient.put<ApiResponse<StrategicPlan>>(`/strategic-plans/${id}`, data);
+    const response = await apiClient.put<ApiResponse<StrategicPlan>>(
+      `/strategic-plans/${id}`,
+      data,
+    );
     return response.data;
   },
 
   getWorkplans: async (planId: number): Promise<ApiResponse<Workplan[]>> => {
-    const response = await apiClient.get<ApiResponse<Workplan[]>>(`/strategic-plans/${planId}/workplans`);
+    const response = await apiClient.get<ApiResponse<Workplan[]>>(
+      `/strategic-plans/${planId}/workplans`,
+    );
     return response.data;
   },
 
-  createWorkplan: async (planId: number, data: Partial<Workplan>): Promise<ApiResponse<Workplan>> => {
-    const response = await apiClient.post<ApiResponse<Workplan>>(`/strategic-plans/${planId}/workplans`, data);
+  createWorkplan: async (
+    planId: number,
+    data: Partial<Workplan>,
+  ): Promise<ApiResponse<Workplan>> => {
+    const response = await apiClient.post<ApiResponse<Workplan>>(
+      `/strategic-plans/${planId}/workplans`,
+      data,
+    );
     return response.data;
   },
 

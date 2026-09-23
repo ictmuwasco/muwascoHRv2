@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+// CLI-only (S-SEC-07): runs database seeders and must never run over HTTP.
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit('Not Found');
+}
+
 /**
  * Database Seeder Runner
  *

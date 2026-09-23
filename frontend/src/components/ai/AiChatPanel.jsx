@@ -7,39 +7,30 @@
  * generation, and the data-source footnote. Responsive: near-full-width
  * sheet on phones, fixed 380px card on larger screens; dark-mode aware.
  */
-import { useState } from 'react'
-import {
-  Bot,
-  X,
-  Trash2,
-  Send,
-  Square,
-  RotateCcw,
-  ShieldCheck,
-  AlertCircle,
-} from 'lucide-react'
-import AiMessageBubble from './AiMessageBubble'
-import { MAX_CHAT_MESSAGE_LENGTH } from '../../api/aiAssistant'
+import { useState } from 'react';
+import { Bot, X, Trash2, Send, Square, RotateCcw, ShieldCheck, AlertCircle } from 'lucide-react';
+import AiMessageBubble from './AiMessageBubble';
+import { MAX_CHAT_MESSAGE_LENGTH } from '../../api/aiAssistant';
 
 const AiChatPanel = ({ chat, inputRef, onClose, onRequestClear }) => {
-  const [input, setInput] = useState('')
-  const { messages, loading, error, suggestions } = chat
+  const [input, setInput] = useState('');
+  const { messages, loading, error, suggestions } = chat;
 
-  const showSuggestions = messages.length === 1 && !loading && !error
+  const showSuggestions = messages.length === 1 && !loading && !error;
 
   const submit = () => {
-    const text = input.trim()
-    if (!text || loading) return
-    setInput('')
-    chat.send(text)
-  }
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput('');
+    chat.send(text);
+  };
 
   const handleKeyDown = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      submit()
+      event.preventDefault();
+      submit();
     }
-  }
+  };
 
   return (
     <div
@@ -213,11 +204,12 @@ const AiChatPanel = ({ chat, inputRef, onClose, onRequestClear }) => {
         )}
         <p className="mt-1 flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500">
           <ShieldCheck className="h-3 w-3 shrink-0" aria-hidden="true" />
-          Uses only your authorised HR data and approved HR policies. Read-only — it cannot change records.
+          Uses only your authorised HR data and approved HR policies. Read-only — it cannot change
+          records.
         </p>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default AiChatPanel
+export default AiChatPanel;

@@ -4,53 +4,48 @@
  */
 
 export interface GeolocationPosition {
-  lat: number
-  lng: number
-  accuracy: number
-  timestamp: number
+  lat: number;
+  lng: number;
+  accuracy: number;
+  timestamp: number;
 }
 
 export interface GeolocationOptions {
-  timeout?: number
-  maximumAge?: number
-  enableHighAccuracy?: boolean
+  timeout?: number;
+  maximumAge?: number;
+  enableHighAccuracy?: boolean;
 }
 
 /** Why acquisition failed. */
-export type LocationFailureCode =
-  | 'DENIED'
-  | 'TIMEOUT'
-  | 'UNAVAILABLE'
-  | 'ERROR'
-  | 'UNSUPPORTED'
+export type LocationFailureCode = 'DENIED' | 'TIMEOUT' | 'UNAVAILABLE' | 'ERROR' | 'UNSUPPORTED';
 
 export interface LocationSuccess {
-  ok: true
-  lat: number
-  lng: number
-  accuracy: number
-  timestamp: number
+  ok: true;
+  lat: number;
+  lng: number;
+  accuracy: number;
+  timestamp: number;
 }
 
 export interface LocationFailure {
-  ok: false
-  code: LocationFailureCode
-  message: string
+  ok: false;
+  code: LocationFailureCode;
+  message: string;
 }
 
 /**
  * Discriminated union: narrow with `if (!result.ok)` to reach
  * `code` / `message`, otherwise `lat` / `lng` / `accuracy` are available.
  */
-export type LocationResult = LocationSuccess | LocationFailure
+export type LocationResult = LocationSuccess | LocationFailure;
 
 /**
  * Request the device location without throwing.
  * Escalates GPS -> Wi-Fi/IP -> stale-fix attempts (~35 s worst case).
  */
-export function requestLocation(): Promise<LocationResult>
+export function requestLocation(): Promise<LocationResult>;
 
 /** Throwing convenience wrapper kept for backward compatibility. */
-export function getCurrentPosition(options?: GeolocationOptions): Promise<GeolocationPosition>
+export function getCurrentPosition(options?: GeolocationOptions): Promise<GeolocationPosition>;
 
-export function isGeolocationSupported(): boolean
+export function isGeolocationSupported(): boolean;

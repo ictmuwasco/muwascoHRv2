@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import api from '../utils/api'
+import { useState, useEffect } from 'react';
+import api from '../utils/api';
 
 /**
  * Global Role Registry — the SINGLE frontend source of truth for role keys,
@@ -47,7 +47,7 @@ export const ROLE_KEYS = [
   'manager',
   'officer',
   'employee',
-]
+];
 
 /**
  * Human-readable labels (mirrors config/permissions.php role_labels).
@@ -66,7 +66,7 @@ export const ROLE_LABELS = {
   officer: 'Officer',
   employee: 'Employee',
   admin: 'Admin',
-}
+};
 
 /**
  * Badge/pill color classes per role (moved from SettingsPermissionsTab so
@@ -83,7 +83,7 @@ export const ROLE_BADGE_CLASSES = {
   employee: 'bg-gray-100 text-gray-800',
   managing_director: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
   bod_chairman: 'bg-rose-100 text-rose-800',
-}
+};
 
 // ===========================================================================
 // Role BEHAVIOR groups (moved verbatim from the pages they used to live in).
@@ -94,44 +94,60 @@ export const ROLE_BADGE_CLASSES = {
  * Roles with no organizational attachment (EmployeeForm.tsx): the org
  * fields (department/section/subsection) are hidden and cleared.
  */
-export const NO_ORG_ROLES = ['managing_director', 'bod_chairman', 'super_admin']
+export const NO_ORG_ROLES = ['managing_director', 'bod_chairman', 'super_admin'];
 
 /**
  * Roles that only need a department (EmployeeForm.tsx): section/subsection
  * fields are hidden.
  */
-export const DEPT_ONLY_ROLES = ['dept_head', 'hr_manager']
+export const DEPT_ONLY_ROLES = ['dept_head', 'hr_manager'];
 
 /**
  * Roles that need department + section (EmployeeForm.tsx): the subsection
  * field is hidden.
  */
-export const SECTION_ROLES = ['section_head']
+export const SECTION_ROLES = ['section_head'];
 
 /**
  * Roles with org-wide (non-unit) data scope (TierWorkplanPage.tsx): no
  * department narrowing is applied.
  */
-export const WIDE_SCOPE_ROLES = ['super_admin', 'hr_manager', 'managing_director']
+export const WIDE_SCOPE_ROLES = ['super_admin', 'hr_manager', 'managing_director'];
+
+/**
+ * Wide-scope roles whose DEPARTMENTAL workplan forms must still be pinned to
+ * their own department (TierWorkplanPage.tsx): an HR manager manages the
+ * performance contracts of every department on the Performance Contracts
+ * page, but "Create Departmental Workplan" / the activity add-edit form /
+ * the cascade dialog must only offer their OWN (HR) department's contracts —
+ * otherwise every other department's commitments appear in the HR workplan.
+ */
+export const WORKPLAN_DEPT_PINNED_ROLES = ['hr_manager'];
 
 /**
  * Roles allowed to manage system monitoring (ErrorMonitoring.tsx): the
  * acknowledge/resolve workflow actions.
  */
-export const MONITORING_ROLES = ['super_admin', 'hr_manager']
+export const MONITORING_ROLES = ['super_admin', 'hr_manager'];
 
 /**
  * Leadership roles that hold approval queues (Dashboard.tsx hasRole
  * fallback for the "My Pending" card before permissions load).
  */
-export const SUPERVISOR_ROLES = ['section_head', 'sub_section_head', 'dept_head', 'managing_director', 'hr_manager']
+export const SUPERVISOR_ROLES = [
+  'section_head',
+  'sub_section_head',
+  'dept_head',
+  'managing_director',
+  'hr_manager',
+];
 
 /**
  * Fallback broad-access roles in AuthContext.can(): used ONLY when the
  * effective permission set is missing (stale localStorage pre-Phase 2).
  * 'admin' is the legacy alias the backend normalizes to super_admin.
  */
-export const BROAD_ACCESS_ROLES = ['super_admin', 'admin', 'managing_director']
+export const BROAD_ACCESS_ROLES = ['super_admin', 'admin', 'managing_director'];
 
 // ===========================================================================
 // Helpers
@@ -144,8 +160,13 @@ export const BROAD_ACCESS_ROLES = ['super_admin', 'admin', 'managing_director']
  * @returns {string}
  */
 export function getRoleLabel(roleKey) {
-  if (!roleKey) return ''
-  return ROLE_LABELS[roleKey] ?? String(roleKey).replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  if (!roleKey) return '';
+  return (
+    ROLE_LABELS[roleKey] ??
+    String(roleKey)
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  );
 }
 
 /**
@@ -154,7 +175,7 @@ export function getRoleLabel(roleKey) {
  * @returns {string}
  */
 export function getRoleBadgeClass(roleKey) {
-  return ROLE_BADGE_CLASSES[roleKey] ?? 'bg-gray-100 text-gray-800'
+  return ROLE_BADGE_CLASSES[roleKey] ?? 'bg-gray-100 text-gray-800';
 }
 
 /**
@@ -162,14 +183,14 @@ export function getRoleBadgeClass(roleKey) {
  * @returns {Array<{ value: string, label: string }>}
  */
 export function roleOptions() {
-  return ROLE_KEYS.map((key) => ({ value: key, label: ROLE_LABELS[key] ?? key }))
+  return ROLE_KEYS.map((key) => ({ value: key, label: ROLE_LABELS[key] ?? key }));
 }
 
 /**
  * The super_admin role key — the engine policy role (always allowed, never
  * overrideable). Referenced by name only through this constant.
  */
-export const SUPER_ADMIN = 'super_admin'
+export const SUPER_ADMIN = 'super_admin';
 
 /**
  * True when the given role key is super_admin (or its legacy 'admin' alias,
@@ -178,7 +199,7 @@ export const SUPER_ADMIN = 'super_admin'
  * @returns {boolean}
  */
 export function isSuperAdmin(roleKey) {
-  return roleKey === 'super_admin' || roleKey === 'admin'
+  return roleKey === 'super_admin' || roleKey === 'admin';
 }
 
 /**
@@ -190,18 +211,17 @@ export function isSuperAdmin(roleKey) {
  * @returns {boolean}
  */
 export function roleInGroup(roles, roleKey) {
-  if (!roleKey) return false
-  const list = Array.isArray(roles) ? roles : [roles]
-  return list.includes(roleKey)
+  if (!roleKey) return false;
+  const list = Array.isArray(roles) ? roles : [roles];
+  return list.includes(roleKey);
 }
-
 
 // ===========================================================================
 // Optional live sync with the backend roles table (GET /roles, migration 083)
 // ===========================================================================
 
-let serverRolesCache = null
-let serverRolesInFlight = null
+let serverRolesCache = null;
+let serverRolesInFlight = null;
 
 /**
  * Fetch the canonical role list from the backend (roles table), cached in
@@ -210,27 +230,27 @@ let serverRolesInFlight = null
  * @returns {Promise<Array<{ key: string, label: string }> | null>}
  */
 export async function fetchRoles() {
-  if (serverRolesCache) return serverRolesCache
+  if (serverRolesCache) return serverRolesCache;
   if (!serverRolesInFlight) {
     serverRolesInFlight = api
       .get('/roles')
       .then((response) => {
-        const rows = response?.data?.data ?? response?.data
+        const rows = response?.data?.data ?? response?.data;
         if (Array.isArray(rows) && rows.length > 0) {
           serverRolesCache = rows.map((r) => ({
             key: String(r.key),
             label: String(r.label ?? r.key),
-          }))
-          return serverRolesCache
+          }));
+          return serverRolesCache;
         }
-        return null
+        return null;
       })
       .catch(() => null)
       .finally(() => {
-        serverRolesInFlight = null
-      })
+        serverRolesInFlight = null;
+      });
   }
-  return serverRolesInFlight
+  return serverRolesInFlight;
 }
 
 /**
@@ -239,17 +259,16 @@ export async function fetchRoles() {
  * @returns {Array<{ value: string, label: string }>}
  */
 export function useRoleOptions() {
-  const [options, setOptions] = useState(roleOptions())
+  const [options, setOptions] = useState(roleOptions());
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
     fetchRoles().then((rows) => {
-      if (cancelled || !rows) return
-      setOptions(rows.map((r) => ({ value: r.key, label: r.label })))
-    })
+      if (cancelled || !rows) return;
+      setOptions(rows.map((r) => ({ value: r.key, label: r.label })));
+    });
     return () => {
-      cancelled = true
-    }
-  }, [])
-  return options
+      cancelled = true;
+    };
+  }, []);
+  return options;
 }
-

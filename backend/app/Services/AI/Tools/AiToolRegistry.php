@@ -10,6 +10,14 @@ namespace App\Services\AI\Tools;
  * The model can only call tools that are registered here AND that the caller
  * is permitted to use. Registration is explicit code — adding a tool is a
  * reviewed change, never a runtime decision.
+ *
+ * Two independent gates protect every tool (see AiToolInterface):
+ *   1. ROLE: requiredPermission() is checked against the hybrid authorization
+ *      system when the definitions are built (the model never even sees a tool
+ *      the caller cannot execute) and again at execution time.
+ *   2. SCOPE: tools that read data beyond the caller's own record apply
+ *      AiUnitScope, which narrows the query to their department/section and
+ *      only widens for organisation-wide oversight permissions.
  */
 final class AiToolRegistry
 {
@@ -28,14 +36,31 @@ final class AiToolRegistry
 
     private function __construct()
     {
+        // --- Self-service: the caller's OWN record ('' / own leave) ----------
+        $this->register(new GetMyEmployeeProfileTool());
         $this->register(new GetMyLeaveBalanceTool());
         $this->register(new GetMyLeaveApplicationsTool());
-        $this->register(new GetMyEmployeeProfileTool());
         $this->register(new GetMyAttendanceTool());
+        $this->register(new GetMyContractDetailsTool());
+
+        // --- Organisation reference data ------------------------------------
         // HR Policy module (migration 081): the AI retrieves approved policy
         // provisions with section citations — and MUST use the tool's exact
         // fallback sentence when the manual has no matching provision.
         $this->register(new SearchHrPolicyTool());
+        // Public holiday calendar (leave:view — every leave-consuming role).
+        $this->register(new GetHolidaysTool());
+
+        // --- Supervisory: someone else's data, scoped to the unit ------------
+        // attendance:manage / leave:approve / leave:manage are seeded to the
+        // heads, HR, MD and super admin only; officers and employees cannot
+        // see (or call) these tools at all.
+        $this->register(new GetUnitAttendanceSummaryTool());
+        $this->register(new GetPendingLeaveApprovalsTool());
+        $this->register(new GetEmployeeLeaveBalanceTool());
+
+        // --- Employee directory (employees:view, unit-narrowed) --------------
+        $this->register(new SearchEmployeeDirectoryTool());
     }
 
     public function register(AiToolInterface $tool): void

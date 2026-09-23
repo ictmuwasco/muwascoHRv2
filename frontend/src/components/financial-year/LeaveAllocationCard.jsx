@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Button from '../ui/Button';
-import { getLeaveTypes, getEmployees, allocateLeaveToEmployee } from '../../api/services/financialYearService';
+import {
+  getLeaveTypes,
+  getEmployees,
+  allocateLeaveToEmployee,
+} from '../../api/services/financialYearService';
 
 const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
   const [leaveTypes, setLeaveTypes] = useState([]);
@@ -8,14 +12,14 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [loading, setLoading] = useState(true);
   const [allocating, setAllocating] = useState(false);
-  
+
   const [formData, setFormData] = useState({
     employee_id: '',
     financial_year_id: '',
     leave_types: [],
   });
 
-  const [selectAll, setSelectAll] = useState(false)
+  const [selectAll, setSelectAll] = useState(false);
 
   // Store whether the selected employee is C-suite so we can pre-check "Select All"
   // for them. C-suite employees get the same full leave allocation as permanent
@@ -52,10 +56,7 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
 
   const fetchData = async () => {
     try {
-      const [typesRes, empRes] = await Promise.all([
-        getLeaveTypes(),
-        getEmployees(),
-      ]);
+      const [typesRes, empRes] = await Promise.all([getLeaveTypes(), getEmployees()]);
       setLeaveTypes(typesRes.data || []);
       setEmployees(empRes.data || []);
     } catch (error) {
@@ -69,22 +70,22 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
     setSelectAll(checked);
     setFormData({
       ...formData,
-      leave_types: checked ? leaveTypes.map(lt => lt.id) : [],
+      leave_types: checked ? leaveTypes.map((lt) => lt.id) : [],
     });
   };
 
   const handleLeaveTypeChange = (leaveTypeId, checked) => {
     const newLeaveTypes = checked
       ? [...formData.leave_types, leaveTypeId]
-      : formData.leave_types.filter(id => id !== leaveTypeId);
-    
+      : formData.leave_types.filter((id) => id !== leaveTypeId);
+
     setSelectAll(newLeaveTypes.length === leaveTypes.length);
     setFormData({ ...formData, leave_types: newLeaveTypes });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.employee_id || !formData.financial_year_id) {
       alert('Please select employee and financial year');
       return;
@@ -95,7 +96,11 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
       const result = await allocateLeaveToEmployee({
         employee_id: parseInt(formData.employee_id),
         financial_year_id: parseInt(formData.financial_year_id),
-        leave_types: isSelectedEmployeeCsuite ? null : formData.leave_types.length > 0 ? formData.leave_types : null,
+        leave_types: isSelectedEmployeeCsuite
+          ? null
+          : formData.leave_types.length > 0
+            ? formData.leave_types
+            : null,
       });
 
       if (result.success) {
@@ -132,7 +137,8 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 shadow-md shadow-primary-600/40 p-6 mb-6">
       <h3 className="text-lg font-semibold mb-2">Allocate Leave to Employee</h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Use this for newly hired employees or to fill missing leave records. Existing records are automatically skipped.
+        Use this for newly hired employees or to fill missing leave records. Existing records are
+        automatically skipped.
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -144,13 +150,11 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
             <select
               value={formData.employee_id}
               onChange={(e) => {
-                const id = e.target.value
-                setFormData({ ...formData, employee_id: id })
+                const id = e.target.value;
+                setFormData({ ...formData, employee_id: id });
                 setSelectedEmployee(
-                  id
-                    ? employees.find((emp) => String(emp.id) === id) || null
-                    : null,
-                )
+                  id ? employees.find((emp) => String(emp.id) === id) || null : null,
+                );
               }}
               className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               required
@@ -186,12 +190,16 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Leave Types <span className="text-xs text-gray-500 dark:text-gray-400">(leave unchecked to allocate all applicable types)</span>
+            Leave Types{' '}
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              (leave unchecked to allocate all applicable types)
+            </span>
           </label>
           {isSelectedEmployeeCsuite && (
-          <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2">
-            C-suite contract: renewable like any contract, but leave accrues at the permanent-employee rate — all leave types are pre-selected.
-          </p>
+            <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2">
+              C-suite contract: renewable like any contract, but leave accrues at the
+              permanent-employee rate — all leave types are pre-selected.
+            </p>
           )}
           <div className="border border-gray-300 dark:border-slate-600 rounded-md p-4">
             <div className="mb-3">
@@ -202,7 +210,9 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
                   onChange={(e) => handleSelectAll(e.target.checked)}
                   className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                 />
-                <span className="ml-2 text-sm font-medium text-gray-700 dark:text-gray-200">Select All</span>
+                <span className="ml-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                  Select All
+                </span>
               </label>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -224,7 +234,12 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
         <div className="flex items-center space-x-2">
           <Button type="submit" disabled={allocating} loading={allocating}>
             <svg className="h-4 w-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+              />
             </svg>
             Allocate Leave
           </Button>

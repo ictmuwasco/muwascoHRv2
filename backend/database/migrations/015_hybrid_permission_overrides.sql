@@ -89,12 +89,22 @@ DEALLOCATE PREPARE stmt;
 -- ============================================================
 -- Where page_id has data and module is empty, copy page_id → module
 -- and set action='view' for all existing page-level overrides.
-UPDATE user_page_permissions
-SET module = page_id,
-    action = 'view'
-WHERE (module = '' OR module IS NULL)
-  AND page_id IS NOT NULL
-  AND page_id != '';
+--
+-- GUARDED: `page_id` only exists on legacy (pre-014) databases. On a
+-- database created from 0000_baseline_schema.sql — or already migrated by
+-- 014_hybrid_user_permissions.sql — the column no longer exists, so an
+-- unguarded reference aborts the whole migration with
+-- "Unknown column 'page_id' in 'where clause'".
+SET @has_page_id := (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'user_page_permissions'
+      AND COLUMN_NAME = 'page_id'
+);
+SET @sql := IF(@has_page_id > 0,
+    'UPDATE user_page_permissions SET module = page_id, action = ''view'' WHERE (module = '''' OR module IS NULL) AND page_id IS NOT NULL AND page_id != ''''',
+    'SELECT 1');
+PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- Initialize updated_by from granted_by for existing records
 UPDATE user_page_permissions

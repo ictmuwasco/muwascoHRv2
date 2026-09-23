@@ -46,8 +46,8 @@ export interface WorkplanObjective {
   Y1: string | null;
   Y2: string | null;
   Y3: string | null;
-   Y4: string | null;
-   Y5: string | null;
+  Y4: string | null;
+  Y5: string | null;
 }
 
 /** A management-cascaded source activity that heads create children under. */
@@ -88,7 +88,12 @@ export interface WorkplanList {
   sections: UnitRef[];
   subsections: UnitRef[];
   employees: AssignableEmployee[];
-  scope: { role: string; department: number | null; section: number | null; subsection: number | null };
+  scope: {
+    role: string;
+    department: number | null;
+    section: number | null;
+    subsection: number | null;
+  };
   pagination: {
     total: number;
     per_page: number;
@@ -136,8 +141,18 @@ export interface WorkplanSummary {
   totals: WorkplanTotals;
   upcoming_deadlines: DeadlineItem[];
   recently_updated: RecentItem[];
-  active_financial_year: { id: number; year_name: string; start_date: string; end_date: string } | null;
-  scope: { role: string; department: number | null; section: number | null; subsection: number | null };
+  active_financial_year: {
+    id: number;
+    year_name: string;
+    start_date: string;
+    end_date: string;
+  } | null;
+  scope: {
+    role: string;
+    department: number | null;
+    section: number | null;
+    subsection: number | null;
+  };
 }
 
 export interface TraceabilityNode {
@@ -215,21 +230,26 @@ export const workplanService = {
   list: async (params?: Record<string, any>): Promise<ApiResponse<WorkplanList>> => {
     const res = await apiClient.get<ApiResponse<WorkplanList>>('/workplans', { params });
     return res.data;
-      },
+  },
   /**
    * Returns ONLY the management-cascaded source activities for the caller's
    * unit (section/subsection heads). The backend filters by unit scope,
    * parent_objective_id IS NOT NULL, and created_by != self — so a section
    * head never sees another department's cascaded work.
    */
-  sectionSources: async (view: 'section' | 'subsection'): Promise<ApiResponse<{ sources: WorkplanSource[]; can_manage: boolean; view: string }>> => {
-    const res = await apiClient.get<ApiResponse<{ sources: WorkplanSource[]; can_manage: boolean; view: string }>>(
-      '/workplans/section-sources', { params: { view } }
-    );
+  sectionSources: async (
+    view: 'section' | 'subsection',
+  ): Promise<ApiResponse<{ sources: WorkplanSource[]; can_manage: boolean; view: string }>> => {
+    const res = await apiClient.get<
+      ApiResponse<{ sources: WorkplanSource[]; can_manage: boolean; view: string }>
+    >('/workplans/section-sources', { params: { view } });
     return res.data;
   },
   /** Role-scoped dashboard aggregates for one workplan tier. */
-  summary: async (view?: string, financialYearId?: string | number): Promise<ApiResponse<WorkplanSummary>> => {
+  summary: async (
+    view?: string,
+    financialYearId?: string | number,
+  ): Promise<ApiResponse<WorkplanSummary>> => {
     const params: Record<string, any> = {};
     if (view) params.view = view;
     if (financialYearId) params.financial_year_id = financialYearId;
@@ -278,25 +298,37 @@ export const workplanService = {
   },
   /** Full lineage: strategic context + ancestor chain + descendant tree. */
   traceability: async (id: number): Promise<ApiResponse<TraceabilityResponse>> => {
-    const res = await apiClient.get<ApiResponse<TraceabilityResponse>>(`/workplans/${id}/traceability`);
+    const res = await apiClient.get<ApiResponse<TraceabilityResponse>>(
+      `/workplans/${id}/traceability`,
+    );
     return res.data;
   },
   integratedView: async (): Promise<ApiResponse<IntegratedView>> => {
     const res = await apiClient.get<ApiResponse<IntegratedView>>('/workplans/integrated-view');
     return res.data;
   },
-  progressHistory: async (id: number): Promise<ApiResponse<{ updates: ProgressHistoryUpdate[] }>> => {
+  progressHistory: async (
+    id: number,
+  ): Promise<ApiResponse<{ updates: ProgressHistoryUpdate[] }>> => {
     const res = await apiClient.get<ApiResponse<{ updates: ProgressHistoryUpdate[] }>>(
-      `/workplans/${id}/progress-history`
+      `/workplans/${id}/progress-history`,
     );
     return res.data;
   },
-  updateProgress: async (id: number, data: Record<string, any>): Promise<ApiResponse<WorkplanObjective>> => {
-    const res = await apiClient.put<ApiResponse<WorkplanObjective>>(`/workplans/${id}/progress`, data);
+  updateProgress: async (
+    id: number,
+    data: Record<string, any>,
+  ): Promise<ApiResponse<WorkplanObjective>> => {
+    const res = await apiClient.put<ApiResponse<WorkplanObjective>>(
+      `/workplans/${id}/progress`,
+      data,
+    );
     return res.data;
   },
   dependencies: async (id: number): Promise<ApiResponse<{ dependencies: any[] }>> => {
-    const res = await apiClient.get<ApiResponse<{ dependencies: any[] }>>(`/workplans/${id}/dependencies`);
+    const res = await apiClient.get<ApiResponse<{ dependencies: any[] }>>(
+      `/workplans/${id}/dependencies`,
+    );
     return res.data;
   },
   exportCsv: (): Promise<Blob> =>

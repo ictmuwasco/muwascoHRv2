@@ -1,11 +1,23 @@
-import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
-import api from '../../utils/api'
-import { requestLocation } from '../../utils/geolocation'
-import Card from '../../components/ui/Card'
-import Button from '../../components/ui/Button'
-import Modal from '../../components/ui/Modal'
-import { CalendarCheck, Clock, FileText, Star, Bell, AlertTriangle, Hourglass, CalendarDays, UserCheck, UserMinus, ExternalLink } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../../utils/api';
+import { requestLocation } from '../../utils/geolocation';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
+import Modal from '../../components/ui/Modal';
+import {
+  CalendarCheck,
+  Clock,
+  FileText,
+  Star,
+  Bell,
+  AlertTriangle,
+  Hourglass,
+  CalendarDays,
+  UserCheck,
+  UserMinus,
+  ExternalLink,
+} from 'lucide-react';
 import {
   ResponsiveContainer,
   PieChart,
@@ -21,148 +33,142 @@ import {
   LabelList,
   RadialBarChart,
   RadialBar,
-} from 'recharts'
-import { useTheme } from '../../context/ThemeContext'
-import { useAuth } from '../../context/AuthContext'
-import { hrPolicyService } from '../../api/services/hrPolicyService'
-import type { CurrentPolicyResponse } from '../../api/services/hrPolicyService'
+} from 'recharts';
+import { useTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { hrPolicyService } from '../../api/services/hrPolicyService';
+import type { CurrentPolicyResponse } from '../../api/services/hrPolicyService';
 // Role behavior groups — centralized in the global role registry (config/roles.js)
-import { SUPERVISOR_ROLES } from '../../config/roles'
+import { SUPERVISOR_ROLES } from '../../config/roles';
 
 interface Stats {
-  totalEmployees: number
-  presentToday: number
-  onLeave: number
-  pendingApprovals: number
+  totalEmployees: number;
+  presentToday: number;
+  onLeave: number;
+  pendingApprovals: number;
 }
 
 interface Office {
-  id: number
-  name: string
-  latitude: number
-  longitude: number
-  geo_fence_radius: number
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  geo_fence_radius: number;
 }
 
 interface CurrentSession {
-  id: number
-  clock_in: string
-  clock_out: string | null
-  office_name: string
-  office_id: number
-  is_late: number
-  lat: number
-  lng: number
-  accuracy: number
-  status: string
+  id: number;
+  clock_in: string;
+  clock_out: string | null;
+  office_name: string;
+  office_id: number;
+  is_late: number;
+  lat: number;
+  lng: number;
+  accuracy: number;
+  status: string;
 }
 
 interface AttendanceData {
-  is_clocked_in: boolean
-  has_clocked_in_today: boolean
-  current_session: CurrentSession | null
-  today_record: Record<string, any> | null
+  is_clocked_in: boolean;
+  has_clocked_in_today: boolean;
+  current_session: CurrentSession | null;
+  today_record: Record<string, any> | null;
   /** Employee's assigned office (State A). null when unassigned (State C). */
-  default_office: Office | null
+  default_office: Office | null;
   /** 'default' = State A, 'alternative' = State B, 'manual' = State C */
-  office_mode: 'default' | 'alternative' | 'manual'
-  offices: Office[]
+  office_mode: 'default' | 'alternative' | 'manual';
+  offices: Office[];
 }
 
 interface Notification {
-  id: number
-  is_read: number
-  title: string
-  message: string
-  created_at: string
+  id: number;
+  is_read: number;
+  title: string;
+  message: string;
+  created_at: string;
 }
 
 interface Analytics {
-  attendance: Record<string, any> | null
-  departments: Record<string, any> | null
-  leave: Record<string, any> | null
+  attendance: Record<string, any> | null;
+  departments: Record<string, any> | null;
+  leave: Record<string, any> | null;
 }
 
 interface HrInsightItem {
-  id: number
-  name: string
-  position?: string | null
-  department_name?: string | null
-  end_date?: string | null
-  date_of_birth?: string | null
-  age?: number
-  status?: string | null
-  start_date?: string | null
-  applied_at?: string | null
-  days_pending?: number
-  scheduled_month?: string | null
-  scheduled_year?: number | null
-  clock_in?: string | null
+  id: number;
+  name: string;
+  position?: string | null;
+  department_name?: string | null;
+  end_date?: string | null;
+  date_of_birth?: string | null;
+  age?: number;
+  status?: string | null;
+  start_date?: string | null;
+  applied_at?: string | null;
+  days_pending?: number;
+  scheduled_month?: string | null;
+  scheduled_year?: number | null;
+  clock_in?: string | null;
 }
 
 interface HrInsights {
-  generated_at: string
-  contracts_expired: { count: number; items: HrInsightItem[] }
-  contracts_expiring: { count: number; items: HrInsightItem[] }
-  retiring_soon: { count: number; items: HrInsightItem[] }
-  leave_pending_over_week: { count: number; items: HrInsightItem[] }
-  my_pending_leaves: { count: number; items: HrInsightItem[] }
-  roster_current_month: { count: number; items: HrInsightItem[] }
+  generated_at: string;
+  contracts_expired: { count: number; items: HrInsightItem[] };
+  contracts_expiring: { count: number; items: HrInsightItem[] };
+  retiring_soon: { count: number; items: HrInsightItem[] };
+  leave_pending_over_week: { count: number; items: HrInsightItem[] };
+  my_pending_leaves: { count: number; items: HrInsightItem[] };
+  roster_current_month: { count: number; items: HrInsightItem[] };
   attendance_today: {
-    clocked_in: number
-    not_clocked_in: number
-    total_active?: number
-    on_leave?: number
-    items: HrInsightItem[]
-  }
-  on_leave_today: { count: number; items: HrInsightItem[] }
+    clocked_in: number;
+    not_clocked_in: number;
+    total_active?: number;
+    on_leave?: number;
+    items: HrInsightItem[];
+  };
+  on_leave_today: { count: number; items: HrInsightItem[] };
 }
 
 /**
  * Great-circle distance between two coordinates, in whole metres (Haversine).
  */
-const haversineMeters = (
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number
-): number => {
-  const R = 6371000
-  const rad = (d: number) => (d * Math.PI) / 180
-  const dLat = rad(lat2 - lat1)
-  const dLng = rad(lng2 - lng1)
+const haversineMeters = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371000;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(lat2 - lat1);
+  const dLng = rad(lng2 - lng1);
   const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2
-  return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(a))))
-}
+    Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return Math.round(2 * R * Math.asin(Math.min(1, Math.sqrt(a))));
+};
 
 /** Human-friendly metres: "80 m" or "1.2 km". */
 const formatDistance = (meters: number): string =>
   meters >= 1000
     ? `${(meters / 1000).toFixed(meters >= 10000 ? 0 : 1)} km`
-    : `${Math.round(meters)} m`
+    : `${Math.round(meters)} m`;
 
 /** Elapsed "11h 57m" between a past clock-in timestamp and a reference time (ms). */
 const formatWorkedDuration = (clockIn: string, nowMs: number): string => {
-  const diffMs = Math.max(0, nowMs - new Date(clockIn).getTime())
-  const totalMinutes = Math.floor(diffMs / 60000)
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  return `${hours}h ${minutes}m`
-}
+  const diffMs = Math.max(0, nowMs - new Date(clockIn).getTime());
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${minutes}m`;
+};
 
 const Dashboard = () => {
-  const navigate = useNavigate()
-  const { theme } = useTheme()
-  const { can, hasRole } = useAuth()
-  const isDark = theme === 'dark'
+  const navigate = useNavigate();
+  const { theme } = useTheme();
+  const { can, hasRole } = useAuth();
+  const isDark = theme === 'dark';
   const [stats, setStats] = useState<Stats>({
     totalEmployees: 0,
     presentToday: 0,
     onLeave: 0,
     pendingApprovals: 0,
-  })
+  });
 
   // Attendance state - mirrors the backend payload (backend is source of truth)
   const [attendanceData, setAttendanceData] = useState<AttendanceData>({
@@ -172,19 +178,19 @@ const Dashboard = () => {
     today_record: null,
     default_office: null,
     office_mode: 'manual',
-    offices: []
-  })
-  const [clockingIn, setClockingIn] = useState(false)
-  const [clockingOut, setClockingOut] = useState(false)
-  const [locationError, setLocationError] = useState('')
-  const [actionMessage, setActionMessage] = useState('')
-  const [selectedOffice, setSelectedOffice] = useState('')
+    offices: [],
+  });
+  const [clockingIn, setClockingIn] = useState(false);
+  const [clockingOut, setClockingOut] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const [selectedOffice, setSelectedOffice] = useState('');
 
   // Clock-out confirmation — a review step so employees can't clock out by
   // mistake. `clockOutRequestedAt` freezes the "Current Time" shown in the
   // review dialog so the figures stay stable while the employee reads them.
-  const [showClockOutConfirm, setShowClockOutConfirm] = useState(false)
-  const [clockOutRequestedAt, setClockOutRequestedAt] = useState<number | null>(null)
+  const [showClockOutConfirm, setShowClockOutConfirm] = useState(false);
+  const [clockOutRequestedAt, setClockOutRequestedAt] = useState<number | null>(null);
 
   /**
    * Set when a fix could not be obtained at all, OR when a fix was
@@ -193,58 +199,60 @@ const Dashboard = () => {
    * they are, and how much closer they need to be.
    */
   const [locationFallback, setLocationFallback] = useState<{
-    action: 'clock-in' | 'clock-out'
-    code: string
-    message: string
-    officeName?: string
-    requiredRadius?: number
-    measuredDistance?: number
-  } | null>(null)
+    action: 'clock-in' | 'clock-out';
+    code: string;
+    message: string;
+    officeName?: string;
+    requiredRadius?: number;
+    measuredDistance?: number;
+  } | null>(null);
 
   /** Which action is actively acquiring a GPS/Wi-Fi fix right now. */
-  const [locating, setLocating] = useState<'clock-in' | 'clock-out' | null>(null)
+  const [locating, setLocating] = useState<'clock-in' | 'clock-out' | null>(null);
 
   // Refs to prevent duplicate requests (state updates are async)
-  const clockInInFlight = useRef(false)
-  const clockOutInFlight = useRef(false)
+  const clockInInFlight = useRef(false);
+  const clockOutInFlight = useRef(false);
 
   // Notifications state
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Analytics state
   const [analytics, setAnalytics] = useState<Analytics>({
     attendance: null,
     departments: null,
-    leave: null
-  })
+    leave: null,
+  });
 
-  const [hrInsights, setHrInsights] = useState<HrInsights | null>(null)
-  const [hrInsightsLoading, setHrInsightsLoading] = useState(false)
+  const [hrInsights, setHrInsights] = useState<HrInsights | null>(null);
+  const [hrInsightsLoading, setHrInsightsLoading] = useState(false);
 
   // "My Pending Approvals" widget data - fetched from the personal scoped
   // endpoint so section/subsection/dept heads see their OWN pending approvals
   // without needing the org-wide hr_insights permission.
-  const [myPendingLeaves, setMyPendingLeaves] = useState<{ count: number; items: HrInsightItem[] }>({ count: 0, items: [] })
+  const [myPendingLeaves, setMyPendingLeaves] = useState<{ count: number; items: HrInsightItem[] }>(
+    { count: 0, items: [] },
+  );
 
-      // HR Insights widget is restricted to HR Manager / Managing Director /
+  // HR Insights widget is restricted to HR Manager / Managing Director /
   // Super Admin (seeded via dashboard:hr_insights in migration 046). The
   // backend enforces the same permission on GET /dashboard/hr-insights.
-  const showHrInsights = can('dashboard', 'hr_insights')
+  const showHrInsights = can('dashboard', 'hr_insights');
 
   // "My Pending Approvals" card: visible to any user with a management role.
   // Uses hasRole as fallback so the card shows immediately even before the
   // permissions array has been refreshed from /auth/user on login.
-  const showMyPending = can('leave', 'approve') || hasRole(SUPERVISOR_ROLES)
+  const showMyPending = can('leave', 'approve') || hasRole(SUPERVISOR_ROLES);
 
   // HR Policy & Procedures Manual dashboard card (§3)
-  const [currentPolicy, setCurrentPolicy] = useState<CurrentPolicyResponse['policy']>(null)
+  const [currentPolicy, setCurrentPolicy] = useState<CurrentPolicyResponse['policy']>(null);
 
-    useEffect(() => {
-    fetchAttendanceDashboard()
-    fetchNotifications()
-    fetchCurrentPolicy()
-  }, [])
+  useEffect(() => {
+    fetchAttendanceDashboard();
+    fetchNotifications();
+    fetchCurrentPolicy();
+  }, []);
 
   // HR Insights widget + the org-wide analytics charts (Attendance, Leave,
   // Department, Employee statistics) are HR-restricted surfaces - only
@@ -256,11 +264,11 @@ const Dashboard = () => {
   // the cards render but sit on a permanent loading skeleton.
   useEffect(() => {
     if (showHrInsights) {
-      fetchStats()
-      fetchAnalytics()
-      fetchHrInsights()
+      fetchStats();
+      fetchAnalytics();
+      fetchHrInsights();
     }
-  }, [showHrInsights])
+  }, [showHrInsights]);
 
   // "My Pending Approvals" - a personal scoped widget, visible to approvers
   // (leave:approve / leave:manage) of any level. Fetched from the dedicated
@@ -268,118 +276,118 @@ const Dashboard = () => {
   // surface, so heads see only their own queue.
   useEffect(() => {
     if (showMyPending) {
-      fetchMyPendingLeaves()
+      fetchMyPendingLeaves();
     }
-  }, [showMyPending])
+  }, [showMyPending]);
 
   const fetchStats = async () => {
     try {
-      const response = await api.get('/dashboard/stats')
+      const response = await api.get('/dashboard/stats');
       // Accept only a real object payload. An envelope-less 200 (e.g. a proxy
       // error page) previously flowed into setStats(undefined), which replaced
       // the zeroed default state and crashed the render on
       // `stats.totalEmployees` ("Cannot read properties of undefined").
-      const payload = response.data?.data
+      const payload = response.data?.data;
       if (payload && typeof payload === 'object') {
-        setStats(payload as Stats)
+        setStats(payload as Stats);
       }
     } catch (error) {
-      console.error('Failed to fetch dashboard stats:', error)
+      console.error('Failed to fetch dashboard stats:', error);
     }
-  }
+  };
 
   const fetchAttendanceDashboard = async () => {
     try {
-      const response = await api.get('/attendance/dashboard')
+      const response = await api.get('/attendance/dashboard');
       // Explicit cast: response.data is untyped (any), which previously made
       // the offices callback parameter implicitly-any below (TS error).
-      const data = response.data.data as AttendanceData
-      setAttendanceData(data)
+      const data = response.data.data as AttendanceData;
+      setAttendanceData(data);
 
       // The backend decides which office is pre-selected.
       // States A/B: the employee's assigned office. State C (no assignment):
       // keep the current pick while still valid, else fall back to the first
       // recognised office so the card never sits without a selection.
       // Functional update avoids reading a stale selectedOffice closure.
-      const defaultId = data.default_office?.id
+      const defaultId = data.default_office?.id;
       if (defaultId != null) {
-        setSelectedOffice(String(defaultId))
-        return
+        setSelectedOffice(String(defaultId));
+        return;
       }
 
       setSelectedOffice((prev) => {
         if (data.offices?.some((o: Office) => String(o.id) === prev)) {
-          return prev
+          return prev;
         }
-        return data.offices && data.offices.length > 0 ? String(data.offices[0].id) : prev
-      })
+        return data.offices && data.offices.length > 0 ? String(data.offices[0].id) : prev;
+      });
     } catch (error) {
-      console.error('Failed to fetch attendance data:', error)
+      console.error('Failed to fetch attendance data:', error);
     }
-  }
+  };
 
   interface NotificationsPayload {
-    notifications: Notification[]
-    unread_count?: number
+    notifications: Notification[];
+    unread_count?: number;
   }
 
   const fetchNotifications = async () => {
     try {
-      const response = await api.get<NotificationsPayload>('/notifications')
-      const raw = response.data?.data as NotificationsPayload | Notification[] | undefined
-      const list = Array.isArray(raw) ? raw : (raw?.notifications ?? [])
-      setNotifications(Array.isArray(list) ? list : [])
-      const unread = Array.isArray(raw) ? 0 : Number(raw?.unread_count) || 0
-      setUnreadCount(unread)
+      const response = await api.get<NotificationsPayload>('/notifications');
+      const raw = response.data?.data as NotificationsPayload | Notification[] | undefined;
+      const list = Array.isArray(raw) ? raw : (raw?.notifications ?? []);
+      setNotifications(Array.isArray(list) ? list : []);
+      const unread = Array.isArray(raw) ? 0 : Number(raw?.unread_count) || 0;
+      setUnreadCount(unread);
     } catch (error) {
-      console.error('Failed to fetch notifications:', error)
+      console.error('Failed to fetch notifications:', error);
     }
-  }
+  };
 
   const fetchCurrentPolicy = async () => {
     try {
-      const response = await hrPolicyService.getCurrent()
-      setCurrentPolicy(response?.policy ?? null)
+      const response = await hrPolicyService.getCurrent();
+      setCurrentPolicy(response?.policy ?? null);
     } catch (error) {
       // Policy module is non-fatal: silently swallow on the dashboard.
-      console.error('Failed to fetch current policy:', error)
-      setCurrentPolicy(null)
+      console.error('Failed to fetch current policy:', error);
+      setCurrentPolicy(null);
     }
-  }
+  };
 
   const fetchAnalytics = async () => {
     try {
       const [attendanceRes, departmentsRes, leaveRes] = await Promise.all([
         api.get('/dashboard/charts/attendance'),
         api.get('/dashboard/charts/departments'),
-        api.get('/dashboard/charts/leave')
-      ])
+        api.get('/dashboard/charts/leave'),
+      ]);
       setAnalytics({
         attendance: attendanceRes.data?.data ?? null,
         departments: departmentsRes.data?.data ?? null,
         leave: leaveRes.data?.data ?? null,
-      })
+      });
     } catch (error) {
-      console.error('Failed to fetch analytics:', error)
+      console.error('Failed to fetch analytics:', error);
     }
-  }
+  };
 
   const fetchHrInsights = async () => {
-    setHrInsightsLoading(true)
+    setHrInsightsLoading(true);
     try {
-      const response = await api.get('/dashboard/hr-insights')
-      setHrInsights(response.data.data as HrInsights)
+      const response = await api.get('/dashboard/hr-insights');
+      setHrInsights(response.data.data as HrInsights);
     } catch (error) {
-      console.error('Failed to fetch HR insights:', error)
+      console.error('Failed to fetch HR insights:', error);
     } finally {
-      setHrInsightsLoading(false)
+      setHrInsightsLoading(false);
     }
-  }
+  };
 
   const fetchMyPendingLeaves = async () => {
     try {
-      const response = await api.get('/dashboard/my-pending-leaves')
-      const payload = response.data?.data
+      const response = await api.get('/dashboard/my-pending-leaves');
+      const payload = response.data?.data;
       if (
         payload &&
         typeof payload === 'object' &&
@@ -391,28 +399,28 @@ const Dashboard = () => {
         setMyPendingLeaves({
           count: (payload as any).count,
           items: (payload as any).items as HrInsightItem[],
-        })
+        });
       }
     } catch (error) {
-      console.error('Failed to fetch my pending leaves:', error)
+      console.error('Failed to fetch my pending leaves:', error);
     }
-  }
+  };
 
   /**
    * Extract a user-friendly error message from an API error.
    */
   const getErrorMessage = (error: any): string => {
     if (error.response?.data?.message) {
-      return error.response.data.message
+      return error.response.data.message;
     }
     if (error.code === 'ECONNABORTED') {
-      return 'Request timed out. Please check your connection and try again.'
+      return 'Request timed out. Please check your connection and try again.';
     }
     if (error.message) {
-      return error.message
+      return error.message;
     }
-    return 'An unexpected error occurred. Please try again.'
-  }
+    return 'An unexpected error occurred. Please try again.';
+  };
 
   /**
    * Shared submit path for clock-in / clock-out. A device fix is
@@ -422,30 +430,30 @@ const Dashboard = () => {
    */
   const submitClock = async (
     action: 'clock-in' | 'clock-out',
-    coords: { lat: number; lng: number; accuracy: number }
+    coords: { lat: number; lng: number; accuracy: number },
   ) => {
-    const inFlight = action === 'clock-in' ? clockInInFlight : clockOutInFlight
-    const isBusy = action === 'clock-in' ? clockingIn : clockingOut
-    if (inFlight.current || isBusy) return
+    const inFlight = action === 'clock-in' ? clockInInFlight : clockOutInFlight;
+    const isBusy = action === 'clock-in' ? clockingIn : clockingOut;
+    if (inFlight.current || isBusy) return;
 
-    inFlight.current = true
-    setClockingIn(action === 'clock-in')
-    setClockingOut(action === 'clock-out')
-    setLocationError('')
-    setActionMessage('')
-    setLocationFallback(null)
+    inFlight.current = true;
+    setClockingIn(action === 'clock-in');
+    setClockingOut(action === 'clock-out');
+    setLocationError('');
+    setActionMessage('');
+    setLocationFallback(null);
 
     try {
       // Resolve the office first so an unselected office fails fast without
       // ever prompting for GPS permission.
-      const office = attendanceData.offices.find(o => o.id.toString() === selectedOffice)
+      const office = attendanceData.offices.find((o) => o.id.toString() === selectedOffice);
       if (!office) {
         setLocationError(
           attendanceData.office_mode === 'manual'
             ? 'No default office is assigned to you - please select your current office.'
-            : 'Please select an office'
-        )
-        return
+            : 'Please select an office',
+        );
+        return;
       }
 
       const body: Record<string, unknown> = {
@@ -454,47 +462,47 @@ const Dashboard = () => {
         latitude: coords.lat,
         longitude: coords.lng,
         accuracy: coords.accuracy,
-      }
+      };
 
       const response = await api.post(
         action === 'clock-in' ? '/attendance/clock-in' : '/attendance/clock-out',
-        body
-      )
+        body,
+      );
 
       if (response.data.success) {
         setActionMessage(
           response.data.message ||
-            (action === 'clock-in' ? 'Clocked in successfully.' : 'Clocked out successfully.')
-        )
-        fetchAttendanceDashboard()
+            (action === 'clock-in' ? 'Clocked in successfully.' : 'Clocked out successfully.'),
+        );
+        fetchAttendanceDashboard();
         // HR-restricted analytics feed — only hr_manager / managing_director /
         // super_admin consume /dashboard/stats (see fetchAnalytics).
         if (can('dashboard', 'hr_insights')) {
-          fetchStats()
+          fetchStats();
         }
       }
     } catch (error) {
-      const resp: any = (error as any)?.response?.data
+      const resp: any = (error as any)?.response?.data;
 
       if (resp?.code === 'OUTSIDE_RADIUS') {
         // Server-authoritative rejection - show exactly how far off they are.
-        const measured = Number(resp.distance ?? 0)
-        const allowed = Number(resp.allowed_radius ?? 0)
+        const measured = Number(resp.distance ?? 0);
+        const allowed = Number(resp.allowed_radius ?? 0);
         setLocationError(
           `You are about ${formatDistance(measured)} from the office. You must be within ` +
             `${formatDistance(allowed)} to clock ${action === 'clock-in' ? 'in' : 'out'} - ` +
-            'please move closer and try again.'
-        )
+            'please move closer and try again.',
+        );
       } else {
-        setLocationError(getErrorMessage(error))
+        setLocationError(getErrorMessage(error));
       }
     } finally {
-      clockInInFlight.current = false
-      clockOutInFlight.current = false
-      setClockingIn(false)
-      setClockingOut(false)
+      clockInInFlight.current = false;
+      clockOutInFlight.current = false;
+      setClockingIn(false);
+      setClockingOut(false);
     }
-  }
+  };
 
   /**
    * Entry point behind the Clock In / Clock Out buttons.
@@ -502,35 +510,35 @@ const Dashboard = () => {
    * surfaces a fallback panel instead of dead-ending with an error.
    */
   const startClock = async (action: 'clock-in' | 'clock-out') => {
-    const inFlight = action === 'clock-in' ? clockInInFlight : clockOutInFlight
-    const isBusy = action === 'clock-in' ? clockingIn : clockingOut
-    if (inFlight.current || isBusy || locating) return
+    const inFlight = action === 'clock-in' ? clockInInFlight : clockOutInFlight;
+    const isBusy = action === 'clock-in' ? clockingIn : clockingOut;
+    if (inFlight.current || isBusy || locating) return;
 
-    setLocationError('')
-    setActionMessage('')
-    setLocationFallback(null)
-    setLocating(action)
+    setLocationError('');
+    setActionMessage('');
+    setLocationFallback(null);
+    setLocating(action);
 
     try {
-      const location = await requestLocation()
+      const location = await requestLocation();
       if (!location.ok) {
-        setLocationFallback({ action, code: location.code, message: location.message })
-        return
+        setLocationFallback({ action, code: location.code, message: location.message });
+        return;
       }
 
       // ---- Client-side geofence gate --------------------------------
       // Resolve the selected office and measure the distance BEFORE
       // submitting, so the employee immediately sees how far they are
       // and how much closer they need to be - without a server round-trip.
-      const office = attendanceData.offices.find(o => o.id.toString() === selectedOffice)
+      const office = attendanceData.offices.find((o) => o.id.toString() === selectedOffice);
       if (office && office.geo_fence_radius > 0) {
         const measured = haversineMeters(
           location.lat,
           location.lng,
           office.latitude,
-          office.longitude
-        )
-        const allowed = office.geo_fence_radius
+          office.longitude,
+        );
+        const allowed = office.geo_fence_radius;
 
         if (measured > allowed) {
           setLocationFallback({
@@ -543,8 +551,8 @@ const Dashboard = () => {
             officeName: office.name,
             requiredRadius: allowed,
             measuredDistance: measured,
-          })
-          return
+          });
+          return;
         }
       }
 
@@ -552,23 +560,23 @@ const Dashboard = () => {
         lat: location.lat,
         lng: location.lng,
         accuracy: location.accuracy,
-      })
+      });
     } finally {
-      setLocating(null)
+      setLocating(null);
     }
-  }
+  };
 
-  const handleClockIn = () => startClock('clock-in')
+  const handleClockIn = () => startClock('clock-in');
   /** Clock Out opens a review dialog first; the GPS-verified submission runs on confirm. */
   const handleClockOut = () => {
-    if (!attendanceData.current_session) return
-    setClockOutRequestedAt(Date.now())
-    setShowClockOutConfirm(true)
-  }
+    if (!attendanceData.current_session) return;
+    setClockOutRequestedAt(Date.now());
+    setShowClockOutConfirm(true);
+  };
   const confirmClockOut = () => {
-    setShowClockOutConfirm(false)
-    startClock('clock-out')
-  }
+    setShowClockOutConfirm(false);
+    startClock('clock-out');
+  };
 
   /**
    * Shared presentation tokens so every chart follows light/dark mode.
@@ -579,44 +587,47 @@ const Dashboard = () => {
     borderRadius: 8,
     fontSize: 12,
     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.15)',
-  }
-  const chartFg = isDark ? '#f1f5f9' : '#111827'
-  const tickColor = isDark ? '#94a3b8' : '#4b5563'
-  const gridColor = isDark ? '#334155' : '#e5e7eb'
-  const labelColor = isDark ? '#cbd5e1' : '#374151'
-  const legendColor = isDark ? '#cbd5e1' : '#374151'
-  const hoverFill = isDark ? 'rgba(148, 163, 184, 0.08)' : 'rgba(59, 130, 246, 0.06)'
-  const radialTrackFill = isDark ? '#1e293b' : '#eef2f7'
+  };
+  const chartFg = isDark ? '#f1f5f9' : '#111827';
+  const tickColor = isDark ? '#94a3b8' : '#4b5563';
+  const gridColor = isDark ? '#334155' : '#e5e7eb';
+  const labelColor = isDark ? '#cbd5e1' : '#374151';
+  const legendColor = isDark ? '#cbd5e1' : '#374151';
+  const hoverFill = isDark ? 'rgba(148, 163, 184, 0.08)' : 'rgba(59, 130, 246, 0.06)';
+  const radialTrackFill = isDark ? '#1e293b' : '#eef2f7';
 
   /** Department headcounts, largest first - chart shows the top six. */
-  const deptRows: Array<{ name: string; employees: number }> =
-    (((analytics.departments?.departments ?? []) as Array<any>) || [])
-      .map((d) => ({ name: String(d?.department ?? 'Unassigned'), employees: Number(d?.count) || 0 }))
-      .filter((d) => d.employees > 0)
-      .sort((a, b) => b.employees - a.employees)
-      .slice(0, 6)
+  const deptRows: Array<{ name: string; employees: number }> = (
+    ((analytics.departments?.departments ?? []) as Array<any>) || []
+  )
+    .map((d) => ({ name: String(d?.department ?? 'Unassigned'), employees: Number(d?.count) || 0 }))
+    .filter((d) => d.employees > 0)
+    .sort((a, b) => b.employees - a.employees)
+    .slice(0, 6);
 
   const leaveRows = [
     { name: 'On Leave', value: Number(analytics.leave?.on_leave || 0) },
     { name: 'Pending', value: Number(analytics.leave?.pending || 0) },
-  ]
+  ];
 
-  const presentToday = Number(analytics.attendance?.present || 0)
-  const lateToday = Number(analytics.attendance?.late || 0)
-  const absentToday = Number(analytics.attendance?.absent || 0)
-  const onLeaveToday = Number(analytics.leave?.on_leave || 0)
+  const presentToday = Number(analytics.attendance?.present || 0);
+  const lateToday = Number(analytics.attendance?.late || 0);
+  const absentToday = Number(analytics.attendance?.absent || 0);
+  const onLeaveToday = Number(analytics.leave?.on_leave || 0);
   /** Active employees neither present nor on leave today. */
-  const elsewhereToday = Math.max(0, (stats?.totalEmployees ?? 0) - presentToday - onLeaveToday)
+  const elsewhereToday = Math.max(0, (stats?.totalEmployees ?? 0) - presentToday - onLeaveToday);
   const atWorkPct = stats?.totalEmployees
     ? Math.round((presentToday / stats.totalEmployees) * 100)
-    : 0
+    : 0;
   /** Present excluding late arrivals, so donut segments never overlap. */
-  const onTimeToday = Math.max(0, presentToday - lateToday)
+  const onTimeToday = Math.max(0, presentToday - lateToday);
 
   /** Graceful empty state shared by all four charts. */
   const EmptyChart = ({ label }: { label: string }) => (
-    <div className="h-64 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">{label}</div>
-  )
+    <div className="h-64 flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+      {label}
+    </div>
+  );
 
   const getStatusBadge = () => {
     if (attendanceData.is_clocked_in) {
@@ -625,22 +636,22 @@ const Dashboard = () => {
           <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse"></div>
           <span className="text-sm font-medium text-green-700 dark:text-green-400">Clocked In</span>
         </div>
-      )
+      );
     } else if (attendanceData.has_clocked_in_today) {
       return (
         <div className="flex items-center space-x-2">
           <div className="h-3 w-3 bg-gray-400 rounded-full"></div>
           <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Clocked Out</span>
         </div>
-      )
+      );
     }
     return (
       <div className="flex items-center space-x-2">
         <div className="h-3 w-3 bg-red-500 rounded-full"></div>
         <span className="text-sm font-medium text-red-700 dark:text-red-400">Not Clocked In</span>
       </div>
-    )
-  }
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -687,16 +698,18 @@ const Dashboard = () => {
                 </>
               ) : (
                 <>
-                  <p className="text-sm font-medium">We tried hard, but could not get your location.</p>
-                  <p className="text-xs mt-1">
-                    {locationFallback.message} We attempted a GPS fix plus two network-based fixes over
-                    roughly 35 seconds. This is common on desktop PCs without GPS - especially on
-                    isolated office networks.
+                  <p className="text-sm font-medium">
+                    We tried hard, but could not get your location.
                   </p>
                   <p className="text-xs mt-1">
-                    <strong>A location fix is required to clock in.</strong> Please move closer to the
-                    office, turn on Wi-Fi to help network positioning, or step outside for a clear GPS
-                    signal - then press <strong>Try Again</strong>.
+                    {locationFallback.message} We attempted a GPS fix plus two network-based fixes
+                    over roughly 35 seconds. This is common on desktop PCs without GPS - especially
+                    on isolated office networks.
+                  </p>
+                  <p className="text-xs mt-1">
+                    <strong>A location fix is required to clock in.</strong> Please move closer to
+                    the office, turn on Wi-Fi to help network positioning, or step outside for a
+                    clear GPS signal - then press <strong>Try Again</strong>.
                   </p>
                 </>
               )}
@@ -714,7 +727,8 @@ const Dashboard = () => {
           {attendanceData.current_session && (
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
               <p className="text-sm text-blue-700 dark:text-blue-300">
-                <strong>Clocked in at:</strong> {new Date(attendanceData.current_session.clock_in).toLocaleTimeString()}
+                <strong>Clocked in at:</strong>{' '}
+                {new Date(attendanceData.current_session.clock_in).toLocaleTimeString()}
               </p>
               <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
                 <strong>Location:</strong> {attendanceData.current_session.office_name}
@@ -828,7 +842,9 @@ const Dashboard = () => {
                   ) : (
                     <>
                       <Clock className="h-4 w-4 mr-2" />
-                      {attendanceData.has_clocked_in_today ? 'Already Clocked In Today' : 'Clock In'}
+                      {attendanceData.has_clocked_in_today
+                        ? 'Already Clocked In Today'
+                        : 'Clock In'}
                     </>
                   )}
                 </Button>
@@ -900,7 +916,9 @@ const Dashboard = () => {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">HR Insights</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                HR Insights
+              </h2>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Org-wide oversight signals that need your attention
               </p>
@@ -921,13 +939,14 @@ const Dashboard = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-
               {/* Contracts expired */}
               <Card>
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="text-sm text-gray-500 dark:text-gray-400">Expired Contracts</p>
-                    <p className="text-3xl font-bold text-red-600">{hrInsights.contracts_expired.count}</p>
+                    <p className="text-3xl font-bold text-red-600">
+                      {hrInsights.contracts_expired.count}
+                    </p>
                   </div>
                   <AlertTriangle className="h-5 w-5 text-red-500" />
                 </div>
@@ -960,8 +979,12 @@ const Dashboard = () => {
               <Card>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Contracts Expiring (30d)</p>
-                    <p className="text-3xl font-bold text-amber-600">{hrInsights.contracts_expiring.count}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Contracts Expiring (30d)
+                    </p>
+                    <p className="text-3xl font-bold text-amber-600">
+                      {hrInsights.contracts_expiring.count}
+                    </p>
                   </div>
                   <Clock className="h-5 w-5 text-amber-500" />
                 </div>
@@ -984,8 +1007,12 @@ const Dashboard = () => {
               <Card>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Retiring Within 1 Year</p>
-                    <p className="text-3xl font-bold text-blue-600">{hrInsights.retiring_soon.count}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Retiring Within 1 Year
+                    </p>
+                    <p className="text-3xl font-bold text-blue-600">
+                      {hrInsights.retiring_soon.count}
+                    </p>
                   </div>
                   <UserMinus className="h-5 w-5 text-blue-500" />
                 </div>
@@ -1008,8 +1035,12 @@ const Dashboard = () => {
               <Card>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Leave Pending &gt; 1 Week</p>
-                    <p className="text-3xl font-bold text-orange-600">{hrInsights.leave_pending_over_week.count}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Leave Pending &gt; 1 Week
+                    </p>
+                    <p className="text-3xl font-bold text-orange-600">
+                      {hrInsights.leave_pending_over_week.count}
+                    </p>
                   </div>
                   <Hourglass className="h-5 w-5 text-orange-500" />
                 </div>
@@ -1023,17 +1054,25 @@ const Dashboard = () => {
                     <p className="text-xs text-gray-400">None</p>
                   )}
                 </div>
-                <Button variant="secondary" size="sm" onClick={() => navigate('/leave/manage/pending')}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => navigate('/leave/manage/pending')}
+                >
                   View <ExternalLink className="ml-1 h-3 w-3" />
                 </Button>
               </Card>
 
-                                                        {/* Roster current month */}
+              {/* Roster current month */}
               <Card>
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Roster — {new Date().toLocaleString('default', { month: 'long' })}</p>
-                    <p className="text-3xl font-bold text-indigo-600">{hrInsights.roster_current_month.count}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Roster — {new Date().toLocaleString('default', { month: 'long' })}
+                    </p>
+                    <p className="text-3xl font-bold text-indigo-600">
+                      {hrInsights.roster_current_month.count}
+                    </p>
                   </div>
                   <CalendarDays className="h-5 w-5 text-indigo-500" />
                 </div>
@@ -1057,7 +1096,9 @@ const Dashboard = () => {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <p className="text-sm text-gray-500 dark:text-gray-400">On Leave Today</p>
-                    <p className="text-3xl font-bold text-teal-600">{hrInsights.on_leave_today.count}</p>
+                    <p className="text-3xl font-bold text-teal-600">
+                      {hrInsights.on_leave_today.count}
+                    </p>
                   </div>
                   <CalendarCheck className="h-5 w-5 text-teal-500" />
                 </div>
@@ -1076,7 +1117,7 @@ const Dashboard = () => {
                 </Button>
               </Card>
 
-      {/* Attendance today — clocked in vs not */}
+              {/* Attendance today — clocked in vs not */}
               <Card className="md:col-span-2 lg:col-span-3">
                 <div className="flex items-start justify-between mb-3">
                   <div>
@@ -1091,7 +1132,8 @@ const Dashboard = () => {
                         <span className="text-sm font-normal text-gray-500 ml-1">not in</span>
                       </span>
                       <span className="text-sm text-gray-500">
-                        {hrInsights.attendance_today.on_leave} on leave · {hrInsights.attendance_today.total_active} active
+                        {hrInsights.attendance_today.on_leave} on leave ·{' '}
+                        {hrInsights.attendance_today.total_active} active
                       </span>
                     </div>
                   </div>
@@ -1103,7 +1145,13 @@ const Dashboard = () => {
                     <div className="space-y-1 max-h-24 overflow-y-auto">
                       {hrInsights.attendance_today.items.slice(0, 6).map((e) => (
                         <p key={e.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
-                          {e.name} · {e.clock_in ? new Date(e.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                          {e.name} ·{' '}
+                          {e.clock_in
+                            ? new Date(e.clock_in).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : ''}
                         </p>
                       ))}
                       {hrInsights.attendance_today.items.length === 0 && (
@@ -1112,7 +1160,11 @@ const Dashboard = () => {
                     </div>
                   </div>
                   <div className="flex items-center justify-end">
-                    <Button variant="secondary" size="sm" onClick={() => navigate('/attendance/dashboard')}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => navigate('/attendance/dashboard')}
+                    >
                       View <ExternalLink className="ml-1 h-3 w-3" />
                     </Button>
                   </div>
@@ -1133,8 +1185,12 @@ const Dashboard = () => {
                 <FileText className="h-6 w-6 text-emerald-600 dark:text-emerald-300" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">HR Policy &amp; Procedures</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Official MUWASCO HR Policy Manual</p>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  HR Policy &amp; Procedures
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Official MUWASCO HR Policy Manual
+                </p>
                 {currentPolicy && (
                   <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
@@ -1165,7 +1221,9 @@ const Dashboard = () => {
                 <FileText className="h-6 w-6 text-blue-600 dark:text-blue-300" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">Apply Leave</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  Apply Leave
+                </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Submit leave application</p>
               </div>
             </div>
@@ -1182,11 +1240,17 @@ const Dashboard = () => {
                 <Star className="h-6 w-6 text-purple-600 dark:text-purple-300" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">My Appraisal</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  My Appraisal
+                </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400">View performance reviews</p>
               </div>
             </div>
-            <Button onClick={() => navigate('/appraisal')} variant="secondary" className="w-full lg:w-auto shrink-0">
+            <Button
+              onClick={() => navigate('/appraisal')}
+              variant="secondary"
+              className="w-full lg:w-auto shrink-0"
+            >
               View Appraisals
             </Button>
           </div>
@@ -1227,7 +1291,9 @@ const Dashboard = () => {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
             <Bell className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Notifications</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              Notifications
+            </h3>
             {unreadCount > 0 && (
               <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
                 {unreadCount}
@@ -1245,7 +1311,9 @@ const Dashboard = () => {
               <div
                 key={notification.id}
                 className={`p-3 rounded-lg border ${
-                  notification.is_read ? 'bg-gray-50 dark:bg-slate-900/40 border-gray-200 dark:border-slate-700' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                  notification.is_read
+                    ? 'bg-gray-50 dark:bg-slate-900/40 border-gray-200 dark:border-slate-700'
+                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -1280,148 +1348,209 @@ const Dashboard = () => {
            same permission on GET /dashboard/charts/*. */}
       {showHrInsights && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Attendance: donut split of on-time / late / absent today. */}
-        <Card title="Attendance Analytics"
-          subtitle={`${atWorkPct}% of ${stats.totalEmployees.toLocaleString()} active employees at work`} >
-          {analytics.attendance ? (
-            <>
-              <div className="relative h-56">
+          {/* Attendance: donut split of on-time / late / absent today. */}
+          <Card
+            title="Attendance Analytics"
+            subtitle={`${atWorkPct}% of ${stats.totalEmployees.toLocaleString()} active employees at work`}
+          >
+            {analytics.attendance ? (
+              <>
+                <div className="relative h-56">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={[
+                          { name: 'On Time', value: onTimeToday },
+                          { name: 'Late', value: lateToday },
+                          { name: 'Absent', value: absentToday },
+                        ]}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius="60%"
+                        outerRadius="82%"
+                        paddingAngle={2}
+                        stroke={isDark ? '#0f172a' : '#ffffff'}
+                        strokeWidth={2}
+                      >
+                        <Cell fill="#22c55e" />
+                        <Cell fill="#f59e0b" />
+                        <Cell fill="#ef4444" />
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: any, name: any) => [`${value} employees`, name]}
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: chartFg }}
+                      />
+                      <Legend
+                        verticalAlign="bottom"
+                        height={24}
+                        wrapperStyle={{ fontSize: 11, color: legendColor }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-x-0 top-0 flex h-full flex-col items-center justify-center pb-7 pointer-events-none">
+                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                      {atWorkPct}%
+                    </p>
+                    <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      at work
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-center text-gray-500 dark:text-gray-400">
+                  On time {onTimeToday} &middot; Late {lateToday} &middot; Absent {absentToday}
+                </p>
+              </>
+            ) : (
+              <EmptyChart label="No attendance data yet." />
+            )}
+          </Card>
+
+          {/* Leave: approved-vs-pending application volumes. */}
+          <Card
+            title="Leave Statistics"
+            subtitle={`${onLeaveToday} away right now · ${leaveRows[1].value} awaiting approval`}
+          >
+            {analytics.leave ? (
+              <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: 'On Time', value: onTimeToday },
-                        { name: 'Late', value: lateToday },
-                        { name: 'Absent', value: absentToday },
-                      ]}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius="60%"
-                      outerRadius="82%"
-                      paddingAngle={2}
-                      stroke={isDark ? '#0f172a' : '#ffffff'}
-                      strokeWidth={2}
-                    >
-                      <Cell fill="#22c55e" />
-                      <Cell fill="#f59e0b" />
-                      <Cell fill="#ef4444" />
-                    </Pie>
+                  <BarChart data={leaveRows} margin={{ top: 20, right: 16, left: -12, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fill: tickColor, fontSize: 12 }}
+                      axisLine={{ stroke: gridColor }}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fill: tickColor, fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
                     <Tooltip
-                      formatter={(value: any, name: any) => [`${value} employees`, name]}
+                      cursor={{ fill: hoverFill }}
+                      formatter={(value: any) => [`${value} employees`, 'Count']}
                       contentStyle={tooltipStyle}
                       itemStyle={{ color: chartFg }}
+                      labelStyle={{ color: chartFg }}
                     />
-                    <Legend verticalAlign="bottom" height={24}
-                      wrapperStyle={{ fontSize: 11, color: legendColor }} />
-                  </PieChart>
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={72}>
+                      <LabelList
+                        dataKey="value"
+                        position="top"
+                        fontSize={13}
+                        fontWeight={600}
+                        fill={labelColor}
+                      />
+                      <Cell fill="#3b82f6" />
+                      <Cell fill="#a855f7" />
+                    </Bar>
+                  </BarChart>
                 </ResponsiveContainer>
-                <div className="absolute inset-x-0 top-0 flex h-full flex-col items-center justify-center pb-7 pointer-events-none">
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{atWorkPct}%</p>
-                  <p className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">at work</p>
-                </div>
               </div>
-              <p className="mt-2 text-xs text-center text-gray-500 dark:text-gray-400">
-                On time {onTimeToday} &middot; Late {lateToday} &middot; Absent {absentToday}
-              </p>
-            </>
-          ) : (
-            <EmptyChart label="No attendance data yet." />
-          )}
-        </Card>
+            ) : (
+              <EmptyChart label="No leave data yet." />
+            )}
+          </Card>
 
+          {/* Departments: horizontal headcount ranking (top six shown). */}
+          <Card
+            title="Department Distribution"
+            subtitle={`Top ${deptRows.length} of ${analytics.departments?.total_departments ?? deptRows.length} departments by headcount`}
+          >
+            {deptRows.length > 0 ? (
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    layout="vertical"
+                    data={deptRows}
+                    margin={{ top: 4, right: 44, left: 8, bottom: 4 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
+                    <XAxis
+                      type="number"
+                      allowDecimals={false}
+                      tick={{ fill: tickColor, fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      width={130}
+                      tickFormatter={(v: string) =>
+                        v.length > 16 ? `${v.slice(0, 15)}…` : v || 'Unassigned'
+                      }
+                      tick={{ fill: tickColor, fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: hoverFill }}
+                      formatter={(value: any) => [`${value} employees`, 'Headcount']}
+                      contentStyle={tooltipStyle}
+                      itemStyle={{ color: chartFg }}
+                      labelStyle={{ color: chartFg }}
+                    />
+                    <Bar
+                      dataKey="employees"
+                      name="Employees"
+                      fill="#3b82f6"
+                      radius={[0, 6, 6, 0]}
+                      maxBarSize={18}
+                    >
+                      <LabelList
+                        dataKey="employees"
+                        position="right"
+                        fontSize={11}
+                        fill={labelColor}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <EmptyChart label="No department data yet." />
+            )}
+          </Card>
 
-        {/* Leave: approved-vs-pending application volumes. */}
-        <Card title="Leave Statistics"
-          subtitle={`${onLeaveToday} away right now · ${leaveRows[1].value} awaiting approval`} >
-          {analytics.leave ? (
-            <div className="h-56">
+          {/* Workforce gauge: share of the active roster present right now. */}
+          <Card title="Employee Statistics" subtitle="Active roster versus actual presence today">
+            <div className="relative h-56">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={leaveRows} margin={{ top: 20, right: 16, left: -12, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
-                  <XAxis dataKey="name" tick={{ fill: tickColor, fontSize: 12 }}
-                    axisLine={{ stroke: gridColor }} tickLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fill: tickColor, fontSize: 11 }}
-                    axisLine={false} tickLine={false} />
-                  <Tooltip cursor={{ fill: hoverFill }}
-                    formatter={(value: any) => [`${value} employees`, 'Count']}
-                    contentStyle={tooltipStyle} itemStyle={{ color: chartFg }}
-                    labelStyle={{ color: chartFg }} />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={72}>
-                    <LabelList dataKey="value" position="top" fontSize={13}
-                      fontWeight={600} fill={labelColor} />
-                    <Cell fill="#3b82f6" />
-                    <Cell fill="#a855f7" />
-                  </Bar>
-                </BarChart>
+                <RadialBarChart
+                  data={[{ name: 'At work', value: Math.min(100, atWorkPct) }]}
+                  innerRadius="68%"
+                  outerRadius="106%"
+                  startAngle={90}
+                  endAngle={-270}
+                >
+                  <RadialBar
+                    background={{ fill: radialTrackFill }}
+                    dataKey="value"
+                    cornerRadius={14}
+                    fill="#22c55e"
+                  />
+                </RadialBarChart>
               </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+                  {stats.totalEmployees.toLocaleString()}
+                </p>
+                <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  active employees
+                </p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  {presentToday} present · {onLeaveToday} on leave · {elsewhereToday} elsewhere
+                </p>
+              </div>
             </div>
-          ) : (
-            <EmptyChart label="No leave data yet." />
-          )}
-        </Card>
-
-        {/* Departments: horizontal headcount ranking (top six shown). */}
-        <Card title="Department Distribution"
-          subtitle={`Top ${deptRows.length} of ${analytics.departments?.total_departments ?? deptRows.length} departments by headcount`} >
-          {deptRows.length > 0 ? (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart layout="vertical" data={deptRows}
-                  margin={{ top: 4, right: 44, left: 8, bottom: 4 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={gridColor} horizontal={false} />
-                  <XAxis type="number" allowDecimals={false}
-                    tick={{ fill: tickColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis type="category" dataKey="name" width={130}
-                    tickFormatter={(v: string) => (v.length > 16 ? `${v.slice(0, 15)}…` : v || 'Unassigned')}
-                    tick={{ fill: tickColor, fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip cursor={{ fill: hoverFill }}
-                    formatter={(value: any) => [`${value} employees`, 'Headcount']}
-                    contentStyle={tooltipStyle} itemStyle={{ color: chartFg }}
-                    labelStyle={{ color: chartFg }} />
-                  <Bar dataKey="employees" name="Employees" fill="#3b82f6"
-                    radius={[0, 6, 6, 0]} maxBarSize={18}>
-                    <LabelList dataKey="employees" position="right" fontSize={11}
-                      fill={labelColor} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <EmptyChart label="No department data yet." />
-          )}
-        </Card>
-
-        {/* Workforce gauge: share of the active roster present right now. */}
-        <Card title="Employee Statistics"
-          subtitle="Active roster versus actual presence today" >
-          <div className="relative h-56">
-            <ResponsiveContainer width="100%" height="100%">
-              <RadialBarChart
-                data={[{ name: 'At work', value: Math.min(100, atWorkPct) }]}
-                innerRadius="68%" outerRadius="106%"
-                startAngle={90} endAngle={-270}>
-                <RadialBar background={{ fill: radialTrackFill }} dataKey="value"
-                  cornerRadius={14} fill="#22c55e" />
-              </RadialBarChart>
-            </ResponsiveContainer>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-                {stats.totalEmployees.toLocaleString()}
-              </p>
-              <p className="text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                active employees
-              </p>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                {presentToday} present · {onLeaveToday} on leave · {elsewhereToday} elsewhere
-              </p>
-            </div>
-          </div>
-        </Card>
+          </Card>
         </div>
       )}
-
     </div>
-  )
-}
+  );
+};
 
-export default Dashboard
+export default Dashboard;

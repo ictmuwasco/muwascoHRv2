@@ -18,6 +18,40 @@
 -- Apply: php backend/database/run_migration_034.php
 -- ============================================================================
 
+-- ----------------------------------------------------------------------------
+-- Index helper (idempotent)
+-- ----------------------------------------------------------------------------
+-- The tables below are created with CREATE TABLE IF NOT EXISTS, so on a
+-- database that already contains them (e.g. built from 0000_baseline_schema.sql,
+-- which ships every meeting_minutes_* table *with* its indexes) the bare
+-- CREATE INDEX statements that used to follow would abort the migration with
+-- "Duplicate key name 'idx_minutes_status'". Route every index through this
+-- helper, which only issues CREATE INDEX when information_schema says the
+-- index is missing — safe on a fresh database and on a re-run.
+DROP PROCEDURE IF EXISTS mm_create_index_if_missing;
+
+CREATE PROCEDURE mm_create_index_if_missing(
+    IN p_table VARCHAR(64),
+    IN p_index VARCHAR(64),
+    IN p_cols  VARCHAR(255)
+)
+SQL SECURITY INVOKER
+BEGIN
+    DECLARE v_exists INT DEFAULT 0;
+    SELECT COUNT(*) INTO v_exists
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = p_table
+      AND INDEX_NAME   = p_index;
+
+    IF v_exists = 0 THEN
+        SET @sql = CONCAT('CREATE INDEX ', p_index, ' ON ', p_table, ' (', p_cols, ')');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END;
+
 CREATE TABLE IF NOT EXISTS meeting_minutes (
     id                  INT AUTO_INCREMENT PRIMARY KEY,
     meeting_id          INT NOT NULL COMMENT 'FK to meetings.id (one minutes set per meeting)',
@@ -67,10 +101,10 @@ CREATE TABLE IF NOT EXISTS meeting_minutes (
     UNIQUE KEY uk_minutes_reference (reference_number)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE INDEX idx_minutes_status ON meeting_minutes(status);
-CREATE INDEX idx_minutes_prepared_by ON meeting_minutes(prepared_by);
-CREATE INDEX idx_minutes_published_by ON meeting_minutes(published_by);
-CREATE INDEX idx_minutes_created_at ON meeting_minutes(created_at);
+CALL mm_create_index_if_missing('meeting_minutes', 'idx_minutes_status', 'status');
+CALL mm_create_index_if_missing('meeting_minutes', 'idx_minutes_prepared_by', 'prepared_by');
+CALL mm_create_index_if_missing('meeting_minutes', 'idx_minutes_published_by', 'published_by');
+CALL mm_create_index_if_missing('meeting_minutes', 'idx_minutes_created_at', 'created_at');
 
 CREATE TABLE IF NOT EXISTS meeting_minutes_agenda_items (
     id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -92,7 +126,7 @@ CREATE TABLE IF NOT EXISTS meeting_minutes_agenda_items (
         ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE INDEX idx_agenda_minutes ON meeting_minutes_agenda_items(minutes_id);
+CALL mm_create_index_if_missing('meeting_minutes_agenda_items', 'idx_agenda_minutes', 'minutes_id');
 
 CREATE TABLE IF NOT EXISTS meeting_minutes_decisions (
     id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -117,10 +151,10 @@ CREATE TABLE IF NOT EXISTS meeting_minutes_decisions (
         ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE INDEX idx_decisions_minutes ON meeting_minutes_decisions(minutes_id);
-CREATE INDEX idx_decisions_due_date ON meeting_minutes_decisions(due_date);
-CREATE INDEX idx_decisions_status ON meeting_minutes_decisions(status);
-CREATE INDEX idx_decisions_responsible ON meeting_minutes_decisions(responsible_id);
+CALL mm_create_index_if_missing('meeting_minutes_decisions', 'idx_decisions_minutes', 'minutes_id');
+CALL mm_create_index_if_missing('meeting_minutes_decisions', 'idx_decisions_due_date', 'due_date');
+CALL mm_create_index_if_missing('meeting_minutes_decisions', 'idx_decisions_status', 'status');
+CALL mm_create_index_if_missing('meeting_minutes_decisions', 'idx_decisions_responsible', 'responsible_id');
 
 CREATE TABLE IF NOT EXISTS meeting_minutes_action_items (
     id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -146,10 +180,10 @@ CREATE TABLE IF NOT EXISTS meeting_minutes_action_items (
         ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE INDEX idx_actions_minutes ON meeting_minutes_action_items(minutes_id);
-CREATE INDEX idx_actions_assigned_to ON meeting_minutes_action_items(assigned_to);
-CREATE INDEX idx_actions_due_date ON meeting_minutes_action_items(due_date);
-CREATE INDEX idx_actions_status ON meeting_minutes_action_items(status);
+CALL mm_create_index_if_missing('meeting_minutes_action_items', 'idx_actions_minutes', 'minutes_id');
+CALL mm_create_index_if_missing('meeting_minutes_action_items', 'idx_actions_assigned_to', 'assigned_to');
+CALL mm_create_index_if_missing('meeting_minutes_action_items', 'idx_actions_due_date', 'due_date');
+CALL mm_create_index_if_missing('meeting_minutes_action_items', 'idx_actions_status', 'status');
 
 CREATE TABLE IF NOT EXISTS meeting_minutes_aob_items (
     id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -170,7 +204,10 @@ CREATE TABLE IF NOT EXISTS meeting_minutes_aob_items (
         ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE INDEX idx_aob_minutes ON meeting_minutes_aob_items(minutes_id);
+CALL mm_create_index_if_missing('meeting_minutes_aob_items', 'idx_aob_minutes', 'minutes_id');
+
+-- Cleanup the temporary helper procedure
+DROP PROCEDURE IF EXISTS mm_create_index_if_missing;
 
 -- RBAC seed rows (idempotent) - Hybrid permission overrides still apply on
 -- top of these via user_page_permissions.
