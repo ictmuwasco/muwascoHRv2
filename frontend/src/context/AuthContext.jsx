@@ -285,7 +285,8 @@ export const AuthProvider = ({ children }) => {
    * @returns {boolean}
    */
   const canEdit = (module) =>
-    can(module, 'edit') || canAny([
+    can(module, 'edit') ||
+    canAny([
       [module, 'manage'],
       [module, 'update'],
     ]);
