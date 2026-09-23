@@ -98,8 +98,8 @@ This document describes all improvements made to the HR Management System.
 ### Files Created
 - `backend/database/SchemaBuilder.php` - Fluent schema builder
 - `backend/database/Seeder.php` - Base seeder class
-- `backend/database/seeders/DepartmentSeeder.php` - Department reference data
-- `backend/database/seeders/LeaveTypeSeeder.php` - Leave type reference data
+- `backend/database/Seeders/DepartmentSeeder.php` - Department reference data
+- `backend/database/Seeders/LeaveTypeSeeder.php` - Leave type reference data
 - `backend/database/migrations/2026_09_08_000001_add_performance_indexes.php` - Performance indexes
 
 ### Features
@@ -152,9 +152,9 @@ This document describes all improvements made to the HR Management System.
 ## 10. Database Seeding System (NEW)
 
 ### Files Created
-- `backend/database/seeders/DatabaseSeeder.php` - Main seeder that runs all seeders
-- `backend/database/seeders/UserSeeder.php` - User test data
-- `backend/database/seeders/EmployeeSeeder.php` - Employee test data
+- `backend/database/Seeders/DatabaseSeeder.php` - Main seeder that runs all seeders
+- `backend/database/Seeders/UserSeeder.php` - User test data
+- `backend/database/Seeders/EmployeeSeeder.php` - Employee test data
 - `backend/app/Controllers/System\SeederController.php` - REST API controller
 - `backend/database/migrations/2026_09_08_000002_run_seeders.php` - Migration to run seeders
 

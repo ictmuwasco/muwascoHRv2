@@ -21,20 +21,37 @@ export default function HistoryModal({ objectiveId, objectiveTitle, onClose }: P
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (objectiveId === null) { setUpdates([]); setError(''); return; }
+    if (objectiveId === null) {
+      setUpdates([]);
+      setError('');
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError('');
-    workplanService.progressHistory(objectiveId)
-      .then((res) => { if (!cancelled) setUpdates(res.data?.updates ?? []); })
-      .catch((err: any) => { if (!cancelled) setError(err.response?.data?.message || 'Failed to load history.'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    workplanService
+      .progressHistory(objectiveId)
+      .then((res) => {
+        if (!cancelled) setUpdates(res.data?.updates ?? []);
+      })
+      .catch((err: any) => {
+        if (!cancelled) setError(err.response?.data?.message || 'Failed to load history.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [objectiveId]);
 
   return (
-    <Modal isOpen={objectiveId !== null} onClose={onClose}
-      title={`Progress History${objectiveTitle ? ` — ${objectiveTitle.slice(0, 60)}` : ''}`} size="lg">
+    <Modal
+      isOpen={objectiveId !== null}
+      onClose={onClose}
+      title={`Progress History${objectiveTitle ? ` — ${objectiveTitle.slice(0, 60)}` : ''}`}
+      size="lg"
+    >
       {loading && (
         <div className="flex items-center justify-center py-10">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-600" />
@@ -42,11 +59,15 @@ export default function HistoryModal({ objectiveId, objectiveTitle, onClose }: P
       )}
 
       {!loading && error && (
-        <div className="rounded-lg bg-red-50 dark:bg-red-900/30 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>
+        <div className="rounded-lg bg-red-50 dark:bg-red-900/30 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          {error}
+        </div>
       )}
 
       {!loading && !error && updates.length === 0 && (
-        <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">No updates recorded yet.</p>
+        <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+          No updates recorded yet.
+        </p>
       )}
 
       {!loading && updates.length > 0 && (
@@ -62,10 +83,13 @@ export default function HistoryModal({ objectiveId, objectiveTitle, onClose }: P
                   </span>
                   {meta && <Badge variant={meta.variant}>{meta.label}</Badge>}
                   {h.progress_percent !== null && h.progress_percent !== undefined && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{h.progress_percent}%</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {h.progress_percent}%
+                    </span>
                   )}
                   <span className="text-xs text-gray-400 dark:text-gray-500">
-                    {fmtDate(h.created_at)}{h.actor_name ? ` · ${h.actor_name}` : ''}
+                    {fmtDate(h.created_at)}
+                    {h.actor_name ? ` · ${h.actor_name}` : ''}
                   </span>
                 </div>
                 {h.description && (

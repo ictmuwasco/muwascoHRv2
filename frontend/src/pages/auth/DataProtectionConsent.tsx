@@ -26,8 +26,8 @@ const sections: Section[] = [
     content: (
       <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
         <p>
-          The MUWASCO HR System collects and processes the following categories of
-          personal information for legitimate HR and organizational purposes:
+          The MUWASCO HR System collects and processes the following categories of personal
+          information for legitimate HR and organizational purposes:
         </p>
         <ul className="list-disc list-inside space-y-1">
           <li>Employee identification information (name, employee number/ID, national ID)</li>
@@ -38,7 +38,10 @@ const sections: Section[] = [
           <li>Leave information (leave applications, balances, approvals)</li>
           <li>Performance and appraisal information</li>
           <li>Login and authentication information (email, password hash)</li>
-          <li>System activity and audit information (IP address, browser/device information where technically required)</li>
+          <li>
+            System activity and audit information (IP address, browser/device information where
+            technically required)
+          </li>
         </ul>
       </div>
     ),
@@ -60,9 +63,9 @@ const sections: Section[] = [
           <li>Compliance with applicable legal and organizational requirements</li>
         </ul>
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          Some processing is based on your consent, while other processing is based on
-          other lawful grounds such as the performance of your employment contract or
-          compliance with legal obligations.
+          Some processing is based on your consent, while other processing is based on other lawful
+          grounds such as the performance of your employment contract or compliance with legal
+          obligations.
         </p>
       </div>
     ),
@@ -73,12 +76,15 @@ const sections: Section[] = [
     content: (
       <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
         <p>
-          <strong>Important:</strong> When you use the Clock In or Clock Out feature,
-          the system may request access to your device's location.
+          <strong>Important:</strong> When you use the Clock In or Clock Out feature, the system may
+          request access to your device's location.
         </p>
         <ul className="list-disc list-inside space-y-1">
           <li>Your location is used to verify that you are within the permitted office radius.</li>
-          <li>The system calculates the distance between your location and the registered office location.</li>
+          <li>
+            The system calculates the distance between your location and the registered office
+            location.
+          </li>
           <li>This information is used solely for attendance verification purposes.</li>
           <li>Your location is not collected unnecessarily outside the attendance process.</li>
         </ul>
@@ -91,8 +97,8 @@ const sections: Section[] = [
     content: (
       <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
         <p>
-          Subject to applicable law, you have the following rights under the Kenya
-          Data Protection Act, 2019:
+          Subject to applicable law, you have the following rights under the Kenya Data Protection
+          Act, 2019:
         </p>
         <ul className="list-disc list-inside space-y-1">
           <li>Right to be informed about the use of your personal data</li>
@@ -102,12 +108,17 @@ const sections: Section[] = [
           <li>Right to object to processing in circumstances provided by law</li>
           <li>Right to restriction of processing where applicable</li>
           <li>Right to data portability where applicable</li>
-          <li>Right to withdraw consent where processing is based on consent, subject to applicable legal limitations</li>
-          <li>Right to lodge a complaint with the Office of the Data Protection Commissioner (ODPC)</li>
+          <li>
+            Right to withdraw consent where processing is based on consent, subject to applicable
+            legal limitations
+          </li>
+          <li>
+            Right to lodge a complaint with the Office of the Data Protection Commissioner (ODPC)
+          </li>
         </ul>
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          These rights are subject to applicable law and may be limited in certain
-          circumstances. To exercise any of these rights, please contact your HR administrator.
+          These rights are subject to applicable law and may be limited in certain circumstances. To
+          exercise any of these rights, please contact your HR administrator.
         </p>
       </div>
     ),
@@ -118,10 +129,10 @@ const sections: Section[] = [
     content: (
       <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
         <p>
-          Your personal data is stored securely and retained only for as long as
-          necessary for the purposes described in this notice, or as required by
-          applicable law. Access to your data is restricted to authorized personnel
-          and is protected by appropriate technical and organizational measures.
+          Your personal data is stored securely and retained only for as long as necessary for the
+          purposes described in this notice, or as required by applicable law. Access to your data
+          is restricted to authorized personnel and is protected by appropriate technical and
+          organizational measures.
         </p>
       </div>
     ),
@@ -132,12 +143,12 @@ const sections: Section[] = [
     content: (
       <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
         <p>
-          If you have any questions about this notice or how your personal data is
-          handled, please contact your HR administrator or the MUWASCO HR Department.
+          If you have any questions about this notice or how your personal data is handled, please
+          contact your HR administrator or the MUWASCO HR Department.
         </p>
         <p>
-          You also have the right to lodge a complaint with the Office of the Data
-          Protection Commissioner (ODPC) at <span className="font-medium">www.odpc.go.ke</span>.
+          You also have the right to lodge a complaint with the Office of the Data Protection
+          Commissioner (ODPC) at <span className="font-medium">www.odpc.go.ke</span>.
         </p>
       </div>
     ),
@@ -229,7 +240,9 @@ const DataProtectionConsent = () => {
               <ShieldCheck className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Data Protection & Consent</h1>
+              <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">
+                Data Protection & Consent
+              </h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">MUWASCO HR System</p>
             </div>
           </div>
@@ -244,25 +257,31 @@ const DataProtectionConsent = () => {
 
         {/* Notice intro */}
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 dark:border-slate-600 shadow-md shadow-primary-600/40 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">Data Protection Notice</h2>
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-3">
+            Data Protection Notice
+          </h2>
           <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            MUWASCO collects and processes employee information for legitimate HR and
-            organizational purposes in accordance with applicable Kenyan data protection
-            requirements, including the <strong>Data Protection Act, 2019</strong> and
-            applicable regulations. Please read this notice carefully before providing
-            your consent.
+            MUWASCO collects and processes employee information for legitimate HR and organizational
+            purposes in accordance with applicable Kenyan data protection requirements, including
+            the <strong>Data Protection Act, 2019</strong> and applicable regulations. Please read
+            this notice carefully before providing your consent.
           </p>
         </div>
 
         {/* Expandable sections */}
         <div className="space-y-3 mb-6">
           {sections.map((section) => (
-            <div key={section.id} className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 dark:border-slate-600 shadow-md shadow-primary-600/40 overflow-hidden">
+            <div
+              key={section.id}
+              className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 dark:border-slate-600 shadow-md shadow-primary-600/40 overflow-hidden"
+            >
               <button
                 onClick={() => toggleSection(section.id)}
                 className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-50 dark:hover:bg-slate-700/40 transition"
               >
-                <span className="font-medium text-slate-800 dark:text-slate-100">{section.title}</span>
+                <span className="font-medium text-slate-800 dark:text-slate-100">
+                  {section.title}
+                </span>
                 {openSection === section.id ? (
                   <ChevronUp className="w-5 h-5 text-slate-400" />
                 ) : (
@@ -270,7 +289,9 @@ const DataProtectionConsent = () => {
                 )}
               </button>
               {openSection === section.id && (
-                <div className="px-5 pb-5 border-t border-slate-100 dark:border-slate-700 pt-4">{section.content}</div>
+                <div className="px-5 pb-5 border-t border-slate-100 dark:border-slate-700 pt-4">
+                  {section.content}
+                </div>
               )}
             </div>
           ))}
@@ -278,7 +299,9 @@ const DataProtectionConsent = () => {
 
         {/* National ID verification */}
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-primary-600 dark:border-slate-600 shadow-md shadow-primary-600/40 p-6 mb-6">
-          <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">Verify Your National ID</h3>
+          <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
+            Verify Your National ID
+          </h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
             Enter your National ID to verify your identity before providing consent.
           </p>
@@ -344,8 +367,8 @@ const DataProtectionConsent = () => {
               className="mt-1 h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
             />
             <span className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
-              I have read and understood the Data Protection Notice and agree to the
-              processing of my personal data for the purposes explained above.
+              I have read and understood the Data Protection Notice and agree to the processing of
+              my personal data for the purposes explained above.
             </span>
           </label>
         </div>
@@ -374,15 +397,13 @@ const DataProtectionConsent = () => {
             disabled={submitting}
             className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition"
           >
-            <XCircle className="w-4 h-4" />
-            I do not agree
+            <XCircle className="w-4 h-4" />I do not agree
           </button>
         </div>
 
         <p className="mt-4 text-xs text-slate-400 text-center">
-          If you do not agree, you will be returned to the login page and will not be
-          able to access the HR system. Some processing may continue based on other
-          lawful grounds.
+          If you do not agree, you will be returned to the login page and will not be able to access
+          the HR system. Some processing may continue based on other lawful grounds.
         </p>
       </div>
     </div>

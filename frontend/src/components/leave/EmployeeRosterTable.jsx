@@ -1,7 +1,7 @@
-import { useState } from 'react'
-import { Calendar, Edit3, Trash2, User } from 'lucide-react'
-import Badge from '../ui/Badge'
-import Button from '../ui/Button'
+import { useState } from 'react';
+import { Calendar, Edit3, Trash2, User } from 'lucide-react';
+import Badge from '../ui/Badge';
+import Button from '../ui/Button';
 
 /**
  * Employee roster table with list view.
@@ -24,7 +24,7 @@ const EmployeeRosterTable = ({
   onSchedule,
   showLastUpdated = false,
 }) => {
-  const [hoveredId, setHoveredId] = useState(null)
+  const [hoveredId, setHoveredId] = useState(null);
 
   if (!employees || employees.length === 0) {
     return (
@@ -37,43 +37,39 @@ const EmployeeRosterTable = ({
           No leave has been scheduled for the selected criteria.
         </p>
       </div>
-    )
+    );
   }
 
   const formatDate = (dateStr) => {
-    if (!dateStr) return ''
-    const d = new Date(dateStr)
-    return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' })
-  }
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' });
+  };
 
   const getMonthBadge = (month) => {
-    if (!month) return <span className="text-gray-400 dark:text-gray-500">—</span>
-    const isCurrent = month === new Date().toLocaleString('default', { month: 'long' })
-    const variant = isCurrent ? 'warning' : 'success'
+    if (!month) return <span className="text-gray-400 dark:text-gray-500">—</span>;
+    const isCurrent = month === new Date().toLocaleString('default', { month: 'long' });
+    const variant = isCurrent ? 'warning' : 'success';
     return (
       <Badge variant={variant} className="text-xs font-medium">
         {month.toUpperCase()}
       </Badge>
-    )
-  }
+    );
+  };
 
   const getStatusBadge = (status) => {
     const variants = {
       scheduled: 'success',
       not_scheduled: 'default',
       pending: 'warning',
-    }
+    };
     const labels = {
       scheduled: 'Scheduled',
       not_scheduled: 'Not Scheduled',
       pending: 'Pending',
-    }
-    return (
-      <Badge variant={variants[status] || 'default'}>
-        {labels[status] || status}
-      </Badge>
-    )
-  }
+    };
+    return <Badge variant={variants[status] || 'default'}>{labels[status] || status}</Badge>;
+  };
 
   return (
     <div className="overflow-x-auto">
@@ -104,7 +100,7 @@ const EmployeeRosterTable = ({
         </thead>
         <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
           {employees.map((emp) => {
-            const hasScheduled = !!emp.scheduled_month
+            const hasScheduled = !!emp.scheduled_month;
             return (
               <tr
                 key={emp.roster_id || emp.employee_id}
@@ -121,9 +117,7 @@ const EmployeeRosterTable = ({
                       <div className="font-medium text-gray-900 dark:text-gray-101">
                         {emp.employee_name}
                       </div>
-                      <div className="text-sm text-gray-500 dark:text-gray-400">
-                        {emp.emp_code}
-                      </div>
+                      <div className="text-sm text-gray-500 dark:text-gray-400">{emp.emp_code}</div>
                     </div>
                   </div>
                 </td>
@@ -177,12 +171,12 @@ const EmployeeRosterTable = ({
                   </div>
                 </td>
               </tr>
-            )
+            );
           })}
         </tbody>
       </table>
     </div>
-  )
-}
+  );
+};
 
-export default EmployeeRosterTable
+export default EmployeeRosterTable;

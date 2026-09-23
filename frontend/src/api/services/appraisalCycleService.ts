@@ -23,7 +23,9 @@ export interface FinancialYearRef {
 }
 
 const fmt = (d: string | null | undefined) =>
-  d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+  d
+    ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : '';
 
 /** Label helper shared by every quarter picker ("Q1 2025/2026 · Jul–Sep 2025"). */
 export const cycleLabel = (c: Pick<AppraisalCycle, 'name' | 'start_date' | 'end_date'>): string => {
@@ -32,8 +34,13 @@ export const cycleLabel = (c: Pick<AppraisalCycle, 'name' | 'start_date' | 'end_
 };
 
 export const appraisalCycleService = {
-  list: async (): Promise<ApiResponse<{ cycles: AppraisalCycle[]; financial_years: FinancialYearRef[] }>> => {
-    const res = await apiClient.get<ApiResponse<{ cycles: AppraisalCycle[]; financial_years: FinancialYearRef[] }>>('/appraisal-cycles');
+  list: async (): Promise<
+    ApiResponse<{ cycles: AppraisalCycle[]; financial_years: FinancialYearRef[] }>
+  > => {
+    const res =
+      await apiClient.get<
+        ApiResponse<{ cycles: AppraisalCycle[]; financial_years: FinancialYearRef[] }>
+      >('/appraisal-cycles');
     return res.data;
   },
   create: async (data: Record<string, any>): Promise<ApiResponse<{ id: number }>> => {

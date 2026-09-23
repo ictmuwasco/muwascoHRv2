@@ -30,7 +30,9 @@ function generateRequestId(): string {
   } else {
     for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
   }
-  bytes.forEach((b) => { rand += B32[b % 32]; });
+  bytes.forEach((b) => {
+    rand += B32[b % 32];
+  });
   return `req_${Date.now().toString(36).toUpperCase()}${rand}`;
 }
 
@@ -75,25 +77,38 @@ function parseUserAgent(ua: string): ParsedUa {
   let browser = 'Other';
   let version = '';
 
-  if (/Edg\//.test(ua))          { browser = 'Edge';    version = pick(/Edg\/([\d.]+)/); }
-  else if (/OPR\//.test(ua))     { browser = 'Opera';   version = pick(/OPR\/([\d.]+)/); }
-  else if (/Chrome\//.test(ua))  { browser = 'Chrome';  version = pick(/Chrome\/([\d.]+)/); }
-  else if (/Firefox\//.test(ua)) { browser = 'Firefox'; version = pick(/Firefox\/([\d.]+)/); }
-  else if (/Safari\//.test(ua))  { browser = 'Safari';  version = pick(/Version\/([\d.]+)/); }
+  if (/Edg\//.test(ua)) {
+    browser = 'Edge';
+    version = pick(/Edg\/([\d.]+)/);
+  } else if (/OPR\//.test(ua)) {
+    browser = 'Opera';
+    version = pick(/OPR\/([\d.]+)/);
+  } else if (/Chrome\//.test(ua)) {
+    browser = 'Chrome';
+    version = pick(/Chrome\/([\d.]+)/);
+  } else if (/Firefox\//.test(ua)) {
+    browser = 'Firefox';
+    version = pick(/Firefox\/([\d.]+)/);
+  } else if (/Safari\//.test(ua)) {
+    browser = 'Safari';
+    version = pick(/Version\/([\d.]+)/);
+  }
 
   let os = 'Unknown OS';
-  if (/Windows NT/.test(ua))            os = 'Windows';
-  else if (/Mac OS X/.test(ua))         os = 'macOS';
-  else if (/Android/.test(ua))          os = 'Android';
+  if (/Windows NT/.test(ua)) os = 'Windows';
+  else if (/Mac OS X/.test(ua)) os = 'macOS';
+  else if (/Android/.test(ua)) os = 'Android';
   else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS';
-  else if (/Linux/.test(ua))            os = 'Linux';
+  else if (/Linux/.test(ua)) os = 'Linux';
 
-  const deviceType =
-    /Mobi/.test(ua) ? 'mobile'
-      : /Tablet|iPad/.test(ua) ? 'tablet'
-        : 'desktop';
+  const deviceType = /Mobi/.test(ua) ? 'mobile' : /Tablet|iPad/.test(ua) ? 'tablet' : 'desktop';
 
-  return { browser, browser_version: version.split('.')[0] ?? '', operating_system: os, device_type: deviceType };
+  return {
+    browser,
+    browser_version: version.split('.')[0] ?? '',
+    operating_system: os,
+    device_type: deviceType,
+  };
 }
 
 function currentUserId(): number | null {
@@ -129,14 +144,14 @@ export function collectContext(): Record<string, unknown> {
 // ---------------------------------------------------------------------------
 
 export type ErrorKind =
-  | 'react'            // component crash caught by an ErrorBoundary
-  | 'api'              // HTTP >= 500 from our own API
-  | 'network'          // request never reached the server / aborted
+  | 'react' // component crash caught by an ErrorBoundary
+  | 'api' // HTTP >= 500 from our own API
+  | 'network' // request never reached the server / aborted
   | 'invalid_response' // malformed JSON envelope
   | 'dynamic_import'
   | 'unhandled_rejection'
   | 'uncaught'
-  | 'push';            // Web Push failures
+  | 'push'; // Web Push failures
 
 export interface ReportInput {
   kind: ErrorKind;
@@ -194,7 +209,9 @@ export function scrubStack(stack: string): string {
 export function reportClientError(input: ReportInput): void {
   try {
     const signature = `${input.kind}|${String(input.message).slice(0, 120)}|${
-      String(input.stack ?? '').split('\n')[1]?.slice(0, 80) ?? ''
+      String(input.stack ?? '')
+        .split('\n')[1]
+        ?.slice(0, 80) ?? ''
     }`;
     if (!shouldSend(signature)) return;
 
@@ -204,7 +221,8 @@ export function reportClientError(input: ReportInput): void {
       message: String(input.message ?? 'Unknown client error').slice(0, 1000),
       stack: input.stack ? scrubStack(input.stack) : undefined,
       component: input.component,
-      severity: input.severity ?? (input.kind === 'api' || input.kind === 'react' ? 'HIGH' : 'MEDIUM'),
+      severity:
+        input.severity ?? (input.kind === 'api' || input.kind === 'react' ? 'HIGH' : 'MEDIUM'),
       ...(input.endpoint ? { endpoint_path: input.endpoint } : {}),
       ...(input.status_code ? { status_code: input.status_code } : {}),
       ...input.extra,

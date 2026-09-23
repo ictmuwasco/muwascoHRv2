@@ -44,7 +44,11 @@ const Appraisal = () => {
       key: 'status',
       label: 'Status',
       render: (value: string) => (
-        <Badge variant={value === 'Completed' ? 'success' : value === 'In Progress' ? 'warning' : 'default'}>
+        <Badge
+          variant={
+            value === 'Completed' ? 'success' : value === 'In Progress' ? 'warning' : 'default'
+          }
+        >
           {value}
         </Badge>
       ),

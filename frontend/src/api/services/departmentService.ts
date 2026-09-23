@@ -1,5 +1,12 @@
 import apiClient from '../client';
-import type { ApiResponse, PaginatedResponse, Department, DepartmentFormData, Section, Office } from '../../types';
+import type {
+  ApiResponse,
+  PaginatedResponse,
+  Department,
+  DepartmentFormData,
+  Section,
+  Office,
+} from '../../types';
 
 export const departmentService = {
   getAll: async (params?: Record<string, any>): Promise<PaginatedResponse<Department>> => {
@@ -17,7 +24,10 @@ export const departmentService = {
     return response.data;
   },
 
-  update: async (id: number, data: Partial<DepartmentFormData>): Promise<ApiResponse<Department>> => {
+  update: async (
+    id: number,
+    data: Partial<DepartmentFormData>,
+  ): Promise<ApiResponse<Department>> => {
     const response = await apiClient.put<ApiResponse<Department>>(`/departments/${id}`, data);
     return response.data;
   },
@@ -28,7 +38,9 @@ export const departmentService = {
   },
 
   getSections: async (departmentId: number): Promise<ApiResponse<Section[]>> => {
-    const response = await apiClient.get<ApiResponse<Section[]>>(`/departments/${departmentId}/sections`);
+    const response = await apiClient.get<ApiResponse<Section[]>>(
+      `/departments/${departmentId}/sections`,
+    );
     return response.data;
   },
 

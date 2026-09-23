@@ -24,6 +24,5 @@ export const securityService = {
     apiClient.post(`${SECURITY_API}/incidents/${id}/false-positive`, { notes }),
   investigateIncident: (id: number) =>
     apiClient.post(`${SECURITY_API}/incidents/${id}/investigate`),
-  containIncident: (id: number) =>
-    apiClient.post(`${SECURITY_API}/incidents/${id}/contain`),
+  containIncident: (id: number) => apiClient.post(`${SECURITY_API}/incidents/${id}/contain`),
 };

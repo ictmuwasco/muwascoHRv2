@@ -1,4 +1,4 @@
-import React from 'react'
+import React from 'react';
 
 const Logo = ({ className = 'h-30 w-30' }) => {
   return (
@@ -7,7 +7,7 @@ const Logo = ({ className = 'h-30 w-30' }) => {
       alt="MUWASCO Logo"
       className={`${className} object-contain rounded`}
     />
-  )
-}
+  );
+};
 
-export default Logo
+export default Logo;

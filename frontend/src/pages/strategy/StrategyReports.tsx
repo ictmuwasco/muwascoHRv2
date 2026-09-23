@@ -11,16 +11,27 @@ interface ReportPayload {
   generated_at: string;
   scope: { department_id: number | null };
   plan_progress: {
-    id: number; name: string; start_date: string; end_date: string;
-    goals: number; targets: number; contracts: number;
+    id: number;
+    name: string;
+    start_date: string;
+    end_date: string;
+    goals: number;
+    targets: number;
+    contracts: number;
   }[];
   departmental_performance: {
-    department_id: number; department: string;
-    contracts: number; workplans: number; kpis: number;
+    department_id: number;
+    department: string;
+    contracts: number;
+    workplans: number;
+    kpis: number;
   }[];
   kpi_achievement: {
-    kpi_name: string; target: string | null; latest_score: string | null;
-    contract_name: string | null; department_name: string | null;
+    kpi_name: string;
+    target: string | null;
+    latest_score: string | null;
+    contract_name: string | null;
+    department_name: string | null;
   }[];
   workplan_summary: { total_objectives: number; with_year_targets: number; note: string | null };
 }
@@ -45,13 +56,17 @@ export default function StrategyReports() {
       const res = await apiClient.get('/reports/strategic-performance');
       setData(res.data?.data ?? null);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to generate the strategic performance report.');
+      setError(
+        err.response?.data?.message || 'Failed to generate the strategic performance report.',
+      );
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -62,7 +77,11 @@ export default function StrategyReports() {
   }
 
   if (!data) {
-    return <Card title="Performance Reports"><p className="text-gray-500">{error || 'No report data available.'}</p></Card>;
+    return (
+      <Card title="Performance Reports">
+        <p className="text-gray-500">{error || 'No report data available.'}</p>
+      </Card>
+    );
   }
 
   const statCards = [
@@ -76,22 +95,32 @@ export default function StrategyReports() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Performance Reports</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            Performance Reports
+          </h1>
           <p className="text-gray-500">
             Strategic performance report · generated {new Date(data.generated_at).toLocaleString()}
             {data.scope.department_id ? ' · scoped to your department' : ''}
           </p>
         </div>
-        <Button variant="outline" onClick={load}><RefreshCw className="h-4 w-4 mr-2" />Refresh</Button>
+        <Button variant="outline" onClick={load}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Refresh
+        </Button>
       </div>
 
       {/* Strategy sub-navigation */}
       <div className="flex space-x-1 border-b overflow-x-auto">
         {TABS.map((tab) => (
-          <Link key={tab.to} to={tab.to}
+          <Link
+            key={tab.to}
+            to={tab.to}
             className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              location.pathname === tab.to ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}>
+              location.pathname === tab.to
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
             {tab.label}
           </Link>
         ))}
@@ -143,7 +172,7 @@ export default function StrategyReports() {
           />
         )}
       </Card>
-{/* Departmental performance */}
+      {/* Departmental performance */}
       <Card title="Departmental performance">
         {data.departmental_performance.length === 0 ? (
           <p className="text-gray-500">No departmental performance data available.</p>
@@ -157,9 +186,12 @@ export default function StrategyReports() {
               {
                 key: 'coverage',
                 label: 'Contract coverage',
-                render: (_v, row) => (Number(row.contracts) > 0
-                  ? <Badge variant="success">Active</Badge>
-                  : <Badge variant="default">No contracts</Badge>),
+                render: (_v, row) =>
+                  Number(row.contracts) > 0 ? (
+                    <Badge variant="success">Active</Badge>
+                  ) : (
+                    <Badge variant="default">No contracts</Badge>
+                  ),
               },
             ]}
             data={data.departmental_performance}
@@ -168,10 +200,14 @@ export default function StrategyReports() {
       </Card>
 
       {/* KPI achievement */}
-      <Card title="KPI achievement"
-        subtitle="Only KPIs with recorded scores are shown as measured; the rest are awaiting evidence.">
+      <Card
+        title="KPI achievement"
+        subtitle="Only KPIs with recorded scores are shown as measured; the rest are awaiting evidence."
+      >
         {data.kpi_achievement.length === 0 ? (
-          <p className="text-gray-500">No performance data available — no KPI scores have been recorded yet.</p>
+          <p className="text-gray-500">
+            No performance data available — no KPI scores have been recorded yet.
+          </p>
         ) : (
           <Table
             columns={[
@@ -189,8 +225,14 @@ export default function StrategyReports() {
       {/* Workplan summary */}
       <Card title="Workplan completion">
         <div className="space-y-1 text-sm">
-          <p><span className="font-medium">Total workplan objectives:</span> {data.workplan_summary.total_objectives}</p>
-          <p><span className="font-medium">With year targets captured:</span> {data.workplan_summary.with_year_targets}</p>
+          <p>
+            <span className="font-medium">Total workplan objectives:</span>{' '}
+            {data.workplan_summary.total_objectives}
+          </p>
+          <p>
+            <span className="font-medium">With year targets captured:</span>{' '}
+            {data.workplan_summary.with_year_targets}
+          </p>
           {data.workplan_summary.note && (
             <p className="text-xs text-gray-400 mt-1">{data.workplan_summary.note}</p>
           )}

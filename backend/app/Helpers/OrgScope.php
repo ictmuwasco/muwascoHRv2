@@ -154,6 +154,19 @@ final class OrgScope
     }
 
     /**
+     * True when the given department is one of the oversight departments
+     * (PME / Audit) that OrgScope treats as organisation-wide.
+     *
+     * Exposed so consumers that resolve the unit OUTSIDE a session — the AI
+     * tool layer's AiUnitScope, for example — can apply exactly the same rule
+     * instead of duplicating the department ids.
+     */
+    public static function isOversightDepartment(?int $departmentId): bool
+    {
+        return $departmentId !== null && in_array($departmentId, self::PME_DEPARTMENT_IDS, true);
+    }
+
+    /**
      * True when the user may see ALL performance contracts regardless of
      * department (HR, super admin, PME head and Audit head).
      */
