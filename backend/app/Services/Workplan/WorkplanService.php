@@ -65,6 +65,11 @@ class WorkplanService
         if ($this->isBroadWorkplan($scope) && !$this->isHrDeptHead($scope)) {
             return 'md';
         }
+        // The HR manager (department head of HR/Admin) lands on the Managing
+        // Director tier — the first tab they are allowed to open.
+        if ($this->isHrDeptHead($scope)) {
+            return 'md';
+        }
         if ($scope['is_section_head']) {
             return 'section';
         }
@@ -75,28 +80,33 @@ class WorkplanService
     }
 
     /**
-     * Workplan tiers the caller may open. Every tier below the caller's own
-     * unit is available so the cascade can be viewed/assigned.
-     *
-     * @return string[]
-     */
-
-    /**
-     * Workplan tiers the caller may open. Every tier below the caller's own
-     * unit is available so the cascade can be viewed/assigned.
+     * Workplan tiers the caller may open — strict one-tier-per-role model:
+     * each organisational level only gets its own tier; hr_manager (the
+     * department head of HR/Admin) additionally gets the Managing Director
+     * tier, and super_admin keeps oversight of every tier.
      *
      * @return string[]
      */
     public function availableViews(array $scope): array
     {
         if ($this->isBroadWorkplan($scope) && !$this->isHrDeptHead($scope)) {
+            // Managing Director sees only their own (organisation-wide) tier;
+            // super_admin keeps oversight of every tier.
+            if ($scope['role'] === 'managing_director') {
+                return ['md'];
+            }
             return ['md', 'department', 'section', 'subsection'];
         }
-        if ($scope['is_dept_head'] || $this->isHrDeptHead($scope)) {
-            return ['department', 'section', 'subsection'];
+        // hr_manager is the department head of HR/Admin: Managing Director tier
+        // plus their own departmental workplan.
+        if ($this->isHrDeptHead($scope)) {
+            return ['md', 'department'];
+        }
+        if ($scope['is_dept_head']) {
+            return ['department'];
         }
         if ($scope['is_section_head']) {
-            return ['section', 'subsection'];
+            return ['section'];
         }
         if ($scope['is_sub_section_head']) {
             return ['subsection'];
@@ -141,6 +151,13 @@ class WorkplanService
     public function viewScope(array $scope, string $view): array
     {
         if ($this->isBroadWorkplan($scope) && !$this->isHrDeptHead($scope)) {
+            return ['1=1', []];
+        }
+
+        // The HR manager may open the Managing Director tier and there sees
+        // the organisation-wide workplan; every other tier stays pinned to
+        // the HR/Admin department (their own unit).
+        if ($this->isHrDeptHead($scope) && $view === 'md') {
             return ['1=1', []];
         }
 
@@ -468,7 +485,8 @@ class WorkplanService
      */
     public function unitLabel(array $scope, string $view): string
     {
-        if ($this->isBroadWorkplan($scope) && !$this->isHrDeptHead($scope)) {
+        if (($this->isBroadWorkplan($scope) && !$this->isHrDeptHead($scope))
+            || ($this->isHrDeptHead($scope) && $view === 'md')) {
             return 'Organisation-wide';
         }
         if ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null) {
@@ -639,21 +657,25 @@ class WorkplanService
     /**
      * Validates linking an activity under a parent objective: the parent must
      * exist and be soft-alive, be visible inside the caller's organisational
-     * scope, sit strictly ABOVE the child's cascade level, and never create a
+     * scope, sit AT or ABOVE the child's cascade level, and never create a
      * circular chain.
      *
-     * @param string $childLevel The cascade level of the child being created/moved.
-     */
-
-    /**
-     * Validates linking an activity under a parent objective: the parent must
-     * exist and be soft-alive, be visible inside the caller's organisational
-     * scope, sit strictly ABOVE the child's cascade level, and never create a
-     * circular chain.
+     * Strict mode ($strictLevel = true, the default) requires the child to sit
+     * STRICTLY below its parent — this is used by the structural cascade flow
+     * (cascadeAction) where org→dept→section→subsection must always move one
+     * level further down the organisation.
+     *
+     * Relaxed mode ($strictLevel = false) permits same-level nesting — this is
+     * used by storeAction when a section/subsection head decomposes a cascaded
+     * source into their own unit-level work (a work breakdown, not a re-org of
+     * the hierarchy). In both modes the parent must be visible to the caller and
+     * may never be an ancestor of itself.
      *
      * @param string $childLevel The cascade level of the child being created/moved.
+     * @param bool   $strictLevel When true the child must sit strictly below the
+     *                            parent; when false same-level nesting is allowed.
      */
-    public function validateParentLinkage(array $scope, int $parentId, string $childLevel, ?int $movingId = null): ?string
+    public function validateParentLinkage(array $scope, int $parentId, string $childLevel, ?int $movingId = null, bool $strictLevel = true): ?string
     {
         $parentRows = $this->selectRows(
             "SELECT w.id, w.parent_objective_id, w.level, w.section_id, w.subsection_id,
@@ -697,10 +719,13 @@ class WorkplanService
             return 'You cannot link this objective under a parent outside your organisational scope.';
         }
 
-        // Hierarchy: children always sit strictly below their parent.
+        // Hierarchy: in strict mode the child must sit strictly below its parent
+        // (structural cascade org→dept→section→subsection). In relaxed mode
+        // same-level nesting is permitted (work breakdown within one unit).
         $parentRank = self::LEVEL_RANK[$parent['level'] ?? 'organisation'] ?? 0;
         $childRank  = self::LEVEL_RANK[$childLevel] ?? 0;
-        if ($childRank <= $parentRank) {
+        $tooHigh = $strictLevel ? ($childRank <= $parentRank) : ($childRank < $parentRank);
+        if ($tooHigh) {
             return sprintf(
                 'A %s-level activity cannot be nested under another %s-level activity.',
                 str_replace('_', ' ', $childLevel),

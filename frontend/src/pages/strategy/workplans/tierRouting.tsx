@@ -1,6 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../../context/AuthContext';
-import { WIDE_SCOPE_ROLES } from '../../../config/roles';
+import { isSuperAdmin } from '../../../config/roles';
 
 /** The four workplan tiers exposed as routes under /strategy/workplans. */
 export type TierKey = 'managing-director' | 'department-head' | 'section-head' | 'subsection-head';
@@ -60,22 +60,33 @@ export function defaultTierForRole(role: string): TierKey {
 }
 
 /**
- * Which tier tabs a role may open. Mirrors WorkplanController::availableViews()
+ * Which tier tabs a role may open. Mirrors WorkplanService::availableViews()
  * (the backend remains the authorisation authority for the underlying data).
+ *
+ * Strict one-tab-per-role model: each organisational level only sees its own
+ * tier. The single exception is hr_manager — the department head of HR/Admin —
+ * who may open the Managing Director workplan as well as their own
+ * departmental workplan.
  */
 export function visibleTiersForRole(role: string): TierKey[] {
   const key = (role || '').toLowerCase();
-  // Org-wide roles see every tier (mirrors WorkplanController::availableViews()).
-  if (WIDE_SCOPE_ROLES.includes(key)) {
+  // System administrator keeps org-wide oversight of every tier.
+  if (isSuperAdmin(key)) {
     return ['managing-director', 'department-head', 'section-head', 'subsection-head'];
   }
   switch (key) {
+    // HR/Admin department head: Managing Director tier + their own department.
+    case 'hr_manager':
+      return ['managing-director', 'department-head'];
+    case 'managing_director':
+      return ['managing-director'];
     case 'dept_head':
-      return ['department-head', 'section-head', 'subsection-head'];
+      return ['department-head'];
     case 'section_head':
-      return ['section-head', 'subsection-head'];
+      return ['section-head'];
     case 'sub_section_head':
       return ['subsection-head'];
+    // manager / officer — read-only departmental scope.
     default:
       return ['department-head'];
   }
