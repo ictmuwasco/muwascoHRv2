@@ -6,48 +6,33 @@ namespace App\Services\Document;
 
 use Smalot\PdfParser\Parser as PdfParser;
 use PhpOffice\PhpWord\IOFactory as PhpWordIOFactory;
-use PhpOffice\PhpWord\Element\TextRun;
 
-/**
- * DocumentParser — extract structured content from uploaded policy documents.
- *
- * Supports:
- * - PDF files (using smalot/pdfparser)
- * - DOCX files (using phpoffice/phpword)
- *
- * The parser splits content into sections based on detected headings
- * or page boundaries, creating a navigable table of contents.
- */
 class DocumentParser
 {
-    /**
-     * Parse a document and extract sections.
-     *
-     * @param string $filePath Absolute path to the document file
-     * @param string $extension File extension (pdf, docx)
-     * @return array<int, array{title: string, content: string, page_start: int|null, page_end: int|null}>
-     * @throws \InvalidArgumentException If the file cannot be parsed
-     */
     public static function parse(string $filePath, string $extension): array
     {
         if (!is_file($filePath)) {
             throw new \InvalidArgumentException('Document file not found for parsing.');
         }
 
-        return match (strtolower($extension)) {
+        $extension = strtolower($extension);
+
+        // For .doc files, try to parse as .docx (PhpWord can sometimes handle them)
+        if ($extension === 'doc') {
+            $extension = 'docx';
+        }
+
+        return match ($extension) {
             'pdf' => self::parsePdf($filePath),
             'docx' => self::parseDocx($filePath),
             default => throw new \InvalidArgumentException("Unsupported document type: {$extension}"),
         };
     }
-    /**
-     * Parse a PDF document and extract sections.
-     */
+
     private static function parsePdf(string $filePath): array
     {
         $parser = new PdfParser();
         $pdf = $parser->parseFile($filePath);
-
         $pages = $pdf->getPages();
         $sections = [];
         $currentSection = null;
@@ -56,23 +41,16 @@ class DocumentParser
         foreach ($pages as $pageNum => $page) {
             $text = $page->getText();
             $pageNumber = $pageNum + 1;
-
-            // Split text by lines to detect headings
             $lines = explode("\n", $text);
 
             foreach ($lines as $line) {
                 $line = trim($line);
-                if (empty($line)) {
-                    continue;
-                }
+                if (empty($line)) continue;
 
-                // Detect potential headings (short lines, all caps, or numbered)
                 if (self::isHeading($line)) {
-                    // Save previous section
                     if ($currentSection !== null) {
                         $sections[] = $currentSection;
                     }
-
                     $sectionIndex++;
                     $currentSection = [
                         'title' => $line,
@@ -82,11 +60,9 @@ class DocumentParser
                         'section_number' => (string) $sectionIndex,
                     ];
                 } elseif ($currentSection !== null) {
-                    // Append content to current section
                     $currentSection['content'] .= $line . "\n";
                     $currentSection['page_end'] = $pageNumber;
                 } else {
-                    // Content before first heading - create an intro section
                     $sectionIndex++;
                     $currentSection = [
                         'title' => 'Introduction',
@@ -99,12 +75,10 @@ class DocumentParser
             }
         }
 
-        // Add the last section
         if ($currentSection !== null) {
             $sections[] = $currentSection;
         }
 
-        // Clean up content
         foreach ($sections as &$section) {
             $section['content'] = trim($section['content']);
         }
@@ -112,3 +86,77 @@ class DocumentParser
         return $sections;
     }
 
+    private static function parseDocx(string $filePath): array
+    {
+        $phpWord = PhpWordIOFactory::load($filePath);
+        $sections = [];
+        $currentSection = null;
+        $sectionIndex = 0;
+
+        foreach ($phpWord->getSections() as $docSection) {
+            foreach ($docSection->getElements() as $element) {
+                $elementName = basename(str_replace('\\', '/', get_class($element)));
+                $text = '';
+
+                // Extract text from element
+                if (method_exists($element, 'getText')) {
+                    $text = $element->getText();
+                    if (is_array($text)) {
+                        $text = implode(' ', $text);
+                    }
+                }
+
+                $text = trim($text);
+                if (empty($text)) continue;
+
+                // Check if this is a heading (Heading 1, Heading 2, etc.)
+                $isHeading = str_contains($elementName, 'Heading') || str_contains($elementName, 'Title');
+
+                if ($isHeading) {
+                    if ($currentSection !== null) {
+                        $sections[] = $currentSection;
+                    }
+                    $sectionIndex++;
+                    $currentSection = [
+                        'title' => $text,
+                        'content' => '',
+                        'page_start' => 1,
+                        'page_end' => 1,
+                        'section_number' => (string) $sectionIndex,
+                    ];
+                } elseif ($currentSection !== null) {
+                    $currentSection['content'] .= $text . "\n\n";
+                } else {
+                    $sectionIndex++;
+                    $currentSection = [
+                        'title' => 'Introduction',
+                        'content' => $text . "\n\n",
+                        'page_start' => 1,
+                        'page_end' => 1,
+                        'section_number' => (string) $sectionIndex,
+                    ];
+                }
+            }
+        }
+
+        if ($currentSection !== null) {
+            $sections[] = $currentSection;
+        }
+
+        foreach ($sections as &$section) {
+            $section['content'] = trim($section['content']);
+        }
+
+        return $sections;
+    }
+
+    private static function isHeading(string $line): bool
+    {
+        $line = trim($line);
+        if (empty($line) || strlen($line) > 100) return false;
+        if (preg_match('/^(\d+\.?\s+|Chapter\s+\d+|Section\s+\d+)/i', $line)) return true;
+        if (preg_match('/^[A-Z\s\d\-\.]+$/', $line) && strlen($line) > 3) return true;
+        if (strlen($line) < 60 && str_ends_with($line, ':')) return true;
+        return false;
+    }
+}
