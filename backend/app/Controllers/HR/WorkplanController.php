@@ -299,6 +299,40 @@ class WorkplanController extends BaseController
         // anchor directly to a strategic goal/target without a departmental
         // performance contract; every other activity requires one.
         $broadCaller = $this->workplans->isBroadWorkplan($scope);
+
+        // Inherit strategic alignment from the parent objective when the
+        // activity is being created as a child of an existing one. The
+        // section/subsection head's "Add" flow links their work to a source
+        // cascaded into their unit (identical to cascadeAction), so they must
+        // not be forced to re-pick a performance contract — the contract,
+        // goal, target and cycle alignment flow down from the parent.
+        if ($parentId !== null && $contractId <= 0) {
+            $pStmt = $this->db->prepare(
+                'SELECT performance_contract_id, goal_id, strategic_target_id, cycle_ids
+                 FROM workplan_objectives
+                 WHERE id = ? AND soft_deleted = 0 LIMIT 1'
+            );
+            $pStmt->bind_param('i', $parentId);
+            $pStmt->execute();
+            $pParent = $pStmt->get_result()->fetch_assoc();
+            $pStmt->close();
+            if (!$pParent) {
+                $this->notFound('The selected source activity does not exist.');
+            }
+            if ($pParent['performance_contract_id'] !== null) {
+                $contractId = (int) $pParent['performance_contract_id'];
+            }
+            if ($goalId === null && $pParent['goal_id'] !== null) {
+                $goalId = (int) $pParent['goal_id'];
+            }
+            if ($targetId === null && $pParent['strategic_target_id'] !== null) {
+                $targetId = (int) $pParent['strategic_target_id'];
+            }
+            if ($cycleIds === '' && $pParent['cycle_ids'] !== null && $pParent['cycle_ids'] !== '') {
+                $cycleIds = (string) $pParent['cycle_ids'];
+            }
+        }
+
         if (!$broadCaller && $contractId <= 0) {
             $this->error('Performance contract, objective, kpi and measure unit are required.', 422);
         }
@@ -361,10 +395,13 @@ class WorkplanController extends BaseController
         // Derive the cascade level from the final assignment context.
         $level = $this->workplans->deriveLevel($sectionId, $subsectionId, $contractId);
 
-        // Parent linkage must exist, sit strictly above the child level and be
-        // inside the caller's organisational scope (no cross-unit re-parenting).
+        // Parent linkage must exist, be visible within the caller's organisational
+        // scope, and never create a circular chain. Relaxed level checking is used
+        // here because a section/subsection head decomposing a cascaded source into
+        // their own unit-level work is a work breakdown (same-level nesting is valid);
+        // the strict downward-only rule stays in cascadeAction for structural cascades.
         if ($parentId !== null) {
-            $parentErr = $this->workplans->validateParentLinkage($scope, $parentId, $level);
+            $parentErr = $this->workplans->validateParentLinkage($scope, $parentId, $level, null, false);
             if ($parentErr !== null) {
                 $this->error($parentErr, 403);
             }

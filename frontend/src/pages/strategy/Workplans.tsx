@@ -51,8 +51,10 @@ export default function Workplans() {
         ))}
       </div>
 
-      {/* Organisational cascade tiers — visibility mirrors backend permissions */}
-      {visibleTiers.length > 1 && (
+      {/* Organisational cascade tiers — every role sees exactly the tabs it is
+          allowed: super_admin all four, hr_manager Managing Director +
+          Department Head, everyone else only their own level. */}
+      {visibleTiers.length > 0 && (
         <div className="flex space-x-1 border-b overflow-x-auto">
           {TIER_TABS.filter((t) => visibleTiers.includes(t.key)).map((tier) => {
             const to = `/strategy/workplans/${tier.key}`;
