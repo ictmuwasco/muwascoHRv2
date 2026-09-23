@@ -36,7 +36,12 @@ interface ItemGateProps extends GateProps {
 }
 
 /** Renders children only when the user holds `<module>:<action>`. */
-export function Can({ module, action, children, fallback = null }: GateProps & { action?: string }) {
+export function Can({
+  module,
+  action,
+  children,
+  fallback = null,
+}: GateProps & { action?: string }) {
   const { can } = useAuth();
   if (!can(module, action)) return <>{fallback}</>;
   return <>{children}</>;
@@ -100,9 +105,11 @@ export function PermButton({
 }: PermButtonProps) {
   const { can, canEdit, canDelete } = useAuth();
   const allowed =
-    require === 'update' ? canEdit(module)
-    : require === 'delete' ? canDelete(module)
-    : can(module, require);
+    require === 'update'
+      ? canEdit(module)
+      : require === 'delete'
+        ? canDelete(module)
+        : can(module, require);
   if (!allowed) return null;
   return (
     <Button

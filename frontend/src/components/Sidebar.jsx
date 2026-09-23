@@ -45,14 +45,14 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const canViewAttendance = can('attendance', 'view');
   const canViewMeetings = can('meetings', 'view');
   const canViewReports = can('reports', 'view');
-  
+
   // Employees page: ONLY hr_manager or super_admin can view employee list
   // (per requirement: no role except hr_manager or super_admin should see employees)
   // We check if user has employees:create which is only granted to hr_manager/super_admin
   const canViewEmployees = canAny([
     ['employees', 'create'], // Only hr_manager and super_admin have this
   ]);
-  
+
   // HR Admin group: only for hr_admin role and hr_manager/super_admin
   // Check for hr_admin specific permissions
   const canViewHrAdmin = canAny([
@@ -61,7 +61,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     ['consent', 'view'],
     ['holidays', 'view'],
   ]);
-  
+
   // Strategy & Performance: visible to roles with appropriate permissions
   // (hr_manager, super_admin, dept_head, section_head, sub_section_head, manager)
   // These roles now have strategic_plan:view, performance_contract:view, etc.
@@ -71,7 +71,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     ['kpi', 'view'],
     ['sectional_objective', 'view'],
   ]);
-  
+
   // Workplans: visible to roles with workplan:view permission
   // (hr_manager, super_admin, dept_head, section_head, sub_section_head, manager)
   const canViewWorkplans = can('workplan', 'view');
@@ -290,7 +290,12 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
         },
       ],
     },
-    { name: 'Appraisal', href: '/appraisal', icon: Star, visible: () => can('performance', 'view') },
+    {
+      name: 'Appraisal',
+      href: '/appraisal',
+      icon: Star,
+      visible: () => can('performance', 'view'),
+    },
     ...(canViewStrategy
       ? [
           {
