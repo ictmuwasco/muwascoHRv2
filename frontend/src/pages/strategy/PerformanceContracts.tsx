@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import apiClient from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
@@ -72,6 +73,10 @@ const fmt = (d: string | null) =>
 
 export default function PerformanceContracts() {
   const location = useLocation();
+  // Phase 11 (§global rule): mutations come from the CENTRALIZED canEdit /
+  // canDelete gates on the auth context, aliased here because the component
+  // also exposes local `canEdit` / `canDelete` flags.
+  const { canEdit: canEditModule, canDelete: canDeleteModule } = useAuth();
   const [payload, setPayload] = useState<ContractPayload | null>(null);
   const [strategy, setStrategy] = useState<StrategyData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -172,7 +177,15 @@ export default function PerformanceContracts() {
     );
   }
 
-  const canManage = payload.can_manage;
+  // RBAC: only hr_manager / super_admin hold `performance_contract:manage`
+  // (super_admin holds the whole catalog by policy). Everybody else who can
+  // reach this page is strictly view-only. Delegates to the centralized
+  // mutation gate so the global rule can never drift.
+  const canEdit = canEditModule('performance_contract');
+  // Destructive controls additionally require an explicit `<module>:delete`
+  // grant — view or edit alone never renders Delete. The catalog defines no
+  // delete action for contracts, so this is always false for now.
+  const canDelete = canDeleteModule('performance_contract');
   const contracts = payload.contracts;
 
   // Legacy-parity grouping: Strategic Plan → Goal Perspective → contract rows.
@@ -200,7 +213,7 @@ export default function PerformanceContracts() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          {canManage && strategy && strategy.plans.length > 0 && (
+          {canEdit && strategy && strategy.plans.length > 0 && (
             <Button onClick={() => setForm({ open: true, mode: 'add' })}>
               <Plus className="h-4 w-4 mr-2" />
               Add Performance Contract
@@ -263,7 +276,7 @@ export default function PerformanceContracts() {
               ))}
             </select>
           </div>
-          {canManage && (
+          {canEdit && (
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Department
@@ -290,13 +303,13 @@ export default function PerformanceContracts() {
           <div className="text-center py-10">
             <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-medium">No performance contracts found</p>
-            {!canManage && (
+            {!canEdit && (
               <p className="text-sm text-gray-400 mt-1">
                 Contracts are created by HR / the PME department. You see your own department's
                 contracts.
               </p>
             )}
-            {canManage && strategy && strategy.plans.length === 0 && (
+            {canEdit && strategy && strategy.plans.length === 0 && (
               <p className="text-sm text-gray-400 mt-1">
                 Create a strategic plan first — contracts must align to one.
               </p>
@@ -407,24 +420,28 @@ export default function PerformanceContracts() {
                                   >
                                     <Eye className="h-4 w-4" />
                                   </button>
-                                  {canManage && (
+                                  {(canEdit || canDelete) && (
                                     <>
-                                      <button
-                                        className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
-                                        title="Edit"
-                                        onClick={() =>
-                                          setForm({ open: true, mode: 'edit', record: row })
-                                        }
-                                      >
-                                        <Pencil className="h-4 w-4" />
-                                      </button>
-                                      <button
-                                        className="p-1.5 rounded hover:bg-red-50 text-red-600"
-                                        title="Delete"
-                                        onClick={() => confirmDelete(row)}
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
+                                      {canEdit && (
+                                        <button
+                                          className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
+                                          title="Edit"
+                                          onClick={() =>
+                                            setForm({ open: true, mode: 'edit', record: row })
+                                          }
+                                        >
+                                          <Pencil className="h-4 w-4" />
+                                        </button>
+                                      )}
+                                      {canDelete && (
+                                        <button
+                                          className="p-1.5 rounded hover:bg-red-50 text-red-600"
+                                          title="Delete"
+                                          onClick={() => confirmDelete(row)}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      )}
                                     </>
                                   )}
                                 </div>

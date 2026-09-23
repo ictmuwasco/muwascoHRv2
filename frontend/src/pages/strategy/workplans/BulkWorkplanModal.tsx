@@ -184,6 +184,12 @@ export default function BulkWorkplanModal({
           <p className="text-xs text-gray-400 mt-1">
             Every activity below is created under this contract, then routed to its own section.
           </p>
+          {visibleContracts.length === 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              No performance contracts for your department yet — create one under Strategy →
+              Performance Contracts first.
+            </p>
+          )}
         </div>
 
         {rows.map((row, idx) => (

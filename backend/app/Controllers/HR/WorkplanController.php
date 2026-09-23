@@ -1113,7 +1113,7 @@ class WorkplanController extends BaseController
             \logger()->error('Workplan summary error', ['error' => $e->getMessage()]);
             $this->error('Failed to build the workplan summary.', 500);
         }
-        }
+    }
 
     /**
      * GET /api/workplans/section-sources — Returns only the cascaded parent
@@ -1209,8 +1209,10 @@ class WorkplanController extends BaseController
         if (!OrgScope::canManagePerformance($scope)) {
             $this->forbidden('You do not have permission to manage workplans.');
         }
-        // Cascading downward is a leadership action.
+        // Cascading downward is a leadership action. hr_manager counts as the
+        // department head of HR/Admin (role-based, never a hardcoded dept id).
         if (!$this->workplans->isBroadWorkplan($scope) && !$scope['is_dept_head']
+            && !$scope['is_hr']
             && !$scope['is_section_head'] && !$scope['is_sub_section_head']) {
             $this->forbidden('Only unit heads may cascade objectives downward.');
         }
@@ -1353,8 +1355,11 @@ class WorkplanController extends BaseController
                  planned_start_date, planned_end_date, level, created_by, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())"
         );
+        // NOTE: 19 placeholders / 19 variables — one 's' was previously extra
+        // ("...dsssssi"), which made mysqli's bind_param throw an
+        // ArgumentCountError (PHP 8) and cascade requests fail with HTTP 500.
         $stmt->bind_param(
-            'isssiisiiiiisdsssssi',
+            'isssiisiiiiisdssssi',
             $pcVal, $objective, $kpi, $measure, $sectionId, $subsectionId,
             $cycleIds, $goalId, $targetId,
             $parentId2, $officerId,
@@ -1577,7 +1582,9 @@ class WorkplanController extends BaseController
         if (!OrgScope::canManagePerformance($scope)) {
             $this->forbidden('You do not have permission to manage workplans.');
         }
-        if (!$this->workplans->isBroadWorkplan($scope) && !$scope['is_dept_head']) {
+        // hr_manager is the department head of HR/Admin (role-based) and may
+        // batch-create its departmental workplan exactly like any dept_head.
+        if (!$this->workplans->isBroadWorkplan($scope) && !$scope['is_dept_head'] && !$scope['is_hr']) {
             $this->forbidden('Only department heads may create departmental workplans.');
         }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import apiClient from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
@@ -99,6 +100,10 @@ const fmt = (d: string | null) =>
 
 export default function StrategicPlan() {
   const location = useLocation();
+  // Phase 11 (§global rule): mutations come from the CENTRALIZED canEdit /
+  // canDelete gates on the auth context. They are aliased here because the
+  // component also exposes local `canEdit` / `canDelete` flags.
+  const { canEdit: canEditModule, canDelete: canDeleteModule } = useAuth();
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -157,7 +162,16 @@ export default function StrategicPlan() {
     );
   }
 
-  const canManage = data.can_manage;
+  // RBAC (§Strategy): only hr_manager / super_admin may mutate the strategy
+  // chain — they hold `strategic_plan:manage` (super_admin holds the whole
+  // catalog by policy). Every other role able to reach this page is strictly
+  // view-only: no Add, Edit or Delete affordances are rendered. The check
+  // delegates to the centralized mutation gate so the rule can never drift.
+  const canEdit = canEditModule('strategic_plan');
+  // Destructive controls require an explicit `<module>:delete` grant — view
+  // or edit alone never renders Delete. The catalog defines no delete action
+  // for the strategy modules, so this is always false for now.
+  const canDelete = canDeleteModule('strategic_plan');
 
   return (
     <div className="space-y-6">
@@ -172,7 +186,7 @@ export default function StrategicPlan() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          {canManage && (
+          {canEdit && (
             <Button onClick={() => setModal({ type: 'plan', mode: 'add' })}>
               <Plus className="h-4 w-4 mr-2" />
               New Strategic Plan
@@ -244,7 +258,7 @@ export default function StrategicPlan() {
           <div className="text-center py-10">
             <Target className="h-12 w-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-medium">No strategic plans found</p>
-            {canManage && (
+            {canEdit && (
               <Button className="mt-3" onClick={() => setModal({ type: 'plan', mode: 'add' })}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add the first strategic plan
@@ -272,7 +286,7 @@ export default function StrategicPlan() {
               { key: 'target_count', label: 'Org. Goals' },
               { key: 'contract_count', label: 'Contracts' },
               { key: 'workplan_count', label: 'Workplans' },
-              ...(canManage
+              ...(canEdit
                 ? [
                     {
                       key: 'actions',
@@ -285,17 +299,6 @@ export default function StrategicPlan() {
                             title="Edit"
                           >
                             <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            className="p-1.5 rounded hover:bg-red-50 text-red-600"
-                            onClick={() =>
-                              confirmDelete(`"${row.name}"`, () =>
-                                apiClient.delete(`/strategic-plans/${row.id}`),
-                              )
-                            }
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       ),
@@ -313,7 +316,7 @@ export default function StrategicPlan() {
         subtitle="Strategic objectives that organise the organisational goals."
       >
         <div className="mb-4">
-          {canManage && data.plans.length > 0 && (
+          {canEdit && data.plans.length > 0 && (
             <Button variant="outline" onClick={() => setModal({ type: 'goal', mode: 'add' })}>
               <Plus className="h-4 w-4 mr-2" />
               Add Goal
@@ -336,7 +339,7 @@ export default function StrategicPlan() {
               { key: 'name', label: 'Goal / Perspective' },
               { key: 'strategic_plan_name', label: 'Strategic Plan', render: (v) => v ?? 'N/A' },
               { key: 'target_count', label: 'Organisational Goals' },
-              ...(canManage
+              ...(canEdit
                 ? [
                     {
                       key: 'actions',
@@ -349,17 +352,6 @@ export default function StrategicPlan() {
                             title="Edit"
                           >
                             <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            className="p-1.5 rounded hover:bg-red-50 text-red-600"
-                            onClick={() =>
-                              confirmDelete(`"${row.name}"`, () =>
-                                apiClient.delete(`/goals/${row.id}`),
-                              )
-                            }
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       ),
@@ -377,7 +369,7 @@ export default function StrategicPlan() {
         subtitle="Strategic targets that translate each goal into measurable objectives, owned by a department or C-SUITE."
       >
         <div className="mb-4">
-          {canManage && data.goals.length > 0 && (
+          {canEdit && data.goals.length > 0 && (
             <Button variant="outline" onClick={() => setModal({ type: 'target', mode: 'add' })}>
               <Plus className="h-4 w-4 mr-2" />
               Add Organisational Goal
@@ -418,40 +410,46 @@ export default function StrategicPlan() {
                     : 'Not set',
               },
               { key: 'contract_count', label: 'Contracts' },
-              ...(canManage
+              ...(canEdit || canDelete
                 ? [
                     {
                       key: 'actions',
                       label: 'Actions',
                       render: (_v: any, row: StrategicTarget) => (
                         <div className="flex items-center gap-2">
-                          <button
-                            className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
-                            onClick={() => setModal({ type: 'target', mode: 'edit', record: row })}
-                            title="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            disabled={Number(row.contract_count) > 0}
-                            title={
-                              Number(row.contract_count) > 0
-                                ? `Referenced by ${row.contract_count} performance contract(s)`
-                                : 'Delete'
-                            }
-                            className={`p-1.5 rounded ${
-                              Number(row.contract_count) > 0
-                                ? 'text-gray-300 cursor-not-allowed'
-                                : 'text-red-600 hover:bg-red-50'
-                            }`}
-                            onClick={() =>
-                              confirmDelete(`"${row.name}"`, () =>
-                                apiClient.delete(`/targets/${row.id}`),
-                              )
-                            }
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {canEdit && (
+                            <button
+                              className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
+                              onClick={() =>
+                                setModal({ type: 'target', mode: 'edit', record: row })
+                              }
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              disabled={Number(row.contract_count) > 0}
+                              title={
+                                Number(row.contract_count) > 0
+                                  ? `Referenced by ${row.contract_count} performance contract(s)`
+                                  : 'Delete'
+                              }
+                              className={`p-1.5 rounded ${
+                                Number(row.contract_count) > 0
+                                  ? 'text-gray-300 cursor-not-allowed'
+                                  : 'text-red-600 hover:bg-red-50'
+                              }`}
+                              onClick={() =>
+                                confirmDelete(`"${row.name}"`, () =>
+                                  apiClient.delete(`/targets/${row.id}`),
+                                )
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       ),
                     },

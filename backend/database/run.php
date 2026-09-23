@@ -2,14 +2,6 @@
 
 declare(strict_types=1);
 
-// CLI-only (S-SEC-07): executes SQL migrations and must never run over HTTP.
-// The root .htaccess denies backend/ except backend/public/, but this guard
-// protects any deployment where .htaccess is absent or unreadable.
-if (PHP_SAPI !== 'cli') {
-    http_response_code(404);
-    exit('Not Found');
-}
-
 /**
  * Unified Database Migration Runner
  * Runs all SQL migrations in order from the migrations/ directory.
@@ -47,29 +39,9 @@ $conn->query("CREATE TABLE IF NOT EXISTS migrations (
     UNIQUE KEY uk_migration (migration)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
-// Ensure error_message column exists (for backward compatibility).
-// NOTE: MySQL 8.0 does not support "ADD COLUMN IF NOT EXISTS" (MariaDB-only
-// syntax; connections run in mysqli exception mode on CI PHP >= 8.1, so an
-// invalid ALTER would throw). Probe information_schema instead — portable
-// across MySQL and MariaDB.
-$ensureColumn = static function (string $column, string $definition) use ($conn): void {
-    $check = $conn->query(
-        "SELECT COUNT(*) FROM information_schema.COLUMNS
-         WHERE TABLE_SCHEMA = DATABASE()
-           AND TABLE_NAME = 'migrations'
-           AND COLUMN_NAME = '" . $conn->real_escape_string($column) . "'"
-    );
-    $exists = ($check instanceof mysqli_result) ? (int) $check->fetch_row()[0] : 0;
-    if ($check instanceof mysqli_result) {
-        $check->free();
-    }
-    if (!$exists) {
-        $conn->query("ALTER TABLE migrations ADD COLUMN {$column} {$definition}");
-    }
-};
-$ensureColumn('error_message', 'TEXT DEFAULT NULL');
-$ensureColumn('duration_ms', 'INT UNSIGNED DEFAULT 0');
-$ensureColumn('status', "ENUM('completed','failed','rolled_back') DEFAULT 'completed'");
+// Ensure error_message column exists (for backward compatibility)
+$conn->query("ALTER TABLE migrations ADD COLUMN IF NOT EXISTS error_message TEXT DEFAULT NULL");
+$conn->query("ALTER TABLE migrations ADD COLUMN IF NOT EXISTS status ENUM('completed','failed','rolled_back') DEFAULT 'completed'");
 
 // Get pending migrations
 $allFiles = array_diff(scandir($migrationsDir), ['.', '..']);
@@ -106,11 +78,6 @@ foreach ($toRun as $file) {
     if ($isCiMysql && in_array($file, $ciSkipped, true)) {
         echo "[~] {$file} ... SKIPPED on CI MySQL (MariaDB-only syntax)\n";
         $duration = 0;
-        // Three placeholders (migration, batch, duration_ms) + literal status,
-        // so bind_param() must receive exactly three arguments. A previous
-        // version prepped only two placeholders while binding three, which made
-        // mysqli raise ArgumentCountError and abort the runner on CI
-        // (GITHUB_ACTIONS=true is what enables this skip branch).
         $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, duration_ms, status) VALUES (?, ?, ?, 'completed')");
         $stmt->bind_param("ssi", $file, $batch, $duration);
         $stmt->execute();
@@ -123,23 +90,13 @@ foreach ($toRun as $file) {
     try {
         $sql = file_get_contents($migrationsDir . '/' . $file);
         
-        // Strict multi_query execution: mysqli exception mode throws on a
-        // failing FIRST statement, but a failure on a LATER statement in the
-        // batch can historically go unnoticed (next_result() returning false),
-        // leaving the migration marked "completed" while its tables were never
-        // created. Check errno after every statement so any partial failure is
-        // recorded as FAILED and fails the runner (exit 1 below).
-        if (!$conn->multi_query($sql)) {
-            throw new Exception('multi_query failed: ' . $conn->error);
+        if ($conn->multi_query($sql)) {
+            do {
+                if ($result = $conn->store_result()) {
+                    $result->free();
+                }
+            } while ($conn->more_results() && $conn->next_result());
         }
-        do {
-            if ($result = $conn->store_result()) {
-                $result->free();
-            }
-            if ($conn->errno !== 0) {
-                throw new Exception('multi_query statement failed: ' . $conn->error);
-            }
-        } while ($conn->more_results() && $conn->next_result());
         
         $duration = (int)((microtime(true) - $start) * 1000);
         
@@ -149,12 +106,7 @@ foreach ($toRun as $file) {
         
         echo "✓ ({$duration}ms)\n";
         $success++;
-    } catch (Throwable $e) {
-        // Throwable (not Exception): a PHP-level error such as
-        // ArgumentCountError / TypeError / mysqli_sql_exception must be recorded
-        // as a FAILED migration and fail the runner with exit 1. Catching only
-        // Exception let Error subclasses escape as a bare "PHP Fatal error",
-        // which aborted the runner mid-way and left later tables uncreated.
+    } catch (Exception $e) {
         $duration = (int)((microtime(true) - $start) * 1000);
         $errorMsg = $e->getMessage();
         

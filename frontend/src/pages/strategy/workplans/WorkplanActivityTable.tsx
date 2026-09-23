@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import Badge from '../../../components/ui/Badge';
-import { GitBranch, Pencil, Trash2, Network, History } from 'lucide-react';
+import {
+  GitBranch,
+  Pencil,
+  Trash2,
+  Network,
+  History,
+  AlertCircle,
+  CheckCircle2,
+} from 'lucide-react';
 import type { WorkplanObjective } from '../../../api/services/workplanService';
 import { fmtDate, isOverdue, levelLabel, statusMeta } from './workplanMeta';
 
@@ -13,6 +21,7 @@ interface Props {
   rows: WorkplanObjective[];
   canManage: boolean;
   showOfficer?: boolean;
+  view?: 'md' | 'department' | 'section' | 'subsection';
   onEdit?(row: WorkplanObjective): void;
   onCascade?(row: WorkplanObjective): void;
   onTrace(row: WorkplanObjective): void;
@@ -96,14 +105,107 @@ const th =
 const td = 'px-4 py-3 align-top text-sm';
 
 /**
+ * Determine the cascade status of a workplan activity.
+ * Returns 'cascaded' if it has children, 'pending-cascade' if it's a department-level
+ * activity that hasn't been cascaded yet, or 'local' for section/subsection activities.
+ */
+function getCascadeStatus(
+  row: WorkplanObjective,
+  view: 'md' | 'department' | 'section' | 'subsection' = 'department',
+): 'cascaded' | 'pending-cascade' | 'local' | 'not-applicable' {
+  const children = row.children_count ?? 0;
+
+  // For department view: check if department-level activities have been cascaded
+  if (view === 'department') {
+    if (row.level === 'department') {
+      return children > 0 ? 'cascaded' : 'pending-cascade';
+    }
+    // Section/subsection activities in department view
+    if (row.level === 'section' || row.level === 'subsection') {
+      return 'local';
+    }
+  }
+
+  // For section view: check if section-level activities have been cascaded
+  if (view === 'section') {
+    if (row.level === 'section') {
+      return children > 0 ? 'cascaded' : 'pending-cascade';
+    }
+    if (row.level === 'subsection') {
+      return 'local';
+    }
+  }
+
+  // For subsection view
+  if (view === 'subsection') {
+    if (row.level === 'subsection') {
+      return children > 0 ? 'cascaded' : 'local';
+    }
+  }
+
+  return 'not-applicable';
+}
+
+/**
+ * Get color coding for cascade status.
+ */
+function getCascadeColor(status: ReturnType<typeof getCascadeStatus>): string {
+  switch (status) {
+    case 'cascaded':
+      return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 border-green-200 dark:border-green-700';
+    case 'pending-cascade':
+      return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 border-amber-200 dark:border-amber-700';
+    case 'local':
+      return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200 dark:border-blue-700';
+    default:
+      return 'bg-gray-100 text-gray-800 dark:bg-slate-700 dark:text-gray-200';
+  }
+}
+
+/**
+ * Get icon for cascade status.
+ */
+function getCascadeIcon(status: ReturnType<typeof getCascadeStatus>) {
+  switch (status) {
+    case 'cascaded':
+      return <CheckCircle2 className="h-4 w-4" />;
+    case 'pending-cascade':
+      return <AlertCircle className="h-4 w-4" />;
+    default:
+      return <GitBranch className="h-4 w-4" />;
+  }
+}
+
+/**
+ * Get tooltip text for cascade status.
+ */
+function getCascadeTooltip(
+  status: ReturnType<typeof getCascadeStatus>,
+  row: WorkplanObjective,
+): string {
+  switch (status) {
+    case 'cascaded':
+      return `Cascaded to ${row.children_count} subsection(s)`;
+    case 'pending-cascade':
+      return 'Not yet cascaded - click to cascade to sections';
+    case 'local':
+      return 'Local activity - created at this level';
+    default:
+      return 'Activity';
+  }
+}
+
+/**
  * The activity list shared by every tier: shows lineage badges
  * (Cascaded vs Local), responsible unit, timeline, inline progress and
  * per-row actions (edit / cascade / traceability / history / delete).
+ * Cascade status is colour-coded for department/section heads.
  */
 export default function WorkplanActivityTable({
   rows,
   canManage,
   showOfficer,
+  view = 'department',
   onEdit,
   onCascade,
   onTrace,
@@ -129,6 +231,7 @@ export default function WorkplanActivityTable({
             <th className={th}>{showOfficer ? 'Responsible' : 'Responsible Unit'}</th>
             <th className={th}>Timeline</th>
             <th className={th}>Progress &amp; Status</th>
+            <th className={`${th} text-center`}>Cascade Status</th>
             <th className={`${th} text-right`}>Actions</th>
           </tr>
         </thead>
@@ -198,6 +301,21 @@ export default function WorkplanActivityTable({
                 </td>
                 <td className={td}>
                   <ProgressControl row={row} canManage={canManage} onSave={onSaveProgress} />
+                </td>
+                <td className={`${td} text-center`}>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium border ${getCascadeColor(getCascadeStatus(row, view))}`}
+                    title={getCascadeTooltip(getCascadeStatus(row, view), row)}
+                  >
+                    {getCascadeIcon(getCascadeStatus(row, view))}
+                    {getCascadeStatus(row, view) === 'cascaded' &&
+                      (row.children_count ?? 0) > 0 && (
+                        <span className="ml-1">{row.children_count ?? 0}</span>
+                      )}
+                    <span className="capitalize">
+                      {getCascadeStatus(row, view).replace('-', ' ')}
+                    </span>
+                  </span>
                 </td>
                 <td className={`${td} text-right whitespace-nowrap`}>
                   <div className="inline-flex items-center gap-1">

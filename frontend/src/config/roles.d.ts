@@ -6,6 +6,7 @@ export const NO_ORG_ROLES: string[];
 export const DEPT_ONLY_ROLES: string[];
 export const SECTION_ROLES: string[];
 export const WIDE_SCOPE_ROLES: string[];
+export const WORKPLAN_DEPT_PINNED_ROLES: string[];
 export const MONITORING_ROLES: string[];
 export const SUPERVISOR_ROLES: string[];
 export const BROAD_ACCESS_ROLES: string[];
