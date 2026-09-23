@@ -43,6 +43,14 @@ class AuditService
      * truncated first-line previews.
      */
     public const MODULE_AI = 'AI';
+    // ---- System / security modules (Phase 2 governance) ----
+    public const MODULE_SYSTEM         = 'System';
+    public const MODULE_SECURITY       = 'Security';
+    // ---- System & security actions (audit surface for dangerous ops) ----
+    public const ACTION_TRUNCATE       = 'TRUNCATE';
+    public const ACTION_RUN_SEEDER     = 'RUN_SEEDER';
+    public const ACTION_RESET          = 'RESET';
+    public const ACTION_INCIDENT_STATUS= 'INCIDENT_STATUS_CHANGE';
 
     // ---- AI actions (Phase 4+) ----
     public const ACTION_AI_CHAT           = 'AI_CHAT';
@@ -103,8 +111,14 @@ class AuditService
         'token', 'access_token', 'refresh_token', 'jwt', 'authorization',
         'secret', 'api_key', 'apikey', 'client_secret', 'cookie', 'session_id',
     ];
-
     private static ?AuditService $instance = null;
+    /**
+     * Request-scoped flag: true once ANY domain layer has written an audit row
+     * during the current request. The shutdown safety-net consults this so a
+     * mutation that already produced a semantic audit entry is never logged twice.
+     * The singleton is per-request (CLI/FPM), so this resets at the start of every request.
+     */
+    private static bool $loggedThisRequest = false;
 
     private function __construct() {}
 
@@ -166,7 +180,9 @@ class AuditService
                 'created_at'         => date('Y-m-d H:i:s'),
             ];
 
-            return db()->insert('audit_logs', $data);
+            $inserted = db()->insert('audit_logs', $data);
+            self::$loggedThisRequest = true;
+            return $inserted;
         } catch (\Throwable $e) {
             error_log('[AuditService] Failed to write audit log: ' . $e->getMessage());
             return null;
@@ -483,6 +499,182 @@ class AuditService
 
         $where = empty($clauses) ? '' : ' WHERE ' . implode(' AND ', $clauses);
         return [$where, $types, $params];
+    }
+
+    /**
+     * Safety-net audit writer (governance catch-all).
+     *
+     * Guarantees NO authenticated state-changing request escapes the audit
+     * trail: if no domain layer called log() during this request, a generic
+     * row is written at shutdown. This "plugs in" every currently-unaudited and
+     * every future mutation with zero per-controller effort — audit coverage is
+     * total by construction.
+     *
+     * Conservative by design:
+     *   - skip unauthenticated requests (login/logout/refresh — no actor yet)
+     *   - skip when no route matched (no controller ran)
+     *   - skip GET/HEAD/OPTIONS
+     *   - skip 4xx outcomes (validation/forbidden/not-found: no committed change)
+     *   - persist only 2xx (committed) and 5xx (failed change) outcomes
+     *   - never double-log when a domain layer already audited this request
+     *
+     * Failures are swallowed — telemetry must never break a request.
+     */
+    public static function recordUncoveredMutation(): ?int
+    {
+        try {
+            $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+            if (!in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
+                return null;
+            }
+
+            $userId = \App\Helpers\Auth::getInstance()->id();
+            if ($userId <= 0) {
+                return null; // login/logout/refresh — no authenticated actor yet
+            }
+
+            if (self::$loggedThisRequest) {
+                return null; // a domain layer already wrote a semantic audit row
+            }
+
+            $code = http_response_code();
+            if ($code === false) {
+                return null;
+            }
+            if ($code >= 400 && $code < 500) {
+                return null; // validation / forbidden / not-found — no committed change
+            }
+
+            $route = \ApiRouter::currentRoute();
+            if ($route === null) {
+                return null; // unmatched route — no controller ran
+            }
+
+            // Delegate the row insert to log() (which also flips the flag).
+            $module   = self::deriveModuleFromRoute($route);
+            $action   = self::httpMethodToAction($method);
+            $target   = self::controllerShortName($route['controller'] ?? '');
+            $targetId = self::extractTargetId($route);
+
+            return self::getInstance()->log(
+                $module,
+                $action,
+                sprintf(
+                    'Uncovered %s on %s (route safety-net) - %s',
+                    strtoupper($method),
+                    $route['path'] ?? '',
+                    $code >= 500 ? 'server error, change may not have committed' : 'completed'
+                ),
+                [
+                    'target_type' => $target,
+                    'target_id'   => $targetId,
+                    'status'      => $code >= 500 ? self::STATUS_FAILED : self::STATUS_SUCCESS,
+                    'metadata'    => [
+                        'route_path'          => $route['path'] ?? null,
+                        'route_action'        => $route['action'] ?? null,
+                        'controller'          => $route['controller'] ?? null,
+                        'required_permission' => $route['permission'] ?? null,
+                        'response_status'     => $code,
+                        'note'                => 'Generic audit: no domain-specific log written this request.',
+                    ],
+                ]
+            );
+        } catch (\Throwable $e) {
+            error_log('[AuditService] safety-net failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /** Whether any audit row (domain or safety-net) was written this request. */
+    public static function wasLoggedThisRequest(): bool
+    {
+        return self::$loggedThisRequest;
+    }
+
+    private static function httpMethodToAction(string $method): string
+    {
+        return match (strtoupper($method)) {
+            'POST'         => self::ACTION_CREATE,
+            'PUT', 'PATCH' => self::ACTION_UPDATE,
+            'DELETE'       => self::ACTION_DELETE,
+            default        => self::ACTION_STATUS_CHANGE,
+        };
+    }
+
+    private static function controllerShortName(string $fqcn): string
+    {
+        if ($fqcn === '') {
+            return 'Endpoint';
+        }
+        $short = substr(strrchr('\\' . $fqcn, '\\'), 1) ?: $fqcn;
+        $short = preg_replace('/Controller$/', '', $short);
+        return $short ?: 'Endpoint';
+    }
+
+    private static function deriveModuleFromRoute(array $route): string
+    {
+        if (!empty($route['permission'])) {
+            $parts = explode(':', (string) $route['permission'], 2);
+            if (!empty($parts[0])) {
+                return self::moduleLabel($parts[0]);
+            }
+        }
+        return self::moduleLabel(self::controllerShortName($route['controller'] ?? ''));
+    }
+
+    /** Map RBAC module key / controller short-name to the audit module vocabulary. */
+    private static function moduleLabel(string $raw): string
+    {
+        $map = [
+            'employees'              => 'Employees',
+            'departments'            => 'Departments',
+            'holidays'               => 'Holidays',
+            'leave'                  => 'Leave',
+            'attendance'             => 'Attendance',
+            'reports'                => 'Reports',
+            'settings'               => 'Settings',
+            'audit'                  => 'Audit',
+            'users'                  => 'Users',
+            'dashboard'              => 'Dashboard',
+            'meetings'               => 'Meetings',
+            'complaints'             => 'Complaints',
+            'consent'                => 'Consent',
+            'financial_year'         => 'FinancialYear',
+            'payroll'                => 'Payroll',
+            'strategic_plan'         => 'Performance',
+            'performance_contract'   => 'Performance',
+            'kpi'                    => 'KPIs',
+            'sectional_objective'    => 'Performance',
+            'delegations'            => 'Delegations',
+            'system'                 => 'System',
+            'system_errors'          => 'System',
+            'security'               => 'Security',
+            'hr_policies'            => 'HR Policies',
+            'profile'                => 'Profile',
+            'ai'                     => 'AI',
+            'permission_overrides'   => 'Settings',
+            'notifications'          => 'Notifications',
+            'notification_preferences' => 'Notifications',
+            'push'                   => 'Notifications',
+        ];
+        $key = strtolower($raw);
+        return $map[$key] ?? ucfirst($raw);
+    }
+
+    private static function extractTargetId(array $route): ?int
+    {
+        $params = \ApiRouter::currentRouteParams();
+        if (is_array($params) && array_key_exists('id', $params)) {
+            $id = $params['id'];
+            if ($id !== null && $id !== '' && ctype_digit((string) $id)) {
+                return (int) $id;
+            }
+        }
+        $path = $route['path'] ?? '';
+        if (preg_match('#(\d+)/?$#', $path, $m)) {
+            return (int) $m[1];
+        }
+        return null;
     }
 
     private function __clone(): void {}

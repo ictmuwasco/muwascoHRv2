@@ -49,9 +49,10 @@ for the per-entry rationale).
 | DELETE | `/users/{id}` | users:delete | 30:300 | users:delete (RBAC: users) |
 | PUT | `/users/{id}/toggle-status` | users:edit | 30:300 | users:edit (RBAC: users) |
 | POST | `/users/{id}/change-password` | users:edit | 10:900 | users:edit (RBAC: users) |
+| GET | `/roles` | — | — | authenticated-only — allowlist group: reference_data |
 | GET | `/attendance/today` | attendance:view | — | attendance:view (RBAC: attendance) |
 | GET | `/attendance/dashboard` | attendance:view | — | attendance:view (RBAC: attendance) |
-| GET | `/attendance/hr-dashboard` | attendance:view | — | attendance:view (RBAC: attendance) |
+| GET | `/attendance/hr-dashboard` | attendance:manage | — | attendance:manage (RBAC: attendance) |
 | GET | `/attendance/hr-employee-history` | attendance:view | — | attendance:view (RBAC: attendance) |
 | GET | `/attendance/my-records` | attendance:view | — | attendance:view (RBAC: attendance) |
 | GET | `/attendance/employee/{id}` | attendance:view | — | attendance:view (RBAC: attendance) |
@@ -73,6 +74,13 @@ for the per-entry rationale).
 | PUT | `/leave/{id}/reject` | leave:reject | 120:300 | leave:reject (RBAC: leave) |
 | PUT | `/leave/{id}/invalidate` | leave:invalidate | 120:300 | leave:invalidate (RBAC: leave) |
 | PUT | `/leave/{id}/cancel` | leave:apply | 120:300 | leave:apply (RBAC: leave) |
+| GET | `/delegations/eligible-delegates` | delegations:create | 60:300 | delegations:create (RBAC: delegations) |
+| GET | `/delegations/delegatable-permissions` | delegations:create | 60:300 | delegations:create (RBAC: delegations) |
+| GET | `/delegations` | delegations:view | — | delegations:view (RBAC: delegations) |
+| POST | `/delegations` | delegations:create | 20:300 | delegations:create (RBAC: delegations) |
+| PUT | `/delegations/{id}/approve` | delegations:approve | 60:300 | delegations:approve (RBAC: delegations) |
+| PUT | `/delegations/{id}/reject` | delegations:approve | 60:300 | delegations:approve (RBAC: delegations) |
+| PUT | `/delegations/{id}/cancel` | delegations:cancel | 60:300 | delegations:cancel (RBAC: delegations) |
 | GET | `/leave/profile/employees` | leave:view | — | leave:view (RBAC: leave) |
 | GET | `/leave/profile/{id}` | leave:view | — | leave:view (RBAC: leave) |
 | GET | `/leave/profile/{id}/balances` | leave:view | — | leave:view (RBAC: leave) |
@@ -80,23 +88,25 @@ for the per-entry rationale).
 | GET | `/leave/profile/{id}/timeline` | leave:view | — | leave:view (RBAC: leave) |
 | GET | `/leave/profile/{id}/summary` | leave:view | — | leave:view (RBAC: leave) |
 | GET | `/leave/profile/{id}/export` | leave:view | 20:300 | leave:view (RBAC: leave) |
-| GET | `/leave/roster/stats` | leave:view | — | leave:view (RBAC: leave) |
-| GET | `/leave/roster/distribution` | leave:view | — | leave:view (RBAC: leave) |
-| GET | `/leave/roster/upcoming` | leave:view | — | leave:view (RBAC: leave) |
-| GET | `/leave/roster/departments` | leave:view | — | leave:view (RBAC: leave) |
-| GET | `/leave/roster/matrix` | leave:view | — | leave:view (RBAC: leave) |
-| GET | `/leave/roster/export` | leave:manage | 20:300 | leave:manage (RBAC: leave) |
-| GET | `/leave/roster/employees` | leave:view | — | leave:view (RBAC: leave) |
+| GET | `/leave/roster/stats` | leave:roster | — | leave:roster (RBAC: leave) |
+| GET | `/leave/roster/distribution` | leave:roster | — | leave:roster (RBAC: leave) |
+| GET | `/leave/roster/upcoming` | leave:roster | — | leave:roster (RBAC: leave) |
+| GET | `/leave/roster/departments` | leave:roster | — | leave:roster (RBAC: leave) |
+| GET | `/leave/roster/matrix` | leave:roster | — | leave:roster (RBAC: leave) |
+| GET | `/leave/roster/export` | leave:roster | 20:300 | leave:roster (RBAC: leave) |
+| GET | `/leave/roster/employees` | leave:roster | — | leave:roster (RBAC: leave) |
 | GET | `/leave/roster/financial-years` | leave:view | — | leave:view (RBAC: leave) |
-| GET | `/leave/roster` | leave:view | — | leave:view (RBAC: leave) |
-| POST | `/leave/roster` | leave:manage | — | leave:manage (RBAC: leave) |
-| PUT | `/leave/roster/{id}` | leave:manage | — | leave:manage (RBAC: leave) |
-| DELETE | `/leave/roster/{id}` | leave:manage | — | leave:manage (RBAC: leave) |
+| GET | `/leave/roster` | leave:roster | — | leave:roster (RBAC: leave) |
+| POST | `/leave/roster` | leave:roster | — | leave:roster (RBAC: leave) |
+| PUT | `/leave/roster/{id}` | leave:roster | — | leave:roster (RBAC: leave) |
+| DELETE | `/leave/roster/{id}` | leave:roster | — | leave:roster (RBAC: leave) |
 | GET | `/dashboard` | dashboard:view | — | dashboard:view (RBAC: dashboard) |
 | GET | `/dashboard/stats` | dashboard:view | — | dashboard:view (RBAC: dashboard) |
-| GET | `/dashboard/charts/attendance` | dashboard:view | — | dashboard:view (RBAC: dashboard) |
-| GET | `/dashboard/charts/departments` | dashboard:view | — | dashboard:view (RBAC: dashboard) |
-| GET | `/dashboard/charts/leave` | dashboard:view | — | dashboard:view (RBAC: dashboard) |
+| GET | `/dashboard/charts/attendance` | dashboard:hr_insights | — | dashboard:hr_insights (RBAC: dashboard) |
+| GET | `/dashboard/charts/departments` | dashboard:hr_insights | — | dashboard:hr_insights (RBAC: dashboard) |
+| GET | `/dashboard/charts/leave` | dashboard:hr_insights | — | dashboard:hr_insights (RBAC: dashboard) |
+| GET | `/dashboard/hr-insights` | dashboard:hr_insights | — | dashboard:hr_insights (RBAC: dashboard) |
+| GET | `/dashboard/my-pending-leaves` | dashboard:view | — | dashboard:view (RBAC: dashboard) |
 | GET | `/reports/employees` | reports:view | — | reports:view (RBAC: reports) |
 | GET | `/reports/leave` | reports:view | — | reports:view (RBAC: reports) |
 | GET | `/reports/attendance` | reports:view | — | reports:view (RBAC: reports) |
@@ -147,11 +157,11 @@ for the per-entry rationale).
 | GET | `/admin/financial-years/employees` | financial_year:edit | — | financial_year:edit (RBAC: financial_year) |
 | GET | `/appraisals` | performance:view | — | performance:view (RBAC: performance) |
 | POST | `/appraisals` | performance:manage | — | performance:manage (RBAC: performance) |
+| GET | `/appraisals/pending` | performance:view | — | performance:view (RBAC: performance) |
+| GET | `/appraisals/employee/{id}` | performance:view | — | performance:view (RBAC: performance) |
 | GET | `/appraisals/{id}` | performance:view | — | performance:view (RBAC: performance) |
 | PUT | `/appraisals/{id}` | performance:manage | — | performance:manage (RBAC: performance) |
 | DELETE | `/appraisals/{id}` | performance:manage | — | performance:manage (RBAC: performance) |
-| GET | `/appraisals/pending` | performance:view | — | performance:view (RBAC: performance) |
-| GET | `/appraisals/employee/{id}` | performance:view | — | performance:view (RBAC: performance) |
 | PUT | `/appraisals/{id}/submit` | performance:manage | — | performance:manage (RBAC: performance) |
 | PUT | `/appraisals/{id}/approve` | performance:manage | — | performance:manage (RBAC: performance) |
 | GET | `/strategic-plans` | strategic_plan:view | — | strategic_plan:view (RBAC: strategic_plan) |
@@ -170,9 +180,9 @@ for the per-entry rationale).
 | PUT | `/performance-contracts/{id}` | performance_contract:manage | — | performance_contract:manage (RBAC: performance_contract) |
 | DELETE | `/performance-contracts/{id}` | performance_contract:manage | — | performance_contract:manage (RBAC: performance_contract) |
 | GET | `/appraisal-cycles` | — | — | authenticated-only — allowlist group: reference_data |
-| POST | `/appraisal-cycles` | performance:cycles | — | performance:cycles (RBAC: performance) — migration 039 |
-| PUT | `/appraisal-cycles/{id}` | performance:cycles | — | performance:cycles (RBAC: performance) — migration 039 |
-| DELETE | `/appraisal-cycles/{id}` | performance:cycles | — | performance:cycles (RBAC: performance) — migration 039 |
+| POST | `/appraisal-cycles` | performance:cycles | — | performance:cycles (RBAC: performance) |
+| PUT | `/appraisal-cycles/{id}` | performance:cycles | — | performance:cycles (RBAC: performance) |
+| DELETE | `/appraisal-cycles/{id}` | performance:cycles | — | performance:cycles (RBAC: performance) |
 | GET | `/strategic-plans/{id}/workplans` | workplan:view | — | workplan:view (RBAC: workplan) |
 | GET | `/workplans` | workplan:view | — | workplan:view (RBAC: workplan) |
 | POST | `/workplans` | workplan:manage | — | workplan:manage (RBAC: workplan) |
@@ -225,10 +235,15 @@ for the per-entry rationale).
 | GET | `/profile/documents/{id}` | — | — | authenticated-only — allowlist group: self_service |
 | GET | `/profile/documents/{id}/view` | — | — | authenticated-only — allowlist group: self_service |
 | DELETE | `/profile/documents/{id}` | profile:edit | — | profile:edit (RBAC: profile) |
+| GET | `/profile/contracts` | profile:view | — | profile:view (RBAC: profile) |
+| POST | `/profile/contracts/{id}/renew` | profile:edit | 20:300 | profile:edit (RBAC: profile) |
 | POST | `/profile/profile-image` | profile:edit | 20:300 | profile:edit (RBAC: profile) |
 | GET | `/profile/profile-image` | profile:view | — | profile:view (RBAC: profile) |
 | POST | `/employees/{id}/profile-image` | employees:edit | 20:300 | employees:edit (RBAC: employees) |
 | GET | `/employees/{id}/profile-image` | employees:view | — | employees:view (RBAC: employees) |
+| GET | `/employees/{id}/contracts` | employees:view | — | employees:view (RBAC: employees) |
+| POST | `/employees/{id}/contracts/{contractId}/renew` | employees:edit | 20:300 | employees:edit (RBAC: employees) |
+| POST | `/employees/{id}/convert-to-permanent` | employees:edit | 20:300 | employees:edit (RBAC: employees) |
 | GET | `/permissions/catalog` | permission_overrides:view | — | permission_overrides:view (RBAC: permission_overrides) |
 | GET | `/permissions/statistics` | permission_overrides:view | — | permission_overrides:view (RBAC: permission_overrides) |
 | GET | `/permissions/roles` | permission_overrides:view | — | permission_overrides:view (RBAC: permission_overrides) |
@@ -238,9 +253,9 @@ for the per-entry rationale).
 | POST | `/permissions/users/{id}/overrides` | permission_overrides:manage | 30:300 | permission_overrides:manage (RBAC: permission_overrides) |
 | DELETE | `/permissions/users/{id}/overrides` | permission_overrides:manage | 30:300 | permission_overrides:manage (RBAC: permission_overrides) |
 | GET | `/my-meetings` | meetings:view | — | meetings:view (RBAC: meetings) |
-| GET | `/meetings` | meetings:view | — | meetings:view (RBAC: meetings) |
-| GET | `/meetings/stats` | meetings:view | — | meetings:view (RBAC: meetings) |
-| GET | `/meetings/eligible-employees` | meetings:view | — | meetings:view (RBAC: meetings) |
+| GET | `/meetings` | meetings:create | — | meetings:create (RBAC: meetings) |
+| GET | `/meetings/stats` | meetings:dashboard | — | meetings:dashboard (RBAC: meetings) |
+| GET | `/meetings/eligible-employees` | meetings:create | — | meetings:create (RBAC: meetings) |
 | POST | `/meetings` | meetings:create | — | meetings:create (RBAC: meetings) |
 | GET | `/meetings/{id}` | meetings:view | — | meetings:view (RBAC: meetings) |
 | PUT | `/meetings/{id}` | meetings:edit | — | meetings:edit (RBAC: meetings) |
@@ -275,6 +290,57 @@ for the per-entry rationale).
 | POST | `/system/client-errors` | — | — | PUBLIC — pre-login browser error collector |
 | GET | `/system/performance` | system_errors:view | — | system_errors:view (RBAC: system_errors) |
 | GET | `/system/health` | system_errors:view | — | system_errors:view (RBAC: system_errors) |
+| POST | `/ai/chat` | — | 30:300 | authenticated-only — allowlist group: ai_assistant |
+| GET | `/ai/conversations/{id}` | — | — | authenticated-only — allowlist group: ai_assistant |
+| POST | `/ai/conversations/{id}/clear` | — | 30:300 | authenticated-only — allowlist group: ai_assistant |
+| POST | `/ai/feedback` | — | 60:300 | authenticated-only — allowlist group: ai_assistant |
+| GET | `/system/query-log/statistics` | system:view | — | system:view (RBAC: system) |
+| GET | `/system/query-log/slow` | system:view | — | system:view (RBAC: system) |
+| GET | `/system/query-log` | system:view | — | system:view (RBAC: system) |
+| POST | `/system/query-log/reset` | system:view | — | system:view (RBAC: system) |
+| GET | `/system/seeders` | system:view | — | system:view (RBAC: system) |
+| POST | `/system/seeders/run` | system:view | — | system:view (RBAC: system) |
+| POST | `/system/seeders/run/{name}` | system:view | — | system:view (RBAC: system) |
+| POST | `/system/seeders/truncate/{table}` | system:view | — | system:view (RBAC: system) |
+| GET | `/system/seeders/status/{table}` | system:view | — | system:view (RBAC: system) |
+| GET | `/security/overview` | security:view | — | security:view (RBAC: security) |
+| GET | `/security/events` | security:view | 60:300 | security:view (RBAC: security) |
+| GET | `/security/events/{id}` | security:view | — | security:view (RBAC: security) |
+| GET | `/security/incidents` | security:view | 60:300 | security:view (RBAC: security) |
+| GET | `/security/incidents/{id}` | security:view | — | security:view (RBAC: security) |
+| GET | `/security/threats` | security:view | — | security:view (RBAC: security) |
+| GET | `/security/posture` | security:view | — | security:view (RBAC: security) |
+| GET | `/security/endpoints` | security:view | — | security:view (RBAC: security) |
+| GET | `/security/activity/{userId}` | security:investigate | — | security:investigate (RBAC: security) |
+| GET | `/security/vulnerabilities` | security:view | — | security:view (RBAC: security) |
+| GET | `/security/ai/threats` | security:investigate | — | security:investigate (RBAC: security) |
+| POST | `/security/ai/analyze` | security:investigate | 60:300 | security:investigate (RBAC: security) |
+| POST | `/security/ai/copilot` | security:investigate | 30:300 | security:investigate (RBAC: security) |
+| POST | `/security/incidents/{id}/resolve` | security:manage | 30:300 | security:manage (RBAC: security) |
+| POST | `/security/incidents/{id}/false-positive` | security:manage | 30:300 | security:manage (RBAC: security) |
+| POST | `/security/incidents/{id}/investigate` | security:investigate | 30:300 | security:investigate (RBAC: security) |
+| POST | `/security/incidents/{id}/contain` | security:manage | 30:300 | security:manage (RBAC: security) |
+| GET | `/hr-policies/current` | hr_policies:view | — | hr_policies:view (RBAC: hr_policies) |
+| GET | `/hr-policies/search` | hr_policies:view | — | hr_policies:view (RBAC: hr_policies) |
+| GET | `/hr-policies/bookmarks` | hr_policies:view | — | hr_policies:view (RBAC: hr_policies) |
+| POST | `/hr-policies/bookmarks` | hr_policies:view | 30:300 | hr_policies:view (RBAC: hr_policies) |
+| DELETE | `/hr-policies/bookmarks/{sectionId}` | hr_policies:view | 30:300 | hr_policies:view (RBAC: hr_policies) |
+| GET | `/hr-policies/recent` | hr_policies:view | — | hr_policies:view (RBAC: hr_policies) |
+| GET | `/hr-policies/sections/{id}` | hr_policies:view | — | hr_policies:view (RBAC: hr_policies) |
+| GET | `/hr-policies` | hr_policies:view | — | hr_policies:view (RBAC: hr_policies) |
+| GET | `/hr-policies/{id}` | hr_policies:view | — | hr_policies:view (RBAC: hr_policies) |
+| GET | `/hr-policies/{id}/sections` | hr_policies:view | — | hr_policies:view (RBAC: hr_policies) |
+| GET | `/hr-policies/{id}/file` | hr_policies:view | — | hr_policies:view (RBAC: hr_policies) |
+| POST | `/hr-policies/{id}/acknowledge` | hr_policies:acknowledge | 20:300 | hr_policies:acknowledge (RBAC: hr_policies) |
+| GET | `/settings/hr-policies` | hr_policies:manage | — | hr_policies:manage (RBAC: hr_policies) |
+| POST | `/settings/hr-policies` | hr_policies:manage | 30:300 | hr_policies:manage (RBAC: hr_policies) |
+| PUT | `/settings/hr-policies/{id}` | hr_policies:manage | 20:300 | hr_policies:manage (RBAC: hr_policies) |
+| POST | `/settings/hr-policies/{id}/status` | hr_policies:manage | 20:300 | hr_policies:manage (RBAC: hr_policies) |
+| POST | `/settings/hr-policies/{id}/publish` | hr_policies:publish | 10:300 | hr_policies:publish (RBAC: hr_policies) |
+| POST | `/settings/hr-policies/{id}/archive` | hr_policies:manage | 10:300 | hr_policies:manage (RBAC: hr_policies) |
+| DELETE | `/settings/hr-policies/{id}` | hr_policies:manage | 10:300 | hr_policies:manage (RBAC: hr_policies) |
+| GET | `/settings/hr-policies/{id}/history` | hr_policies:manage | — | hr_policies:manage (RBAC: hr_policies) |
+| GET | `/settings/hr-policies/{id}/acknowledgements` | hr_policies:manage | — | hr_policies:manage (RBAC: hr_policies) |
 
 ## Notes
 

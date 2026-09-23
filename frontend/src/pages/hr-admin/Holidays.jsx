@@ -5,6 +5,7 @@ import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import { PermButton } from '../../components/ui/PermissionGate';
 
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 
@@ -105,14 +106,14 @@ const Holidays = () => {
       label: 'Actions',
       render: (_, row) => (
         <div className="flex items-center space-x-2">
-          <Button variant="outline" size="sm" onClick={() => handleEdit(row)}>
+          <PermButton module="holidays" require="edit" variant="outline" size="sm" onClick={() => handleEdit(row)}>
             <Pencil className="h-3 w-3 mr-1" />
             Edit
-          </Button>
-          <Button variant="danger" size="sm" onClick={() => handleDelete(row.id)}>
+          </PermButton>
+          <PermButton module="holidays" require="delete" variant="danger" size="sm" onClick={() => handleDelete(row.id)}>
             <Trash2 className="h-3 w-3 mr-1" />
             Delete
-          </Button>
+          </PermButton>
         </div>
       ),
     },
@@ -135,7 +136,9 @@ const Holidays = () => {
           <h1 className="text-2xl font-bold text-gray-900">Holidays</h1>
           <p className="text-gray-500">Manage public holidays</p>
         </div>
-        <Button
+        <PermButton
+          module="holidays"
+          require="create"
           onClick={() => {
             setShowForm(true);
             setEditingId(null);
@@ -144,7 +147,7 @@ const Holidays = () => {
         >
           <Plus className="h-4 w-4 mr-2" />
           Add Holiday
-        </Button>
+        </PermButton>
       </div>
 
       {error && (
