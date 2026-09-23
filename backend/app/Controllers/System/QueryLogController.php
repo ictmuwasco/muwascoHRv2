@@ -6,12 +6,13 @@ namespace App\Controllers\System;
 
 use App\Controllers\BaseController;
 use App\Database\QueryLogger;
+use App\Services\AuditService;
 
 /**
  * Query Log Controller
- * 
+ *
  * REST API for query performance monitoring.
- * Requires 'system:view' permission.
+ * Requires 'system:view' permission (reads); reset requires 'system:manage'.
  */
 class QueryLogController extends BaseController
 {
@@ -53,12 +54,27 @@ class QueryLogController extends BaseController
 
     /**
      * POST /api/system/query-log/reset
+     *
+     * Mutation (clears in-memory query metrics) — requires system:manage and
+     * is audited explicitly; the route-level safety-net audit does not apply
+     * because this is not a domain-data change.
      */
     public function reset(): void
     {
-        $this->requirePermission('system', 'view');
-        
+        $this->requirePermission('system', 'manage');
+
         QueryLogger::reset();
+
+        AuditService::getInstance()->log(
+            AuditService::MODULE_SYSTEM,
+            AuditService::ACTION_RESET,
+            'Query log metrics reset',
+            [
+                'target_type' => 'QueryLog',
+                'metadata'    => ['component' => 'QueryLogger'],
+            ]
+        );
+
         $this->success(null, 'Query log reset');
     }
 }

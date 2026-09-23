@@ -27,6 +27,8 @@ export const useAuth = () => {
       isAuthenticated: false,
       can: () => false,
       canAny: () => false,
+      canEdit: () => false,
+      canDelete: () => false,
       hasRole: () => false,
       login: async () => ({
         success: false,
@@ -269,6 +271,38 @@ export const AuthProvider = ({ children }) => {
     return pairs.some(([module, action]) => can(module, action));
   };
 
+  /**
+   * Centralized MUTATION rule (mandatory across every page).
+   *
+   * Viewing is never enough to mutate: a user who only holds `<module>:view`
+   * must NOT see Edit affordances. Modules either declare an explicit `edit`
+   * action (employees, departments, ...) or use `manage` as their single
+   * write action (strategic_plan, performance_contract, kpi,
+   * sectional_objective, ...). Both are honoured here so pages never have to
+   * hand-roll the check.
+   *
+   * @param {string} module catalog module key, e.g. 'employees'
+   * @returns {boolean}
+   */
+  const canEdit = (module) =>
+    can(module, 'edit') || canAny([
+      [module, 'manage'],
+      [module, 'update'],
+    ]);
+
+  /**
+   * Centralized DESTRUCTION rule (mandatory across every page).
+   *
+   * Delete is a strictly separate grant: holding view — or even view + edit —
+   * never renders a Delete affordance. Only an explicit `<module>:delete`
+   * grant unlocks it (modules that expose no `delete` action, such as the
+   * strategy chain, therefore never render Delete at all).
+   *
+   * @param {string} module catalog module key, e.g. 'employees'
+   * @returns {boolean}
+   */
+  const canDelete = (module) => can(module, 'delete');
+
   const value = {
     user,
     login,
@@ -277,6 +311,8 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: !!user,
     can,
     canAny,
+    canEdit,
+    canDelete,
     hasRole,
     refreshPermissions,
   };
