@@ -131,6 +131,13 @@ export default function TierWorkplanPage({
   const rows = tier.list?.workplans ?? [];
   const pagination = tier.list?.pagination ?? null;
   const canManage = !!tier.list?.can_manage;
+  // Cascade always targets a strictly-lower level (md -> department -> section
+  // -> subsection). The subsection tier has nothing below it: the backend pins
+  // a subsection head to their own unit, so a cascade child would be
+  // subsection-under-subsection and is rejected by validateParentLinkage()
+  // with 403. Subsection heads assign work through the Add / Edit forms
+  // (responsible officer) instead, so the per-row cascade action is hidden.
+  const cascadeEnabled = view !== 'subsection';
 
   const visibleRows = rows;
 
@@ -354,7 +361,9 @@ export default function TierWorkplanPage({
         view={view}
         onSaveProgress={saveProgress}
         onEdit={(row) => setForm({ open: true, mode: 'edit', record: row })}
-        onCascade={(row) => setCascadeParent(row)}
+        {...(cascadeEnabled
+          ? { onCascade: (row: WorkplanObjective) => setCascadeParent(row) }
+          : {})}
         onTrace={(row) => setTraceId(row.id)}
         onHistory={(row) => setHistoryId(row.id)}
         onDelete={deleteRow}
