@@ -3,6 +3,7 @@ import api from '../../utils/api';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
+import { CanEdit, CanDelete, CanCreate } from '../../components/ui/PermissionGate';
 import { Plus, Edit2, Trash2 } from 'lucide-react';
 
 const Departments = () => {
@@ -248,20 +249,24 @@ const Departments = () => {
         if (!row || !row.id) return null;
         return (
           <div className="flex gap-2">
-            <button
-              onClick={() => handleEditDepartment(row)}
-              className="text-blue-600 hover:text-blue-800"
-              title="Edit"
-            >
-              <Edit2 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => handleDeleteDepartment(row.id)}
-              className="text-red-600 hover:text-red-800"
-              title="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <CanEdit module="departments">
+              <button
+                onClick={() => handleEditDepartment(row)}
+                className="text-blue-600 hover:text-blue-800"
+                title="Edit"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+            </CanEdit>
+            <CanDelete module="departments">
+              <button
+                onClick={() => handleDeleteDepartment(row.id)}
+                className="text-red-600 hover:text-red-800"
+                title="Delete"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </CanDelete>
           </div>
         );
       },
@@ -283,20 +288,24 @@ const Departments = () => {
         if (!row || !row.id) return null;
         return (
           <div className="flex gap-2">
-            <button
-              onClick={() => handleEditSection(row)}
-              className="text-blue-600 hover:text-blue-800"
-              title="Edit"
-            >
-              <Edit2 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => handleDeleteSection(row.id)}
-              className="text-red-600 hover:text-red-800"
-              title="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <CanEdit module="departments">
+              <button
+                onClick={() => handleEditSection(row)}
+                className="text-blue-600 hover:text-blue-800"
+                title="Edit"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+            </CanEdit>
+            <CanDelete module="departments">
+              <button
+                onClick={() => handleDeleteSection(row.id)}
+                className="text-red-600 hover:text-red-800"
+                title="Delete"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </CanDelete>
           </div>
         );
       },
@@ -318,20 +327,24 @@ const Departments = () => {
         if (!row || !row.id) return null;
         return (
           <div className="flex gap-2">
-            <button
-              onClick={() => handleEditSubsection(row)}
-              className="text-blue-600 hover:text-blue-800"
-              title="Edit"
-            >
-              <Edit2 className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => handleDeleteSubsection(row.id)}
-              className="text-red-600 hover:text-red-800"
-              title="Delete"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <CanEdit module="departments">
+              <button
+                onClick={() => handleEditSubsection(row)}
+                className="text-blue-600 hover:text-blue-800"
+                title="Edit"
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+            </CanEdit>
+            <CanDelete module="departments">
+              <button
+                onClick={() => handleDeleteSubsection(row.id)}
+                className="text-red-600 hover:text-red-800"
+                title="Delete"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </CanDelete>
           </div>
         );
       },
@@ -357,15 +370,17 @@ const Departments = () => {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-800">Departments</h2>
-          <Button
-            onClick={() => {
-              resetDeptForm();
-              setShowDeptModal(true);
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Department
-          </Button>
+          <CanCreate module="departments">
+            <Button
+              onClick={() => {
+                resetDeptForm();
+                setShowDeptModal(true);
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Department
+            </Button>
+          </CanCreate>
         </div>
         <Table columns={deptColumns} data={departments} emptyMessage="No departments found" />
       </Card>
@@ -374,15 +389,17 @@ const Departments = () => {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-800">Sections</h2>
-          <Button
-            onClick={() => {
-              resetSectionForm();
-              setShowSectionModal(true);
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Section
-          </Button>
+          <CanCreate module="departments">
+            <Button
+              onClick={() => {
+                resetSectionForm();
+                setShowSectionModal(true);
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Section
+            </Button>
+          </CanCreate>
         </div>
         <Table columns={sectionColumns} data={sections} emptyMessage="No sections found" />
       </Card>
@@ -391,15 +408,17 @@ const Departments = () => {
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-gray-800">Subsections</h2>
-          <Button
-            onClick={() => {
-              resetSubsectionForm();
-              setShowSubsectionModal(true);
-            }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Subsection
-          </Button>
+          <CanCreate module="departments">
+            <Button
+              onClick={() => {
+                resetSubsectionForm();
+                setShowSubsectionModal(true);
+              }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Subsection
+            </Button>
+          </CanCreate>
         </div>
         <Table columns={subsectionColumns} data={subsections} emptyMessage="No subsections found" />
       </Card>

@@ -6,6 +6,7 @@ namespace App\Controllers\System;
 
 use App\Controllers\BaseController;
 use App\Helpers\ApiResponse;
+use App\Services\AuditService;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DepartmentSeeder;
 use Database\Seeders\LeaveTypeSeeder;
@@ -22,7 +23,7 @@ class SeederController extends BaseController
      */
     public function index(): void
     {
-        $this->authorize('system:view');
+        $this->requirePermission('system', 'view');
 
         $seeders = [
             [
@@ -61,11 +62,18 @@ class SeederController extends BaseController
      */
     public function runAll(): void
     {
-        $this->authorize('system:view');
+        $this->requirePermission('system', 'manage');
 
         try {
             $seeder = new DatabaseSeeder();
             $seeder->run();
+
+            AuditService::getInstance()->log(
+                AuditService::MODULE_SYSTEM,
+                AuditService::ACTION_RUN_SEEDER,
+                'All seeders executed via system seeders dashboard',
+                ['target_type' => 'Database', 'target_name' => 'DatabaseSeeder']
+            );
 
             ApiResponse::success(null, 'All seeders executed successfully');
         } catch (\Exception $e) {
@@ -79,7 +87,7 @@ class SeederController extends BaseController
      */
     public function run(string $name): void
     {
-        $this->authorize('system:view');
+        $this->requirePermission('system', 'manage');
 
         $seederClass = match ($name) {
             'departments' => DepartmentSeeder::class,
@@ -112,7 +120,7 @@ class SeederController extends BaseController
      */
     public function truncate(string $table): void
     {
-        $this->authorize('system:view');
+        $this->requirePermission('system', 'manage');
 
         $allowedTables = ['users', 'employees', 'departments', 'leave_types'];
 
@@ -124,6 +132,13 @@ class SeederController extends BaseController
         try {
             $seeder = new DatabaseSeeder();
             $seeder->truncate($table);
+
+            AuditService::getInstance()->log(
+                AuditService::MODULE_SYSTEM,
+                AuditService::ACTION_TRUNCATE,
+                "Table '{$table}' truncated via system seeders dashboard",
+                ['target_type' => 'Table', 'target_name' => $table]
+            );
 
             ApiResponse::success(null, "Table '{$table}' truncated successfully");
         } catch (\Exception $e) {
@@ -137,7 +152,7 @@ class SeederController extends BaseController
      */
     public function status(string $table): void
     {
-        $this->authorize('system:view');
+        $this->requirePermission('system', 'view');
 
         try {
             $seeder = new DatabaseSeeder();

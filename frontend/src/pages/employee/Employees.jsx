@@ -5,6 +5,7 @@ import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
+import { PermButton } from '../../components/ui/PermissionGate';
 import EmployeeTabs from '../../components/EmployeeTabs';
 import { Plus, Search, Eye, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -107,14 +108,16 @@ const Employees = () => {
             <Eye className="h-3 w-3 mr-1" />
             View Profile
           </Button>
-          <Button
+          <PermButton
+            module="employees"
+            require="edit"
             variant="secondary"
             size="sm"
             onClick={() => navigate(`/employees/${row.id}/edit`)}
           >
             <Pencil className="h-3 w-3 mr-1" />
             Edit
-          </Button>
+          </PermButton>
         </div>
       ),
     },
@@ -140,10 +143,10 @@ const Employees = () => {
           <h1 className="text-2xl font-bold text-gray-900">Employees</h1>
           <p className="text-gray-500">Manage employee records</p>
         </div>
-        <Button onClick={() => navigate('/employees/add')}>
+        <PermButton module="employees" require="create" onClick={() => navigate('/employees/add')}>
           <Plus className="h-4 w-4 mr-2" />
           Add Employee
-        </Button>
+        </PermButton>
       </div>
 
       <Card>

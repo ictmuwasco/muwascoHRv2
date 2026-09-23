@@ -42,28 +42,39 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     ['leave', 'manage'],
   ]);
   const canViewLeave = can('leave', 'view') || canManageLeave;
-  const canViewStrategy = canAny([
-    ['strategic_plan', 'view'],
-    ['performance_contract', 'view'],
-    ['workplan', 'view'],
-    ['kpi', 'view'],
-    ['sectional_objective', 'view'],
-  ]);
   const canViewAttendance = can('attendance', 'view');
   const canViewMeetings = can('meetings', 'view');
   const canViewReports = can('reports', 'view');
-  // HR Admin group (migration 039): HR-restricted — hr_manager /
-  // managing_director / super_admin by default. Appraisal Cycles is keyed on
-  // the dedicated performance:cycles page permission (NOT performance:view,
-  // which gates the standalone Appraisal page that heads keep), so the group
-  // never renders for section/sub-section/department heads.
+  
+  // Employees page: ONLY hr_manager or super_admin can view employee list
+  // (per requirement: no role except hr_manager or super_admin should see employees)
+  // We check if user has employees:create which is only granted to hr_manager/super_admin
+  const canViewEmployees = canAny([
+    ['employees', 'create'], // Only hr_manager and super_admin have this
+  ]);
+  
+  // HR Admin group: only for hr_admin role and hr_manager/super_admin
+  // Check for hr_admin specific permissions
   const canViewHrAdmin = canAny([
     ['financial_year', 'view'],
     ['performance', 'cycles'],
     ['consent', 'view'],
     ['holidays', 'view'],
   ]);
-  const canViewAppraisal = can('performance', 'view');
+  
+  // Strategy & Performance: visible to roles with appropriate permissions
+  // (hr_manager, super_admin, dept_head, section_head, sub_section_head, manager)
+  // These roles now have strategic_plan:view, performance_contract:view, etc.
+  const canViewStrategy = canAny([
+    ['strategic_plan', 'view'],
+    ['performance_contract', 'view'],
+    ['kpi', 'view'],
+    ['sectional_objective', 'view'],
+  ]);
+  
+  // Workplans: visible to roles with workplan:view permission
+  // (hr_manager, super_admin, dept_head, section_head, sub_section_head, manager)
+  const canViewWorkplans = can('workplan', 'view');
 
   // Auto-expand the correct parent based on the current route.
   useEffect(() => {
@@ -107,7 +118,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       icon: LayoutDashboard,
       visible: () => can('dashboard', 'view'),
     },
-    { name: 'Employees', href: '/employees', icon: Users, visible: () => can('employees', 'view') },
+    { name: 'Employees', href: '/employees', icon: Users, visible: () => canViewEmployees },
     { name: 'Profile', href: '/profile', icon: User, visible: () => can('profile', 'view') },
     {
       name: 'Departments',
@@ -279,7 +290,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
         },
       ],
     },
-    { name: 'Appraisal', href: '/appraisal', icon: Star, visible: () => canViewAppraisal },
+    { name: 'Appraisal', href: '/appraisal', icon: Star, visible: () => can('performance', 'view') },
     ...(canViewStrategy
       ? [
           {
@@ -303,7 +314,13 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
                 name: 'Workplans',
                 href: '/strategy/workplans',
                 icon: ClipboardList,
-                visible: () => can('workplan', 'view'),
+                visible: () => canViewWorkplans,
+              },
+              {
+                name: 'Sectional Objectives (KPIs)',
+                href: '/strategy/kpis',
+                icon: BarChart3,
+                visible: () => can('sectional_objective', 'view'),
               },
               {
                 name: 'Performance Reports',

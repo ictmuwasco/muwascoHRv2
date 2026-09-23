@@ -5,6 +5,7 @@ import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+import { PermButton } from '../../components/ui/PermissionGate';
 import { Plus, Trash2, KeyRound, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const PER_PAGE = 30;
@@ -129,7 +130,9 @@ const Users = () => {
       label: 'Actions',
       render: (_, row) => (
         <div className="flex items-center gap-2">
-          <Button
+          <PermButton
+            module="users"
+            require="edit"
             variant="secondary"
             size="sm"
             loading={actionLoading === `reset-${row.id}`}
@@ -143,8 +146,10 @@ const Users = () => {
           >
             <KeyRound className="h-4 w-4 mr-1" />
             Reset Password
-          </Button>
-          <Button
+          </PermButton>
+          <PermButton
+            module="users"
+            require="delete"
             variant="danger"
             size="sm"
             loading={actionLoading === `delete-${row.id}`}
@@ -152,7 +157,7 @@ const Users = () => {
           >
             <Trash2 className="h-4 w-4 mr-1" />
             Delete
-          </Button>
+          </PermButton>
         </div>
       ),
     },
@@ -268,12 +273,14 @@ const Users = () => {
               <Button variant="secondary" onClick={() => setResetUser(null)}>
                 Cancel
               </Button>
-              <Button
+              <PermButton
+                module="users"
+                require="edit"
                 loading={actionLoading === `reset-${resetUser.id}`}
                 onClick={() => handleResetPassword(resetUser.id)}
               >
                 Reset Password
-              </Button>
+              </PermButton>
             </div>
           </div>
         </div>
