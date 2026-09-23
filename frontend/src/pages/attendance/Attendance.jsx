@@ -1,65 +1,65 @@
-import { useState, useEffect, useRef } from 'react'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import Table from '../../components/ui/Table'
-import Badge from '../../components/ui/Badge'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import Table from '../../components/ui/Table';
+import Badge from '../../components/ui/Badge';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-const PER_PAGE = 50
+const PER_PAGE = 50;
 
 const Attendance = () => {
-  const [attendance, setAttendance] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [total, setTotal] = useState(0)
-  const requestIdRef = useRef(0)
+  const [attendance, setAttendance] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
-    const requestId = ++requestIdRef.current
-    fetchAttendance(requestId)
-  }, [page])
+    const requestId = ++requestIdRef.current;
+    fetchAttendance(requestId);
+  }, [page]);
 
   const fetchAttendance = async (requestId) => {
     try {
       const params = {
         page,
-        limit: PER_PAGE
-      }
-      const response = await api.get('/attendance/my-records', { params })
-      
+        limit: PER_PAGE,
+      };
+      const response = await api.get('/attendance/my-records', { params });
+
       // Ignore stale responses from previous page requests
-      if (requestId !== requestIdRef.current) return
-      
-      const data = response.data?.data
+      if (requestId !== requestIdRef.current) return;
+
+      const data = response.data?.data;
       // Handle both paginated {data: [...], total, page} and plain array formats
-      const attendanceList = Array.isArray(data) ? data : (data?.data || [])
-      const totalCount = Array.isArray(data) ? data.length : (data?.total || attendanceList.length)
-      
-      setAttendance(attendanceList)
-      setTotal(totalCount)
-      setTotalPages(Math.ceil(totalCount / PER_PAGE))
+      const attendanceList = Array.isArray(data) ? data : data?.data || [];
+      const totalCount = Array.isArray(data) ? data.length : data?.total || attendanceList.length;
+
+      setAttendance(attendanceList);
+      setTotal(totalCount);
+      setTotalPages(Math.ceil(totalCount / PER_PAGE));
     } catch (error) {
       if (requestId === requestIdRef.current) {
-        console.error('Failed to fetch attendance:', error)
+        console.error('Failed to fetch attendance:', error);
       }
     } finally {
       if (requestId === requestIdRef.current) {
-        setLoading(false)
+        setLoading(false);
       }
     }
-  }
+  };
 
   const formatDateTime = (value) => {
-    if (!value) return '-'
+    if (!value) return '-';
     return new Date(value).toLocaleString('en-KE', {
       year: 'numeric',
       month: 'short',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    })
-  }
+    });
+  };
 
   const columns = [
     {
@@ -99,17 +99,27 @@ const Attendance = () => {
       key: 'status',
       label: 'Status',
       render: (value, row) => {
-        const variant = value === 'Clocked In' ? 'info' : 
-                       value === 'Clocked Out' ? 'success' : 
-                       value === 'Late' ? 'warning' : 
-                       value === 'Auto Clocked Out' ? 'danger' : 'secondary'
+        const variant =
+          value === 'Clocked In'
+            ? 'info'
+            : value === 'Clocked Out'
+              ? 'success'
+              : value === 'Late'
+                ? 'warning'
+                : value === 'Auto Clocked Out'
+                  ? 'danger'
+                  : 'secondary';
         return (
           <div>
             <Badge variant={variant}>{value}</Badge>
-            {row.is_late && <div className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Late</div>}
-            {row.auto_clocked_out && <div className="text-xs text-red-600 dark:text-red-400 mt-1">Auto</div>}
+            {row.is_late && (
+              <div className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">Late</div>
+            )}
+            {row.auto_clocked_out && (
+              <div className="text-xs text-red-600 dark:text-red-400 mt-1">Auto</div>
+            )}
           </div>
-        )
+        );
       },
     },
     {
@@ -139,27 +149,33 @@ const Attendance = () => {
         </div>
       ),
     },
-  ]
+  ];
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Attendance Records</h1>
-          <p className="text-gray-500 dark:text-gray-400">Individual clock-in and clock-out records</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            Attendance Records
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400">
+            Individual clock-in and clock-out records
+          </p>
         </div>
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Attendance Records</h1>
-        <p className="text-gray-500 dark:text-gray-400">Individual clock-in and clock-out records</p>
+        <p className="text-gray-500 dark:text-gray-400">
+          Individual clock-in and clock-out records
+        </p>
       </div>
 
       <Card>
@@ -168,7 +184,7 @@ const Attendance = () => {
         {/* Pagination */}
         <div className="flex items-center justify-between mt-4 px-2 py-3">
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Showing {attendance.length > 0 ? ((page - 1) * PER_PAGE) + 1 : 0} to{' '}
+            Showing {attendance.length > 0 ? (page - 1) * PER_PAGE + 1 : 0} to{' '}
             {Math.min(page * PER_PAGE, total)} of {total} records
           </p>
           <div className="flex items-center space-x-2">
@@ -197,8 +213,7 @@ const Attendance = () => {
         </div>
       </Card>
     </div>
-  )
-}
+  );
+};
 
-export default Attendance
-
+export default Attendance;

@@ -140,12 +140,16 @@ export const hrPolicyService = {
   },
 
   getDocument: async (id: number): Promise<HrPolicyDocument> => {
-    const res = await apiClient.get<ApiResponse<{ policy: HrPolicyDocument }>>(`/hr-policies/${id}`);
+    const res = await apiClient.get<ApiResponse<{ policy: HrPolicyDocument }>>(
+      `/hr-policies/${id}`,
+    );
     return res.data.data.policy;
   },
 
   getSections: async (id: number): Promise<PolicySectionNode[]> => {
-    const res = await apiClient.get<ApiResponse<{ items: PolicySectionNode[] }>>(`/hr-policies/${id}/sections`);
+    const res = await apiClient.get<ApiResponse<{ items: PolicySectionNode[] }>>(
+      `/hr-policies/${id}/sections`,
+    );
     return res.data.data.items;
   },
 
@@ -157,7 +161,7 @@ export const hrPolicyService = {
   search: async (q: string, limit = 25): Promise<PolicySearchHit[]> => {
     const res = await apiClient.get<ApiResponse<{ query: string; items: PolicySearchHit[] }>>(
       '/hr-policies/search',
-      { params: { q, limit } }
+      { params: { q, limit } },
     );
     return res.data.data.items;
   },
@@ -169,15 +173,22 @@ export const hrPolicyService = {
   fileUrl: (documentId: number, download = false): string =>
     `${API_BASE_URL}/hr-policies/${documentId}/file${download ? '?download=1' : ''}`,
 
-  acknowledge: async (id: number): Promise<{ acknowledged: boolean; first_time: boolean; message: string }> => {
-    const res = await apiClient.post<ApiResponse<{
-      acknowledged: boolean; first_time: boolean; message: string;
-    }>>(`/hr-policies/${id}/acknowledge`);
+  acknowledge: async (
+    id: number,
+  ): Promise<{ acknowledged: boolean; first_time: boolean; message: string }> => {
+    const res = await apiClient.post<
+      ApiResponse<{
+        acknowledged: boolean;
+        first_time: boolean;
+        message: string;
+      }>
+    >(`/hr-policies/${id}/acknowledge`);
     return res.data.data;
   },
 
   listBookmarks: async (): Promise<BookmarkItem[]> => {
-    const res = await apiClient.get<ApiResponse<{ items: BookmarkItem[] }>>('/hr-policies/bookmarks');
+    const res =
+      await apiClient.get<ApiResponse<{ items: BookmarkItem[] }>>('/hr-policies/bookmarks');
     return res.data.data.items;
   },
 
@@ -198,7 +209,8 @@ export const hrPolicyService = {
   // HR administration surface (/settings/hr-policies)
   // ------------------------------------------------------------------
   adminList: async (): Promise<HrPolicyDocument[]> => {
-    const res = await apiClient.get<ApiResponse<{ items: HrPolicyDocument[] }>>('/settings/hr-policies');
+    const res =
+      await apiClient.get<ApiResponse<{ items: HrPolicyDocument[] }>>('/settings/hr-policies');
     return res.data.data.items;
   },
 
@@ -229,29 +241,39 @@ export const hrPolicyService = {
     await apiClient.delete(`/settings/hr-policies/${id}`);
   },
 
-  adminHistory: async (id: number): Promise<{
+  adminHistory: async (
+    id: number,
+  ): Promise<{
     document: HrPolicyDocument;
     versions: HrPolicyDocument[];
     audit: HistoryAuditRow[];
   }> => {
-    const res = await apiClient.get<ApiResponse<{
-      document: HrPolicyDocument; versions: HrPolicyDocument[]; audit: HistoryAuditRow[];
-    }>>(`/settings/hr-policies/${id}/history`);
+    const res = await apiClient.get<
+      ApiResponse<{
+        document: HrPolicyDocument;
+        versions: HrPolicyDocument[];
+        audit: HistoryAuditRow[];
+      }>
+    >(`/settings/hr-policies/${id}/history`);
     return res.data.data;
   },
 
-  adminAcknowledgements: async (id: number): Promise<{
+  adminAcknowledgements: async (
+    id: number,
+  ): Promise<{
     document: { id: number; title: string; version: string };
     items: AckRecord[];
     total_acks: number;
     active_users: number;
   }> => {
-    const res = await apiClient.get<ApiResponse<{
-      document: { id: number; title: string; version: string };
-      items: AckRecord[];
-      total_acks: number;
-      active_users: number;
-    }>>(`/settings/hr-policies/${id}/acknowledgements`);
+    const res = await apiClient.get<
+      ApiResponse<{
+        document: { id: number; title: string; version: string };
+        items: AckRecord[];
+        total_acks: number;
+        active_users: number;
+      }>
+    >(`/settings/hr-policies/${id}/acknowledgements`);
     return res.data.data;
   },
 };

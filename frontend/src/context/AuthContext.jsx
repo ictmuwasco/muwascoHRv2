@@ -1,15 +1,15 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react'
-import api from '../utils/api'
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import api from '../utils/api';
 // Fallback broad-access roles — centralized in the global role registry (config/roles.js)
-import { BROAD_ACCESS_ROLES } from '../config/roles'
+import { BROAD_ACCESS_ROLES } from '../config/roles';
 
-const AuthContext = createContext(null)
+const AuthContext = createContext(null);
 
 /** One-time flag so we never spam the console on repeated fallbacks. */
-let warnedMissingProvider = false
+let warnedMissingProvider = false;
 
 export const useAuth = () => {
-  const context = useContext(AuthContext)
+  const context = useContext(AuthContext);
   if (!context) {
     // Defensive fallback instead of throwing. A component mounted outside
     // <AuthProvider> - or a transient Vite HMR module swap while the dev
@@ -17,9 +17,9 @@ export const useAuth = () => {
     // with "useAuth must be used within an AuthProvider" (seen once from
     // /leave/roster). Behaving as signed-out lets ProtectedRoute send the
     // user to /login and every other consumer keep rendering safely.
-        if (!warnedMissingProvider) {
-      warnedMissingProvider = true
-      console.warn('useAuth called outside AuthProvider - using signed-out fallback.')
+    if (!warnedMissingProvider) {
+      warnedMissingProvider = true;
+      console.warn('useAuth called outside AuthProvider - using signed-out fallback.');
     }
     return {
       user: null,
@@ -27,24 +27,28 @@ export const useAuth = () => {
       isAuthenticated: false,
       can: () => false,
       canAny: () => false,
+      canEdit: () => false,
+      canDelete: () => false,
       hasRole: () => false,
       login: async () => ({
         success: false,
         message: 'Authentication is unavailable. Please reload the page.',
       }),
-      logout: async () => { localStorage.removeItem('user') },
+      logout: async () => {
+        localStorage.removeItem('user');
+      },
       refreshPermissions: async () => {},
-    }
+    };
   }
-  return context
-}
+  return context;
+};
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const fetchedUserRef = useRef(false)
-  const refreshingRef = useRef(false)
+  const fetchedUserRef = useRef(false);
+  const refreshingRef = useRef(false);
 
   /**
    * Refresh the effective permission set from the server (§31). Single-flight:
@@ -56,47 +60,47 @@ export const AuthProvider = ({ children }) => {
    * independently on every request.
    */
   const refreshPermissions = async () => {
-    if (refreshingRef.current) return
-    refreshingRef.current = true
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
     try {
-      const response = await api.get('/auth/user')
-      const freshUser = response?.data?.data ?? response?.data
+      const response = await api.get('/auth/user');
+      const freshUser = response?.data?.data ?? response?.data;
       if (freshUser && typeof freshUser === 'object' && freshUser.id) {
-        localStorage.setItem('user', JSON.stringify(freshUser))
-        setUser(freshUser)
+        localStorage.setItem('user', JSON.stringify(freshUser));
+        setUser(freshUser);
       }
     } catch {
       // Silent — a stale session cookie simply leaves the cached profile in
       // place; ProtectedRoute / backend 401 handling bounces the user to
       // /login when a request actually fails.
     } finally {
-      refreshingRef.current = false
+      refreshingRef.current = false;
     }
-  }
+  };
 
   useEffect(() => {
     // React StrictMode (development) double-invokes effects.
     // Guard against the duplicate fetch so /auth/user is called once.
-    if (fetchedUserRef.current) return
-    fetchedUserRef.current = true
+    if (fetchedUserRef.current) return;
+    fetchedUserRef.current = true;
 
     // Check for existing session
     // The access token is now in an httpOnly cookie (set by the server),
     // so we only need to restore the cached user profile from localStorage.
-    const userData = localStorage.getItem('user')
+    const userData = localStorage.getItem('user');
 
     if (userData) {
       try {
-        const parsed = JSON.parse(userData)
+        const parsed = JSON.parse(userData);
         if (parsed && typeof parsed === 'object') {
-          setUser(parsed)
+          setUser(parsed);
         } else {
           // Corrupt entry � clear it so we don't loop
-          localStorage.removeItem('user')
+          localStorage.removeItem('user');
         }
       } catch {
         // Corrupt JSON � clear and continue
-        localStorage.removeItem('user')
+        localStorage.removeItem('user');
       }
     }
 
@@ -110,51 +114,49 @@ export const AuthProvider = ({ children }) => {
     // localStorage profile (missing the permissions array). This was the
     // root cause of managing_director seeing "Access denied" on the
     // dashboard even though the backend granted dashboard:view.
-    refreshPermissions().finally(() => setLoading(false))
+    refreshPermissions().finally(() => setLoading(false));
 
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') refreshPermissions()
-    }
-    const onFocus = () => refreshPermissions()
-    document.addEventListener('visibilitychange', onVisibility)
-    window.addEventListener('focus', onFocus)
-    const interval = window.setInterval(refreshPermissions, 5 * 60 * 1000)
+      if (document.visibilityState === 'visible') refreshPermissions();
+    };
+    const onFocus = () => refreshPermissions();
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('focus', onFocus);
+    const interval = window.setInterval(refreshPermissions, 5 * 60 * 1000);
 
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility)
-      window.removeEventListener('focus', onFocus)
-      window.clearInterval(interval)
-    }
-  }, [])
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const login = async (email, password) => {
     try {
       const response = await api.post('/auth/login', {
         email,
         password,
-      })
+      });
 
-   
-      const payload = response?.data
-      const data = payload?.data
-      const userData = data?.user
+      const payload = response?.data;
+      const data = payload?.data;
+      const userData = data?.user;
 
       if (!userData) {
         return {
           success: false,
           message:
-            payload?.message ||
-            'Login response was malformed. Please contact your administrator.',
-        }
+            payload?.message || 'Login response was malformed. Please contact your administrator.',
+        };
       }
 
       // The access token is set as an httpOnly cookie by the server.
       // We only persist the user profile for fast UI restore.
-      localStorage.setItem('user', JSON.stringify(userData))
+      localStorage.setItem('user', JSON.stringify(userData));
 
-      setUser(userData)
+      setUser(userData);
 
-      return { success: true }
+      return { success: true };
     } catch (error) {
       const errorData = error.response?.data;
 
@@ -163,8 +165,12 @@ export const AuthProvider = ({ children }) => {
 
       if (error.response) {
         if (errorData) {
-          if (errorData.error === 'DATABASE_CONNECTION_ERROR' || errorData.error === 'DATABASE_ERROR') {
-            message = 'Database is unreachable. Please make sure MySQL is running in XAMPP and the "muwasco" database exists.';
+          if (
+            errorData.error === 'DATABASE_CONNECTION_ERROR' ||
+            errorData.error === 'DATABASE_ERROR'
+          ) {
+            message =
+              'Database is unreachable. Please make sure MySQL is running in XAMPP and the "muwasco" database exists.';
           } else if (errorData.message) {
             message = errorData.message;
           } else if (errorData.errors) {
@@ -182,19 +188,19 @@ export const AuthProvider = ({ children }) => {
       }
 
       // Log full error to the browser console for easier debugging
-       
-      console.error('Login error:', error, errorData)
+
+      console.error('Login error:', error, errorData);
 
       return {
         success: false,
         message: message,
-      }
+      };
     }
-  }
+  };
 
   const logout = async () => {
     try {
-      await api.post('/auth/logout')
+      await api.post('/auth/logout');
     } catch (error) {
       // Ignore errors, still logout
     } finally {
@@ -204,10 +210,10 @@ export const AuthProvider = ({ children }) => {
       // consent check on the next login — avoiding the race condition
       // where the session cookie hasn't propagated yet, which would
       // otherwise redirect already-consented users back to the consent page.
-      localStorage.removeItem('user')
-      setUser(null)
+      localStorage.removeItem('user');
+      setUser(null);
     }
-  }
+  };
 
   /**
    * Centralized frontend authorization helper (Phase 2, §11–12).
@@ -226,7 +232,7 @@ export const AuthProvider = ({ children }) => {
    * @param {string} module  catalog module key, e.g. 'leave'
    * @param {string} action  catalog action key, e.g. 'approve'
    * @returns {boolean}
-     */
+   */
   const can = (module, action = 'view') => {
     if (!user || !Array.isArray(user.permissions)) {
       // No effective-permission set (e.g. stale localStorage from before
@@ -237,10 +243,10 @@ export const AuthProvider = ({ children }) => {
       // it (Phase 2 §14 fallback). Role list lives in the global role
       // registry (config/roles.js). UX only — the backend enforces the real
       // check on every API request.
-      return !!user && BROAD_ACCESS_ROLES.includes(user.role)
+      return !!user && BROAD_ACCESS_ROLES.includes(user.role);
     }
-    return user.permissions.includes(`${module}:${action}`)
-  }
+    return user.permissions.includes(`${module}:${action}`);
+  };
 
   /**
    * Role-based check — useful for UI elements that should be visible to
@@ -250,10 +256,10 @@ export const AuthProvider = ({ children }) => {
    * @returns {boolean}
    */
   const hasRole = (roles) => {
-    if (!user || !user.role) return false
-    const list = Array.isArray(roles) ? roles : [roles]
-    return list.includes(user.role)
-  }
+    if (!user || !user.role) return false;
+    const list = Array.isArray(roles) ? roles : [roles];
+    return list.includes(user.role);
+  };
 
   /**
    * True when the user holds ANY of the given "module:action" pairs.
@@ -261,9 +267,42 @@ export const AuthProvider = ({ children }) => {
    * @returns {boolean}
    */
   const canAny = (pairs) => {
-    if (!Array.isArray(pairs) || pairs.length === 0) return false
-    return pairs.some(([module, action]) => can(module, action))
-  }
+    if (!Array.isArray(pairs) || pairs.length === 0) return false;
+    return pairs.some(([module, action]) => can(module, action));
+  };
+
+  /**
+   * Centralized MUTATION rule (mandatory across every page).
+   *
+   * Viewing is never enough to mutate: a user who only holds `<module>:view`
+   * must NOT see Edit affordances. Modules either declare an explicit `edit`
+   * action (employees, departments, ...) or use `manage` as their single
+   * write action (strategic_plan, performance_contract, kpi,
+   * sectional_objective, ...). Both are honoured here so pages never have to
+   * hand-roll the check.
+   *
+   * @param {string} module catalog module key, e.g. 'employees'
+   * @returns {boolean}
+   */
+  const canEdit = (module) =>
+    can(module, 'edit') ||
+    canAny([
+      [module, 'manage'],
+      [module, 'update'],
+    ]);
+
+  /**
+   * Centralized DESTRUCTION rule (mandatory across every page).
+   *
+   * Delete is a strictly separate grant: holding view — or even view + edit —
+   * never renders a Delete affordance. Only an explicit `<module>:delete`
+   * grant unlocks it (modules that expose no `delete` action, such as the
+   * strategy chain, therefore never render Delete at all).
+   *
+   * @param {string} module catalog module key, e.g. 'employees'
+   * @returns {boolean}
+   */
+  const canDelete = (module) => can(module, 'delete');
 
   const value = {
     user,
@@ -273,13 +312,11 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: !!user,
     can,
     canAny,
+    canEdit,
+    canDelete,
     hasRole,
     refreshPermissions,
-  }
+  };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
-}
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};

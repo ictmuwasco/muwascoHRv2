@@ -15,8 +15,6 @@
 
 DROP PROCEDURE IF EXISTS audit_add_col_if_missing;
 
-DELIMITER //
-
 CREATE PROCEDURE audit_add_col_if_missing(
     IN p_table VARCHAR(64),
     IN p_column VARCHAR(64),
@@ -37,9 +35,7 @@ BEGIN
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
     END IF;
-END //
-
-DELIMITER ;
+END;
 
 -- === Affected employee (target of the attendance action) ================
 CALL audit_add_col_if_missing('audit_logs', 'employee_id',

@@ -35,7 +35,7 @@ export function useWorkplanTier(view: TierView) {
   // only the most recently started request may commit list / summary state.
   const requestIdRef = useRef(0);
 
-            const load = useCallback(async () => {
+  const load = useCallback(async () => {
     const requestId = ++requestIdRef.current;
     setLoading(true);
     setError('');
@@ -62,7 +62,7 @@ export function useWorkplanTier(view: TierView) {
     } finally {
       if (requestId === requestIdRef.current) setLoading(false);
     }
-    }, [view, status, search, parentFilter, fyId, page]);
+  }, [view, status, search, parentFilter, fyId, page]);
 
   useEffect(() => {
     load();

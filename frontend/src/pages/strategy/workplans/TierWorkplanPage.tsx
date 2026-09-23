@@ -3,7 +3,7 @@ import { useAuth } from '../../../context/AuthContext';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
 import { AlertTriangle, CheckCircle, Download, Plus, RefreshCw } from 'lucide-react';
-import { WIDE_SCOPE_ROLES } from '../../../config/roles';
+import { WIDE_SCOPE_ROLES, WORKPLAN_DEPT_PINNED_ROLES } from '../../../config/roles';
 import { workplanService } from '../../../api/services/workplanService';
 import type { WorkplanObjective } from '../../../api/services/workplanService';
 import useStrategyReference from './useStrategyReference';
@@ -42,11 +42,17 @@ type FormState =
  * simply renders whatever the API allows the caller to see and do.
  */
 export default function TierWorkplanPage({
-  view, title, description,
-  allowContractless = false, showSection = false, showSubsection = false,
-  showOfficer = false, showIntegratedFlag = false, showCommitmentsPanel = false,
+  view,
+  title,
+  description,
+  allowContractless = false,
+  showSection = false,
+  showSubsection = false,
+  showOfficer = false,
+  showIntegratedFlag = false,
+  showCommitmentsPanel = false,
 }: Props) {
-    const tier = useWorkplanTier(view);
+  const tier = useWorkplanTier(view);
   useAuth();
   // Shared session-scoped reference cache: plans/goals/targets/contracts/FYs/cycles.
   const { data: strategyRef } = useStrategyReference();
@@ -60,34 +66,49 @@ export default function TierWorkplanPage({
   const [traceId, setTraceId] = useState<number | null>(null);
   const [historyId, setHistoryId] = useState<number | null>(null);
 
-      // Hydrate local state from the shared reference cache when it loads.
+  // Hydrate local state from the shared reference cache when it loads.
   useEffect(() => {
     if (!strategyRef) return;
-    setRefs({ contracts: strategyRef.contracts, goals: strategyRef.goals, targets: strategyRef.targets });
+    setRefs({
+      contracts: strategyRef.contracts,
+      goals: strategyRef.goals,
+      targets: strategyRef.targets,
+    });
     setFys(strategyRef.financial_years);
     setCycles(strategyRef.cycles);
   }, [strategyRef]);
 
-  const saveProgress = useCallback(async (row: WorkplanObjective, patch: ProgressPatch) => {
-    try {
-      await workplanService.updateProgress(row.id, patch);
-      tier.setNotice('Progress updated.');
-      await tier.reload();
-    } catch (err: any) {
-      tier.setError(err.response?.data?.message || 'Failed to update progress.');
-    }
-  }, [tier]);
+  const saveProgress = useCallback(
+    async (row: WorkplanObjective, patch: ProgressPatch) => {
+      try {
+        await workplanService.updateProgress(row.id, patch);
+        tier.setNotice('Progress updated.');
+        await tier.reload();
+      } catch (err: any) {
+        tier.setError(err.response?.data?.message || 'Failed to update progress.');
+      }
+    },
+    [tier],
+  );
 
-  const deleteRow = useCallback(async (row: WorkplanObjective) => {
-    if (!window.confirm('Delete this activity? Its history is kept but it will be removed from the workplan.')) return;
-    try {
-      await workplanService.remove(row.id);
-      tier.setNotice('Activity deleted.');
-      await tier.reload();
-    } catch (err: any) {
-      tier.setError(err.response?.data?.message || 'Failed to delete the activity.');
-    }
-  }, [tier]);
+  const deleteRow = useCallback(
+    async (row: WorkplanObjective) => {
+      if (
+        !window.confirm(
+          'Delete this activity? Its history is kept but it will be removed from the workplan.',
+        )
+      )
+        return;
+      try {
+        await workplanService.remove(row.id);
+        tier.setNotice('Activity deleted.');
+        await tier.reload();
+      } catch (err: any) {
+        tier.setError(err.response?.data?.message || 'Failed to delete the activity.');
+      }
+    },
+    [tier],
+  );
 
   const exportCsv = async () => {
     try {
@@ -115,12 +136,23 @@ export default function TierWorkplanPage({
 
   // Pin reference data (contracts) and the create flows to the caller's own
   // department so a department head never sees a neighbour's workplan options.
+  //
+  // HR managers are org-wide when MANAGING contracts (they create contracts for
+  // every department on the Performance Contracts page), but their workplan
+  // forms are departmental: the "Departmental Performance Contract" picker, the
+  // activity add/edit form and the cascade dialog must only offer the
+  // performance contracts of their OWN (HR) department — otherwise every other
+  // department's commitments leak into the HR workplan. If a pinned role has no
+  // resolvable department we keep the org-wide list rather than rendering an
+  // empty, unusable picker.
   const scopeInfo = tier.list?.scope;
-  const wideRole = !!scopeInfo && WIDE_SCOPE_ROLES.includes(scopeInfo.role);
-  const deptId = !wideRole && scopeInfo && scopeInfo.department != null ? scopeInfo.department : null;
-  const deptContracts = deptId != null
-    ? refs.contracts.filter((c) => c.department_id === deptId)
-    : refs.contracts;
+  const scopeRole = scopeInfo?.role ?? '';
+  const wideRole = !!scopeInfo && WIDE_SCOPE_ROLES.includes(scopeRole);
+  const pinToOwnDepartment = wideRole && WORKPLAN_DEPT_PINNED_ROLES.includes(scopeRole);
+  const ownDepartment = scopeInfo && scopeInfo.department != null ? scopeInfo.department : null;
+  const deptId = (!wideRole || pinToOwnDepartment) && ownDepartment != null ? ownDepartment : null;
+  const deptContracts =
+    deptId != null ? refs.contracts.filter((c) => c.department_id === deptId) : refs.contracts;
   // Source activities for section / subsection heads - fetched from the
   // dedicated sectionSources endpoint so the server handles unit-scoping,
   // the parent_objective_id IS NOT NULL filter (cascaded only) and the
@@ -133,15 +165,20 @@ export default function TierWorkplanPage({
   useEffect(() => {
     if (view !== 'section' && view !== 'subsection') return;
     let alive = true;
-    workplanService.sectionSources(view)
+    workplanService
+      .sectionSources(view)
       .then((res) => {
         if (!alive) return;
         setSectionSources(
           (res.data?.sources ?? []).map((s) => ({ id: s.id, objective: s.objective })),
         );
       })
-      .catch(() => { setSectionSources([]); });
-    return () => { alive = false; };
+      .catch(() => {
+        setSectionSources([]);
+      });
+    return () => {
+      alive = false;
+    };
   }, [view, sourcesVersion]);
 
   if (tier.loading && !tier.list) {
@@ -162,103 +199,150 @@ export default function TierWorkplanPage({
       </div>
 
       {(tier.error || tier.notice) && (
-        <div className={`rounded-lg px-4 py-3 text-sm flex items-start gap-2 ${
-          tier.error
-            ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-            : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
-          {tier.error ? <AlertTriangle className="h-4 w-4 mt-0.5 flex-none" /> : <CheckCircle className="h-4 w-4 mt-0.5 flex-none" />}
+        <div
+          className={`rounded-lg px-4 py-3 text-sm flex items-start gap-2 ${
+            tier.error
+              ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+              : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+          }`}
+        >
+          {tier.error ? (
+            <AlertTriangle className="h-4 w-4 mt-0.5 flex-none" />
+          ) : (
+            <CheckCircle className="h-4 w-4 mt-0.5 flex-none" />
+          )}
           <span className="flex-1">{tier.error || tier.notice}</span>
-          <button onClick={() => { tier.setError(''); tier.setNotice(''); }} className="text-xs underline">dismiss</button>
+          <button
+            onClick={() => {
+              tier.setError('');
+              tier.setNotice('');
+            }}
+            className="text-xs underline"
+          >
+            dismiss
+          </button>
         </div>
       )}
 
       <WorkplanDashboard summary={tier.summary} />
 
-      {tier.summary && (() => {
-        const s = tier.summary.scope;
-        const broadRole = WIDE_SCOPE_ROLES.includes(s.role);
-        const unresolved = !broadRole && s.department === null && s.section === null && s.subsection === null;
-        if (unresolved) {
-          return (
-            <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 mt-0.5 flex-none" />
-              <span>
-                This login (<strong>{s.role}</strong>) is not linked to an active employee profile, so your
-                department / section could not be detected and the workplan shows nothing. Ask an administrator
-                to open <strong>Settings → Users</strong> and link this account to your employee record.
-              </span>
-            </div>
-          );
-        }
-        if (tier.summary.totals.total_activities === 0) {
-          return (
-            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 px-4 py-3 text-sm text-blue-800 dark:text-blue-200">
-              No workplan activities in <strong>{tier.summary.unit_label}</strong> yet.{' '}
-              {canManage
-                ? view === 'department'
-                  ? 'Create your first one with “Add Departmental Workplan”, or copy commitments from your contract below.'
-                  : view === 'section'
-                    ? 'Create your own activities with “Add Section Workplan”, or wait for your supervisor to cascade work down to you.'
-                    : view === 'subsection'
-                      ? 'Create your own activities with “Add Subsection Workplan”, or wait for your supervisor to cascade work down to you.'
-                      : 'Create your first one with “New Activity”, or wait for your supervisor to cascade work down to you.'
-                : 'This page fills up automatically as soon as your supervisor cascades work to your unit.'}
-            </div>
-          );
-        }
-        return null;
-      })()}
+      {tier.summary &&
+        (() => {
+          const s = tier.summary.scope;
+          const broadRole = WIDE_SCOPE_ROLES.includes(s.role);
+          const unresolved =
+            !broadRole && s.department === null && s.section === null && s.subsection === null;
+          if (unresolved) {
+            return (
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 mt-0.5 flex-none" />
+                <span>
+                  This login (<strong>{s.role}</strong>) is not linked to an active employee
+                  profile, so your department / section could not be detected and the workplan shows
+                  nothing. Ask an administrator to open <strong>Settings → Users</strong> and link
+                  this account to your employee record.
+                </span>
+              </div>
+            );
+          }
+          if (tier.summary.totals.total_activities === 0) {
+            return (
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 px-4 py-3 text-sm text-blue-800 dark:text-blue-200">
+                No workplan activities in <strong>{tier.summary.unit_label}</strong> yet.{' '}
+                {canManage
+                  ? view === 'department'
+                    ? 'Create your first one with “Add Departmental Workplan”, or copy commitments from your contract below.'
+                    : view === 'section'
+                      ? 'Create your own activities with “Add Section Workplan”, or wait for your supervisor to cascade work down to you.'
+                      : view === 'subsection'
+                        ? 'Create your own activities with “Add Subsection Workplan”, or wait for your supervisor to cascade work down to you.'
+                        : 'Create your first one with “New Activity”, or wait for your supervisor to cascade work down to you.'
+                  : 'This page fills up automatically as soon as your supervisor cascades work to your unit.'}
+              </div>
+            );
+          }
+          return null;
+        })()}
 
       {showCommitmentsPanel && deptContracts.length > 0 && (
         <Card title="Source Commitments (Performance Contracts)">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
             {deptContracts.slice(0, 9).map((c) => (
-              <button key={c.id}
+              <button
+                key={c.id}
                 onClick={() => setBulkOpen(true)}
                 disabled={!canManage}
-                className="text-left rounded-lg border border-gray-200 dark:border-slate-700 px-3 py-2 hover:border-primary-300 hover:bg-primary-50/40 dark:hover:bg-slate-700/40 transition-colors disabled:opacity-60">
-                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 line-clamp-1">{c.name}</p>
+                className="text-left rounded-lg border border-gray-200 dark:border-slate-700 px-3 py-2 hover:border-primary-300 hover:bg-primary-50/40 dark:hover:bg-slate-700/40 transition-colors disabled:opacity-60"
+              >
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-100 line-clamp-1">
+                  {c.name}
+                </p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  {c.department_name ? `Dept: ${c.department_name}` : 'Department commitment'} · click to plan an activity
+                  {c.department_name ? `Dept: ${c.department_name}` : 'Department commitment'} ·
+                  click to plan an activity
                 </p>
               </button>
             ))}
             {deptContracts.length > 9 && (
-              <p className="col-span-full text-xs text-gray-400">{deptContracts.length - 9} more commitments available in the activity form.</p>
+              <p className="col-span-full text-xs text-gray-400">
+                {deptContracts.length - 9} more commitments available in the activity form.
+              </p>
             )}
           </div>
         </Card>
       )}
 
       <WorkplanFilters
-        status={tier.status} onStatusChange={tier.setStatus}
-        searchInput={tier.searchInput} onSearchInputChange={tier.setSearchInput}
+        status={tier.status}
+        onStatusChange={tier.setStatus}
+        searchInput={tier.searchInput}
+        onSearchInputChange={tier.setSearchInput}
         onApplySearch={tier.applySearch}
-        parentFilter={tier.parentFilter} onParentFilterChange={tier.setParentFilter}
-        financialYearId={tier.fyId} onFinancialYearChange={tier.setFyId} financialYears={fys}
+        parentFilter={tier.parentFilter}
+        onParentFilterChange={tier.setParentFilter}
+        financialYearId={tier.fyId}
+        onFinancialYearChange={tier.setFyId}
+        financialYears={fys}
         actions={
           <>
-            <Button variant="outline" onClick={exportCsv}><Download className="h-4 w-4 mr-2" />Export CSV</Button>
-            <Button variant="outline" onClick={() => { tier.reload(); refreshSources(); }}><RefreshCw className="h-4 w-4 mr-2" />Refresh</Button>
-            {canManage && (
-              view === 'department' ? (
+            <Button variant="outline" onClick={exportCsv}>
+              <Download className="h-4 w-4 mr-2" />
+              Export CSV
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                tier.reload();
+                refreshSources();
+              }}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+            {canManage &&
+              (view === 'department' ? (
                 <Button onClick={() => setBulkOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />Add Departmental Workplan
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Departmental Workplan
                 </Button>
               ) : view === 'section' ? (
                 <Button onClick={() => setTierAddOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />Add Section Workplan
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Section Workplan
                 </Button>
               ) : view === 'subsection' ? (
                 <Button onClick={() => setTierAddOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />Add Subsection Workplan
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Subsection Workplan
                 </Button>
               ) : (
-                <Button onClick={() => setForm({ open: true, mode: 'add', presetContractId: null })}>
-                  <Plus className="h-4 w-4 mr-2" />New Activity
+                <Button
+                  onClick={() => setForm({ open: true, mode: 'add', presetContractId: null })}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Activity
                 </Button>
-              )
-            )}
+              ))}
           </>
         }
       />
@@ -267,6 +351,7 @@ export default function TierWorkplanPage({
         rows={visibleRows}
         canManage={canManage}
         showOfficer={showOfficer}
+        view={view}
         onSaveProgress={saveProgress}
         onEdit={(row) => setForm({ open: true, mode: 'edit', record: row })}
         onCascade={(row) => setCascadeParent(row)}
@@ -277,12 +362,25 @@ export default function TierWorkplanPage({
 
       {pagination && pagination.last_page > 1 && (
         <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
-          <span>Showing {visibleRows.length} activities · page {pagination.current_page} of {pagination.last_page}</span>
+          <span>
+            Showing {visibleRows.length} activities · page {pagination.current_page} of{' '}
+            {pagination.last_page}
+          </span>
           <div className="flex gap-2">
-            <Button variant="outline" disabled={pagination.current_page <= 1}
-              onClick={() => tier.setPage((p: number) => Math.max(1, p - 1))}>Previous</Button>
-            <Button variant="outline" disabled={pagination.current_page >= pagination.last_page}
-              onClick={() => tier.setPage((p: number) => p + 1)}>Next</Button>
+            <Button
+              variant="outline"
+              disabled={pagination.current_page <= 1}
+              onClick={() => tier.setPage((p: number) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              disabled={pagination.current_page >= pagination.last_page}
+              onClick={() => tier.setPage((p: number) => p + 1)}
+            >
+              Next
+            </Button>
           </div>
         </div>
       )}
@@ -349,15 +447,21 @@ export default function TierWorkplanPage({
         employees={tier.list?.employees ?? []}
         cycles={cycles}
         onClose={() => setCascadeParent(null)}
-        onCascaded={(msg) => { tier.setNotice(msg); tier.reload(); }}
+        onCascaded={(msg) => {
+          tier.setNotice(msg);
+          tier.reload();
+        }}
         onError={tier.setError}
       />
 
       <TraceabilityPanel objectiveId={traceId} onClose={() => setTraceId(null)} />
-      <HistoryModal objectiveId={historyId} onClose={() => setHistoryId(null)}
-        objectiveTitle={historyId !== null
-          ? rows.find((r) => r.id === historyId)?.objective ?? null
-          : null} />
+      <HistoryModal
+        objectiveId={historyId}
+        onClose={() => setHistoryId(null)}
+        objectiveTitle={
+          historyId !== null ? (rows.find((r) => r.id === historyId)?.objective ?? null) : null
+        }
+      />
     </div>
   );
 }

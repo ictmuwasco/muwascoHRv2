@@ -1,7 +1,6 @@
-import { X, Filter } from 'lucide-react'
-import Button from '../ui/Button'
-import { FY_MONTHS } from '../../constants/leaveConstants'
-
+import { X, Filter } from 'lucide-react';
+import Button from '../ui/Button';
+import { FY_MONTHS } from '../../constants/leaveConstants';
 
 const FilterBar = ({
   financialYears = [],
@@ -17,28 +16,37 @@ const FilterBar = ({
   onReset,
   showStatus = false,
 }) => {
-  const activeFilters = []
+  const activeFilters = [];
   if (selectedFinancialYear) {
-    const fy = financialYears.find((y) => y.id == selectedFinancialYear)
-    activeFilters.push({ key: 'financialYear', label: fy?.year_name || `FY: ${selectedFinancialYear}` })
+    const fy = financialYears.find((y) => y.id == selectedFinancialYear);
+    activeFilters.push({
+      key: 'financialYear',
+      label: fy?.year_name || `FY: ${selectedFinancialYear}`,
+    });
   }
   if (selectedDepartment) {
-    const dept = departments.find((d) => (d.id || d.department_id) == selectedDepartment)
-    activeFilters.push({ key: 'department', label: dept?.name || dept?.department_name || `Dept: ${selectedDepartment}` })
+    const dept = departments.find((d) => (d.id || d.department_id) == selectedDepartment);
+    activeFilters.push({
+      key: 'department',
+      label: dept?.name || dept?.department_name || `Dept: ${selectedDepartment}`,
+    });
   }
   if (selectedSection) {
-    const sec = sections.find((s) => s.id == selectedSection)
-    activeFilters.push({ key: 'section', label: sec?.name || `Section: ${selectedSection}` })
+    const sec = sections.find((s) => s.id == selectedSection);
+    activeFilters.push({ key: 'section', label: sec?.name || `Section: ${selectedSection}` });
   }
   if (selectedMonth) {
-    activeFilters.push({ key: 'month', label: `Month: ${selectedMonth}` })
+    activeFilters.push({ key: 'month', label: `Month: ${selectedMonth}` });
   }
   if (showStatus && selectedStatus) {
-    const statusLabels = { scheduled: 'Scheduled', not_scheduled: 'Not Scheduled' }
-    activeFilters.push({ key: 'status', label: `Status: ${statusLabels[selectedStatus] || selectedStatus}` })
+    const statusLabels = { scheduled: 'Scheduled', not_scheduled: 'Not Scheduled' };
+    activeFilters.push({
+      key: 'status',
+      label: `Status: ${statusLabels[selectedStatus] || selectedStatus}`,
+    });
   }
   if (searchTerm) {
-    activeFilters.push({ key: 'search', label: `Search: ${searchTerm}` })
+    activeFilters.push({ key: 'search', label: `Search: ${searchTerm}` });
   }
 
   const removeFilter = (key) => {
@@ -49,9 +57,9 @@ const FilterBar = ({
       month: 'selectedMonth',
       status: 'selectedStatus',
       search: 'searchTerm',
-    }
-    onChange(fieldMap[key], '')
-  }
+    };
+    onChange(fieldMap[key], '');
+  };
 
   return (
     <div className="space-y-3">
@@ -202,7 +210,7 @@ const FilterBar = ({
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default FilterBar
+export default FilterBar;

@@ -1,14 +1,21 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import apiClient from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import {
-  Plus, Target, CheckCircle, Pencil, Trash2, CalendarDays,
-  AlertTriangle, RefreshCw
+  Plus,
+  Target,
+  CheckCircle,
+  Pencil,
+  Trash2,
+  CalendarDays,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 
 interface Plan {
@@ -48,12 +55,23 @@ interface StrategicTarget {
 }
 
 interface Overview {
-  active_financial_year: { id: number; year_name: string; start_date: string; end_date: string } | null;
+  active_financial_year: {
+    id: number;
+    year_name: string;
+    start_date: string;
+    end_date: string;
+  } | null;
   plans: Plan[];
   goals: Goal[];
   targets: StrategicTarget[];
   departments: { id: number; name: string }[];
-  financial_years: { id: number; year_name: string; start_date: string; end_date: string; is_active: number }[];
+  financial_years: {
+    id: number;
+    year_name: string;
+    start_date: string;
+    end_date: string;
+    is_active: number;
+  }[];
   can_manage: boolean;
 }
 
@@ -63,7 +81,10 @@ type ModalState =
   | { type: 'goal'; mode: 'add' | 'edit'; record?: Goal }
   | { type: 'target'; mode: 'add' | 'edit'; record?: StrategicTarget };
 
-const planStatus = (start: string, end: string): { label: string; variant: 'success' | 'primary' | 'default' } => {
+const planStatus = (
+  start: string,
+  end: string,
+): { label: string; variant: 'success' | 'primary' | 'default' } => {
   const year = new Date().getFullYear();
   const s = new Date(start).getFullYear();
   const e = new Date(end).getFullYear();
@@ -73,10 +94,16 @@ const planStatus = (start: string, end: string): { label: string; variant: 'succ
 };
 
 const fmt = (d: string | null) =>
-  d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+  d
+    ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : 'N/A';
 
 export default function StrategicPlan() {
   const location = useLocation();
+  // Phase 11 (§global rule): mutations come from the CENTRALIZED canEdit /
+  // canDelete gates on the auth context. They are aliased here because the
+  // component also exposes local `canEdit` / `canDelete` flags.
+  const { canEdit: canEditModule, canDelete: canDeleteModule } = useAuth();
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -96,10 +123,13 @@ export default function StrategicPlan() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const run = async (fn: () => Promise<any>, successMsg: string) => {
-    setError(''); setNotice('');
+    setError('');
+    setNotice('');
     try {
       await fn();
       setNotice(successMsg);
@@ -111,7 +141,8 @@ export default function StrategicPlan() {
   };
 
   const confirmDelete = async (label: string, fn: () => Promise<any>) => {
-    if (!window.confirm(`Delete ${label}? Records that still have dependent data are protected.`)) return;
+    if (!window.confirm(`Delete ${label}? Records that still have dependent data are protected.`))
+      return;
     await run(fn, `${label} deleted.`);
   };
 
@@ -131,7 +162,16 @@ export default function StrategicPlan() {
     );
   }
 
-  const canManage = data.can_manage;
+  // RBAC (§Strategy): only hr_manager / super_admin may mutate the strategy
+  // chain — they hold `strategic_plan:manage` (super_admin holds the whole
+  // catalog by policy). Every other role able to reach this page is strictly
+  // view-only: no Add, Edit or Delete affordances are rendered. The check
+  // delegates to the centralized mutation gate so the rule can never drift.
+  const canEdit = canEditModule('strategic_plan');
+  // Destructive controls require an explicit `<module>:delete` grant — view
+  // or edit alone never renders Delete. The catalog defines no delete action
+  // for the strategy modules, so this is always false for now.
+  const canDelete = canDeleteModule('strategic_plan');
 
   return (
     <div className="space-y-6">
@@ -142,15 +182,19 @@ export default function StrategicPlan() {
           <p className="text-gray-500">Organisation strategy, goals and organisational goals</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={load}><RefreshCw className="h-4 w-4 mr-2" />Refresh</Button>
-          {canManage && (
+          <Button variant="outline" onClick={load}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          {canEdit && (
             <Button onClick={() => setModal({ type: 'plan', mode: 'add' })}>
-              <Plus className="h-4 w-4 mr-2" />New Strategic Plan
+              <Plus className="h-4 w-4 mr-2" />
+              New Strategic Plan
             </Button>
           )}
         </div>
       </div>
-{/* Strategy sub-navigation */}
+      {/* Strategy sub-navigation */}
       <div className="flex space-x-1 border-b overflow-x-auto">
         {[
           { to: '/strategy/strategic-plan', label: 'Strategic Plan' },
@@ -174,10 +218,18 @@ export default function StrategicPlan() {
 
       {/* Alerts */}
       {(error || notice) && (
-        <div className={`rounded-lg px-4 py-3 text-sm flex items-start gap-2 ${
-          error ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
-                : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}>
-          {error ? <AlertTriangle className="h-4 w-4 mt-0.5" /> : <CheckCircle className="h-4 w-4 mt-0.5" />}
+        <div
+          className={`rounded-lg px-4 py-3 text-sm flex items-start gap-2 ${
+            error
+              ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+              : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+          }`}
+        >
+          {error ? (
+            <AlertTriangle className="h-4 w-4 mt-0.5" />
+          ) : (
+            <CheckCircle className="h-4 w-4 mt-0.5" />
+          )}
           <span className="whitespace-pre-wrap">{error || notice}</span>
         </div>
       )}
@@ -198,14 +250,18 @@ export default function StrategicPlan() {
       </div>
 
       {/* Plans */}
-      <Card title={`Strategic Plans (${data.plans.length})`} subtitle="Historic plans are retained — they are never removed automatically.">
+      <Card
+        title={`Strategic Plans (${data.plans.length})`}
+        subtitle="Historic plans are retained — they are never removed automatically."
+      >
         {data.plans.length === 0 ? (
           <div className="text-center py-10">
             <Target className="h-12 w-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-medium">No strategic plans found</p>
-            {canManage && (
+            {canEdit && (
               <Button className="mt-3" onClick={() => setModal({ type: 'plan', mode: 'add' })}>
-                <Plus className="h-4 w-4 mr-2" />Add the first strategic plan
+                <Plus className="h-4 w-4 mr-2" />
+                Add the first strategic plan
               </Button>
             )}
           </div>
@@ -213,7 +269,11 @@ export default function StrategicPlan() {
           <Table
             columns={[
               { key: 'name', label: 'Plan' },
-              { key: 'period', label: 'Period', render: (_v, row: Plan) => `${fmt(row.start_date)} → ${fmt(row.end_date)}` },
+              {
+                key: 'period',
+                label: 'Period',
+                render: (_v, row: Plan) => `${fmt(row.start_date)} → ${fmt(row.end_date)}`,
+              },
               {
                 key: 'status',
                 label: 'Status',
@@ -226,37 +286,40 @@ export default function StrategicPlan() {
               { key: 'target_count', label: 'Org. Goals' },
               { key: 'contract_count', label: 'Contracts' },
               { key: 'workplan_count', label: 'Workplans' },
-              ...(canManage ? [{
-                key: 'actions',
-                label: 'Actions',
-                render: (_v: any, row: Plan) => (
-                  <div className="flex items-center gap-2">
-                    <button className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
-                      onClick={() => setModal({ type: 'plan', mode: 'edit', record: row })} title="Edit">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button className="p-1.5 rounded hover:bg-red-50 text-red-600"
-                      onClick={() => confirmDelete(`"${row.name}"`, () =>
-                        apiClient.delete(`/strategic-plans/${row.id}`))} title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ),
-              }] : []),
+              ...(canEdit
+                ? [
+                    {
+                      key: 'actions',
+                      label: 'Actions',
+                      render: (_v: any, row: Plan) => (
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
+                            onClick={() => setModal({ type: 'plan', mode: 'edit', record: row })}
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ),
+                    },
+                  ]
+                : []),
             ]}
             data={data.plans}
           />
         )}
       </Card>
-{/* Goals (strategic objectives / perspectives) */}
+      {/* Goals (strategic objectives / perspectives) */}
       <Card
         title={`Goals (${data.goals.length})`}
         subtitle="Strategic objectives that organise the organisational goals."
       >
         <div className="mb-4">
-          {canManage && data.plans.length > 0 && (
+          {canEdit && data.plans.length > 0 && (
             <Button variant="outline" onClick={() => setModal({ type: 'goal', mode: 'add' })}>
-              <Plus className="h-4 w-4 mr-2" />Add Goal
+              <Plus className="h-4 w-4 mr-2" />
+              Add Goal
             </Button>
           )}
         </div>
@@ -265,7 +328,9 @@ export default function StrategicPlan() {
             <Target className="h-12 w-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-medium">No goals found</p>
             <p className="text-sm text-gray-400">
-              {data.plans.length === 0 ? 'Create a strategic plan first.' : 'Add a goal to start structuring the strategy.'}
+              {data.plans.length === 0
+                ? 'Create a strategic plan first.'
+                : 'Add a goal to start structuring the strategy.'}
             </p>
           </div>
         ) : (
@@ -274,37 +339,40 @@ export default function StrategicPlan() {
               { key: 'name', label: 'Goal / Perspective' },
               { key: 'strategic_plan_name', label: 'Strategic Plan', render: (v) => v ?? 'N/A' },
               { key: 'target_count', label: 'Organisational Goals' },
-              ...(canManage ? [{
-                key: 'actions',
-                label: 'Actions',
-                render: (_v: any, row: Goal) => (
-                  <div className="flex items-center gap-2">
-                    <button className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
-                      onClick={() => setModal({ type: 'goal', mode: 'edit', record: row })} title="Edit">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button className="p-1.5 rounded hover:bg-red-50 text-red-600"
-                      onClick={() => confirmDelete(`"${row.name}"`, () =>
-                        apiClient.delete(`/goals/${row.id}`))} title="Delete">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ),
-              }] : []),
+              ...(canEdit
+                ? [
+                    {
+                      key: 'actions',
+                      label: 'Actions',
+                      render: (_v: any, row: Goal) => (
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
+                            onClick={() => setModal({ type: 'goal', mode: 'edit', record: row })}
+                            title="Edit"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ),
+                    },
+                  ]
+                : []),
             ]}
             data={data.goals}
           />
         )}
       </Card>
-{/* Organisational goals (strategic targets) */}
+      {/* Organisational goals (strategic targets) */}
       <Card
         title={`Organisational Goals (${data.targets.length})`}
         subtitle="Strategic targets that translate each goal into measurable objectives, owned by a department or C-SUITE."
       >
         <div className="mb-4">
-          {canManage && data.goals.length > 0 && (
+          {canEdit && data.goals.length > 0 && (
             <Button variant="outline" onClick={() => setModal({ type: 'target', mode: 'add' })}>
-              <Plus className="h-4 w-4 mr-2" />Add Organisational Goal
+              <Plus className="h-4 w-4 mr-2" />
+              Add Organisational Goal
             </Button>
           )}
         </div>
@@ -313,7 +381,9 @@ export default function StrategicPlan() {
             <Target className="h-12 w-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500 font-medium">No organisational goals found</p>
             <p className="text-sm text-gray-400">
-              {data.goals.length === 0 ? 'Add goals first, then attach organisational goals.' : 'Attach an organisational goal to one of the existing goals.'}
+              {data.goals.length === 0
+                ? 'Add goals first, then attach organisational goals.'
+                : 'Attach an organisational goal to one of the existing goals.'}
             </p>
           </div>
         ) : (
@@ -324,9 +394,12 @@ export default function StrategicPlan() {
               {
                 key: 'department_name',
                 label: 'Department',
-                render: (v) => (v
-                  ? <Badge variant="primary">{v}</Badge>
-                  : <Badge variant="default">C-SUITE</Badge>),
+                render: (v) =>
+                  v ? (
+                    <Badge variant="primary">{v}</Badge>
+                  ) : (
+                    <Badge variant="default">C-SUITE</Badge>
+                  ),
               },
               {
                 key: 'measure',
@@ -337,30 +410,51 @@ export default function StrategicPlan() {
                     : 'Not set',
               },
               { key: 'contract_count', label: 'Contracts' },
-              ...(canManage ? [{
-                key: 'actions',
-                label: 'Actions',
-                render: (_v: any, row: StrategicTarget) => (
-                  <div className="flex items-center gap-2">
-                    <button className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
-                      onClick={() => setModal({ type: 'target', mode: 'edit', record: row })} title="Edit">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      disabled={Number(row.contract_count) > 0}
-                      title={Number(row.contract_count) > 0
-                        ? `Referenced by ${row.contract_count} performance contract(s)`
-                        : 'Delete'}
-                      className={`p-1.5 rounded ${Number(row.contract_count) > 0
-                        ? 'text-gray-300 cursor-not-allowed'
-                        : 'text-red-600 hover:bg-red-50'}`}
-                      onClick={() => confirmDelete(`"${row.name}"`, () =>
-                        apiClient.delete(`/targets/${row.id}`))}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ),
-              }] : []),
+              ...(canEdit || canDelete
+                ? [
+                    {
+                      key: 'actions',
+                      label: 'Actions',
+                      render: (_v: any, row: StrategicTarget) => (
+                        <div className="flex items-center gap-2">
+                          {canEdit && (
+                            <button
+                              className="p-1.5 rounded hover:bg-blue-50 text-blue-600"
+                              onClick={() =>
+                                setModal({ type: 'target', mode: 'edit', record: row })
+                              }
+                              title="Edit"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                          )}
+                          {canDelete && (
+                            <button
+                              disabled={Number(row.contract_count) > 0}
+                              title={
+                                Number(row.contract_count) > 0
+                                  ? `Referenced by ${row.contract_count} performance contract(s)`
+                                  : 'Delete'
+                              }
+                              className={`p-1.5 rounded ${
+                                Number(row.contract_count) > 0
+                                  ? 'text-gray-300 cursor-not-allowed'
+                                  : 'text-red-600 hover:bg-red-50'
+                              }`}
+                              onClick={() =>
+                                confirmDelete(`"${row.name}"`, () =>
+                                  apiClient.delete(`/targets/${row.id}`),
+                                )
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      ),
+                    },
+                  ]
+                : []),
             ]}
             data={data.targets}
           />
@@ -368,37 +462,43 @@ export default function StrategicPlan() {
       </Card>
 
       {/* ---------------- Modals ---------------- */}
-      {(modal.type === 'plan') && (
+      {modal.type === 'plan' && (
         <PlanModal
           mode={modal.mode}
           record={modal.record}
           onClose={() => setModal({ type: 'none' })}
-          onSave={(payload, id) => run(
-            () => (modal.mode === 'add'
-              ? apiClient.post('/strategic-plans', payload)
-              : apiClient.put(`/strategic-plans/${id}`, payload)),
-            `Strategic plan ${modal.mode === 'add' ? 'created' : 'updated'}.`
-          )}
+          onSave={(payload, id) =>
+            run(
+              () =>
+                modal.mode === 'add'
+                  ? apiClient.post('/strategic-plans', payload)
+                  : apiClient.put(`/strategic-plans/${id}`, payload),
+              `Strategic plan ${modal.mode === 'add' ? 'created' : 'updated'}.`,
+            )
+          }
         />
       )}
 
-      {(modal.type === 'goal') && (
+      {modal.type === 'goal' && (
         <GoalModal
           mode={modal.mode}
           record={modal.record}
           plans={data.plans}
           defaultPlanId={data.plans[0]?.id ?? ''}
           onClose={() => setModal({ type: 'none' })}
-          onSave={(payload) => run(
-            () => (modal.mode === 'add'
-              ? apiClient.post(`/strategic-plans/${payload.strategic_plan_id}/goals`, payload)
-              : apiClient.put(`/goals/${modal.record?.id}`, payload)),
-            `Goal ${modal.mode === 'add' ? 'added' : 'updated'}.`
-          )}
+          onSave={(payload) =>
+            run(
+              () =>
+                modal.mode === 'add'
+                  ? apiClient.post(`/strategic-plans/${payload.strategic_plan_id}/goals`, payload)
+                  : apiClient.put(`/goals/${modal.record?.id}`, payload),
+              `Goal ${modal.mode === 'add' ? 'added' : 'updated'}.`,
+            )
+          }
         />
       )}
 
-      {(modal.type === 'target') && (
+      {modal.type === 'target' && (
         <TargetModal
           mode={modal.mode}
           record={modal.record}
@@ -406,12 +506,15 @@ export default function StrategicPlan() {
           goals={data.goals}
           departments={data.departments}
           onClose={() => setModal({ type: 'none' })}
-          onSave={(payload) => run(
-            () => (modal.mode === 'add'
-              ? apiClient.post(`/strategic-plans/${payload.strategic_plan_id}/targets`, payload)
-              : apiClient.put(`/targets/${modal.record?.id}`, payload)),
-            `Organisational goal ${modal.mode === 'add' ? 'added' : 'updated'}.`
-          )}
+          onSave={(payload) =>
+            run(
+              () =>
+                modal.mode === 'add'
+                  ? apiClient.post(`/strategic-plans/${payload.strategic_plan_id}/targets`, payload)
+                  : apiClient.put(`/targets/${modal.record?.id}`, payload),
+              `Organisational goal ${modal.mode === 'add' ? 'added' : 'updated'}.`,
+            )
+          }
         />
       )}
     </div>
@@ -444,28 +547,55 @@ function PlanModal({ mode, record, onClose, onSave }: PlanModalProps) {
   };
 
   return (
-    <Modal isOpen={true} onClose={onClose} title={mode === 'add' ? 'Add Strategic Plan' : 'Edit Strategic Plan'}>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      title={mode === 'add' ? 'Add Strategic Plan' : 'Edit Strategic Plan'}
+    >
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plan Name *</label>
-          <input className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-            value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Strategic Plan 2025-2030" required />
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Plan Name *
+          </label>
+          <input
+            className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Strategic Plan 2025-2030"
+            required
+          />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date *</label>
-            <input type="date" className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              value={start} onChange={(e) => setStart(e.target.value)} required />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Start Date *
+            </label>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              required
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Date *</label>
-            <input type="date" className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              value={end} onChange={(e) => setEnd(e.target.value)} required />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              End Date *
+            </label>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              required
+            />
           </div>
         </div>
         {err && <p className="text-sm text-red-600">{err}</p>}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit">{mode === 'add' ? 'Create' : 'Save changes'}</Button>
         </div>
       </form>
@@ -498,24 +628,40 @@ function GoalModal({ mode, record, plans, defaultPlanId, onClose, onSave }: Goal
     <Modal isOpen={true} onClose={onClose} title={mode === 'add' ? 'Add Goal' : 'Edit Goal'}>
       <form onSubmit={submit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Strategic Plan *</label>
-          <select className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-            value={planId} onChange={(e) => setPlanId(e.target.value ? Number(e.target.value) : '')} required>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Strategic Plan *
+          </label>
+          <select
+            className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+            value={planId}
+            onChange={(e) => setPlanId(e.target.value ? Number(e.target.value) : '')}
+            required
+          >
             <option value="">Select a strategic plan…</option>
             {plans.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
             ))}
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Goal Name *</label>
-          <input className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-            value={name} onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Financial Perspective" required />
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Goal Name *
+          </label>
+          <input
+            className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Financial Perspective"
+            required
+          />
         </div>
         {err && <p className="text-sm text-red-600">{err}</p>}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit">{mode === 'add' ? 'Add goal' : 'Save changes'}</Button>
         </div>
       </form>
@@ -532,9 +678,19 @@ interface TargetModalProps {
   onSave: (payload: Record<string, unknown>) => void;
 }
 
-function TargetModal({ mode, record, plans, goals, departments, onClose, onSave }: TargetModalProps) {
+function TargetModal({
+  mode,
+  record,
+  plans,
+  goals,
+  departments,
+  onClose,
+  onSave,
+}: TargetModalProps) {
   const [goalId, setGoalId] = useState<number | ''>(record?.goal_id ?? '');
-  const [planId, setPlanId] = useState<number | ''>(record?.strategic_plan_id ?? plans[0]?.id ?? '');
+  const [planId, setPlanId] = useState<number | ''>(
+    record?.strategic_plan_id ?? plans[0]?.id ?? '',
+  );
   const [departmentId, setDepartmentId] = useState<number | ''>(record?.department_id ?? '');
   const [name, setName] = useState(record?.name ?? '');
   const [description] = useState(record?.description ?? '');
@@ -562,62 +718,122 @@ function TargetModal({ mode, record, plans, goals, departments, onClose, onSave 
   };
 
   return (
-    <Modal isOpen={true} onClose={onClose} size="xl"
-      title={mode === 'add' ? 'Add Organisational Goal' : 'Edit Organisational Goal'}>
+    <Modal
+      isOpen={true}
+      onClose={onClose}
+      size="xl"
+      title={mode === 'add' ? 'Add Organisational Goal' : 'Edit Organisational Goal'}
+    >
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Goal / Perspective *</label>
-            <select className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              value={goalId} onChange={(e) => setGoalId(e.target.value ? Number(e.target.value) : '')} required>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Goal / Perspective *
+            </label>
+            <select
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              value={goalId}
+              onChange={(e) => setGoalId(e.target.value ? Number(e.target.value) : '')}
+              required
+            >
               <option value="">Select…</option>
-              {goals.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              {goals.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Strategic Plan *</label>
-            <select className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              value={planId} onChange={(e) => setPlanId(e.target.value ? Number(e.target.value) : '')} required>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Strategic Plan *
+            </label>
+            <select
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              value={planId}
+              onChange={(e) => setPlanId(e.target.value ? Number(e.target.value) : '')}
+              required
+            >
               <option value="">Select…</option>
-              {plans.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {plans.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Department</label>
-            <select className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              value={departmentId} onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : '')}>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Department
+            </label>
+            <select
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              value={departmentId}
+              onChange={(e) => setDepartmentId(e.target.value ? Number(e.target.value) : '')}
+            >
               <option value="">— C-SUITE —</option>
-              {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Organisational Goal *</label>
-          <textarea rows={3} className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-            value={name} onChange={(e) => setName(e.target.value)} required />
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Organisational Goal *
+          </label>
+          <textarea
+            rows={3}
+            className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Baseline</label>
-            <input className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              value={baseline} onChange={(e) => setBaseline(e.target.value)} />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Baseline
+            </label>
+            <input
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              value={baseline}
+              onChange={(e) => setBaseline(e.target.value)}
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Target</label>
-            <input className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              value={targetValue} onChange={(e) => setTargetValue(e.target.value)} />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Target
+            </label>
+            <input
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              value={targetValue}
+              onChange={(e) => setTargetValue(e.target.value)}
+            />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unit</label>
-            <input className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="e.g. %, KES m" />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Unit
+            </label>
+            <input
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              placeholder="e.g. %, KES m"
+            />
           </div>
         </div>
         {err && <p className="text-sm text-red-600">{err}</p>}
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-          <Button type="submit">{mode === 'add' ? 'Add organisational goal' : 'Save changes'}</Button>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit">
+            {mode === 'add' ? 'Add organisational goal' : 'Save changes'}
+          </Button>
         </div>
       </form>
     </Modal>

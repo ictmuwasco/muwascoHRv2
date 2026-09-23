@@ -1,9 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import {
-  getConsentDashboard,
-  getEmployeeConsentList,
-} from '../../api/services/consentService';
+import { getConsentDashboard, getEmployeeConsentList } from '../../api/services/consentService';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import {
@@ -17,7 +14,6 @@ import {
 } from 'lucide-react';
 
 const Consent = () => {
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dashboard, setDashboard] = useState<{
@@ -27,18 +23,20 @@ const Consent = () => {
     declined: number;
     consent_rate: number;
   } | null>(null);
-  const [employees, setEmployees] = useState<Array<{
-    employee_id: string;
-    first_name: string;
-    last_name: string;
-    email: string;
-    gender: string;
-    department: string;
-    section: string;
-    consent_status: string;
-    consent_version: string;
-    consent_date: string | null;
-  }>>([]);
+  const [employees, setEmployees] = useState<
+    Array<{
+      employee_id: string;
+      first_name: string;
+      last_name: string;
+      email: string;
+      gender: string;
+      department: string;
+      section: string;
+      consent_status: string;
+      consent_version: string;
+      consent_date: string | null;
+    }>
+  >([]);
   const [filters, setFilters] = useState({
     status: 'all',
     department_id: undefined as number | undefined,
@@ -56,7 +54,9 @@ const Consent = () => {
     total_pages: 0,
   });
   const [departments, setDepartments] = useState<Array<{ id: number; name: string }>>([]);
-  const [sections, setSections] = useState<Array<{ id: number; name: string; department_id: number }>>([]);
+  const [sections, setSections] = useState<
+    Array<{ id: number; name: string; department_id: number }>
+  >([]);
   const [, setVersions] = useState<string[]>([]);
 
   useEffect(() => {
@@ -351,7 +351,9 @@ const Consent = () => {
           </div>
         ) : employees.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-gray-500 dark:text-gray-400">No employees found matching your filters.</p>
+            <p className="text-gray-500 dark:text-gray-400">
+              No employees found matching your filters.
+            </p>
           </div>
         ) : (
           <>
@@ -390,7 +392,9 @@ const Consent = () => {
                           <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
                             {emp.first_name} {emp.last_name}
                           </div>
-                          <div className="text-sm text-gray-500 dark:text-gray-400">{emp.email}</div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            {emp.email}
+                          </div>
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
@@ -420,8 +424,9 @@ const Consent = () => {
             {/* Pagination */}
             <div className="flex items-center justify-between mt-4 px-2 py-3">
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Showing {employees.length > 0 ? ((pagination.page - 1) * pagination.per_page) + 1 : 0} to{' '}
-                {Math.min(pagination.page * pagination.per_page, pagination.total)} of {pagination.total} employees
+                Showing {employees.length > 0 ? (pagination.page - 1) * pagination.per_page + 1 : 0}{' '}
+                to {Math.min(pagination.page * pagination.per_page, pagination.total)} of{' '}
+                {pagination.total} employees
               </p>
               <div className="flex items-center space-x-2">
                 <Button

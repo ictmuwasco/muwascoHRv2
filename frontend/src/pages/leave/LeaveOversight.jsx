@@ -1,271 +1,314 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Download, RefreshCw, LayoutGrid, List, Users, Check } from 'lucide-react'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import Button from '../../components/ui/Button'
+import { useState, useEffect, useCallback } from 'react';
+import { Download, RefreshCw, LayoutGrid, List, Users, Check } from 'lucide-react';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
 
-import LeaveInfoBanner from '../../components/leave/LeaveInfoBanner'
-import CoverageBar from '../../components/leave/CoverageBar'
-import PlanningMatrix from '../../components/leave/PlanningMatrix'
-import DistributionChart from '../../components/leave/DistributionChart'
-import UpcomingLeave from '../../components/leave/UpcomingLeave'
-import DepartmentTable from '../../components/leave/DepartmentTable'
-import EmployeeRosterTable from '../../components/leave/EmployeeRosterTable'
-import FilterBar from '../../components/leave/FilterBar'
-
-
+import LeaveInfoBanner from '../../components/leave/LeaveInfoBanner';
+import CoverageBar from '../../components/leave/CoverageBar';
+import PlanningMatrix from '../../components/leave/PlanningMatrix';
+import DistributionChart from '../../components/leave/DistributionChart';
+import UpcomingLeave from '../../components/leave/UpcomingLeave';
+import DepartmentTable from '../../components/leave/DepartmentTable';
+import EmployeeRosterTable from '../../components/leave/EmployeeRosterTable';
+import FilterBar from '../../components/leave/FilterBar';
 
 const LeaveOversight = () => {
   // Data state
-  const [stats, setStats] = useState(null)
-  const [distribution, setDistribution] = useState({ distribution: [], highest: null, lowest: null })
-  const [upcoming, setUpcoming] = useState(null)
-  const [departments, setDepartments] = useState([])
-  const [matrixData, setMatrixData] = useState(null)
-  const [rosterEntries, setRosterEntries] = useState([])
-  const [financialYears, setFinancialYears] = useState([])
-  const [sections, setSections] = useState([])
+  const [stats, setStats] = useState(null);
+  const [distribution, setDistribution] = useState({
+    distribution: [],
+    highest: null,
+    lowest: null,
+  });
+  const [upcoming, setUpcoming] = useState(null);
+  const [departments, setDepartments] = useState([]);
+  const [matrixData, setMatrixData] = useState(null);
+  const [rosterEntries, setRosterEntries] = useState([]);
+  const [financialYears, setFinancialYears] = useState([]);
+  const [sections, setSections] = useState([]);
 
   // UI state
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [selectedFinancialYear, setSelectedFinancialYear] = useState('')
-  const [selectedDepartment, setSelectedDepartment] = useState('')
-  const [selectedSection, setSelectedSection] = useState('')
-  const [selectedMonth, setSelectedMonth] = useState('')
-  const [selectedStatus, setSelectedStatus] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [viewMode, setViewMode] = useState('list')
-  const [pagination, setPagination] = useState({ total: 0, per_page: 20, current_page: 1, last_page: 1 })
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selectedFinancialYear, setSelectedFinancialYear] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+  const [selectedSection, setSelectedSection] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState('list');
+  const [pagination, setPagination] = useState({
+    total: 0,
+    per_page: 20,
+    current_page: 1,
+    last_page: 1,
+  });
 
   // ─── Data Loading ───────────────────────────────────────────────
 
   const loadFinancialYears = useCallback(async () => {
     try {
-      const response = await api.get('/leave/roster/financial-years')
-      const years = response.data?.data || []
-      setFinancialYears(years)
+      const response = await api.get('/leave/roster/financial-years');
+      const years = response.data?.data || [];
+      setFinancialYears(years);
       if (years.length > 0 && !selectedFinancialYear) {
-        setSelectedFinancialYear(years[0]?.id || years[0])
+        setSelectedFinancialYear(years[0]?.id || years[0]);
       }
     } catch (err) {
-      console.error('Failed to load financial years:', err)
+      console.error('Failed to load financial years:', err);
     }
-  }, [selectedFinancialYear])
+  }, [selectedFinancialYear]);
 
   const loadSections = useCallback(async () => {
     try {
-      const response = await api.get('/sections')
-      setSections(response.data?.data || [])
+      const response = await api.get('/sections');
+      setSections(response.data?.data || []);
     } catch (err) {
-      console.error('Failed to load sections:', err)
+      console.error('Failed to load sections:', err);
     }
-  }, [])
+  }, []);
 
   const loadStats = useCallback(async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      const response = await api.get('/leave/roster/stats', { params })
-      setStats(response.data?.data || null)
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      const response = await api.get('/leave/roster/stats', { params });
+      setStats(response.data?.data || null);
     } catch (err) {
-      console.error('Failed to load stats:', err)
+      console.error('Failed to load stats:', err);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection])
+  }, [selectedFinancialYear, selectedDepartment, selectedSection]);
 
   const loadDistribution = useCallback(async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      const response = await api.get('/leave/roster/distribution', { params })
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      const response = await api.get('/leave/roster/distribution', { params });
       setDistribution({
         distribution: response.data?.data?.distribution || [],
         highest: response.data?.data?.highest || null,
         lowest: response.data?.data?.lowest || null,
-      })
+      });
     } catch (err) {
-      console.error('Failed to load distribution:', err)
+      console.error('Failed to load distribution:', err);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection])
+  }, [selectedFinancialYear, selectedDepartment, selectedSection]);
 
   const loadUpcoming = useCallback(async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      const response = await api.get('/leave/roster/upcoming', { params })
-      setUpcoming(response.data?.data || null)
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      const response = await api.get('/leave/roster/upcoming', { params });
+      setUpcoming(response.data?.data || null);
     } catch (err) {
-      console.error('Failed to load upcoming:', err)
+      console.error('Failed to load upcoming:', err);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection])
+  }, [selectedFinancialYear, selectedDepartment, selectedSection]);
 
   const loadDepartments = useCallback(async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      const response = await api.get('/leave/roster/departments', { params })
-      setDepartments(response.data?.data || [])
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      const response = await api.get('/leave/roster/departments', { params });
+      setDepartments(response.data?.data || []);
     } catch (err) {
-      console.error('Failed to load departments:', err)
+      console.error('Failed to load departments:', err);
     }
-  }, [selectedFinancialYear])
+  }, [selectedFinancialYear]);
 
   const loadMatrix = useCallback(async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      const response = await api.get('/leave/roster/matrix', { params })
-      setMatrixData(response.data?.data || null)
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      const response = await api.get('/leave/roster/matrix', { params });
+      setMatrixData(response.data?.data || null);
     } catch (err) {
-      console.error('Failed to load matrix:', err)
+      console.error('Failed to load matrix:', err);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection])
+  }, [selectedFinancialYear, selectedDepartment, selectedSection]);
 
-  const loadRoster = useCallback(async (page = 1) => {
-    if (!selectedFinancialYear) return
-    setLoading(true)
-    setError('')
-    try {
-      const params = { page, per_page: pagination.per_page }
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      if (selectedMonth) params.month = selectedMonth
-      if (selectedStatus) params.status = selectedStatus
-      if (searchTerm) params.search = searchTerm
-      const response = await api.get('/leave/roster', { params })
-      setRosterEntries(response.data?.data || [])
-      setPagination({
-        total: response.data?.total || 0,
-        per_page: response.data?.per_page || 20,
-        current_page: response.data?.current_page || 1,
-        last_page: response.data?.last_page || 1,
-      })
-    } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to load roster'
-      setError(msg)
-    } finally {
-      setLoading(false)
-    }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection, selectedMonth, selectedStatus, searchTerm, pagination.per_page])
+  const loadRoster = useCallback(
+    async (page = 1) => {
+      if (!selectedFinancialYear) return;
+      setLoading(true);
+      setError('');
+      try {
+        const params = { page, per_page: pagination.per_page };
+        if (selectedDepartment) params.department_id = selectedDepartment;
+        if (selectedSection) params.section_id = selectedSection;
+        if (selectedMonth) params.month = selectedMonth;
+        if (selectedStatus) params.status = selectedStatus;
+        if (searchTerm) params.search = searchTerm;
+        const response = await api.get('/leave/roster', { params });
+        setRosterEntries(response.data?.data || []);
+        setPagination({
+          total: response.data?.total || 0,
+          per_page: response.data?.per_page || 20,
+          current_page: response.data?.current_page || 1,
+          last_page: response.data?.last_page || 1,
+        });
+      } catch (err) {
+        const msg = err.response?.data?.message || 'Failed to load roster';
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      selectedFinancialYear,
+      selectedDepartment,
+      selectedSection,
+      selectedMonth,
+      selectedStatus,
+      searchTerm,
+      pagination.per_page,
+    ],
+  );
 
   // Initial load
   useEffect(() => {
-    loadFinancialYears()
-    loadSections()
-  }, [loadFinancialYears, loadSections])
+    loadFinancialYears();
+    loadSections();
+  }, [loadFinancialYears, loadSections]);
 
   // Load dependent data when filters change
   useEffect(() => {
     if (selectedFinancialYear) {
-      loadStats()
-      loadDistribution()
-      loadUpcoming()
-      loadDepartments()
-      loadMatrix()
-      loadRoster(1)
+      loadStats();
+      loadDistribution();
+      loadUpcoming();
+      loadDepartments();
+      loadMatrix();
+      loadRoster(1);
     }
-  }, [selectedFinancialYear, selectedDepartment, selectedSection, selectedMonth, selectedStatus, searchTerm, loadStats, loadDistribution, loadUpcoming, loadDepartments, loadMatrix, loadRoster])
+  }, [
+    selectedFinancialYear,
+    selectedDepartment,
+    selectedSection,
+    selectedMonth,
+    selectedStatus,
+    searchTerm,
+    loadStats,
+    loadDistribution,
+    loadUpcoming,
+    loadDepartments,
+    loadMatrix,
+    loadRoster,
+  ]);
 
   // ─── Actions ────────────────────────────────────────────────────
 
   const handleExport = async () => {
     try {
-      const params = {}
-      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear
-      if (selectedDepartment) params.department_id = selectedDepartment
-      if (selectedSection) params.section_id = selectedSection
-      if (selectedMonth) params.month = selectedMonth
-      if (selectedStatus) params.status = selectedStatus
-      if (searchTerm) params.search = searchTerm
-      const response = await api.get('/leave/roster/export', { params, responseType: 'blob' })
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement('a')
-      link.href = url
-      link.setAttribute('download', 'leave-oversight-export.csv')
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
+      const params = {};
+      if (selectedFinancialYear) params.financial_year_id = selectedFinancialYear;
+      if (selectedDepartment) params.department_id = selectedDepartment;
+      if (selectedSection) params.section_id = selectedSection;
+      if (selectedMonth) params.month = selectedMonth;
+      if (selectedStatus) params.status = selectedStatus;
+      if (searchTerm) params.search = searchTerm;
+      const response = await api.get('/leave/roster/export', { params, responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'leave-oversight-export.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to export'
-      setError(msg)
+      const msg = err.response?.data?.message || 'Failed to export';
+      setError(msg);
     }
-  }
+  };
 
   const handleFilterChange = (field, value) => {
     switch (field) {
-      case 'selectedFinancialYear': setSelectedFinancialYear(value); break
-      case 'selectedDepartment': setSelectedDepartment(value); break
-      case 'selectedSection': setSelectedSection(value); break
-      case 'selectedMonth': setSelectedMonth(value); break
-      case 'selectedStatus': setSelectedStatus(value); break
-      case 'searchTerm': setSearchTerm(value); break
+      case 'selectedFinancialYear':
+        setSelectedFinancialYear(value);
+        break;
+      case 'selectedDepartment':
+        setSelectedDepartment(value);
+        break;
+      case 'selectedSection':
+        setSelectedSection(value);
+        break;
+      case 'selectedMonth':
+        setSelectedMonth(value);
+        break;
+      case 'selectedStatus':
+        setSelectedStatus(value);
+        break;
+      case 'searchTerm':
+        setSearchTerm(value);
+        break;
     }
-  }
+  };
 
   const handleResetFilters = () => {
-    setSelectedDepartment('')
-    setSelectedSection('')
-    setSelectedMonth('')
-    setSelectedStatus('')
-    setSearchTerm('')
-  }
+    setSelectedDepartment('');
+    setSelectedSection('');
+    setSelectedMonth('');
+    setSelectedStatus('');
+    setSearchTerm('');
+  };
 
   const handleNotScheduledClick = () => {
-    setSelectedStatus('not_scheduled')
-    setSelectedDepartment('')
-    setSelectedSection('')
-    setSelectedMonth('')
-    setSearchTerm('')
-  }
+    setSelectedStatus('not_scheduled');
+    setSelectedDepartment('');
+    setSelectedSection('');
+    setSelectedMonth('');
+    setSearchTerm('');
+  };
 
   const handleScheduledClick = () => {
-    setSelectedStatus('scheduled')
-    setSelectedDepartment('')
-    setSelectedSection('')
-    setSelectedMonth('')
-    setSearchTerm('')
-  }
+    setSelectedStatus('scheduled');
+    setSelectedDepartment('');
+    setSelectedSection('');
+    setSelectedMonth('');
+    setSearchTerm('');
+  };
 
   const handleAllClick = () => {
     // Show all employees (clear status filter)
-    setSelectedStatus('')
-    setSelectedDepartment('')
-    setSelectedSection('')
-    setSelectedMonth('')
-    setSearchTerm('')
-  }
+    setSelectedStatus('');
+    setSelectedDepartment('');
+    setSelectedSection('');
+    setSelectedMonth('');
+    setSearchTerm('');
+  };
 
   const handleRefresh = () => {
     if (selectedFinancialYear) {
-      loadStats()
-      loadDistribution()
-      loadUpcoming()
-      loadDepartments()
-      loadMatrix()
-      loadRoster(1)
+      loadStats();
+      loadDistribution();
+      loadUpcoming();
+      loadDepartments();
+      loadMatrix();
+      loadRoster(1);
     }
-  }
+  };
 
   // Get current financial year name
-  const currentFy = financialYears.find((y) => y.id == selectedFinancialYear)
-  const fyName = currentFy?.year_name || currentFy?.name || ''
+  const currentFy = financialYears.find((y) => y.id == selectedFinancialYear);
+  const fyName = currentFy?.year_name || currentFy?.name || '';
 
   // Get matrix employees (filtered by status if selected)
-  const matrixEmployees = matrixData?.employees || []
+  const matrixEmployees = matrixData?.employees || [];
   const filteredMatrixEmployees = matrixEmployees.filter((e) => {
-    const hasScheduled = !!e.scheduled_month
-    if (selectedStatus === 'scheduled' && !hasScheduled) return false
-    if (selectedStatus === 'not_scheduled' && hasScheduled) return false
-    return true
-  })
+    const hasScheduled = !!e.scheduled_month;
+    if (selectedStatus === 'scheduled' && !hasScheduled) return false;
+    if (selectedStatus === 'not_scheduled' && hasScheduled) return false;
+    return true;
+  });
 
   // Get scheduled months for month pills
 
@@ -274,7 +317,7 @@ const LeaveOversight = () => {
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
-    )
+    );
   }
 
   return (
@@ -286,7 +329,8 @@ const LeaveOversight = () => {
             Annual Leave Oversight
           </h1>
           <p className="text-gray-500 dark:text-gray-400">
-            {fyName ? `${fyName} Financial Year` : 'Financial Year'} · Monitor annual leave planning coverage, distribution and upcoming schedules.
+            {fyName ? `${fyName} Financial Year` : 'Financial Year'} · Monitor annual leave planning
+            coverage, distribution and upcoming schedules.
           </p>
         </div>
         <div className="flex items-center space-x-3">
@@ -333,7 +377,10 @@ const LeaveOversight = () => {
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {/* Active Employees - clickable (shows all) */}
-          <Card className="cursor-pointer transition-transform hover:scale-[1.02]" onClick={handleAllClick}>
+          <Card
+            className="cursor-pointer transition-transform hover:scale-[1.02]"
+            onClick={handleAllClick}
+          >
             <div className="flex items-center space-x-3">
               <div className="h-10 w-10 rounded-lg bg-gray-100 dark:bg-slate-700 flex items-center justify-center">
                 <Users className="h-5 w-5 text-gray-600 dark:text-gray-300" />
@@ -432,9 +479,7 @@ const LeaveOversight = () => {
                   <p className="text-sm text-gray-600 dark:text-gray-300">
                     {distribution.highest.count} employees scheduled
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Highest concentration
-                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Highest concentration</p>
                 </div>
               </div>
             )}
@@ -450,9 +495,7 @@ const LeaveOversight = () => {
                   <p className="text-sm text-gray-600 dark:text-gray-300">
                     {distribution.lowest.count} employees scheduled
                   </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Lowest concentration
-                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Lowest concentration</p>
                 </div>
               </div>
             )}
@@ -552,8 +595,9 @@ const LeaveOversight = () => {
                 {pagination.last_page > 1 && (
                   <div className="flex items-center justify-between mt-4 px-2">
                     <div className="text-sm text-gray-500 dark:text-gray-400">
-                      Showing {((pagination.current_page - 1) * pagination.per_page) + 1} -{' '}
-                      {Math.min(pagination.current_page * pagination.per_page, pagination.total)} of {pagination.total}
+                      Showing {(pagination.current_page - 1) * pagination.per_page + 1} -{' '}
+                      {Math.min(pagination.current_page * pagination.per_page, pagination.total)} of{' '}
+                      {pagination.total}
                     </div>
                     <div className="flex items-center space-x-2">
                       <Button
@@ -584,8 +628,7 @@ const LeaveOversight = () => {
         )}
       </Card>
     </div>
-  )
-}
+  );
+};
 
-export default LeaveOversight
-
+export default LeaveOversight;

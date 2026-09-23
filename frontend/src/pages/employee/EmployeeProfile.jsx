@@ -1,17 +1,37 @@
-import { useState, useEffect, useMemo } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import api from '../../utils/api'
-import Card from '../../components/ui/Card'
-import Badge from '../../components/ui/Badge'
-import Button from '../../components/ui/Button'
-import Input from '../../components/ui/Input'
-import Modal from '../../components/ui/Modal'
-import EmployeeTabs from '../../components/EmployeeTabs'
-import { ArrowLeft, Mail, Phone, MapPin, Briefcase, Building2, FileText, Users, Heart, Download, Save, Loader2, Plus, Trash2, Upload, Camera, RefreshCw, Calendar, Clock } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import api from '../../utils/api';
+import Card from '../../components/ui/Card';
+import Badge from '../../components/ui/Badge';
+import Button from '../../components/ui/Button';
+import Input from '../../components/ui/Input';
+import Modal from '../../components/ui/Modal';
+import EmployeeTabs from '../../components/EmployeeTabs';
+import {
+  ArrowLeft,
+  Mail,
+  Phone,
+  MapPin,
+  Briefcase,
+  Building2,
+  FileText,
+  Users,
+  Heart,
+  Download,
+  Save,
+  Loader2,
+  Plus,
+  Trash2,
+  Upload,
+  Camera,
+  RefreshCw,
+  Calendar,
+  Clock,
+} from 'lucide-react';
 
 // Base URL for direct file access (authenticated via httpOnly cookie) —
 // centralized in src/config/api.ts so every consumer shares VITE_API_URL.
-import { API_BASE_URL as API_BASE } from '../../config/api'
+import { API_BASE_URL as API_BASE } from '../../config/api';
 
 // Tab definitions for the EmployeeProfile tab navigation, declared at MODULE
 // level (single source of truth). This is required because the ?tab=
@@ -26,41 +46,41 @@ const PROFILE_TABS = [
   { id: 'documents', name: 'Documents', icon: <FileText className="h-4 w-4" /> },
   { id: 'nextofkin', name: 'Next of Kin', icon: <Users className="h-4 w-4" /> },
   { id: 'dependants', name: 'Dependants', icon: <Heart className="h-4 w-4" /> },
-]
+];
 
 /** Format a Date as YYYY-MM-DD (local time) for date inputs and the API. */
 const toYMD = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** Add N calendar months to a Date, clamping day-overflow (Jan 31 + 1m → Feb 28). */
 const addMonthsClamped = (date, months) => {
-  const d = new Date(date.getTime())
-  const day = d.getDate()
-  d.setMonth(d.getMonth() + months)
-  if (d.getDate() !== day) d.setDate(0)
-  return d
-}
+  const d = new Date(date.getTime());
+  const day = d.getDate();
+  d.setMonth(d.getMonth() + months);
+  if (d.getDate() !== day) d.setDate(0);
+  return d;
+};
 
 const EmployeeProfile = () => {
-  const { id } = useParams()
-  const navigate = useNavigate()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [employee, setEmployee] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState('details')
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [employee, setEmployee] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState('details');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   // Next of Kin form state
   const [nextOfKinForm, setNextOfKinForm] = useState({
     name: '',
     relationship: '',
     contact: '',
-  })
+  });
 
   // Dependants form state
-  const [dependants, setDependants] = useState([])
+  const [dependants, setDependants] = useState([]);
   const [dependantForm, setDependantForm] = useState({
     name: '',
     relationship: '',
@@ -68,41 +88,41 @@ const EmployeeProfile = () => {
     gender: '',
     id_no: '',
     contact: '',
-  })
+  });
 
   // Documents state
-  const [documents, setDocuments] = useState([])
+  const [documents, setDocuments] = useState([]);
   const [newDocument, setNewDocument] = useState({
     name: '',
     category: 'other',
     file: null,
-  })
+  });
 
   // Profile picture state
-  const [profileImageUrl, setProfileImageUrl] = useState(null)
-  const [profileImageUploading, setProfileImageUploading] = useState(false)
+  const [profileImageUrl, setProfileImageUrl] = useState(null);
+  const [profileImageUploading, setProfileImageUploading] = useState(false);
 
   // Contracts state
-  const [contracts, setContracts] = useState([])
-  const [contractCount, setContractCount] = useState(0)
-  const [renewingContract, setRenewingContract] = useState(false)
+  const [contracts, setContracts] = useState([]);
+  const [contractCount, setContractCount] = useState(0);
+  const [renewingContract, setRenewingContract] = useState(false);
 
   // Contract renewal modal state — a small term form (dates / months) instead
   // of the old confirm() dialog. A contract can only be renewed ONCE: the
   // backend enforces it and the UI disables already-renewed contracts.
-  const [renewModal, setRenewModal] = useState(null) // { contract } | null
-  const [renewForm, setRenewForm] = useState({ start_date: '', end_date: '' })
-  const [renewDuration, setRenewDuration] = useState('12') // '6' | '12' | 'custom'
-  const [renewError, setRenewError] = useState('')
+  const [renewModal, setRenewModal] = useState(null); // { contract } | null
+  const [renewForm, setRenewForm] = useState({ start_date: '', end_date: '' });
+  const [renewDuration, setRenewDuration] = useState('12'); // '6' | '12' | 'custom'
+  const [renewError, setRenewError] = useState('');
 
   // Contract → Permanent conversion (Contracts tab dropdown). The backend
   // action flips employment_type to 'permanent', clears the active contract
   // dates and preserves the contract history. On success a banner points HR
   // at the Financial Year page to allocate the employee's leave days.
-  const [convertType, setConvertType] = useState('')
-  const [converting, setConverting] = useState(false)
-  const [convertError, setConvertError] = useState('')
-  const [convertedEmployee, setConvertedEmployee] = useState(null) // { name } drives the next-step banner
+  const [convertType, setConvertType] = useState('');
+  const [converting, setConverting] = useState(false);
+  const [convertError, setConvertError] = useState('');
+  const [convertedEmployee, setConvertedEmployee] = useState(null); // { name } drives the next-step banner
 
   // contract id → contract number of the contract that renewed it (drives the
   // one-renewal-per-contract rule in the Contracts tab UI)
@@ -111,14 +131,14 @@ const EmployeeProfile = () => {
       new Map(
         contracts
           .filter((c) => c.renewed_from_contract_id)
-          .map((c) => [c.renewed_from_contract_id, c.contract_number])
+          .map((c) => [c.renewed_from_contract_id, c.contract_number]),
       ),
-    [contracts]
-  )
+    [contracts],
+  );
 
   useEffect(() => {
-    fetchEmployee()
-  }, [id])
+    fetchEmployee();
+  }, [id]);
 
   // ---- Deep-link support -----------------------------------------------------
   // /employees/:id/profile?tab=contracts opens the Contracts tab directly.
@@ -126,7 +146,7 @@ const EmployeeProfile = () => {
   // jump straight to the employee's contracts and renew. The URL is kept in
   // sync with the active tab, making it bookmarkable.
 
-  const requestedTab = searchParams.get('tab')
+  const requestedTab = searchParams.get('tab');
 
   // Apply a valid ?tab= deep link (e.g. ?tab=contracts from the HR Insights
   // "Expired Contracts" dashboard card). Validated against PROFILE_TABS — a
@@ -134,272 +154,288 @@ const EmployeeProfile = () => {
   // the loading early-return `tabs` is still uninitialised and an effect
   // touching it throws "Cannot access 'tabs' before initialization".
   useEffect(() => {
-    if (requestedTab && PROFILE_TABS.some((t) => t.id === requestedTab) && requestedTab !== activeTab) {
-      setActiveTab(requestedTab)
+    if (
+      requestedTab &&
+      PROFILE_TABS.some((t) => t.id === requestedTab) &&
+      requestedTab !== activeTab
+    ) {
+      setActiveTab(requestedTab);
     }
-     
-  }, [requestedTab])
+  }, [requestedTab]);
 
   // Mirror tab changes into the URL so refresh/back behave predictably.
   useEffect(() => {
     if (activeTab === 'details') {
-      if (searchParams.get('tab')) setSearchParams({}, { replace: true })
+      if (searchParams.get('tab')) setSearchParams({}, { replace: true });
     } else if (searchParams.get('tab') !== activeTab) {
-      setSearchParams({ tab: activeTab }, { replace: true })
+      setSearchParams({ tab: activeTab }, { replace: true });
     }
-     
-  }, [activeTab])
+  }, [activeTab]);
 
   const fetchEmployee = async () => {
     try {
-      const response = await api.get(`/employees/${id}`)
-      const data = response.data.data || response.data
-      setEmployee(data)
-      
+      const response = await api.get(`/employees/${id}`);
+      const data = response.data.data || response.data;
+      setEmployee(data);
+
       // Parse next of kin from next_of_kin_data (already parsed from separate table)
-      const parsedNextOfKin = data.next_of_kin_data || safeParse(data.next_of_kin)
+      const parsedNextOfKin = data.next_of_kin_data || safeParse(data.next_of_kin);
       if (parsedNextOfKin.length > 0) {
         setNextOfKinForm({
           name: parsedNextOfKin[0].name || '',
           relationship: parsedNextOfKin[0].relationship || '',
           contact: parsedNextOfKin[0].contact || parsedNextOfKin[0].phone || '',
-        })
+        });
       }
 
       // Parse dependants from dependants_data (already parsed from separate table)
-      const parsedDependants = data.dependants_data || safeParse(data.dependants)
-      setDependants(parsedDependants)
+      const parsedDependants = data.dependants_data || safeParse(data.dependants);
+      setDependants(parsedDependants);
 
       // Parse documents
-      const parsedDocuments = safeParse(data.documents)
-      setDocuments(parsedDocuments)
+      const parsedDocuments = safeParse(data.documents);
+      setDocuments(parsedDocuments);
 
       // Set profile picture URL
       if (data.profile_image_url) {
-        setProfileImageUrl(`${API_BASE}/employees/${id}/profile-image?t=${Date.now()}`)
+        setProfileImageUrl(`${API_BASE}/employees/${id}/profile-image?t=${Date.now()}`);
       } else {
-        setProfileImageUrl(null)
+        setProfileImageUrl(null);
       }
 
       // Fetch contract information
       try {
-        const contractRes = await api.get(`/employees/${id}/contracts`)
-        const contractData = contractRes.data.data || contractRes.data
-        setContracts(contractData.contracts || [])
-        setContractCount(contractData.count || (contractData.contracts || []).length)
+        const contractRes = await api.get(`/employees/${id}/contracts`);
+        const contractData = contractRes.data.data || contractRes.data;
+        setContracts(contractData.contracts || []);
+        setContractCount(contractData.count || (contractData.contracts || []).length);
       } catch (err) {
-        console.error('Failed to fetch contracts:', err)
-        setContracts([])
-        setContractCount(0)
+        console.error('Failed to fetch contracts:', err);
+        setContracts([]);
+        setContractCount(0);
       }
     } catch (error) {
-      console.error('Failed to fetch employee:', error)
+      console.error('Failed to fetch employee:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const safeParse = (value) => {
-    if (Array.isArray(value)) return value
-    if (typeof value === 'object' && value !== null) return [value]
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'object' && value !== null) return [value];
     if (typeof value === 'string') {
       try {
-        const parsed = JSON.parse(value)
-        return Array.isArray(parsed) ? parsed : (parsed ? [parsed] : [])
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : parsed ? [parsed] : [];
       } catch {
-        return []
+        return [];
       }
     }
-    return []
-  }
+    return [];
+  };
 
   const handleNextOfKinChange = (e) => {
-    const { name, value } = e.target
-    setNextOfKinForm((prev) => ({ ...prev, [name]: value }))
-  }
+    const { name, value } = e.target;
+    setNextOfKinForm((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handleSaveNextOfKin = async (e) => {
-    e.preventDefault()
-    setSaving(true)
-    setError('')
-    setSuccess('')
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    setSuccess('');
     try {
-      const nextOfKinData = [{
-        name: nextOfKinForm.name,
-        relationship: nextOfKinForm.relationship,
-        contact: nextOfKinForm.contact,
-      }]
-      await api.put(`/employees/${id}`, { next_of_kin: nextOfKinData })
-      setSuccess('Next of kin updated successfully')
-      fetchEmployee()
+      const nextOfKinData = [
+        {
+          name: nextOfKinForm.name,
+          relationship: nextOfKinForm.relationship,
+          contact: nextOfKinForm.contact,
+        },
+      ];
+      await api.put(`/employees/${id}`, { next_of_kin: nextOfKinData });
+      setSuccess('Next of kin updated successfully');
+      fetchEmployee();
     } catch (err) {
-      setError('Failed to update next of kin')
-      console.error('Failed to update next of kin:', err)
+      setError('Failed to update next of kin');
+      console.error('Failed to update next of kin:', err);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const handleDependantChange = (e) => {
-    const { name, value } = e.target
-    setDependantForm((prev) => ({ ...prev, [name]: value }))
-  }
+    const { name, value } = e.target;
+    setDependantForm((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handleAddDependant = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!dependantForm.name) {
-      setError('Dependant name is required')
-      return
+      setError('Dependant name is required');
+      return;
     }
-    setSaving(true)
-    setError('')
-    setSuccess('')
+    setSaving(true);
+    setError('');
+    setSuccess('');
     try {
-      const currentDependants = employee.dependants_data || dependants
-      const updatedDependants = [...currentDependants, { ...dependantForm }]
-      await api.put(`/employees/${id}`, { dependants: updatedDependants })
-      setDependants(updatedDependants)
-      setDependantForm({ name: '', relationship: '', date_of_birth: '', gender: '', id_no: '', contact: '' })
-      setSuccess('Dependant added successfully')
+      const currentDependants = employee.dependants_data || dependants;
+      const updatedDependants = [...currentDependants, { ...dependantForm }];
+      await api.put(`/employees/${id}`, { dependants: updatedDependants });
+      setDependants(updatedDependants);
+      setDependantForm({
+        name: '',
+        relationship: '',
+        date_of_birth: '',
+        gender: '',
+        id_no: '',
+        contact: '',
+      });
+      setSuccess('Dependant added successfully');
     } catch (err) {
-      setError('Failed to add dependant')
-      console.error('Failed to add dependant:', err)
+      setError('Failed to add dependant');
+      console.error('Failed to add dependant:', err);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const handleDeleteDependant = async (index) => {
-    if (!confirm('Are you sure you want to delete this dependant?')) return
-    setSaving(true)
-    setError('')
-    setSuccess('')
+    if (!confirm('Are you sure you want to delete this dependant?')) return;
+    setSaving(true);
+    setError('');
+    setSuccess('');
     try {
-      const currentDependants = employee.dependants_data || dependants
-      const updatedDependants = currentDependants.filter((_, i) => i !== index)
-      await api.put(`/employees/${id}`, { dependants: updatedDependants })
-      setDependants(updatedDependants)
-      setSuccess('Dependant deleted successfully')
+      const currentDependants = employee.dependants_data || dependants;
+      const updatedDependants = currentDependants.filter((_, i) => i !== index);
+      await api.put(`/employees/${id}`, { dependants: updatedDependants });
+      setDependants(updatedDependants);
+      setSuccess('Dependant deleted successfully');
     } catch (err) {
-      setError('Failed to delete dependant')
-      console.error('Failed to delete dependant:', err)
+      setError('Failed to delete dependant');
+      console.error('Failed to delete dependant:', err);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const handleDocumentFileChange = (e) => {
-    const file = e.target.files?.[0] || null
+    const file = e.target.files?.[0] || null;
     setNewDocument((prev) => ({
       ...prev,
       file,
       name: file ? file.name : prev.name,
-    }))
-  }
+    }));
+  };
 
   const handleUploadDocument = async (e) => {
-    e.preventDefault()
+    e.preventDefault();
     if (!newDocument.file) {
-      setError('Please select a file to upload')
-      return
+      setError('Please select a file to upload');
+      return;
     }
-    setSaving(true)
-    setError('')
-    setSuccess('')
+    setSaving(true);
+    setError('');
+    setSuccess('');
     try {
-      const formData = new FormData()
-      formData.append('employee_id', id)
-      formData.append('document_name', newDocument.name)
-      formData.append('category', newDocument.category)
-      formData.append('file', newDocument.file)
+      const formData = new FormData();
+      formData.append('employee_id', id);
+      formData.append('document_name', newDocument.name);
+      formData.append('category', newDocument.category);
+      formData.append('file', newDocument.file);
       await api.post('/employees/documents', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      setSuccess('Document uploaded successfully')
-      setNewDocument({ name: '', category: 'other', file: null })
-      fetchEmployee()
+      });
+      setSuccess('Document uploaded successfully');
+      setNewDocument({ name: '', category: 'other', file: null });
+      fetchEmployee();
     } catch (err) {
-      setError('Failed to upload document')
-      console.error('Failed to upload document:', err)
+      setError('Failed to upload document');
+      console.error('Failed to upload document:', err);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const handleDeleteDocument = async (docId) => {
-    if (!confirm('Are you sure you want to delete this document?')) return
+    if (!confirm('Are you sure you want to delete this document?')) return;
     try {
-      await api.delete(`/employees/documents/${docId}`)
-      setSuccess('Document deleted successfully')
-      fetchEmployee()
+      await api.delete(`/employees/documents/${docId}`);
+      setSuccess('Document deleted successfully');
+      fetchEmployee();
     } catch (err) {
-      setError('Failed to delete document')
-      console.error('Failed to delete document:', err)
+      setError('Failed to delete document');
+      console.error('Failed to delete document:', err);
     }
-  }
+  };
 
   // Contract renewal — open the small renewal form pre-filled from the
   // selected contract. Start defaults to the day after the current term ends
   // (seamless renewal) when that is in the future, otherwise today; the
   // period defaults to 12 months.
   const openRenewModal = (contract) => {
-    const today = new Date()
-    const prevEnd = contract.end_date ? new Date(`${contract.end_date}T00:00:00`) : null
-    let start = today
+    const today = new Date();
+    const prevEnd = contract.end_date ? new Date(`${contract.end_date}T00:00:00`) : null;
+    let start = today;
     if (prevEnd && prevEnd > today) {
-      start = new Date(prevEnd.getTime())
-      start.setDate(start.getDate() + 1)
+      start = new Date(prevEnd.getTime());
+      start.setDate(start.getDate() + 1);
     }
     setRenewForm({
       start_date: toYMD(start),
       end_date: toYMD(addMonthsClamped(start, 12)),
-    })
-    setRenewDuration('12')
-    setRenewError('')
-    setRenewModal({ contract })
-  }
+    });
+    setRenewDuration('12');
+    setRenewError('');
+    setRenewModal({ contract });
+  };
 
   // 6/12-month presets recompute the end date; "custom" lets HR pick it
   // (editing the end date switches the selector back to custom).
   const handleRenewDurationChange = (value) => {
-    setRenewDuration(value)
+    setRenewDuration(value);
     if (value !== 'custom') {
-      const start = new Date(`${renewForm.start_date}T00:00:00`)
+      const start = new Date(`${renewForm.start_date}T00:00:00`);
       if (!Number.isNaN(start.getTime())) {
-        setRenewForm((f) => ({ ...f, end_date: toYMD(addMonthsClamped(start, parseInt(value, 10))) }))
+        setRenewForm((f) => ({
+          ...f,
+          end_date: toYMD(addMonthsClamped(start, parseInt(value, 10))),
+        }));
       }
     }
-  }
+  };
 
   const submitRenewContract = async () => {
-    if (!renewModal) return
-    const { contract } = renewModal
+    if (!renewModal) return;
+    const { contract } = renewModal;
     if (!renewForm.start_date || !renewForm.end_date) {
-      setRenewError('Please choose the new start and end dates.')
-      return
+      setRenewError('Please choose the new start and end dates.');
+      return;
     }
     if (renewForm.end_date <= renewForm.start_date) {
-      setRenewError('The end date must be after the start date.')
-      return
+      setRenewError('The end date must be after the start date.');
+      return;
     }
-    setRenewingContract(true)
-    setRenewError('')
+    setRenewingContract(true);
+    setRenewError('');
     try {
       await api.post(`/employees/${id}/contracts/${contract.id}/renew`, {
         start_date: renewForm.start_date,
         end_date: renewForm.end_date,
-      })
-      setRenewModal(null)
-      setSuccess(`Contract #${contract.contract_number} renewed — new term ${renewForm.start_date} → ${renewForm.end_date}`)
-      fetchEmployee()
+      });
+      setRenewModal(null);
+      setSuccess(
+        `Contract #${contract.contract_number} renewed — new term ${renewForm.start_date} → ${renewForm.end_date}`,
+      );
+      fetchEmployee();
     } catch (err) {
-      const msg = err?.response?.data?.message
-      setRenewError(typeof msg === 'string' && msg ? msg : 'Failed to renew contract')
-      console.error('Failed to renew contract:', err)
+      const msg = err?.response?.data?.message;
+      setRenewError(typeof msg === 'string' && msg ? msg : 'Failed to renew contract');
+      console.error('Failed to renew contract:', err);
     } finally {
-      setRenewingContract(false)
+      setRenewingContract(false);
     }
-  }
+  };
 
   // Convert the employee's employment_type from contract → permanent via the
   // dedicated backend action (POST /employees/{id}/convert-to-permanent).
@@ -407,79 +443,84 @@ const EmployeeProfile = () => {
   // new contract term is created. On success the leave-allocation next step
   // is surfaced (banner + jump to the Financial Year page).
   const submitConvertToPermanent = async () => {
-    if (converting) return
-    const name = [employee?.first_name, employee?.last_name].filter(Boolean).join(' ')
-    if (!confirm(
-      `Convert ${name || 'this employee'} to Permanent employment?\n\n` +
-      'Their employment type becomes "permanent", the active contract dates are cleared, ' +
-      'and the contract history is preserved. No new contract term is created.\n\n' +
-      'Next step after saving: allocate their leave days in Financial Year → Leave Allocation.'
-    )) return
-    setConverting(true)
-    setConvertError('')
+    if (converting) return;
+    const name = [employee?.first_name, employee?.last_name].filter(Boolean).join(' ');
+    if (
+      !confirm(
+        `Convert ${name || 'this employee'} to Permanent employment?\n\n` +
+          'Their employment type becomes "permanent", the active contract dates are cleared, ' +
+          'and the contract history is preserved. No new contract term is created.\n\n' +
+          'Next step after saving: allocate their leave days in Financial Year → Leave Allocation.',
+      )
+    )
+      return;
+    setConverting(true);
+    setConvertError('');
     try {
-      await api.post(`/employees/${id}/convert-to-permanent`)
-      setConvertedEmployee({ name: name || 'Employee' })
-      setSuccess(`${name || 'Employee'} converted to Permanent. Allocate their leave days in Financial Year.`)
-      setConvertType('')
-      fetchEmployee()
+      await api.post(`/employees/${id}/convert-to-permanent`);
+      setConvertedEmployee({ name: name || 'Employee' });
+      setSuccess(
+        `${name || 'Employee'} converted to Permanent. Allocate their leave days in Financial Year.`,
+      );
+      setConvertType('');
+      fetchEmployee();
     } catch (err) {
-      const msg = err?.response?.data?.message
-      setConvertError(typeof msg === 'string' && msg ? msg : 'Failed to convert to permanent')
-      console.error('Failed to convert employee to permanent:', err)
+      const msg = err?.response?.data?.message;
+      setConvertError(typeof msg === 'string' && msg ? msg : 'Failed to convert to permanent');
+      console.error('Failed to convert employee to permanent:', err);
     } finally {
-      setConverting(false)
+      setConverting(false);
     }
-  }
+  };
 
   const handleProfileImageChange = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const file = e.target.files?.[0];
+    if (!file) return;
 
     // Validate file type - only images allowed
     if (!['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)) {
-      setError('Please select a valid image file (JPG, PNG, GIF or WebP)')
-      return
+      setError('Please select a valid image file (JPG, PNG, GIF or WebP)');
+      return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setError('Image size exceeds 5MB limit')
-      return
+      setError('Image size exceeds 5MB limit');
+      return;
     }
 
-    setProfileImageUploading(true)
-    setError('')
-    setSuccess('')
+    setProfileImageUploading(true);
+    setError('');
+    setSuccess('');
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
+      const formData = new FormData();
+      formData.append('file', file);
       await api.post(`/employees/${id}/profile-image`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      setSuccess('Profile picture updated successfully')
+      });
+      setSuccess('Profile picture updated successfully');
       // Refresh employee data to get updated profile_image_url
-      const response = await api.get(`/employees/${id}`)
-      const data = response.data.data || response.data
-      setEmployee(data)
+      const response = await api.get(`/employees/${id}`);
+      const data = response.data.data || response.data;
+      setEmployee(data);
       if (data.profile_image_url) {
-        setProfileImageUrl(`${API_BASE}/employees/${id}/profile-image?t=${Date.now()}`)
+        setProfileImageUrl(`${API_BASE}/employees/${id}/profile-image?t=${Date.now()}`);
       }
     } catch (err) {
-      setError('Failed to update profile picture')
-      console.error('Failed to update profile picture:', err)
+      setError('Failed to update profile picture');
+      console.error('Failed to update profile picture:', err);
     } finally {
-      setProfileImageUploading(false)
-      e.target.value = ''
+      setProfileImageUploading(false);
+      e.target.value = '';
     }
-  }
+  };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
       </div>
-    )
+    );
   }
 
   if (!employee) {
@@ -496,31 +537,31 @@ const EmployeeProfile = () => {
           </div>
         </Card>
       </div>
-    )
+    );
   }
 
-  const tabs = PROFILE_TABS
+  const tabs = PROFILE_TABS;
 
-  const nextOfKin = employee.next_of_kin_data || safeParse(employee.next_of_kin)
-  const dependantsList = employee.dependants_data || dependants
+  const nextOfKin = employee.next_of_kin_data || safeParse(employee.next_of_kin);
+  const dependantsList = employee.dependants_data || dependants;
 
   // Calculate days remaining until contract end date
   const calculateDaysRemaining = (endDateStr) => {
-    if (!endDateStr) return null
-    const end = new Date(endDateStr)
-    const now = new Date()
-    if (isNaN(end.getTime())) return null
-    const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24))
-    return diff > 0 ? diff : 0
-  }
+    if (!endDateStr) return null;
+    const end = new Date(endDateStr);
+    const now = new Date();
+    if (isNaN(end.getTime())) return null;
+    const diff = Math.ceil((end - now) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
+  };
 
   // True when the contract end date is in the past (expired contract).
   const isContractExpired = (endDateStr) => {
-    if (!endDateStr) return false
-    const end = new Date(endDateStr)
-    if (isNaN(end.getTime())) return false
-    return end < new Date()
-  }
+    if (!endDateStr) return false;
+    const end = new Date(endDateStr);
+    if (isNaN(end.getTime())) return false;
+    return end < new Date();
+  };
 
   return (
     <div className="space-y-6">
@@ -646,19 +687,28 @@ const EmployeeProfile = () => {
             <div className="space-y-3">
               <div className="flex items-center text-sm">
                 <Briefcase className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">{employee.position || employee.designation || 'Not provided'}</span>
+                <span className="text-gray-600">
+                  {employee.position || employee.designation || 'Not provided'}
+                </span>
               </div>
               <div className="flex items-center text-sm">
                 <Building2 className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">{employee.department_name || employee.department || 'Not provided'}</span>
+                <span className="text-gray-600">
+                  {employee.department_name || employee.department || 'Not provided'}
+                </span>
               </div>
               <div className="flex items-center text-sm">
                 <FileText className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">Employment Type: {employee.employment_type || employee.employee_type || 'Not provided'}</span>
+                <span className="text-gray-600">
+                  Employment Type:{' '}
+                  {employee.employment_type || employee.employee_type || 'Not provided'}
+                </span>
               </div>
               <div className="flex items-center text-sm">
                 <Briefcase className="h-4 w-4 mr-2 text-gray-400" />
-                <span className="text-gray-600">Hire Date: {employee.hire_date || 'Not provided'}</span>
+                <span className="text-gray-600">
+                  Hire Date: {employee.hire_date || 'Not provided'}
+                </span>
               </div>
             </div>
           </Card>
@@ -667,7 +717,9 @@ const EmployeeProfile = () => {
             <div className="space-y-3">
               <div className="flex items-center text-sm">
                 <span className="w-32 text-gray-500">Gender:</span>
-                <span className="text-gray-900 capitalize">{employee.gender || 'Not provided'}</span>
+                <span className="text-gray-900 capitalize">
+                  {employee.gender || 'Not provided'}
+                </span>
               </div>
               <div className="flex items-center text-sm">
                 <span className="w-32 text-gray-500">Date of Birth:</span>
@@ -684,15 +736,21 @@ const EmployeeProfile = () => {
             <div className="space-y-3">
               <div className="flex items-center text-sm">
                 <span className="w-32 text-gray-500">Section:</span>
-                <span className="text-gray-900">{employee.section_name || employee.section_id || 'Not provided'}</span>
+                <span className="text-gray-900">
+                  {employee.section_name || employee.section_id || 'Not provided'}
+                </span>
               </div>
               <div className="flex items-center text-sm">
                 <span className="w-32 text-gray-500">Subsection:</span>
-                <span className="text-gray-900">{employee.subsection_name || employee.subsection_id || 'Not provided'}</span>
+                <span className="text-gray-900">
+                  {employee.subsection_name || employee.subsection_id || 'Not provided'}
+                </span>
               </div>
               <div className="flex items-center text-sm">
                 <span className="w-32 text-gray-500">Office:</span>
-                <span className="text-gray-900">{employee.office_name || employee.office_id || 'Not provided'}</span>
+                <span className="text-gray-900">
+                  {employee.office_name || employee.office_id || 'Not provided'}
+                </span>
               </div>
               <div className="flex items-center text-sm">
                 <span className="w-32 text-gray-500">Scale:</span>
@@ -719,7 +777,9 @@ const EmployeeProfile = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <select
                     value={newDocument.category}
-                    onChange={(e) => setNewDocument((prev) => ({ ...prev, category: e.target.value }))}
+                    onChange={(e) =>
+                      setNewDocument((prev) => ({ ...prev, category: e.target.value }))
+                    }
                     className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   >
                     <option value="id">National ID</option>
@@ -763,12 +823,19 @@ const EmployeeProfile = () => {
             {documents.length > 0 ? (
               <div className="space-y-3">
                 {documents.map((doc, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div
+                    key={index}
+                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                  >
                     <div className="flex items-center">
                       <FileText className="h-5 w-5 mr-2 text-gray-400" />
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{doc.name || doc.document_name || `Document ${index + 1}`}</p>
-                        <p className="text-xs text-gray-500">{doc.type || doc.category || 'Document'}</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {doc.name || doc.document_name || `Document ${index + 1}`}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {doc.type || doc.category || 'Document'}
+                        </p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -788,7 +855,9 @@ const EmployeeProfile = () => {
                 ))}
               </div>
             ) : (
-              <p className="text-gray-500 text-center py-8">No documents uploaded for this employee.</p>
+              <p className="text-gray-500 text-center py-8">
+                No documents uploaded for this employee.
+              </p>
             )}
           </Card>
         </div>
@@ -805,15 +874,29 @@ const EmployeeProfile = () => {
                       {employee.employment_type || 'Not specified'}
                     </p>
                     {employee.employee_type && (
-                      <p className="text-xs text-gray-500 mt-0.5">Role: {employee.employee_type.replace(/_/g, ' ')}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Role: {employee.employee_type.replace(/_/g, ' ')}
+                      </p>
                     )}
                   </div>
-                  <Badge variant={employee.employment_type === 'contract' || employee.employment_type === 'csuite' ? 'warning' : 'default'}>
-                    {employee.employment_type === 'csuite' ? 'C-suite (Contract)' : employee.employment_type === 'contract' ? 'Contract' : 'Permanent'}
+                  <Badge
+                    variant={
+                      employee.employment_type === 'contract' ||
+                      employee.employment_type === 'csuite'
+                        ? 'warning'
+                        : 'default'
+                    }
+                  >
+                    {employee.employment_type === 'csuite'
+                      ? 'C-suite (Contract)'
+                      : employee.employment_type === 'contract'
+                        ? 'Contract'
+                        : 'Permanent'}
                   </Badge>
                 </div>
 
-                {(employee.employment_type === 'contract' || employee.employment_type === 'csuite') && (
+                {(employee.employment_type === 'contract' ||
+                  employee.employment_type === 'csuite') && (
                   <>
                     <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center text-sm text-gray-600">
@@ -830,7 +913,9 @@ const EmployeeProfile = () => {
                         <Calendar className="h-4 w-4 mr-2 text-gray-400" />
                         <span>Contract End</span>
                       </div>
-                      <span className={`font-medium ${isContractExpired(employee.contract_end_date) ? 'text-red-600' : 'text-gray-900'}`}>
+                      <span
+                        className={`font-medium ${isContractExpired(employee.contract_end_date) ? 'text-red-600' : 'text-gray-900'}`}
+                      >
                         {employee.contract_end_date || 'Not specified'}
                       </span>
                     </div>
@@ -843,7 +928,8 @@ const EmployeeProfile = () => {
                         </div>
                         {isContractExpired(employee.contract_end_date) ? (
                           <span className="font-semibold text-red-600">
-                            EXPIRED {Math.abs(calculateDaysRemaining(employee.contract_end_date))} days ago
+                            EXPIRED {Math.abs(calculateDaysRemaining(employee.contract_end_date))}{' '}
+                            days ago
                           </span>
                         ) : (
                           <span className="font-medium text-gray-900">
@@ -871,10 +957,12 @@ const EmployeeProfile = () => {
                   <div className="space-y-3">
                     <h3 className="text-sm font-medium text-gray-700 mb-3">Contract History</h3>
                     {contracts.map((contract, index) => {
-                      const endDate = contract.end_date ? new Date(contract.end_date) : null
-                      const isActive = !endDate || endDate > new Date()
-                      const daysLeft = endDate ? Math.ceil((endDate - new Date()) / (1000 * 60 * 60 * 24)) : null
-                      const isRenewed = renewedByMap.has(contract.id)
+                      const endDate = contract.end_date ? new Date(contract.end_date) : null;
+                      const isActive = !endDate || endDate > new Date();
+                      const daysLeft = endDate
+                        ? Math.ceil((endDate - new Date()) / (1000 * 60 * 60 * 24))
+                        : null;
+                      const isRenewed = renewedByMap.has(contract.id);
                       return (
                         <div
                           key={contract.id || index}
@@ -890,10 +978,20 @@ const EmployeeProfile = () => {
                           </div>
                           <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
                             <div>
-                              <p>Start: <span className="font-medium text-gray-900">{contract.start_date || 'N/A'}</span></p>
+                              <p>
+                                Start:{' '}
+                                <span className="font-medium text-gray-900">
+                                  {contract.start_date || 'N/A'}
+                                </span>
+                              </p>
                             </div>
                             <div>
-                              <p>End: <span className="font-medium text-gray-900">{contract.end_date || 'N/A'}</span></p>
+                              <p>
+                                End:{' '}
+                                <span className="font-medium text-gray-900">
+                                  {contract.end_date || 'N/A'}
+                                </span>
+                              </p>
                             </div>
                             {daysLeft !== null && daysLeft > 0 && (
                               <div className="col-span-2">
@@ -933,18 +1031,19 @@ const EmployeeProfile = () => {
                             </div>
                           )}
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 ) : (
                   <div className="text-center py-8">
                     <RefreshCw className="h-12 w-12 mx-auto text-gray-300 mb-3" />
                     <p className="text-gray-500">No contracts on record for this employee.</p>
-                    {(employee.employment_type !== 'contract' && employee.employment_type !== 'csuite') && (
-                      <p className="text-sm text-gray-400 mt-1">
-                        This employee is not on a contract employment type.
-                      </p>
-                    )}
+                    {employee.employment_type !== 'contract' &&
+                      employee.employment_type !== 'csuite' && (
+                        <p className="text-sm text-gray-400 mt-1">
+                          This employee is not on a contract employment type.
+                        </p>
+                      )}
                   </div>
                 )}
               </div>
@@ -964,7 +1063,10 @@ const EmployeeProfile = () => {
                     </label>
                     <select
                       value={convertType}
-                      onChange={(e) => { setConvertType(e.target.value); setConvertError('') }}
+                      onChange={(e) => {
+                        setConvertType(e.target.value);
+                        setConvertError('');
+                      }}
                       disabled={converting}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     >
@@ -993,9 +1095,10 @@ const EmployeeProfile = () => {
                   <p className="text-sm text-red-600 dark:text-red-400">{convertError}</p>
                 )}
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Converting sets employment_type to "permanent", clears the active contract dates and keeps the
-                  contract history. No new contract term is created. Afterwards, allocate the employee's leave days
-                  in Financial Year → Leave Allocation — permanent employees receive the full leave package.
+                  Converting sets employment_type to "permanent", clears the active contract dates
+                  and keeps the contract history. No new contract term is created. Afterwards,
+                  allocate the employee's leave days in Financial Year → Leave Allocation —
+                  permanent employees receive the full leave package.
                 </p>
               </div>
             </Card>
@@ -1009,15 +1112,21 @@ const EmployeeProfile = () => {
                   {convertedEmployee.name} is now a Permanent employee.
                 </p>
                 <p className="text-sm text-green-700 dark:text-green-300 mt-0.5">
-                  Next step: allocate their leave days for the financial year in Financial Year → Leave Allocation.
+                  Next step: allocate their leave days for the financial year in Financial Year →
+                  Leave Allocation.
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Button
                   size="sm"
-                  onClick={() => navigate('/financial_year', {
-                    state: { allocateEmployeeId: Number(id), allocateEmployeeName: convertedEmployee.name },
-                  })}
+                  onClick={() =>
+                    navigate('/financial_year', {
+                      state: {
+                        allocateEmployeeId: Number(id),
+                        allocateEmployeeName: convertedEmployee.name,
+                      },
+                    })
+                  }
                 >
                   Go to Financial Year
                 </Button>
@@ -1036,9 +1145,11 @@ const EmployeeProfile = () => {
                 <div>
                   <p className="text-sm font-medium text-blue-900">About Contract Renewal</p>
                   <p className="text-sm text-blue-700 mt-1">
-                    When a contract is due to expire, click <span className="font-medium">"Renew Contract"</span> on
-                    the contract card above to set the new term (6 or 12 months, or a custom end date). Each contract
-                    can only be renewed once — after a renewal, only the latest contract can be renewed again.
+                    When a contract is due to expire, click{' '}
+                    <span className="font-medium">"Renew Contract"</span> on the contract card above
+                    to set the new term (6 or 12 months, or a custom end date). Each contract can
+                    only be renewed once — after a renewal, only the latest contract can be renewed
+                    again.
                   </p>
                 </div>
               </div>
@@ -1049,7 +1160,9 @@ const EmployeeProfile = () => {
               enforces the one-renewal-per-contract rule. */}
           <Modal
             isOpen={!!renewModal}
-            onClose={() => { if (!renewingContract) setRenewModal(null) }}
+            onClose={() => {
+              if (!renewingContract) setRenewModal(null);
+            }}
             title="Renew Contract"
             size="sm"
           >
@@ -1061,11 +1174,14 @@ const EmployeeProfile = () => {
                 <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 p-3 text-xs text-gray-600 dark:text-gray-300">
                   <p>
                     <span className="font-medium">Current term:</span>{' '}
-                    {renewModal.contract.start_date || '—'} → {renewModal.contract.end_date || 'open-ended'}
+                    {renewModal.contract.start_date || '—'} →{' '}
+                    {renewModal.contract.end_date || 'open-ended'}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Renewal period</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Renewal period
+                  </label>
                   <select
                     value={renewDuration}
                     onChange={(e) => handleRenewDurationChange(e.target.value)}
@@ -1079,7 +1195,9 @@ const EmployeeProfile = () => {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start date</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Start date
+                    </label>
                     <input
                       type="date"
                       value={renewForm.start_date}
@@ -1089,38 +1207,55 @@ const EmployeeProfile = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End date</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      End date
+                    </label>
                     <input
                       type="date"
                       value={renewForm.end_date}
                       min={renewForm.start_date || undefined}
-                      onChange={(e) => { setRenewDuration('custom'); setRenewForm((f) => ({ ...f, end_date: e.target.value })) }}
+                      onChange={(e) => {
+                        setRenewDuration('custom');
+                        setRenewForm((f) => ({ ...f, end_date: e.target.value }));
+                      }}
                       disabled={renewingContract}
                       className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
                 </div>
-                {renewForm.start_date && renewForm.end_date && (() => {
-                  const s = new Date(`${renewForm.start_date}T00:00:00`)
-                  const e = new Date(`${renewForm.end_date}T00:00:00`)
-                  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e <= s) return null
-                  const days = Math.round((e - s) / 86400000)
-                  let months = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth())
-                  if (e.getDate() < s.getDate()) months -= 1
-                  return (
-                    <p className="text-xs text-gray-600 dark:text-gray-300">
-                      <Clock className="h-3 w-3 inline mr-1" />
-                      Term: <span className="font-medium">{months} month{months !== 1 ? 's' : ''}</span> ({days} days)
-                    </p>
-                  )
-                })()}
+                {renewForm.start_date &&
+                  renewForm.end_date &&
+                  (() => {
+                    const s = new Date(`${renewForm.start_date}T00:00:00`);
+                    const e = new Date(`${renewForm.end_date}T00:00:00`);
+                    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime()) || e <= s)
+                      return null;
+                    const days = Math.round((e - s) / 86400000);
+                    let months =
+                      (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
+                    if (e.getDate() < s.getDate()) months -= 1;
+                    return (
+                      <p className="text-xs text-gray-600 dark:text-gray-300">
+                        <Clock className="h-3 w-3 inline mr-1" />
+                        Term:{' '}
+                        <span className="font-medium">
+                          {months} month{months !== 1 ? 's' : ''}
+                        </span>{' '}
+                        ({days} days)
+                      </p>
+                    );
+                  })()}
                 {renewError && (
                   <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
                     {renewError}
                   </div>
                 )}
                 <div className="flex justify-end gap-2 pt-1">
-                  <Button variant="outline" onClick={() => setRenewModal(null)} disabled={renewingContract}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setRenewModal(null)}
+                    disabled={renewingContract}
+                  >
                     Cancel
                   </Button>
                   <Button onClick={submitRenewContract} disabled={renewingContract}>
@@ -1192,8 +1327,12 @@ const EmployeeProfile = () => {
               <div className="space-y-3">
                 {nextOfKin.map((kin, index) => (
                   <div key={index} className="p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm font-medium text-gray-900">{kin.name || `Next of Kin ${index + 1}`}</p>
-                    <p className="text-xs text-gray-500 mt-1">{kin.relationship || 'Relationship not specified'}</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {kin.name || `Next of Kin ${index + 1}`}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {kin.relationship || 'Relationship not specified'}
+                    </p>
                     {kin.contact && (
                       <div className="flex items-center mt-2 text-sm text-gray-600">
                         <Phone className="h-3 w-3 mr-1 text-gray-400" />
@@ -1276,20 +1415,31 @@ const EmployeeProfile = () => {
             {dependantsList.length > 0 ? (
               <div className="space-y-3">
                 {dependantsList.map((dep, index) => (
-                  <div key={index} className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
+                  <div
+                    key={index}
+                    className="p-4 bg-gray-50 rounded-lg flex items-center justify-between"
+                  >
                     <div>
-                      <p className="text-sm font-medium text-gray-900">{dep.name || `Dependant ${index + 1}`}</p>
-                      <p className="text-xs text-gray-500 mt-1">{dep.relationship || 'Relationship not specified'}</p>
-                      <p className="text-xs text-gray-500 mt-1">Date of Birth: {dep.date_of_birth || 'Not provided'}</p>
-                      {dep.gender && <p className="text-xs text-gray-500 mt-1">Gender: {dep.gender}</p>}
-                      {dep.id_no && <p className="text-xs text-gray-500 mt-1">ID No: {dep.id_no}</p>}
-                      {dep.contact && <p className="text-xs text-gray-500 mt-1">Contact: {dep.contact}</p>}
+                      <p className="text-sm font-medium text-gray-900">
+                        {dep.name || `Dependant ${index + 1}`}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {dep.relationship || 'Relationship not specified'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Date of Birth: {dep.date_of_birth || 'Not provided'}
+                      </p>
+                      {dep.gender && (
+                        <p className="text-xs text-gray-500 mt-1">Gender: {dep.gender}</p>
+                      )}
+                      {dep.id_no && (
+                        <p className="text-xs text-gray-500 mt-1">ID No: {dep.id_no}</p>
+                      )}
+                      {dep.contact && (
+                        <p className="text-xs text-gray-500 mt-1">Contact: {dep.contact}</p>
+                      )}
                     </div>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => handleDeleteDependant(index)}
-                    >
+                    <Button variant="danger" size="sm" onClick={() => handleDeleteDependant(index)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -1302,7 +1452,7 @@ const EmployeeProfile = () => {
         </div>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default EmployeeProfile
+export default EmployeeProfile;

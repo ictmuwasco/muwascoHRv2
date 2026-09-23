@@ -153,7 +153,9 @@ export const errorTrackingService = {
 
   /** GET /api/system/errors/groups */
   getGroups: async (params?: Record<string, any>): Promise<GroupsPage> => {
-    const response = await apiClient.get<ApiResponse<GroupsPage>>('/system/errors/groups', { params });
+    const response = await apiClient.get<ApiResponse<GroupsPage>>('/system/errors/groups', {
+      params,
+    });
     return response.data.data;
   },
 
@@ -167,14 +169,16 @@ export const errorTrackingService = {
   manageGroup: async (id: number, payload: ManagePayload): Promise<{ group: ErrorGroup }> => {
     const response = await apiClient.post<ApiResponse<{ group: ErrorGroup }>>(
       `/system/errors/groups/${id}/manage`,
-      payload
+      payload,
     );
     return response.data.data;
   },
 
   /** GET /api/system/performance */
   getPerformance: async (params?: Record<string, any>): Promise<PerformancePage> => {
-    const response = await apiClient.get<ApiResponse<PerformancePage>>('/system/performance', { params });
+    const response = await apiClient.get<ApiResponse<PerformancePage>>('/system/performance', {
+      params,
+    });
     return response.data.data;
   },
 

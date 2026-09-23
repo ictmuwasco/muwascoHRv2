@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
-import { X, Search, User } from 'lucide-react'
-import api from '../../utils/api'
-import Button from '../ui/Button'
-import Select from '../ui/Select'
-import Badge from '../ui/Badge'
-import { FY_MONTHS } from '../../constants/leaveConstants'
+import { useState, useEffect, useRef } from 'react';
+import { X, Search, User } from 'lucide-react';
+import api from '../../utils/api';
+import Button from '../ui/Button';
+import Select from '../ui/Select';
+import Badge from '../ui/Badge';
+import { FY_MONTHS } from '../../constants/leaveConstants';
 
 /**
  * Slide-over form for scheduling annual leave.
@@ -30,19 +30,19 @@ const ScheduleSlideOver = ({
    *  Carrying roster_id switches the slide-over into EDIT mode. */
   initialEmployee = null,
 }) => {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [searchLoading, setSearchLoading] = useState(false)
-  const [selectedEmployee, setSelectedEmployee] = useState(null)
-  const [showDropdown, setShowDropdown] = useState(false)
-  const [selectedMonth, setSelectedMonth] = useState('')
-  const [notes, setNotes] = useState('')
-  const [submitLoading, setSubmitLoading] = useState(false)
-  const [error, setError] = useState('')
-  const dropdownRef = useRef(null)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState('');
+  const [notes, setNotes] = useState('');
+  const [submitLoading, setSubmitLoading] = useState(false);
+  const [error, setError] = useState('');
+  const dropdownRef = useRef(null);
 
   // Edit mode when prefilled from an existing roster entry.
-  const editId = initialEmployee?.roster_id || null
+  const editId = initialEmployee?.roster_id || null;
 
   /** Adapt roster-list rows / search rows to one shape for display. */
   const normalizeEmployee = (emp) =>
@@ -58,123 +58,122 @@ const ScheduleSlideOver = ({
           section_name: emp.section_name ?? '',
           scheduled_month: emp.scheduled_month ?? null,
         }
-      : null
+      : null;
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
-        setShowDropdown(false)
+        setShowDropdown(false);
       }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Debounced employee search
   useEffect(() => {
     if (!searchTerm.trim()) {
-      setSearchResults([])
-      return
+      setSearchResults([]);
+      return;
     }
     const timer = setTimeout(() => {
-      searchEmployees(searchTerm)
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [searchTerm])
+      searchEmployees(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const searchEmployees = async (term) => {
-    setSearchLoading(true)
+    setSearchLoading(true);
     try {
       const response = await api.get('/leave/roster/employees', {
         params: { search: term, financial_year_id: financialYearId },
-      })
-      setSearchResults(response.data?.data || [])
+      });
+      setSearchResults(response.data?.data || []);
     } catch (err) {
-      console.error('Failed to search employees:', err)
-      setSearchResults([])
+      console.error('Failed to search employees:', err);
+      setSearchResults([]);
     } finally {
-      setSearchLoading(false)
+      setSearchLoading(false);
     }
-  }
+  };
 
   const handleSelectEmployee = (emp) => {
-    setSelectedEmployee(emp)
-    setShowDropdown(false)
-    setSearchTerm('')
-    setError('')
-  }
+    setSelectedEmployee(emp);
+    setShowDropdown(false);
+    setSearchTerm('');
+    setError('');
+  };
 
   const handleSubmit = async () => {
     if (!selectedEmployee) {
-      setError('Please select an employee.')
-      return
+      setError('Please select an employee.');
+      return;
     }
     if (!selectedMonth) {
-      setError('Please select a planned leave month.')
-      return
+      setError('Please select a planned leave month.');
+      return;
     }
 
-    setSubmitLoading(true)
-    setError('')
+    setSubmitLoading(true);
+    setError('');
     try {
       // Edit mode targets the existing roster row (PUT); otherwise create.
       if (editId) {
         await api.put(`/leave/roster/${editId}`, {
           scheduled_month: selectedMonth,
           notes: notes.trim(),
-        })
+        });
       } else {
         await api.post('/leave/roster', {
           employee_id: selectedEmployee.id,
           financial_year_id: financialYearId,
           scheduled_month: selectedMonth,
           notes: notes.trim(),
-        })
+        });
       }
-      onSuccess && onSuccess()
-      handleClose()
+      onSuccess && onSuccess();
+      handleClose();
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to schedule leave.'
-      setError(msg)
+      const msg = err.response?.data?.message || 'Failed to schedule leave.';
+      setError(msg);
     } finally {
-      setSubmitLoading(false)
+      setSubmitLoading(false);
     }
-  }
+  };
 
   const handleClose = () => {
-    setSearchTerm('')
-    setSearchResults([])
-    setSelectedEmployee(null)
-    setSelectedMonth('')
-    setNotes('')
-    setError('')
-    setShowDropdown(false)
-    onClose()
-  }
+    setSearchTerm('');
+    setSearchResults([]);
+    setSelectedEmployee(null);
+    setSelectedMonth('');
+    setNotes('');
+    setError('');
+    setShowDropdown(false);
+    onClose();
+  };
 
   // Prefill whenever the slide-over opens. A preselected employee skips the
   // search step entirely; an existing roster entry also restores month/notes.
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) return;
     if (initialEmployee) {
-      setSelectedEmployee(normalizeEmployee(initialEmployee))
-      setSelectedMonth(initialEmployee.scheduled_month ?? '')
-      setNotes(initialEmployee.notes ?? '')
-      setSearchTerm('')
-      setSearchResults([])
-      setShowDropdown(false)
-      setError('')
+      setSelectedEmployee(normalizeEmployee(initialEmployee));
+      setSelectedMonth(initialEmployee.scheduled_month ?? '');
+      setNotes(initialEmployee.notes ?? '');
+      setSearchTerm('');
+      setSearchResults([]);
+      setShowDropdown(false);
+      setError('');
     } else {
-      setSelectedEmployee(null)
-      setSelectedMonth('')
-      setNotes('')
-      setError('')
+      setSelectedEmployee(null);
+      setSelectedMonth('');
+      setNotes('');
+      setError('');
     }
-     
-  }, [isOpen])
+  }, [isOpen]);
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
@@ -210,11 +209,13 @@ const ScheduleSlideOver = ({
                 value={searchTerm}
                 disabled={!!editId}
                 onChange={(e) => {
-                  if (editId) return
-                  setSearchTerm(e.target.value)
-                  setShowDropdown(true)
+                  if (editId) return;
+                  setSearchTerm(e.target.value);
+                  setShowDropdown(true);
                 }}
-                onFocus={() => { if (!editId) setShowDropdown(true) }}
+                onFocus={() => {
+                  if (!editId) setShowDropdown(true);
+                }}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:bg-gray-50 dark:disabled:bg-slate-900/60 disabled:text-gray-500"
               />
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
@@ -224,9 +225,7 @@ const ScheduleSlideOver = ({
             {showDropdown && (
               <div className="absolute z-10 mt-1 w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md shadow-lg max-h-60 overflow-y-auto">
                 {searchLoading ? (
-                  <div className="p-3 text-sm text-gray-500 dark:text-gray-400">
-                    Searching...
-                  </div>
+                  <div className="p-3 text-sm text-gray-500 dark:text-gray-400">Searching...</div>
                 ) : searchResults.length === 0 ? (
                   <div className="p-3 text-sm text-gray-500 dark:text-gray-400">
                     {searchTerm ? 'No employees found.' : 'Start typing to search...'}
@@ -285,9 +284,7 @@ const ScheduleSlideOver = ({
                     ✓ Already scheduled: {selectedEmployee.scheduled_month}
                   </Badge>
                 ) : (
-                  <Badge variant="default">
-                    Not yet scheduled
-                  </Badge>
+                  <Badge variant="default">Not yet scheduled</Badge>
                 )}
               </div>
             </div>
@@ -360,7 +357,7 @@ const ScheduleSlideOver = ({
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default ScheduleSlideOver
+export default ScheduleSlideOver;

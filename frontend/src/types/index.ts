@@ -22,7 +22,17 @@ export interface User {
   /** Effective permission strings from the authorization engine (e.g. ['leave:view', 'dashboard:view']). */
   permissions?: string[];
   /** Active temporary delegations (acting authority) — used by DelegateBanner. */
-  active_delegations?: Array<{ id: number; delegator_id: number; delegator_name: string; role: string; delegated_role: string; start_date: string; end_date: string; is_active: boolean; created_at: string }>;
+  active_delegations?: Array<{
+    id: number;
+    delegator_id: number;
+    delegator_name: string;
+    role: string;
+    delegated_role: string;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+    created_at: string;
+  }>;
   /** Whether the user has accepted the current HR policy consent version. */
   consent_accepted?: boolean;
   /** Full employee record (nested, when available from login / auth/user). */
@@ -33,7 +43,17 @@ export interface LoginResponse {
   user: User;
   token: string;
   permissions?: string[];
-  active_delegations?: Array<{ id: number; delegator_id: number; delegator_name: string; role: string; delegated_role: string; start_date: string; end_date: string; is_active: boolean; created_at: string }>;
+  active_delegations?: Array<{
+    id: number;
+    delegator_id: number;
+    delegator_name: string;
+    role: string;
+    delegated_role: string;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+    created_at: string;
+  }>;
 }
 
 export interface AuthState {
@@ -341,7 +361,6 @@ export interface AuditLog {
   status: AuditStatus;
   created_at: string;
 }
-
 
 // --- Permission ---
 

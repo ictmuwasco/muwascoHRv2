@@ -24,7 +24,7 @@ apiClient.interceptors.request.use(
     config.headers['X-Request-ID'] = getRequestId();
     return config;
   },
-  (error: AxiosError) => Promise.reject(error)
+  (error: AxiosError) => Promise.reject(error),
 );
 
 const CLIENT_COLLECTOR_PATH = '/system/client-errors';
@@ -82,7 +82,7 @@ apiClient.interceptors.response.use(
       window.location.href = '/login';
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export default apiClient;

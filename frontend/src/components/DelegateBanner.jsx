@@ -1,4 +1,4 @@
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/AuthContext';
 
 /**
  * DelegateBanner — Temporary Delegation / Acting Authority notice (§27/§28).
@@ -19,18 +19,18 @@ import { useAuth } from '../context/AuthContext'
  */
 
 const formatDate = (value) => {
-  if (!value) return '—'
-  const date = new Date(value)
+  if (!value) return '—';
+  const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
+    : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+};
 
 const DelegateBanner = () => {
-  const { user } = useAuth()
-  const delegations = Array.isArray(user?.active_delegations) ? user.active_delegations : []
+  const { user } = useAuth();
+  const delegations = Array.isArray(user?.active_delegations) ? user.active_delegations : [];
 
-  if (delegations.length === 0) return null
+  if (delegations.length === 0) return null;
 
   return (
     <div className="lg:pl-64" role="status" aria-live="polite">
@@ -60,7 +60,8 @@ const DelegateBanner = () => {
               <span className="whitespace-nowrap">{delegation.delegator_name}</span>
             </p>
             <p className="mt-0.5 text-xs break-words">
-              Delegated authority: {(delegation.permissions || []).join(', ') || delegation.delegated_role}
+              Delegated authority:{' '}
+              {(delegation.permissions || []).join(', ') || delegation.delegated_role}
               {' · '}Scope: {delegation.scope_label}
               {' · '}Valid until {formatDate(delegation.end_date)}
             </p>
@@ -72,7 +73,7 @@ const DelegateBanner = () => {
         </div>
       ))}
     </div>
-  )
-}
+  );
+};
 
-export default DelegateBanner
+export default DelegateBanner;
