@@ -3,7 +3,7 @@ import { useAuth } from '../../../context/AuthContext';
 import Button from '../../../components/ui/Button';
 import Card from '../../../components/ui/Card';
 import { AlertTriangle, CheckCircle, Download, Plus, RefreshCw } from 'lucide-react';
-import { WIDE_SCOPE_ROLES } from '../../../config/roles';
+import { WIDE_SCOPE_ROLES, WORKPLAN_DEPT_PINNED_ROLES } from '../../../config/roles';
 import { workplanService } from '../../../api/services/workplanService';
 import type { WorkplanObjective } from '../../../api/services/workplanService';
 import useStrategyReference from './useStrategyReference';
@@ -136,10 +136,21 @@ export default function TierWorkplanPage({
 
   // Pin reference data (contracts) and the create flows to the caller's own
   // department so a department head never sees a neighbour's workplan options.
+  //
+  // HR managers are org-wide when MANAGING contracts (they create contracts for
+  // every department on the Performance Contracts page), but their workplan
+  // forms are departmental: the "Departmental Performance Contract" picker, the
+  // activity add/edit form and the cascade dialog must only offer the
+  // performance contracts of their OWN (HR) department — otherwise every other
+  // department's commitments leak into the HR workplan. If a pinned role has no
+  // resolvable department we keep the org-wide list rather than rendering an
+  // empty, unusable picker.
   const scopeInfo = tier.list?.scope;
-  const wideRole = !!scopeInfo && WIDE_SCOPE_ROLES.includes(scopeInfo.role);
-  const deptId =
-    !wideRole && scopeInfo && scopeInfo.department != null ? scopeInfo.department : null;
+  const scopeRole = scopeInfo?.role ?? '';
+  const wideRole = !!scopeInfo && WIDE_SCOPE_ROLES.includes(scopeRole);
+  const pinToOwnDepartment = wideRole && WORKPLAN_DEPT_PINNED_ROLES.includes(scopeRole);
+  const ownDepartment = scopeInfo && scopeInfo.department != null ? scopeInfo.department : null;
+  const deptId = (!wideRole || pinToOwnDepartment) && ownDepartment != null ? ownDepartment : null;
   const deptContracts =
     deptId != null ? refs.contracts.filter((c) => c.department_id === deptId) : refs.contracts;
   // Source activities for section / subsection heads - fetched from the
@@ -340,6 +351,7 @@ export default function TierWorkplanPage({
         rows={visibleRows}
         canManage={canManage}
         showOfficer={showOfficer}
+        view={view}
         onSaveProgress={saveProgress}
         onEdit={(row) => setForm({ open: true, mode: 'edit', record: row })}
         onCascade={(row) => setCascadeParent(row)}

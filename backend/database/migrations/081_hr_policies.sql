@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS `hr_policy_bookmarks` (
     `user_id`    INT             NOT NULL,
     `section_id` BIGINT UNSIGNED NOT NULL,
     `created_at` DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY `uq_hr_policy_bookmark` (`user_id`, `section_id`),
+    UNIQUE KEY `uq_hr_policy_bookmark` (`user_id`, `section_id`),xam
     CONSTRAINT `fk_hr_bookmark_user`    FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
     CONSTRAINT `fk_hr_bookmark_section` FOREIGN KEY (`section_id`) REFERENCES `hr_policy_sections`(`id`) ON DELETE CASCADE,
     INDEX `idx_hr_bookmark_user` (`user_id`, `created_at`)

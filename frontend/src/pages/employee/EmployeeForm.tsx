@@ -48,6 +48,21 @@ const DEPT_ONLY_ROLES = ['dept_head', 'hr_manager'];
 // Roles that need department + section
 const SECTION_ROLES = ['section_head'];
 
+// Employment types offered in the form. Kept in sync with the backend's
+// Employee::EMPLOYMENT_TYPES whitelist — a value returned by the API that has
+// no matching <option> renders as the empty placeholder in the dropdown.
+const EMPLOYMENT_TYPE_OPTIONS = Object.entries({
+  permanent: 'Permanent',
+  contract: 'Contract',
+  csuite: 'C-suite (Contract)',
+  temporary: 'Temporary',
+  intern: 'Intern',
+}).map(([value, label]) => ({ value, label }));
+
+// Employment types that carry contract terms (dates + history), matching
+// EmployeeService::isContractBased() on the backend.
+const CONTRACT_BASED_TYPES = ['contract', 'csuite'];
+
 const EmployeeForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -171,8 +186,10 @@ const EmployeeForm = () => {
     // sub_section_head and officer need all levels
   }, [formData.employee_type]);
 
-  // Contract dates are only relevant for contract employment type
-  const isContract = formData.employment_type === 'contract';
+  // Contract dates are only relevant for contract-based employment types.
+  // Mirrors EmployeeService::isContractBased() on the backend, where both
+  // 'contract' and 'csuite' carry (renewable) contract terms.
+  const isContract = CONTRACT_BASED_TYPES.includes(formData.employment_type);
 
   interface ReferencePayload {
     departments?: Array<{ id: number; name: string }>;
@@ -517,11 +534,7 @@ const EmployeeForm = () => {
               name="employment_type"
               value={formData.employment_type}
               onChange={handleChange}
-              options={[
-                { value: 'permanent', label: 'Permanent' },
-                { value: 'contract', label: 'Contract' },
-                { value: 'intern', label: 'Intern' },
-              ]}
+              options={EMPLOYMENT_TYPE_OPTIONS}
             />
             <Select
               label="Employee Status"

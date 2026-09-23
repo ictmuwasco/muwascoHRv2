@@ -85,6 +85,7 @@ const SectionHeadWorkplan = lazy(() => import('./pages/strategy/workplans/Sectio
 const SubsectionHeadWorkplan = lazy(
   () => import('./pages/strategy/workplans/SubsectionHeadWorkplan'),
 );
+const Kpis = lazy(() => import('./pages/strategy/Kpis'));
 
 // Settings components (eagerly loaded - small and frequently used)
 import SettingsLayout, { SettingsIndexRedirect } from './components/settings/SettingsLayout';
@@ -524,6 +525,16 @@ function App() {
               />
             </Route>
 
+            <Route
+              path="strategy/kpis"
+              element={
+                <Guarded route="/strategy/kpis">
+                  <Suspense fallback={<PageLoader />}>
+                    <Kpis />
+                  </Suspense>
+                </Guarded>
+              }
+            />
             <Route
               path="strategy/reports"
               element={

@@ -287,24 +287,36 @@ export default function WorkplanActivityFormModal({
             <label className={labelCls}>
               Source Performance Contract {allowContractless ? '(optional)' : '*'}
             </label>
-            <select
-              className={inputCls}
-              value={contractId}
-              onChange={(e) => {
-                setContractId(e.target.value);
-                const c = visibleContracts.find((x) => String(x.id) === e.target.value);
-                setGoalId(c?.goal_id ? String(c.goal_id) : '');
-                setTargetId(c?.target_id ? String(c.target_id) : '');
-              }}
-            >
-              {allowContractless && <option value="">— Organisation-level (no contract) —</option>}
-              {visibleContracts.map((c) => (
-                <option key={c.id} value={String(c.id)}>
-                  {c.name}
-                  {c.department_name ? ` — ${c.department_name}` : ''}
-                </option>
-              ))}
-            </select>
+            {mode === 'edit' && record ? (
+              <input
+                className={inputCls}
+                value={
+                  visibleContracts.find((c) => Number(c.id) === Number(contractId))?.name || '—'
+                }
+                readOnly
+              />
+            ) : (
+              <select
+                className={inputCls}
+                value={contractId}
+                onChange={(e) => {
+                  setContractId(e.target.value);
+                  const c = visibleContracts.find((x) => String(x.id) === e.target.value);
+                  setGoalId(c?.goal_id ? String(c.goal_id) : '');
+                  setTargetId(c?.target_id ? String(c.target_id) : '');
+                }}
+              >
+                {allowContractless && (
+                  <option value="">— Organisation-level (no contract) —</option>
+                )}
+                {visibleContracts.map((c) => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.name}
+                    {c.department_name ? ` — ${c.department_name}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div>
             <label className={labelCls}>Start Date</label>
@@ -317,43 +329,65 @@ export default function WorkplanActivityFormModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className={labelCls}>Strategic Goal</label>
-            <select
-              className={inputCls}
-              value={goalId}
-              onChange={(e) => {
-                setGoalId(e.target.value);
-                setTargetId('');
-              }}
-            >
-              <option value="">— Select goal perspective —</option>
-              {refs.goals.map((g) => (
-                <option key={g.id} value={String(g.id)}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
+        {/* Goal perspective + strategic target are inherited from the selected
+            performance contract, so they are not user-editable fields on
+            departmental workplans. Only show the pickers where there is no
+            contract to inherit from (MD / organisation-level activities). */}
+        {(mdMode || (allowContractless && !contractId)) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Strategic Goal</label>
+              {mode === 'edit' && record ? (
+                <input
+                  className={inputCls}
+                  value={refs.goals.find((g) => g.id === Number(goalId))?.name || '—'}
+                  readOnly
+                />
+              ) : (
+                <select
+                  className={inputCls}
+                  value={goalId}
+                  onChange={(e) => {
+                    setGoalId(e.target.value);
+                    setTargetId('');
+                  }}
+                >
+                  <option value="">— Select goal perspective —</option>
+                  {refs.goals.map((g) => (
+                    <option key={g.id} value={String(g.id)}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+            <div>
+              <label className={labelCls}>Strategic Target</label>
+              {mode === 'edit' && record ? (
+                <input
+                  className={inputCls}
+                  value={refs.targets.find((t) => t.id === Number(targetId))?.name || '—'}
+                  readOnly
+                />
+              ) : (
+                <select
+                  className={inputCls}
+                  value={targetId}
+                  onChange={(e) => setTargetId(e.target.value)}
+                >
+                  <option value="">— Select target —</option>
+                  {refs.targets
+                    .filter((t) => !goalId || !t.goal_id || String(t.goal_id) === goalId)
+                    .map((t) => (
+                      <option key={t.id} value={String(t.id)}>
+                        {t.name}
+                      </option>
+                    ))}
+                </select>
+              )}
+            </div>
           </div>
-          <div>
-            <label className={labelCls}>Strategic Target</label>
-            <select
-              className={inputCls}
-              value={targetId}
-              onChange={(e) => setTargetId(e.target.value)}
-            >
-              <option value="">— Select target —</option>
-              {refs.targets
-                .filter((t) => !goalId || !t.goal_id || String(t.goal_id) === goalId)
-                .map((t) => (
-                  <option key={t.id} value={String(t.id)}>
-                    {t.name}
-                  </option>
-                ))}
-            </select>
-          </div>
-        </div>
+        )}
 
         {(showSection || showSubsection || showOfficer) && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
