@@ -106,11 +106,23 @@ const Holidays = () => {
       label: 'Actions',
       render: (_, row) => (
         <div className="flex items-center space-x-2">
-          <PermButton module="holidays" require="edit" variant="outline" size="sm" onClick={() => handleEdit(row)}>
+          <PermButton
+            module="holidays"
+            require="edit"
+            variant="outline"
+            size="sm"
+            onClick={() => handleEdit(row)}
+          >
             <Pencil className="h-3 w-3 mr-1" />
             Edit
           </PermButton>
-          <PermButton module="holidays" require="delete" variant="danger" size="sm" onClick={() => handleDelete(row.id)}>
+          <PermButton
+            module="holidays"
+            require="delete"
+            variant="danger"
+            size="sm"
+            onClick={() => handleDelete(row.id)}
+          >
             <Trash2 className="h-3 w-3 mr-1" />
             Delete
           </PermButton>
