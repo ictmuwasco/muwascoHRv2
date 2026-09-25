@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../../utils/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
+import { Can } from '../../components/ui/PermissionGate';
 import { CheckCircle, XCircle, FileX, Inbox } from 'lucide-react';
 import {
   badgeClass,
@@ -127,16 +128,25 @@ const PendingTab = () => {
             <div className="text-xs text-gray-500 dark:text-gray-400">{stageName}</div>
           </td>
           <td className="px-4 py-2">
+            {/* Each transition is its OWN grant — leave:manage (this page's
+                route gate) does NOT imply approve/reject/invalidate; the API
+                enforces the same per-action gates (api.php). */}
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="success" onClick={() => openModal('approve', row)}>
-                <CheckCircle className="h-3 w-3 mr-1" /> Approve
-              </Button>
-              <Button size="sm" variant="danger" onClick={() => openModal('reject', row)}>
-                <XCircle className="h-3 w-3 mr-1" /> Reject
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => openModal('invalidate', row)}>
-                <FileX className="h-3 w-3 mr-1" /> Invalidate
-              </Button>
+              <Can module="leave" action="approve">
+                <Button size="sm" variant="success" onClick={() => openModal('approve', row)}>
+                  <CheckCircle className="h-3 w-3 mr-1" /> Approve
+                </Button>
+              </Can>
+              <Can module="leave" action="reject">
+                <Button size="sm" variant="danger" onClick={() => openModal('reject', row)}>
+                  <XCircle className="h-3 w-3 mr-1" /> Reject
+                </Button>
+              </Can>
+              <Can module="leave" action="invalidate">
+                <Button size="sm" variant="outline" onClick={() => openModal('invalidate', row)}>
+                  <FileX className="h-3 w-3 mr-1" /> Invalidate
+                </Button>
+              </Can>
             </div>
           </td>
         </tr>

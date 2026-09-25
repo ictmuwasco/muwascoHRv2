@@ -7,6 +7,13 @@ import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Modal from '../../components/ui/Modal';
 import EmployeeTabs from '../../components/EmployeeTabs';
+// Permission gate (§global rule): view never unlocks mutation. Every write on
+// this page goes to employees:edit in the API — PUT /employees/{id},
+// POST /employees/documents, DELETE /employees/documents/{id},
+// POST /employees/{id}/contracts/{contractId}/renew,
+// POST /employees/{id}/convert-to-permanent, POST /employees/{id}/profile-image.
+// The route only needs employees:view, so each affordance is gated here.
+import { CanEdit } from '../../components/ui/PermissionGate';
 import {
   ArrowLeft,
   Mail,
@@ -593,23 +600,25 @@ const EmployeeProfile = () => {
                   employee.first_name?.[0] || employee.last_name?.[0]
                 )}
               </div>
-              <label
-                className="absolute -bottom-1 -right-1 inline-flex items-center p-1.5 rounded-full bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 cursor-pointer shadow-sm"
-                title="Upload profile picture"
-              >
-                {profileImageUploading ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Camera className="h-3 w-3" />
-                )}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  className="hidden"
-                  onChange={handleProfileImageChange}
-                  disabled={profileImageUploading}
-                />
-              </label>
+              <CanEdit module="employees">
+                <label
+                  className="absolute -bottom-1 -right-1 inline-flex items-center p-1.5 rounded-full bg-white border border-gray-300 text-gray-600 hover:bg-gray-100 cursor-pointer shadow-sm"
+                  title="Upload profile picture"
+                >
+                  {profileImageUploading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Camera className="h-3 w-3" />
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    className="hidden"
+                    onChange={handleProfileImageChange}
+                    disabled={profileImageUploading}
+                  />
+                </label>
+              </CanEdit>
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
@@ -624,9 +633,12 @@ const EmployeeProfile = () => {
               </div>
             </div>
           </div>
-          <Button variant="outline" onClick={() => navigate(`/employees/${id}/edit`)}>
-            Edit Profile
-          </Button>
+          {/* opens /employees/:id/edit, which is route-gated by employees:edit */}
+          <CanEdit module="employees">
+            <Button variant="outline" onClick={() => navigate(`/employees/${id}/edit`)}>
+              Edit Profile
+            </Button>
+          </CanEdit>
         </div>
       </Card>
 
@@ -763,61 +775,63 @@ const EmployeeProfile = () => {
 
       {activeTab === 'documents' && (
         <div className="space-y-6">
-          <Card title="Upload Document">
-            <form onSubmit={handleUploadDocument} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Document Name"
-                  name="document_name"
-                  value={newDocument.name}
-                  onChange={(e) => setNewDocument((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="e.g. National ID, KRA PIN, Certificate"
-                />
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                  <select
-                    value={newDocument.category}
-                    onChange={(e) =>
-                      setNewDocument((prev) => ({ ...prev, category: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
-                    <option value="id">National ID</option>
-                    <option value="kra_pin">KRA PIN</option>
-                    <option value="certificate">Certificate</option>
-                    <option value="diploma">Diploma</option>
-                    <option value="professional">Professional</option>
-                    <option value="nssf">NSSF</option>
-                    <option value="sha">SHA</option>
-                    <option value="other">Other</option>
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">File</label>
-                  <input
-                    type="file"
-                    onChange={handleDocumentFileChange}
-                    className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          <CanEdit module="employees">
+            <Card title="Upload Document">
+              <form onSubmit={handleUploadDocument} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input
+                    label="Document Name"
+                    name="document_name"
+                    value={newDocument.name}
+                    onChange={(e) => setNewDocument((prev) => ({ ...prev, name: e.target.value }))}
+                    placeholder="e.g. National ID, KRA PIN, Certificate"
                   />
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <select
+                      value={newDocument.category}
+                      onChange={(e) =>
+                        setNewDocument((prev) => ({ ...prev, category: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="id">National ID</option>
+                      <option value="kra_pin">KRA PIN</option>
+                      <option value="certificate">Certificate</option>
+                      <option value="diploma">Diploma</option>
+                      <option value="professional">Professional</option>
+                      <option value="nssf">NSSF</option>
+                      <option value="sha">SHA</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">File</label>
+                    <input
+                      type="file"
+                      onChange={handleDocumentFileChange}
+                      className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" disabled={saving || !newDocument.file}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Document
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </Card>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={saving || !newDocument.file}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Document
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </CanEdit>
 
           <Card title="Employee Documents">
             {documents.length > 0 ? (
@@ -843,13 +857,15 @@ const EmployeeProfile = () => {
                         <Download className="h-4 w-4 mr-1" />
                         Download
                       </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() => handleDeleteDocument(doc.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
+                      <CanEdit module="employees">
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          onClick={() => handleDeleteDocument(doc.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </CanEdit>
                     </div>
                   </div>
                 ))}
@@ -1009,24 +1025,26 @@ const EmployeeProfile = () => {
                                   Renewed — see Contract #{renewedByMap.get(contract.id)}
                                 </span>
                               ) : (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openRenewModal(contract)}
-                                  disabled={renewingContract}
-                                >
-                                  {renewingContract ? (
-                                    <>
-                                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                      Renewing...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <RefreshCw className="h-3 w-3 mr-1" />
-                                      Renew Contract
-                                    </>
-                                  )}
-                                </Button>
+                                <CanEdit module="employees">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => openRenewModal(contract)}
+                                    disabled={renewingContract}
+                                  >
+                                    {renewingContract ? (
+                                      <>
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                        Renewing...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <RefreshCw className="h-3 w-3 mr-1" />
+                                        Renew Contract
+                                      </>
+                                    )}
+                                  </Button>
+                                </CanEdit>
                               )}
                             </div>
                           )}
@@ -1054,54 +1072,56 @@ const EmployeeProfile = () => {
               The dropdown is the single intentional action (one-way change);
               the backend rejects conversions for non-contract employees. */}
           {(employee.employment_type === 'contract' || employee.employment_type === 'csuite') && (
-            <Card title="Employment Conversion" className="bg-white dark:bg-slate-800">
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Employment action
-                    </label>
-                    <select
-                      value={convertType}
-                      onChange={(e) => {
-                        setConvertType(e.target.value);
-                        setConvertError('');
-                      }}
-                      disabled={converting}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            <CanEdit module="employees">
+              <Card title="Employment Conversion" className="bg-white dark:bg-slate-800">
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        Employment action
+                      </label>
+                      <select
+                        value={convertType}
+                        onChange={(e) => {
+                          setConvertType(e.target.value);
+                          setConvertError('');
+                        }}
+                        disabled={converting}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      >
+                        <option value="">— Select action —</option>
+                        <option value="permanent">Convert to Permanent</option>
+                      </select>
+                    </div>
+                    <Button
+                      onClick={submitConvertToPermanent}
+                      disabled={converting || convertType !== 'permanent'}
                     >
-                      <option value="">— Select action —</option>
-                      <option value="permanent">Convert to Permanent</option>
-                    </select>
+                      {converting ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Converting...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Apply Conversion
+                        </>
+                      )}
+                    </Button>
                   </div>
-                  <Button
-                    onClick={submitConvertToPermanent}
-                    disabled={converting || convertType !== 'permanent'}
-                  >
-                    {converting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Converting...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Apply Conversion
-                      </>
-                    )}
-                  </Button>
+                  {convertError && (
+                    <p className="text-sm text-red-600 dark:text-red-400">{convertError}</p>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Converting sets employment_type to "permanent", clears the active contract dates
+                    and keeps the contract history. No new contract term is created. Afterwards,
+                    allocate the employee's leave days in Financial Year → Leave Allocation —
+                    permanent employees receive the full leave package.
+                  </p>
                 </div>
-                {convertError && (
-                  <p className="text-sm text-red-600 dark:text-red-400">{convertError}</p>
-                )}
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Converting sets employment_type to "permanent", clears the active contract dates
-                  and keeps the contract history. No new contract term is created. Afterwards,
-                  allocate the employee's leave days in Financial Year → Leave Allocation —
-                  permanent employees receive the full leave package.
-                </p>
-              </div>
-            </Card>
+              </Card>
+            </CanEdit>
           )}
 
           {/* Post-conversion banner — next step: allocate leave in Financial Year */}
@@ -1280,47 +1300,49 @@ const EmployeeProfile = () => {
 
       {activeTab === 'nextofkin' && (
         <div className="space-y-6">
-          <Card title="Add / Update Next of Kin">
-            <form onSubmit={handleSaveNextOfKin} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Input
-                  label="Name"
-                  name="name"
-                  value={nextOfKinForm.name}
-                  onChange={handleNextOfKinChange}
-                  required
-                />
-                <Input
-                  label="Relationship"
-                  name="relationship"
-                  value={nextOfKinForm.relationship}
-                  onChange={handleNextOfKinChange}
-                  required
-                />
-                <Input
-                  label="Contact"
-                  name="contact"
-                  value={nextOfKinForm.contact}
-                  onChange={handleNextOfKinChange}
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Save Next of Kin
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </Card>
+          <CanEdit module="employees">
+            <Card title="Add / Update Next of Kin">
+              <form onSubmit={handleSaveNextOfKin} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Input
+                    label="Name"
+                    name="name"
+                    value={nextOfKinForm.name}
+                    onChange={handleNextOfKinChange}
+                    required
+                  />
+                  <Input
+                    label="Relationship"
+                    name="relationship"
+                    value={nextOfKinForm.relationship}
+                    onChange={handleNextOfKinChange}
+                    required
+                  />
+                  <Input
+                    label="Contact"
+                    name="contact"
+                    value={nextOfKinForm.contact}
+                    onChange={handleNextOfKinChange}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Next of Kin
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </CanEdit>
 
           <Card title="Current Next of Kin">
             {nextOfKin.length > 0 ? (
@@ -1351,65 +1373,67 @@ const EmployeeProfile = () => {
 
       {activeTab === 'dependants' && (
         <div className="space-y-6">
-          <Card title="Add Dependant">
-            <form onSubmit={handleAddDependant} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Input
-                  label="Name"
-                  name="name"
-                  value={dependantForm.name}
-                  onChange={handleDependantChange}
-                  required
-                />
-                <Input
-                  label="Relationship"
-                  name="relationship"
-                  value={dependantForm.relationship}
-                  onChange={handleDependantChange}
-                />
-                <Input
-                  label="Date of Birth"
-                  name="date_of_birth"
-                  type="date"
-                  value={dependantForm.date_of_birth}
-                  onChange={handleDependantChange}
-                />
-                <Input
-                  label="Gender"
-                  name="gender"
-                  value={dependantForm.gender}
-                  onChange={handleDependantChange}
-                />
-                <Input
-                  label="ID Number"
-                  name="id_no"
-                  value={dependantForm.id_no}
-                  onChange={handleDependantChange}
-                />
-                <Input
-                  label="Contact"
-                  name="contact"
-                  value={dependantForm.contact}
-                  onChange={handleDependantChange}
-                />
-              </div>
-              <div className="flex justify-end">
-                <Button type="submit" disabled={saving}>
-                  {saving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Dependant
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </Card>
+          <CanEdit module="employees">
+            <Card title="Add Dependant">
+              <form onSubmit={handleAddDependant} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Input
+                    label="Name"
+                    name="name"
+                    value={dependantForm.name}
+                    onChange={handleDependantChange}
+                    required
+                  />
+                  <Input
+                    label="Relationship"
+                    name="relationship"
+                    value={dependantForm.relationship}
+                    onChange={handleDependantChange}
+                  />
+                  <Input
+                    label="Date of Birth"
+                    name="date_of_birth"
+                    type="date"
+                    value={dependantForm.date_of_birth}
+                    onChange={handleDependantChange}
+                  />
+                  <Input
+                    label="Gender"
+                    name="gender"
+                    value={dependantForm.gender}
+                    onChange={handleDependantChange}
+                  />
+                  <Input
+                    label="ID Number"
+                    name="id_no"
+                    value={dependantForm.id_no}
+                    onChange={handleDependantChange}
+                  />
+                  <Input
+                    label="Contact"
+                    name="contact"
+                    value={dependantForm.contact}
+                    onChange={handleDependantChange}
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Dependant
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </Card>
+          </CanEdit>
 
           <Card title="Dependants">
             {dependantsList.length > 0 ? (
@@ -1439,9 +1463,15 @@ const EmployeeProfile = () => {
                         <p className="text-xs text-gray-500 mt-1">Contact: {dep.contact}</p>
                       )}
                     </div>
-                    <Button variant="danger" size="sm" onClick={() => handleDeleteDependant(index)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    <CanEdit module="employees">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => handleDeleteDependant(index)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </CanEdit>
                   </div>
                 ))}
               </div>
