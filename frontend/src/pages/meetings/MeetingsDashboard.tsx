@@ -6,6 +6,11 @@ import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
 import Select from '../../components/ui/Select';
+// Permission gates (§global rule): view never unlocks mutation/export. The
+// route gates mirror these exactly — meetings:dashboard opens this page,
+// meetings:export gates Export CSV, meetings:create/edit/delete gate the
+// respective row actions (PUT /meetings/{id} and /cancel → meetings:edit).
+import { Can, CanCreate, CanDelete } from '../../components/ui/PermissionGate';
 import { downloadCsv, toCsv, csvFilenameWithDate } from '../../utils/csvUtils';
 import {
   CalendarDays,
@@ -672,20 +677,24 @@ const MeetingsDashboard = () => {
             <CalendarCheck className="h-4 w-4 mr-1" />
             My Meetings
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExport}
-            loading={exporting}
-            disabled={sortedMeetings.length === 0}
-          >
-            <Download className="h-4 w-4 mr-1" />
-            Export CSV
-          </Button>
-          <Button size="sm" onClick={() => navigate('/meetings/create')}>
-            <Plus className="h-4 w-4 mr-1" />
-            Create Meeting
-          </Button>
+          <Can module="meetings" action="export">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              loading={exporting}
+              disabled={sortedMeetings.length === 0}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Export CSV
+            </Button>
+          </Can>
+          <CanCreate module="meetings">
+            <Button size="sm" onClick={() => navigate('/meetings/create')}>
+              <Plus className="h-4 w-4 mr-1" />
+              Create Meeting
+            </Button>
+          </CanCreate>
         </div>
       </div>
 
@@ -737,16 +746,18 @@ const MeetingsDashboard = () => {
                 className="pl-9"
               />
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleExport}
-              loading={exporting}
-              disabled={sortedMeetings.length === 0}
-            >
-              <Download className="h-4 w-4 mr-1" />
-              Export CSV
-            </Button>
+            <Can module="meetings" action="export">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                loading={exporting}
+                disabled={sortedMeetings.length === 0}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Export CSV
+              </Button>
+            </Can>
           </div>
 
           {/* Filters */}
@@ -912,34 +923,40 @@ const MeetingsDashboard = () => {
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => navigate(`/meetings/${m.id}/edit`)}
-                            title="Edit meeting"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          {m.status !== 'cancelled' && m.status !== 'completed' && (
+                          <Can module="meetings" action="edit">
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => handleCancelMeeting(m.id)}
-                              loading={actionLoading === m.id}
-                              title="Cancel meeting"
+                              onClick={() => navigate(`/meetings/${m.id}/edit`)}
+                              title="Edit meeting"
                             >
-                              <Ban className="h-3.5 w-3.5 text-amber-600" />
+                              <Pencil className="h-3.5 w-3.5" />
                             </Button>
+                          </Can>
+                          {m.status !== 'cancelled' && m.status !== 'completed' && (
+                            <Can module="meetings" action="edit">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCancelMeeting(m.id)}
+                                loading={actionLoading === m.id}
+                                title="Cancel meeting"
+                              >
+                                <Ban className="h-3.5 w-3.5 text-amber-600" />
+                              </Button>
+                            </Can>
                           )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDeleteMeeting(m.id)}
-                            loading={actionLoading === m.id}
-                            title="Delete meeting"
-                          >
-                            <Trash2 className="h-3.5 w-3.5 text-red-600" />
-                          </Button>
+                          <CanDelete module="meetings">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteMeeting(m.id)}
+                              loading={actionLoading === m.id}
+                              title="Delete meeting"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-red-600" />
+                            </Button>
+                          </CanDelete>
                         </div>
                       </td>
                     </tr>

@@ -20,6 +20,11 @@ import {
   FileText,
 } from 'lucide-react';
 import MeetingMinutesModal, { MinutesMeetingInfo } from './MeetingMinutesModal';
+// Permission gates (§global rule): this page is reached through
+// GET /meetings → meetings:create, but each row action maps to its own route
+// gate (PUT /meetings/{id} + /cancel → meetings:edit, DELETE → meetings:delete)
+// so they are gated independently.
+import { Can, CanCreate } from '../../components/ui/PermissionGate';
 
 interface Meeting {
   id: number;
@@ -402,32 +407,38 @@ const CreateMeeting = () => {
             <Eye className="h-4 w-4" />
           </button>
           {row.status !== 'completed' && row.status !== 'cancelled' && (
-            <button
-              onClick={() => loadMeetingForEdit(row.id)}
-              className="p-1 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded"
-              title="Edit Meeting"
-            >
-              <Edit className="h-4 w-4" />
-            </button>
+            <Can module="meetings" action="edit">
+              <button
+                onClick={() => loadMeetingForEdit(row.id)}
+                className="p-1 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded"
+                title="Edit Meeting"
+              >
+                <Edit className="h-4 w-4" />
+              </button>
+            </Can>
           )}
           {row.status === 'scheduled' && (
-            <button
-              onClick={() => handleCancel(row.id)}
-              disabled={actionLoading === row.id}
-              className="p-1 text-gray-600 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 rounded"
-              title="Cancel Meeting"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            <Can module="meetings" action="edit">
+              <button
+                onClick={() => handleCancel(row.id)}
+                disabled={actionLoading === row.id}
+                className="p-1 text-gray-600 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 rounded"
+                title="Cancel Meeting"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </Can>
           )}
-          <button
-            onClick={() => handleDelete(row.id)}
-            disabled={actionLoading === row.id}
-            className="p-1 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded"
-            title="Delete Meeting"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
+          <Can module="meetings" action="delete">
+            <button
+              onClick={() => handleDelete(row.id)}
+              disabled={actionLoading === row.id}
+              className="p-1 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded"
+              title="Delete Meeting"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </Can>
           {(row.minutes?.can_manage || row.status === 'completed') && (
             <button
               onClick={() => setMinutesMeeting(row)}
@@ -453,10 +464,12 @@ const CreateMeeting = () => {
           <p className="text-gray-500 dark:text-gray-400">Create, manage and schedule meetings</p>
         </div>
         <div className="flex items-center space-x-3">
-          <Button onClick={openCreateModal}>
-            <Plus className="h-4 w-4 mr-2" />
-            Create Meeting
-          </Button>
+          <CanCreate module="meetings">
+            <Button onClick={openCreateModal}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Meeting
+            </Button>
+          </CanCreate>
         </div>
       </div>
 
@@ -656,9 +669,11 @@ const CreateMeeting = () => {
             <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)}>
               Cancel
             </Button>
-            <Button type="submit" loading={saving}>
-              {editingId ? 'Update Meeting' : 'Create Meeting'}
-            </Button>
+            <Can module="meetings" action={editingId ? 'edit' : 'create'}>
+              <Button type="submit" loading={saving}>
+                {editingId ? 'Update Meeting' : 'Create Meeting'}
+              </Button>
+            </Can>
           </div>
         </form>
       </Modal>

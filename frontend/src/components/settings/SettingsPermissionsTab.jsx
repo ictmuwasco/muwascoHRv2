@@ -15,12 +15,22 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Badge from '../ui/Badge';
 import { permissionService } from '../../api/services/permissionService';
+import { useAuth } from '../../context/AuthContext';
+// Permission gate (§global rule): reads use permission_overrides:view, writes
+// (POST /permissions/users/{id}/overrides, DELETE …) use
+// permission_overrides:manage. The /settings/permissions tab route only
+// requires settings:permissions, so the Allow/Deny/Inherit controls must check
+// the write permission for themselves.
+import { Can } from '../ui/PermissionGate';
 // Role badge colors — centralized in the global role registry (config/roles.js)
 import { ROLE_BADGE_CLASSES, isSuperAdmin } from '../../config/roles';
 
 const roleColor = (role) => ROLE_BADGE_CLASSES[role] || 'bg-gray-100 text-gray-800';
 
 const PermissionsTab = () => {
+  const { can } = useAuth();
+  /** Write capability for overrides — reads only need permission_overrides:view. */
+  const canManageOverrides = can('permission_overrides', 'manage');
   const [catalog, setCatalog] = useState(null);
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState({ data: [], total: 0, page: 1, pages: 0 });
@@ -107,6 +117,9 @@ const PermissionsTab = () => {
 
   const handleSaveOverride = async (module, action, permissionType) => {
     if (!selectedUserId) return;
+    // Never mutate without the write permission, even if a control is reached
+    // through some other path (the API enforces it too).
+    if (!canManageOverrides) return;
 
     setSaveState({ userId: selectedUserId, module, action, saving: true });
     setError(null);
@@ -136,6 +149,8 @@ const PermissionsTab = () => {
 
   const handleRemoveOverride = async (module, action) => {
     if (!selectedUserId) return;
+    // Same write-permission guard as handleSaveOverride.
+    if (!canManageOverrides) return;
 
     setSaveState({ userId: selectedUserId, module, action, saving: true });
     setError(null);
@@ -222,6 +237,20 @@ const PermissionsTab = () => {
         <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-400 dark:text-green-300 px-4 py-3 rounded-md flex items-center gap-2">
           <Check className="h-4 w-4" />
           {successMsg}
+        </div>
+      )}
+
+      {!canManageOverrides && (
+        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-md flex items-start gap-2">
+          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium">Read-only permission view</p>
+            <p className="mt-0.5">
+              You can review role permissions, overrides and effective access for every user, but
+              changing an override requires the <strong>Manage</strong> permission on Permission
+              Overrides (permission_overrides:manage).
+            </p>
+          </div>
         </div>
       )}
 
@@ -405,80 +434,91 @@ const PermissionsTab = () => {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      onClick={() =>
-                                        handleSaveOverride(moduleKey, action.key, 'allow')
-                                      }
-                                      disabled={isSaving || isSuperAdmin(userPerms.user.role)}
-                                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                                        override?.permission_type === 'allow'
-                                          ? 'bg-green-600 text-white'
-                                          : 'bg-green-50 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50'
-                                      }`}
-                                    >
-                                      Allow
-                                    </button>
-                                    <button
-                                      onClick={() =>
-                                        handleSaveOverride(moduleKey, action.key, 'deny')
-                                      }
-                                      disabled={isSaving || isSuperAdmin(userPerms.user.role)}
-                                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                                        override?.permission_type === 'deny'
-                                          ? 'bg-red-600 text-white'
-                                          : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50'
-                                      }`}
-                                    >
-                                      Deny
-                                    </button>
-                                    <button
-                                      onClick={() => handleRemoveOverride(moduleKey, action.key)}
-                                      disabled={
-                                        !override || isSaving || isSuperAdmin(userPerms.user.role)
-                                      }
-                                      title="Remove override (inherit role)"
-                                      className="px-2 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-50"
-                                    >
-                                      Inherit
-                                    </button>
-                                    {isSaving && (
-                                      <RefreshCw className="h-3 w-3 animate-spin text-blue-500" />
-                                    )}
-                                  </div>
-
-                                  {/* Notes input for overrides */}
-                                  {override && (
-                                    <div className="mt-2">
-                                      <Input
-                                        size="sm"
-                                        value={notes[`${moduleKey}|${action.key}`] || ''}
-                                        onChange={(e) =>
-                                          handleNotesChange(moduleKey, action.key, e.target.value)
+                                  <Can
+                                    module="permission_overrides"
+                                    action="manage"
+                                    fallback={
+                                      <span className="text-xs italic text-gray-400 dark:text-gray-500">
+                                        View only — permission_overrides:manage is required to
+                                        change overrides.
+                                      </span>
+                                    }
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        onClick={() =>
+                                          handleSaveOverride(moduleKey, action.key, 'allow')
                                         }
-                                        placeholder="Add note (e.g., Temporary access for audit)"
-                                        className="text-xs"
-                                      />
-                                      <div className="flex items-center justify-between mt-1">
-                                        <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                                          {override.granted_at &&
-                                            `Granted: ${formatDate(override.granted_at)}`}
-                                        </span>
-                                        <button
-                                          onClick={() =>
-                                            handleSaveOverride(
-                                              moduleKey,
-                                              action.key,
-                                              override.permission_type,
-                                            )
-                                          }
-                                          className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline"
-                                        >
-                                          Save note
-                                        </button>
-                                      </div>
+                                        disabled={isSaving || isSuperAdmin(userPerms.user.role)}
+                                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                          override?.permission_type === 'allow'
+                                            ? 'bg-green-600 text-white'
+                                            : 'bg-green-50 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-50'
+                                        }`}
+                                      >
+                                        Allow
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          handleSaveOverride(moduleKey, action.key, 'deny')
+                                        }
+                                        disabled={isSaving || isSuperAdmin(userPerms.user.role)}
+                                        className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                          override?.permission_type === 'deny'
+                                            ? 'bg-red-600 text-white'
+                                            : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/50 disabled:opacity-50'
+                                        }`}
+                                      >
+                                        Deny
+                                      </button>
+                                      <button
+                                        onClick={() => handleRemoveOverride(moduleKey, action.key)}
+                                        disabled={
+                                          !override || isSaving || isSuperAdmin(userPerms.user.role)
+                                        }
+                                        title="Remove override (inherit role)"
+                                        className="px-2 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-50"
+                                      >
+                                        Inherit
+                                      </button>
+                                      {isSaving && (
+                                        <RefreshCw className="h-3 w-3 animate-spin text-blue-500" />
+                                      )}
                                     </div>
-                                  )}
+
+                                    {/* Notes input for overrides */}
+                                    {override && (
+                                      <div className="mt-2">
+                                        <Input
+                                          size="sm"
+                                          value={notes[`${moduleKey}|${action.key}`] || ''}
+                                          onChange={(e) =>
+                                            handleNotesChange(moduleKey, action.key, e.target.value)
+                                          }
+                                          placeholder="Add note (e.g., Temporary access for audit)"
+                                          className="text-xs"
+                                        />
+                                        <div className="flex items-center justify-between mt-1">
+                                          <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                                            {override.granted_at &&
+                                              `Granted: ${formatDate(override.granted_at)}`}
+                                          </span>
+                                          <button
+                                            onClick={() =>
+                                              handleSaveOverride(
+                                                moduleKey,
+                                                action.key,
+                                                override.permission_type,
+                                              )
+                                            }
+                                            className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline"
+                                          >
+                                            Save note
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </Can>
                                 </td>
                                 <td className="px-4 py-3">
                                   {effective?.allowed !== undefined ? (

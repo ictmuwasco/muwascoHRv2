@@ -9,6 +9,10 @@ import Select from '../../components/ui/Select';
 import Modal from '../../components/ui/Modal';
 import Tabs from '../../components/ui/Tabs';
 import { toCsv, downloadCsv, csvFilenameWithDate } from '../../utils/csvUtils';
+// Permission gate (§global rule): this page is the org-wide monitoring dashboard
+// (route gate attendance:manage). The CSV export is gated on the same write
+// permission so a read-only attendance:view user can never extract bulk data.
+import { Can } from '../../components/ui/PermissionGate';
 import {
   Users,
   UserCheck,
@@ -595,15 +599,17 @@ const AttendanceDashboard = () => {
             <RefreshCw className={`h-4 w-4 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
-          <Button
-            size="sm"
-            onClick={exportCsv}
-            loading={exporting}
-            title="Export filtered results to CSV"
-          >
-            <Download className="h-4 w-4 mr-1" />
-            Export CSV
-          </Button>
+          <Can module="attendance" action="manage">
+            <Button
+              size="sm"
+              onClick={exportCsv}
+              loading={exporting}
+              title="Export filtered results to CSV"
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Export CSV
+            </Button>
+          </Can>
         </div>
       </div>
 

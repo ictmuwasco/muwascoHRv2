@@ -21,8 +21,6 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import Select from '../../components/ui/Select';
 import { useAuth } from '../../context/AuthContext';
-// Monitoring management roles — centralized global role registry
-import { MONITORING_ROLES } from '../../config/roles';
 import {
   errorTrackingService,
   type StatsPayload,
@@ -87,8 +85,11 @@ const fmtDateTime = (dateStr?: string | null): string =>
 const num = (v: unknown): string => Number(v ?? 0).toLocaleString();
 
 const ErrorMonitoring = () => {
-  const { user } = useAuth() as any;
-  const canManage = MONITORING_ROLES.includes(String(user?.role ?? ''));
+  const { can } = useAuth() as any;
+  // Permission-driven (Section 26): the acknowledge/resolve workflow actions
+  // are gated by system_errors:manage (POST /system/errors/{id}/manage). This
+  // module HAS a catalog permission, so can() wins over any role list.
+  const canManage = can('system_errors', 'manage');
 
   // --- Data ----------------------------------------------------------------
   const [stats, setStats] = useState<StatsPayload | null>(null);

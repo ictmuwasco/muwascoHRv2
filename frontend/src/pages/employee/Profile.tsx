@@ -23,6 +23,11 @@ import {
 } from 'lucide-react';
 import Badge from '../../components/ui/Badge';
 import type { EmployeeProfile } from '../../types';
+// Permission gate (§global rule): the self-service profile page is gated by the
+// single-write `profile` module — holding profile:view must never unlock
+// add/edit/delete of next of kin, dependants, documents or contract renewal.
+// The API gates every one of those writes under profile:edit.
+import { CanEdit } from '../../components/ui/PermissionGate';
 
 // Base URL for direct file access (authenticated via httpOnly cookie) —
 // centralized in src/config/api.ts so every consumer shares VITE_API_URL.
@@ -512,26 +517,28 @@ const Profile = () => {
               <p className="text-xs text-gray-500">
                 Upload a professional photo (JPG, PNG, GIF or WebP, max 5MB)
               </p>
-              <label className="inline-flex items-center px-3 py-2 text-xs font-medium border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors">
-                {profileImageUploading ? (
-                  <>
-                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-3 w-3 mr-1" />
-                    Upload Picture
-                  </>
-                )}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp"
-                  className="hidden"
-                  onChange={handleProfileImageChange}
-                  disabled={profileImageUploading}
-                />
-              </label>
+              <CanEdit module="profile">
+                <label className="inline-flex items-center px-3 py-2 text-xs font-medium border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors">
+                  {profileImageUploading ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-3 w-3 mr-1" />
+                      Upload Picture
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/gif,image/webp"
+                    className="hidden"
+                    onChange={handleProfileImageChange}
+                    disabled={profileImageUploading}
+                  />
+                </label>
+              </CanEdit>
             </div>
           </div>
         </Card>
@@ -684,24 +691,26 @@ const Profile = () => {
                             </div>
                             {isActive && (
                               <div className="mt-3 flex justify-end">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleRenewContract(contract.id)}
-                                  disabled={renewingContract}
-                                >
-                                  {renewingContract ? (
-                                    <>
-                                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                      Renewing...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <RefreshCw className="h-3 w-3 mr-1" />
-                                      Renew Contract
-                                    </>
-                                  )}
-                                </Button>
+                                <CanEdit module="profile">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleRenewContract(contract.id)}
+                                    disabled={renewingContract}
+                                  >
+                                    {renewingContract ? (
+                                      <>
+                                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                        Renewing...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <RefreshCw className="h-3 w-3 mr-1" />
+                                        Renew Contract
+                                      </>
+                                    )}
+                                  </Button>
+                                </CanEdit>
                               </div>
                             )}
                           </div>
@@ -749,10 +758,12 @@ const Profile = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Next of Kin Records ({nextOfKinList.length})
             </h3>
-            <Button size="sm" onClick={() => setNokModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
+            <CanEdit module="profile">
+              <Button size="sm" onClick={() => setNokModalOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </CanEdit>
           </div>
           {nextOfKinList.length > 0 ? (
             <div className="overflow-x-auto">
@@ -788,13 +799,15 @@ const Profile = () => {
                         {nok.contact || '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleDeleteNextOfKin(idx)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        <CanEdit module="profile">
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleDeleteNextOfKin(idx)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </CanEdit>
                       </td>
                     </tr>
                   ))}
@@ -816,10 +829,12 @@ const Profile = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               My Dependants ({dependants.length})
             </h3>
-            <Button size="sm" onClick={() => setDepModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
+            <CanEdit module="profile">
+              <Button size="sm" onClick={() => setDepModalOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </CanEdit>
           </div>
           {dependants.length > 0 ? (
             <div className="overflow-x-auto">
@@ -872,13 +887,15 @@ const Profile = () => {
                         {dep.contact || '—'}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleDeleteDependant(index)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        <CanEdit module="profile">
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => handleDeleteDependant(index)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </CanEdit>
                       </td>
                     </tr>
                   ))}
@@ -900,10 +917,12 @@ const Profile = () => {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               My Documents ({documents.length})
             </h3>
-            <Button size="sm" onClick={() => setDocModalOpen(true)}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
+            <CanEdit module="profile">
+              <Button size="sm" onClick={() => setDocModalOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Add
+              </Button>
+            </CanEdit>
           </div>
           <div className="space-y-3">
             {documents.length > 0 ? (
@@ -940,9 +959,15 @@ const Profile = () => {
                       <Download className="h-3 w-3 mr-1" />
                       Download
                     </a>
-                    <Button size="sm" variant="danger" onClick={() => handleDeleteDocument(doc.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    <CanEdit module="profile">
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={() => handleDeleteDocument(doc.id)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </CanEdit>
                   </div>
                 </div>
               ))
