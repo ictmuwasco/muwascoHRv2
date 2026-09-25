@@ -5,6 +5,50 @@ import { BROAD_ACCESS_ROLES } from '../config/roles';
 
 const AuthContext = createContext(null);
 
+// ===========================================================================
+// Single-write module classification (mirrors backend config/permissions.php
+// + api.php route gates). See AuthContext.canCreate/canEdit/canDelete docs.
+//
+// GRANULAR modules (employees, users, meetings, departments, holidays,
+// financial_year, delegations, leave...) expose separate create/edit/delete
+// actions — each is its own grant; edit never implies create or delete.
+// SINGLE-WRITE modules expose ONE write action covering the whole write set:
+//   * `manage` — API gates create+update+delete under `<module>:manage`
+//     (e.g. DELETE /targets → strategic_plan:manage, DELETE
+//     /settings/hr-policies/{id} → hr_policies:manage). Holding manage =
+//     full write, INCLUDING Delete (user decision: manage = full write).
+//   * `edit` (profile) — profile:edit gates profile updates, document
+//     upload/delete, next-of-kin, dependants and contract renewal.
+//
+// DANGER: a sibling `manage` on a GRANULAR module must NOT widen the other
+// actions — meetings:manage (minutes lifecycle) does not grant meeting
+// edit/delete; leave:manage does not grant approve/reject/invalidate. Only
+// the lists below promote manage/edit to full-write.
+// ===========================================================================
+
+/** Modules whose sole write action `manage` covers create + edit + delete. */
+const MANAGE_FULL_WRITE_MODULES = [
+  'strategic_plan',
+  'performance_contract',
+  'workplan',
+  'kpi',
+  'sectional_objective',
+  'performance',
+  'hr_policies',
+  'attendance',
+  'consent',
+  'payroll',
+  'notifications',
+  'permission_overrides',
+  'system',
+  'system_errors',
+  'security',
+  'admin',
+];
+
+/** Modules whose sole write action `edit` covers create + edit + delete. */
+const EDIT_FULL_WRITE_MODULES = ['profile'];
+
 /** One-time flag so we never spam the console on repeated fallbacks. */
 let warnedMissingProvider = false;
 
@@ -271,38 +315,61 @@ export const AuthProvider = ({ children }) => {
     return pairs.some(([module, action]) => can(module, action));
   };
 
+  // ===========================================================================
+  // Single-write module classification — the MANAGE_FULL_WRITE_MODULES /
+  // EDIT_FULL_WRITE_MODULES lists live at module scope (top of file).
+  // ===========================================================================
+
+  /**
+   * Centralized CREATE rule (mandatory across every page).
+   *
+   * Add affordances require an explicit `<module>:create` grant — never view
+   * or edit. Exception: for single-write modules (lists above) the module's
+   * sole write action IS the create grant (profile:edit → "Add" document /
+   * next-of-kin / dependant; <module>:manage → "New" for manage-only modules).
+   *
+   * @param {string} module catalog module key, e.g. 'employees'
+   * @returns {boolean}
+   */
+  const canCreate = (module) =>
+    can(module, 'create') ||
+    (MANAGE_FULL_WRITE_MODULES.includes(module) && can(module, 'manage')) ||
+    (EDIT_FULL_WRITE_MODULES.includes(module) && can(module, 'edit'));
+
   /**
    * Centralized MUTATION rule (mandatory across every page).
    *
    * Viewing is never enough to mutate: a user who only holds `<module>:view`
-   * must NOT see Edit affordances. Modules either declare an explicit `edit`
-   * action (employees, departments, ...) or use `manage` as their single
-   * write action (strategic_plan, performance_contract, kpi,
-   * sectional_objective, ...). Both are honoured here so pages never have to
-   * hand-roll the check.
+   * must NOT see Edit affordances. An explicit `edit`/`update` grant qualifies;
+   * so does `manage` — but ONLY for single-write modules where manage is the
+   * whole write set (see list above). On granular modules a sibling `manage`
+   * (e.g. meetings:manage = minutes) never unlocks edit.
    *
    * @param {string} module catalog module key, e.g. 'employees'
    * @returns {boolean}
    */
   const canEdit = (module) =>
     can(module, 'edit') ||
-    canAny([
-      [module, 'manage'],
-      [module, 'update'],
-    ]);
+    can(module, 'update') ||
+    (MANAGE_FULL_WRITE_MODULES.includes(module) && can(module, 'manage'));
 
   /**
    * Centralized DESTRUCTION rule (mandatory across every page).
    *
-   * Delete is a strictly separate grant: holding view — or even view + edit —
-   * never renders a Delete affordance. Only an explicit `<module>:delete`
-   * grant unlocks it (modules that expose no `delete` action, such as the
-   * strategy chain, therefore never render Delete at all).
+   * Delete is a strictly separate grant on granular modules: holding view —
+   * or even view + edit — never renders a Delete affordance; only an explicit
+   * `<module>:delete` unlocks it. For single-write modules (lists above) the
+   * sole write action counts as the full write set, so `<module>:manage`
+   * (or profile's `edit`) unlocks Delete — matching the API, which gates those
+   * DELETE endpoints under the same single action.
    *
    * @param {string} module catalog module key, e.g. 'employees'
    * @returns {boolean}
    */
-  const canDelete = (module) => can(module, 'delete');
+  const canDelete = (module) =>
+    can(module, 'delete') ||
+    (MANAGE_FULL_WRITE_MODULES.includes(module) && can(module, 'manage')) ||
+    (EDIT_FULL_WRITE_MODULES.includes(module) && can(module, 'edit'));
 
   const value = {
     user,
@@ -312,6 +379,7 @@ export const AuthProvider = ({ children }) => {
     isAuthenticated: !!user,
     can,
     canAny,
+    canCreate,
     canEdit,
     canDelete,
     hasRole,

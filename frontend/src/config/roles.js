@@ -7,10 +7,10 @@ import api from '../utils/api';
  * wide-scope, monitoring-capable, etc.).
  *
  * Why this exists: role strings were previously hardcoded as literal arrays in
- * individual pages (EmployeeForm NO_ORG_ROLES, ErrorMonitoring MONITORING_ROLES,
- * TierWorkplanPage inline checks, Dashboard hasRole lists, AuthContext
- * fallbacks, SettingsPermissionsTab badge colors). Every new role had to be
- * chased across the codebase. Import from here instead.
+ * individual pages (EmployeeForm NO_ORG_ROLES, TierWorkplanPage inline checks,
+ * Dashboard hasRole lists, AuthContext fallbacks, SettingsPermissionsTab badge
+ * colors). Every new role had to be chased across the codebase. Import from
+ * here instead.
  *
  * Sources of truth:
  *   - Backend `roles` table (migration 083) — canonical, served by GET /roles
@@ -123,12 +123,6 @@ export const WIDE_SCOPE_ROLES = ['super_admin', 'hr_manager', 'managing_director
  * otherwise every other department's commitments appear in the HR workplan.
  */
 export const WORKPLAN_DEPT_PINNED_ROLES = ['hr_manager'];
-
-/**
- * Roles allowed to manage system monitoring (ErrorMonitoring.tsx): the
- * acknowledge/resolve workflow actions.
- */
-export const MONITORING_ROLES = ['super_admin', 'hr_manager'];
 
 /**
  * Leadership roles that hold approval queues (Dashboard.tsx hasRole

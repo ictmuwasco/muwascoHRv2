@@ -4,6 +4,12 @@ import api from '../../utils/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
+// Permission gate (§global rule): exporting a leave account is bulk data
+// extraction, so it requires the module WRITE action (leave:manage — the same
+// grant that unlocks browsing other employees' accounts), never leave:view.
+// Stricter than GET /leave/profile/{id}/export (route gate leave:view) and
+// intentional — see the export note in components/ui/PermissionGate.tsx.
+import { Can } from '../../components/ui/PermissionGate';
 import {
   Search,
   Download,
@@ -408,10 +414,17 @@ const LeaveProfile = () => {
           </p>
         </div>
         <div className="flex items-center space-x-3">
-          <Button variant="outline" size="sm" onClick={handleExport} disabled={!selectedEmployeeId}>
-            <Download className="h-4 w-4 mr-1" />
-            Export CSV
-          </Button>
+          <Can module="leave" action="manage">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExport}
+              disabled={!selectedEmployeeId}
+            >
+              <Download className="h-4 w-4 mr-1" />
+              Export CSV
+            </Button>
+          </Can>
           <Button variant="outline" size="sm" onClick={loadProfile} disabled={!selectedEmployeeId}>
             <RefreshCw className="h-4 w-4 mr-1" />
             Refresh

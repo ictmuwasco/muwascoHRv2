@@ -7,6 +7,11 @@ import Button from '../../components/ui/Button';
 import Tabs from '../../components/ui/Tabs';
 import Modal from '../../components/ui/Modal';
 import MeetingMinutesModal, { MinutesMeetingInfo } from './MeetingMinutesModal';
+// Permission gate (§global rule): accepting/declining an invitation is a
+// mutation (POST /meetings/{id}/confirm|decline → meetings:confirm), so
+// attendees without that action never see the buttons — the server enforces
+// the same check.
+import { Can } from '../../components/ui/PermissionGate';
 import {
   CalendarCheck,
   Calendar,
@@ -384,14 +389,16 @@ const MyMeetings = () => {
               <Button size="sm" variant="outline" onClick={() => fetchMeetingDetails(row.id)}>
                 View Details
               </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => handleDecline(row.id)}
-                loading={actionLoading === row.id}
-              >
-                Decline
-              </Button>
+              <Can module="meetings" action="confirm">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => handleDecline(row.id)}
+                  loading={actionLoading === row.id}
+                >
+                  Decline
+                </Button>
+              </Can>
             </div>
           );
         }
@@ -402,14 +409,16 @@ const MyMeetings = () => {
               <Button size="sm" variant="outline" onClick={() => fetchMeetingDetails(row.id)}>
                 View Details
               </Button>
-              <Button
-                size="sm"
-                variant="success"
-                onClick={() => handleConfirm(row.id)}
-                loading={actionLoading === row.id}
-              >
-                Accept
-              </Button>
+              <Can module="meetings" action="confirm">
+                <Button
+                  size="sm"
+                  variant="success"
+                  onClick={() => handleConfirm(row.id)}
+                  loading={actionLoading === row.id}
+                >
+                  Accept
+                </Button>
+              </Can>
             </div>
           );
         }
@@ -419,24 +428,26 @@ const MyMeetings = () => {
             <Button size="sm" variant="outline" onClick={() => fetchMeetingDetails(row.id)}>
               View Details
             </Button>
-            <Button
-              size="sm"
-              variant="success"
-              onClick={() => handleConfirm(row.id)}
-              loading={actionLoading === row.id}
-            >
-              <Check className="h-4 w-4 mr-1" />
-              Accept
-            </Button>
-            <Button
-              size="sm"
-              variant="danger"
-              onClick={() => handleDecline(row.id)}
-              loading={actionLoading === row.id}
-            >
-              <X className="h-4 w-4 mr-1" />
-              Decline
-            </Button>
+            <Can module="meetings" action="confirm">
+              <Button
+                size="sm"
+                variant="success"
+                onClick={() => handleConfirm(row.id)}
+                loading={actionLoading === row.id}
+              >
+                <Check className="h-4 w-4 mr-1" />
+                Accept
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => handleDecline(row.id)}
+                loading={actionLoading === row.id}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Decline
+              </Button>
+            </Can>
           </div>
         );
       },
