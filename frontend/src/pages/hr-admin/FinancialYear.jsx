@@ -9,8 +9,16 @@ import FinancialYearStatusCard from '../../components/financial-year/FinancialYe
 import CreateFinancialYearCard from '../../components/financial-year/CreateFinancialYearCard';
 import LeaveAllocationCard from '../../components/financial-year/LeaveAllocationCard';
 import FinancialYearTable from '../../components/financial-year/FinancialYearTable';
+import { useAuth } from '../../context/AuthContext';
 
 const FinancialYear = () => {
+  // Permission gates (§global rule): POST /admin/financial-year/add requires
+  // financial_year:create and POST /admin/financial-year/allocate requires
+  // financial_year:edit — the /financial_year route only needs :view, so the
+  // create card and the allocation card must check for themselves.
+  const { can } = useAuth();
+  const canCreateFinancialYear = can('financial_year', 'create');
+  const canAllocateLeave = can('financial_year', 'edit');
   // Read navigation state handed over from the Contracts tab
   // "Convert to Permanent" flow (pre-selected employee for leave allocation).
   const location = useLocation();
@@ -126,12 +134,17 @@ const FinancialYear = () => {
 
       <FinancialYearStatusCard status={status} />
 
-      <CreateFinancialYearCard
-        canCreate={status?.exists ? false : true}
-        nextFY={status?.next_financial_year}
-        onCreate={handleCreateFinancialYear}
-        creating={creating}
-      />
+      {/* The create card is only meaningful for users who hold
+          financial_year:create — a view-only visitor sees just the status card
+          (POST /admin/financial-year/add → 403 otherwise). */}
+      {canCreateFinancialYear && (
+        <CreateFinancialYearCard
+          canCreate={!status?.exists}
+          nextFY={status?.next_financial_year}
+          onCreate={handleCreateFinancialYear}
+          creating={creating}
+        />
+      )}
 
       {preselectedEmployeeId && (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
@@ -153,6 +166,7 @@ const FinancialYear = () => {
       <LeaveAllocationCard
         financialYears={financialYears}
         preselectedEmployeeId={preselectedEmployeeId}
+        canAllocate={canAllocateLeave}
       />
 
       <FinancialYearTable financialYears={financialYears} />

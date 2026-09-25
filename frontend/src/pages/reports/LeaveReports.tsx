@@ -37,6 +37,9 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import leaveReportService from '../../api/services/leaveReportService';
+// Permission gate (§global rule): /reports/leave/export (also used by the Leave
+// Reports page) is gated by reports:export — view-only users see no Export.
+import { Can } from '../../components/ui/PermissionGate';
 
 // ---- Types -----------------------------------------------------------------
 type Filters = {
@@ -911,9 +914,11 @@ const LeaveReports = () => {
           <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
             <RefreshCw className="h-4 w-4 mr-1" /> Refresh
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExport} loading={exporting}>
-            <Download className="h-4 w-4 mr-1" /> Export CSV
-          </Button>
+          <Can module="reports" action="export">
+            <Button variant="outline" size="sm" onClick={handleExport} loading={exporting}>
+              <Download className="h-4 w-4 mr-1" /> Export CSV
+            </Button>
+          </Can>
         </div>
       </div>
 

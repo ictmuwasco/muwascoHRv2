@@ -4,6 +4,7 @@ import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
+import { PermButton, Can } from '../../components/ui/PermissionGate';
 import { Plus, CheckCircle } from 'lucide-react';
 import type { Appraisal as AppraisalType } from '../../types';
 
@@ -58,10 +59,14 @@ const Appraisal = () => {
       label: 'Actions',
       render: (_: any, row: AppraisalType) => (
         <div className="flex space-x-2">
+          {/* PUT /appraisals/{id}/approve → performance:manage — the page
+              route only requires performance:view, so gate the button. */}
           {row.status === 'submitted' && (
-            <Button size="sm" variant="success" onClick={() => handleApprove(row.id)}>
-              <CheckCircle className="h-4 w-4" />
-            </Button>
+            <Can module="performance" action="manage">
+              <Button size="sm" variant="success" onClick={() => handleApprove(row.id)}>
+                <CheckCircle className="h-4 w-4" />
+              </Button>
+            </Can>
           )}
         </div>
       ),
@@ -83,10 +88,13 @@ const Appraisal = () => {
           <h1 className="text-2xl font-bold text-gray-900">Appraisal Management</h1>
           <p className="text-gray-500">Manage appraisal cycles and employee evaluations</p>
         </div>
-        <Button>
+        {/* performance module is single-write: API POST /appraisals →
+            performance:manage. performance:view (route gate) holders never
+            see this; the catalog has no separate `create` action. */}
+        <PermButton module="performance" require="create">
           <Plus className="h-4 w-4 mr-2" />
           New Appraisal
-        </Button>
+        </PermButton>
       </div>
 
       <Card title="Appraisals">

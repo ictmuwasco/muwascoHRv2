@@ -23,6 +23,10 @@ import {
 } from 'lucide-react';
 import { toCsv, downloadCsv, csvFilenameWithDate } from '../../utils/csvUtils';
 import { Link } from 'react-router-dom';
+// Permission gate (§global rule): every download affordance requires
+// reports:export (the API gates /reports/*/export under it), so a view-only
+// user sees the data but no Export buttons.
+import { Can } from '../../components/ui/PermissionGate';
 import type { ElementType } from 'react';
 
 // ---- Types ---------------------------------------------------------------
@@ -733,9 +737,11 @@ const Reports = () => {
                 >
                   Clear
                 </Button>
-                <Button variant="outline" onClick={handleCsvExport} className="flex-1">
-                  <Download className="h-4 w-4 mr-1" /> CSV
-                </Button>
+                <Can module="reports" action="export">
+                  <Button variant="outline" onClick={handleCsvExport} className="flex-1">
+                    <Download className="h-4 w-4 mr-1" /> CSV
+                  </Button>
+                </Can>
               </div>
             </div>
 
@@ -795,18 +801,20 @@ const Reports = () => {
         </Card>
 
         {/* Export (server) */}
-        <div className="flex gap-2 justify-end">
-          <Button variant="outline" onClick={() => handleExport('csv')} disabled={exporting}>
-            <Download className="h-4 w-4 mr-2" />{' '}
-            {exporting ? 'Exporting...' : 'Export CSV (Server)'}
-          </Button>
-          <Button variant="outline" onClick={() => handleExport('pdf')} disabled={exporting}>
-            <Download className="h-4 w-4 mr-2" /> Export PDF
-          </Button>
-          <Button variant="outline" onClick={() => handleExport('excel')} disabled={exporting}>
-            <Download className="h-4 w-4 mr-2" /> Export Excel
-          </Button>
-        </div>
+        <Can module="reports" action="export">
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => handleExport('csv')} disabled={exporting}>
+              <Download className="h-4 w-4 mr-2" />{' '}
+              {exporting ? 'Exporting...' : 'Export CSV (Server)'}
+            </Button>
+            <Button variant="outline" onClick={() => handleExport('pdf')} disabled={exporting}>
+              <Download className="h-4 w-4 mr-2" /> Export PDF
+            </Button>
+            <Button variant="outline" onClick={() => handleExport('excel')} disabled={exporting}>
+              <Download className="h-4 w-4 mr-2" /> Export Excel
+            </Button>
+          </div>
+        </Can>
       </div>
     );
   };
@@ -867,17 +875,19 @@ const Reports = () => {
         <Card title={reportTypes.find((t) => t.id === activeTab)?.label || 'Reports'}>
           <div className="space-y-4">
             <p className="text-gray-600">Generate reports for {activeTab} module.</p>
-            <div className="flex space-x-3">
-              <Button variant="outline" onClick={() => handleExport('pdf')}>
-                <Download className="h-4 w-4 mr-2" /> Export PDF
-              </Button>
-              <Button variant="outline" onClick={() => handleExport('csv')}>
-                <Download className="h-4 w-4 mr-2" /> Export CSV
-              </Button>
-              <Button variant="outline" onClick={() => handleExport('excel')}>
-                <Download className="h-4 w-4 mr-2" /> Export Excel
-              </Button>
-            </div>
+            <Can module="reports" action="export">
+              <div className="flex space-x-3">
+                <Button variant="outline" onClick={() => handleExport('pdf')}>
+                  <Download className="h-4 w-4 mr-2" /> Export PDF
+                </Button>
+                <Button variant="outline" onClick={() => handleExport('csv')}>
+                  <Download className="h-4 w-4 mr-2" /> Export CSV
+                </Button>
+                <Button variant="outline" onClick={() => handleExport('excel')}>
+                  <Download className="h-4 w-4 mr-2" /> Export Excel
+                </Button>
+              </div>
+            </Can>
           </div>
         </Card>
       )}

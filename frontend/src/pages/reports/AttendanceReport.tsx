@@ -42,6 +42,9 @@ import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import attendanceReportService from '../../api/services/attendanceReportService';
+// Permission gate (§global rule): the API gates /reports/attendance/export under
+// reports:export — a reports:view-only user reads the report but sees no Export.
+import { Can } from '../../components/ui/PermissionGate';
 
 // ---- Types -----------------------------------------------------------------
 type Filters = {
@@ -965,14 +968,16 @@ const AttendanceReport = () => {
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="h-4 w-4 mr-1" /> Print
           </Button>
-          <Button variant="primary" size="sm" onClick={handleExport} disabled={exporting}>
-            {exporting ? (
-              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4 mr-1" />
-            )}
-            Export CSV
-          </Button>
+          <Can module="reports" action="export">
+            <Button variant="primary" size="sm" onClick={handleExport} disabled={exporting}>
+              {exporting ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1" />
+              )}
+              Export CSV
+            </Button>
+          </Can>
         </div>
       </div>
 

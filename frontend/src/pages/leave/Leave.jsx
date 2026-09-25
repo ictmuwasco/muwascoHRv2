@@ -5,6 +5,7 @@ import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
+import { PermButton } from '../../components/ui/PermissionGate';
 import { Plus, User } from 'lucide-react';
 
 const Leave = () => {
@@ -67,10 +68,12 @@ const Leave = () => {
             <User className="h-4 w-4 mr-2" />
             My Leave Profile
           </Button>
-          <Button onClick={() => navigate('/leave/apply')}>
+          {/* leave:apply is its OWN grant — leave:view (this page's route
+              gate) never implies the right to apply. API: POST /leave/apply. */}
+          <PermButton module="leave" require="apply" onClick={() => navigate('/leave/apply')}>
             <Plus className="h-4 w-4 mr-2" />
             Apply Leave
-          </Button>
+          </PermButton>
         </div>
       </div>
 

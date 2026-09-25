@@ -312,10 +312,14 @@ export default function TierWorkplanPage({
         financialYears={fys}
         actions={
           <>
-            <Button variant="outline" onClick={exportCsv}>
-              <Download className="h-4 w-4 mr-2" />
-              Export CSV
-            </Button>
+            {/* Export is bulk extraction → module write ability, never plain
+                workplan:view (the workplan module is single-write: manage). */}
+            {canManage && (
+              <Button variant="outline" onClick={exportCsv}>
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => {

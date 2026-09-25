@@ -36,6 +36,7 @@ const labelCls =
   'block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1';
 const inputCls =
   'w-full rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-200';
+const warnCls = 'mt-1 text-xs text-amber-600 dark:text-amber-400';
 
 /**
  * One-click downward cascade. Creates a validated CHILD activity linked to
@@ -45,6 +46,10 @@ const inputCls =
  *   department   -> section    (pick section)
  *   section      -> subsection (pick subsection)
  *   subsection   -> employee task (assign supervised employee)
+ *
+ * Validation and API errors are surfaced INSIDE this dialog: the page-level
+ * banner fed by onError() renders behind the modal's z-50 overlay, so failures
+ * used to be invisible and the cascade looked like it did nothing.
  */
 export default function CascadeActivityDialog({
   isOpen,
@@ -72,6 +77,8 @@ export default function CascadeActivityDialog({
   const [notes, setNotes] = useState('');
   const [cycleIds, setCycleIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
+  /** Error rendered inside the dialog (see fail()). */
+  const [formError, setFormError] = useState('');
 
   const parentLevel = parent?.level ?? null;
 
@@ -88,6 +95,7 @@ export default function CascadeActivityDialog({
     setBudget('');
     setNotes('');
     setCycleIds([]);
+    setFormError('');
   }, [isOpen, parent?.id]);
 
   // Refresh appraisal cycles whenever the form opens so the quarter picker is
@@ -114,24 +122,31 @@ export default function CascadeActivityDialog({
     departmentId == null ? contracts : contracts.filter((c) => c.department_id === departmentId);
   const allCycles = liveCycles ?? cycles;
 
+  /** Surface a failure INSIDE the dialog and mirror it to the page banner. */
+  const fail = (message: string) => {
+    setFormError(message);
+    onError(message);
+  };
+
   const submit = async () => {
     if (!objective.trim() || !kpi.trim() || !measure.trim()) {
-      onError('Objective, KPI and measure unit are required.');
+      fail('Objective, KPI and measure unit are required.');
       return;
     }
     if (parentLevel === 'organisation' && !contractId) {
-      onError('Select the departmental performance commitment this work supports.');
+      fail('Select the departmental performance commitment this work supports.');
       return;
     }
     if (parentLevel === 'department' && !sectionId) {
-      onError('Select the responsible section.');
+      fail('Select the responsible section.');
       return;
     }
     if (parentLevel === 'section' && !subsectionId) {
-      onError('Select the responsible subsection.');
+      fail('Select the responsible subsection.');
       return;
     }
 
+    setFormError('');
     setSaving(true);
     try {
       await workplanService.cascade(parent.id, {
@@ -156,7 +171,7 @@ export default function CascadeActivityDialog({
       );
       onClose();
     } catch (err: any) {
-      onError(err.response?.data?.message || 'Failed to cascade the activity.');
+      fail(err.response?.data?.message || 'Failed to cascade the activity.');
     } finally {
       setSaving(false);
     }
@@ -262,6 +277,27 @@ export default function CascadeActivityDialog({
                 ))}
               </select>
             )}
+            {/* Dead-end guard: without the next-level unit the required
+                selection can never be made, so say so up front. */}
+            {parentLevel === 'organisation' && visibleContracts.length === 0 && (
+              <p className={warnCls}>
+                No performance contracts are available yet — create the departmental performance
+                commitment first, then retry the cascade.
+              </p>
+            )}
+            {parentLevel === 'department' && sections.length === 0 && (
+              <p className={warnCls}>
+                No sections are available under your department yet — create the section on the
+                Departments page first, then retry the cascade.
+              </p>
+            )}
+            {parentLevel === 'section' && subsections.length === 0 && (
+              <p className={warnCls}>
+                No subsections exist for your department yet — a section-level activity can only be
+                cascaded into a subsection. Create the subsection on the Departments page first,
+                then retry the cascade.
+              </p>
+            )}
           </div>
         )}
 
@@ -349,6 +385,15 @@ export default function CascadeActivityDialog({
             Leave all unchecked to keep the parent activity's quarters.
           </p>
         </div>
+
+        {formError && (
+          <div
+            role="alert"
+            className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 px-3 py-2 text-sm text-red-700 dark:text-red-300"
+          >
+            {formError}
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2 border-t dark:border-slate-700">
           <Button variant="outline" onClick={onClose}>

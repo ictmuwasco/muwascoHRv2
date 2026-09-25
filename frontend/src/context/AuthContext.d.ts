@@ -14,9 +14,18 @@ export interface AuthContextType {
   isAuthenticated: boolean;
   can: PermissionCheck;
   canAny: PermissionAnyCheck;
+  /**
+   * Mandatory creation gate: view/edit alone never unlocks Add. For
+   * single-write modules the sole write action (manage / profile edit) counts.
+   */
+  canCreate: PermissionMutationCheck;
   /** Mandatory mutation gate: view alone never unlocks Edit. */
   canEdit: PermissionMutationCheck;
-  /** Mandatory destruction gate: only an explicit `<module>:delete` unlocks Delete. */
+  /**
+   * Mandatory destruction gate: on granular modules only an explicit
+   * `<module>:delete` unlocks Delete; on single-write modules the sole write
+   * action (manage / profile edit) counts — mirroring the API route gates.
+   */
   canDelete: PermissionMutationCheck;
   hasRole: RoleCheck;
   refreshPermissions: () => Promise<void>;
