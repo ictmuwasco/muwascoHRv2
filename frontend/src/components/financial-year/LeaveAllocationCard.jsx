@@ -6,7 +6,7 @@ import {
   allocateLeaveToEmployee,
 } from '../../api/services/financialYearService';
 
-const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
+const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId, canAllocate = false }) => {
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
@@ -86,6 +86,10 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    // Defence in depth: the form is not rendered without financial_year:edit,
+    // but never let a programmatic submit through either (API also enforces it).
+    if (!canAllocate) return;
+
     if (!formData.employee_id || !formData.financial_year_id) {
       alert('Please select employee and financial year');
       return;
@@ -129,6 +133,22 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId }) => {
         <div className="flex items-center justify-center h-32">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
         </div>
+      </div>
+    );
+  }
+
+  // Read-only visitor (no financial_year:edit): render ONLY the explanatory
+  // card — never the allocation form — so view access can not be mistaken for
+  // the ability to allocate leave (POST /admin/financial-year/allocate → 403).
+  if (!canAllocate) {
+    return (
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-300 dark:border-slate-700 p-6 mb-6">
+        <h3 className="text-lg font-semibold mb-2">Allocate Leave to Employee</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Allocating leave days requires the <strong>Edit</strong> permission on Financial Year
+          (financial_year:edit). You can view financial years and leave balances, but allocation is
+          performed by HR.
+        </p>
       </div>
     );
   }

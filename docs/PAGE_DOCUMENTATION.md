@@ -249,14 +249,15 @@ Located in `frontend/src/pages/settings/`
   - Admin tools
 - **Dependencies**: `api/client`, UI components, `lucide-react` icons
 
-#### Users (`Users.jsx`)
-- **Purpose**: Manage system users
+#### Users (`frontend/src/components/settings/SettingsUsersTab.jsx`)
+- **Purpose**: Manage system users — the routed `/settings/users` tab (the old
+  duplicate `pages/settings/Users.jsx` was removed as dead code; nothing imported it)
 - **Features**:
   - User list with search
-  - Add/edit/delete users
-  - User status management
-  - Password reset
-- **Dependencies**: `api` client, UI components, `lucide-react` icons
+  - Delete users (`users:delete`) and reset passwords (`users:edit`) — each row
+    action is hidden unless the operator holds that permission
+  - User status display
+- **Dependencies**: `api` client, `PermissionGate`, UI components, `lucide-react` icons
 
 #### Audit (`Audit.tsx`)
 - **Purpose**: Audit log viewer
@@ -770,10 +771,11 @@ frontend/src/pages/
 │   ├── MeetingsDashboard.tsx
 │   ├── CreateMeeting.tsx
 │   └── MyMeetings.tsx
-├── settings/                # Settings and admin pages
+├── settings/                # Settings pages (tab components live in components/settings/)
 │   ├── Admin.tsx
-│   ├── Users.jsx
-│   └── Audit.tsx
+│   ├── Audit.tsx
+│   ├── ErrorMonitoring.tsx
+│   └── HrPolicies.tsx
 ├── Attendance.jsx           # Standalone pages
 ├── Dashboard.tsx
 ├── Departments.jsx

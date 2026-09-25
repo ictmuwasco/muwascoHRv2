@@ -4,6 +4,9 @@ import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Button from '../../components/ui/Button';
 import Input from '../../components/ui/Input';
+// Permission gate (§global rule): POST /admin/financial-year/add is gated by
+// financial_year:create; the /admin route only requires admin:view.
+import { PermButton } from '../../components/ui/PermissionGate';
 import { Plus } from 'lucide-react';
 import type { FinancialYear } from '../../types';
 
@@ -64,10 +67,10 @@ const Admin = () => {
           <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
           <p className="text-gray-500">Financial year management & leave allocation</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
+        <PermButton module="financial_year" require="create" onClick={() => setShowForm(!showForm)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Financial Year
-        </Button>
+        </PermButton>
       </div>
 
       {showForm && (

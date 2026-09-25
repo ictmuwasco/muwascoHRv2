@@ -5,6 +5,10 @@ import Table from '../ui/Table';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
+// Permission gate (§global rule): DELETE /users/{id} → users:delete and
+// PUT /users/{id}/change-password → users:edit. The /settings/users tab only
+// requires settings:users, so a viewer of the tab must not see these actions.
+import { PermButton } from '../ui/PermissionGate';
 import { Trash2, KeyRound, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 
 const PER_PAGE = 30;
@@ -161,7 +165,9 @@ const UsersTab = () => {
       label: 'Actions',
       render: (_, row) => (
         <div className="flex items-center gap-2">
-          <Button
+          <PermButton
+            module="users"
+            require="edit"
             variant="secondary"
             size="sm"
             loading={actionLoading === `reset-${row.id}`}
@@ -175,8 +181,10 @@ const UsersTab = () => {
           >
             <KeyRound className="h-4 w-4 mr-1" />
             Reset Password
-          </Button>
-          <Button
+          </PermButton>
+          <PermButton
+            module="users"
+            require="delete"
             variant="danger"
             size="sm"
             loading={actionLoading === `delete-${row.id}`}
@@ -184,7 +192,7 @@ const UsersTab = () => {
           >
             <Trash2 className="h-4 w-4 mr-1" />
             Delete
-          </Button>
+          </PermButton>
         </div>
       ),
     },
