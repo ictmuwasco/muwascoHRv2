@@ -46,12 +46,15 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const canViewMeetings = can('meetings', 'view');
   const canViewReports = can('reports', 'view');
 
-  // Employees page: ONLY hr_manager or super_admin can view employee list
-  // (per requirement: no role except hr_manager or super_admin should see employees)
-  // We check if user has employees:create which is only granted to hr_manager/super_admin
-  const canViewEmployees = canAny([
-    ['employees', 'create'], // Only hr_manager and super_admin have this
-  ]);
+  // Employees page — registry-aligned (§18/§29): the link follows the SAME
+  // permission as the route, employees:view (PAGE_PERMISSIONS['/employees']).
+  // The previous check required employees:create ("only hr_manager/super_admin
+  // should see employees"), a pre-RBAC hardcode that hid the entry from anyone
+  // granted read-only access — e.g. a user-level employees:view override set
+  // on Settings → Permissions. View never unlocks mutations: Add/Edit/Delete
+  // affordances INSIDE the page stay individually gated (employees:create /
+  // :edit / :delete), so a view-only grant renders a read-only list.
+  const canViewEmployees = can('employees', 'view');
 
   // HR Admin group: only for hr_admin role and hr_manager/super_admin
   // Check for hr_admin specific permissions
