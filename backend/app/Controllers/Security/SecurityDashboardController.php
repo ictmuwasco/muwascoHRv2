@@ -40,6 +40,63 @@ class SecurityDashboardController extends BaseController
         }
     }
 
+    public function appraisalAction(): void
+    {
+        $this->requirePermission('security', 'view');
+        try {
+            $db = \db();
+            $events = $db->fetchAll(
+                "SELECT id, event_type, severity, user_id, route, resource_type, resource_id,
+                        action_taken, description, detected_at
+                 FROM security_events
+                 WHERE resource_type = 'EmployeeAppraisal' OR route LIKE '%/appraisals%'
+                 ORDER BY detected_at DESC LIMIT 25"
+            );
+            $counts = $db->fetchOne(
+                "SELECT COUNT(*) AS total,
+                        COALESCE(SUM(action_taken IN ('DENIED', 'BLOCKED')), 0) AS denied,
+                        COALESCE(SUM(action_taken = 'RATE_LIMITED'), 0) AS rate_limited,
+                        COALESCE(SUM(event_type IN ('IDOR_ENUMERATION', 'IDOR_ATTEMPT')), 0) AS object_attempts
+                 FROM security_events
+                 WHERE resource_type = 'EmployeeAppraisal' OR route LIKE '%/appraisals%'"
+            );
+            $audit = $db->fetchAll(
+                "SELECT action, COUNT(*) AS count
+                 FROM audit_logs
+                 WHERE module = 'Performance' AND action LIKE 'APPRAISAL_%'
+                 GROUP BY action ORDER BY count DESC"
+            );
+            $routes = array_values(array_filter(
+                \ApiRouter::getRouteRegistry(),
+                static fn (array $route): bool => str_contains($route['path'] ?? '', '/appraisals')
+            ));
+            $routeCount = count($routes);
+            $permissionDefaults = $db->fetchAll(
+                "SELECT role, action, is_granted
+                 FROM role_permissions
+                 WHERE module = 'performance' AND action IN ('supervise','score','approve','feedback')
+                 ORDER BY role, action"
+            );
+            $this->success([
+                'counts' => $counts ?: ['total' => 0, 'denied' => 0, 'rate_limited' => 0, 'object_attempts' => 0],
+                'recent_events' => $events,
+                'audit_actions' => $audit,
+                'route_count' => $routeCount,
+                'permission_defaults' => $permissionDefaults,
+                'policy' => [
+                    'employee_ownership_enforced' => true,
+                    'organizational_scope_enforced' => true,
+                    'officer_supervisory_hard_deny' => true,
+                    'state_transitions_audited' => true,
+                    'sensitive_comments_in_general_audit' => false,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            \logger()->error('Appraisal security summary error', ['error' => $e->getMessage()]);
+            $this->error('Failed to load appraisal security summary', 500);
+        }
+    }
+
     public function eventsAction(): void
     {
         $this->requirePermission('security', 'view');
@@ -251,7 +308,7 @@ class SecurityDashboardController extends BaseController
         // controller-level policy check (EmployeePolicy::canView / canEdit,
         // ObjectAuthorization, etc.). Parameterized resource routes for these
         // types get object_auth = true.
-        $objectPolicyResources = ['employees', 'leave', 'attendance', 'meetings', 'users'];
+        $objectPolicyResources = ['employees', 'leave', 'attendance', 'meetings', 'users', 'appraisals'];
 
         $inventory = [];
         foreach ($registry as $route) {
@@ -261,7 +318,7 @@ class SecurityDashboardController extends BaseController
             // Determine the resource family for object-auth inference.
             $resource = null;
             if ($hasParam) {
-                if (preg_match('#^/(employees|leave|attendance|meetings|users|departments|positions)/#i', $route['path'], $m)) {
+                if (preg_match('#^/(employees|leave|attendance|meetings|users|departments|positions|appraisals)/#i', $route['path'], $m)) {
                     $resource = $m[1];
                 }
             }

@@ -113,10 +113,22 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('user', JSON.stringify(freshUser));
         setUser(freshUser);
       }
-    } catch {
-      // Silent — a stale session cookie simply leaves the cached profile in
-      // place; ProtectedRoute / backend 401 handling bounces the user to
-      // /login when a request actually fails.
+    } catch (error) {
+      // A 401 here is DEFINITIVE: the API client already attempted a silent
+      // renewal and that failed too (or was not applicable), so the session is
+      // genuinely over. We must NOT keep the cached profile in that case —
+      // that stale `user` is what made a signed-out browser look
+      // authenticated, and (worse) what made `can()` answer from permissions
+      // that no longer reflect the server, producing 403s on pages the user
+      // can no longer open. Clearing it lets ProtectedRoute send them to
+      // /login, which is the honest state.
+      //
+      // Any OTHER failure (network blip, 5xx) is transient: the cached profile
+      // is left alone so an offline tab does not sign the employee out.
+      if (error?.response?.status === 401) {
+        localStorage.removeItem('user');
+        setUser(null);
+      }
     } finally {
       refreshingRef.current = false;
     }

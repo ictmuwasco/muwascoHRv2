@@ -90,6 +90,11 @@ return [
         'PUT /leave/{id}/reject',
         'PUT /leave/{id}/invalidate',
         'PUT /leave/{id}/cancel',
+        'POST /appraisals/my/{id}/feedback',
+        'POST /appraisals',
+        'PUT /appraisals/{id}/scores',
+        'PUT /appraisals/{id}/decision',
+        'GET /security/appraisal',
     ],
 
     /**
