@@ -21,10 +21,13 @@ class MeetingService
 
         private ?MeetingMinutesRepository $minutesRepository = null;
 
+        private \App\Services\Notification\MeetingNotificationService $notificationService;
+
     public function __construct()
     {
         $this->meetingRepository = new MeetingRepository();
         $this->minutesRepository = new MeetingMinutesRepository();
+        $this->notificationService = new \App\Services\Notification\MeetingNotificationService();
     }
 
     /**
@@ -226,6 +229,10 @@ class MeetingService
             $this->meetingRepository->createInvitations($meetingId, $employeeIds, $userId);
         }
 
+        // After the meeting and its invitations are persisted. Notification
+        // failures are swallowed by the service, so this cannot fail the create.
+        $this->notificationService->notifyInvitations($meetingId);
+
         return $meetingId;
     }
 
@@ -306,7 +313,15 @@ class MeetingService
             throw new InvalidArgumentException('Meeting not found');
         }
 
-        return $this->meetingRepository->updateStatus($id, 'cancelled');
+        $cancelled = $this->meetingRepository->updateStatus($id, 'cancelled');
+
+        // Only tell invitees if the status actually changed, so a repeated
+        // cancel request does not re-notify the whole roster.
+        if ($cancelled) {
+            $this->notificationService->notifyCancellation($id);
+        }
+
+        return $cancelled;
     }
 
     /**
@@ -349,7 +364,9 @@ class MeetingService
         }
 
         $invitedBy = Auth::getInstance()->id();
-        return $this->meetingRepository->updateInvitationResponse($meetingId, $employeeId, 'accepted', $invitedBy);
+        $updated = $this->meetingRepository->updateInvitationResponse($meetingId, $employeeId, 'accepted', $invitedBy);
+        $this->notificationService->notifyRsvp($meetingId, $employeeId, 'accepted');
+        return $updated;
     }
 
     /**
@@ -390,7 +407,9 @@ class MeetingService
         }
 
         $invitedBy = Auth::getInstance()->id();
-        return $this->meetingRepository->updateInvitationResponse($meetingId, $employeeId, 'declined', $invitedBy);
+        $updated = $this->meetingRepository->updateInvitationResponse($meetingId, $employeeId, 'declined', $invitedBy);
+        $this->notificationService->notifyRsvp($meetingId, $employeeId, 'declined');
+        return $updated;
     }
 
     /**

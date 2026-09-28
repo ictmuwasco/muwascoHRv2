@@ -20,6 +20,7 @@ class LeaveApplicationService
     private LeaveCalculationService $calculationService;
     private LeaveDocumentService $documentService;
     private LeaveWorkflowService $workflowService;
+    private \App\Services\Notification\LeaveNotificationService $notificationService;
 
     public function __construct()
     {
@@ -27,6 +28,7 @@ class LeaveApplicationService
         $this->calculationService = new LeaveCalculationService();
         $this->documentService = new LeaveDocumentService();
         $this->workflowService = new LeaveWorkflowService();
+        $this->notificationService = new \App\Services\Notification\LeaveNotificationService();
     }
 
     /**
@@ -200,6 +202,19 @@ class LeaveApplicationService
             $delegateService->notifyDelegate($applicationId, $delegateEmpId, $userId);
 
             $this->db->commit();
+
+            // Notifications run AFTER commit, deliberately. Inside the
+            // transaction a rollback would discard them, but a queue row also
+            // consumes its dedupe key - and the employee is already waiting on
+            // this response, so nothing here may be able to fail the request.
+            $application = $this->notificationService->findApplication($applicationId);
+            if ($application !== null) {
+                if ($initialStatus === 'approved') {
+                    $this->notificationService->notifyFullyApproved($application, $userId);
+                } else {
+                    $this->notificationService->notifyApplied($application);
+                }
+            }
 
             return [
                 'success' => true,

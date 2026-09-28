@@ -145,6 +145,13 @@ class AuthorizationService
             return false;
         }
 
+        // Hard supervisory policy: officers/employees may submit their own
+        // appraisal feedback, but cannot unlock another employee's appraisal
+        // workflow through an accidental or stale user-level allow override.
+        if ($this->isHardDeniedAppraisalPermission($role, $module, $action)) {
+            return false;
+        }
+
         // Priority 2: SUPER ADMIN → ALLOW.
         // Documented policy: super_admin can never be restricted — not by
         // role_permissions, not by user_page_permissions overrides (which the
@@ -194,6 +201,23 @@ class AuthorizationService
 
         // Priority 7: Default DENY
         return false;
+    }
+
+    /**
+     * Fixed policy guard for non-delegable supervisory appraisal actions.
+     * It is intentionally evaluated before user overrides in hasPermission().
+     */
+    private function isHardDeniedAppraisalPermission(string $role, string $module, string $action): bool
+    {
+        $allowedRoles = [
+            'super_admin', 'hr_manager', 'managing_director', 'director', 'md',
+            'dept_head', 'head_of_department', 'department_head',
+            'manager', 'section_head', 'section_manager',
+            'sub_section_head', 'subsection_head',
+        ];
+        return $module === 'performance'
+            && in_array($action, ['supervise', 'score', 'approve'], true)
+            && !in_array($role, $allowedRoles, true);
     }
 
     /**
@@ -282,6 +306,10 @@ class AuthorizationService
         $role = $this->resolveUserRole($userId);
         if ($role === '') {
             return ['allowed' => false, 'source' => 'no_role', 'permission_type' => null];
+        }
+
+        if ($this->isHardDeniedAppraisalPermission($role, $module, $action)) {
+            return ['allowed' => false, 'source' => 'Hard Policy', 'permission_type' => 'deny'];
         }
 
         // Super Admin → always allowed (documented policy; cannot be overridden)
@@ -606,6 +634,18 @@ class AuthorizationService
             foreach ($module['actions'] as $action) {
                 $key = $module['key'] . '|' . $action['key'];
 
+                // Mirror hasPermission()'s hard supervisory policy BEFORE any
+                // override/delegation is consulted. Without this the advertised
+                // set could hand `performance:supervise` to a role the enforcer
+                // refuses unconditionally (officer/employee/bod_chairman), so the
+                // SPA would render the supervisor-only filter panel, call
+                // /appraisals/completed/filters and take a 403 the user cannot
+                // act on. The frontend mirror must never be more permissive
+                // than the engine that actually decides.
+                if ($this->isHardDeniedAppraisalPermission($role, $module['key'], $action['key'])) {
+                    continue;
+                }
+
                 // Explicit user override wins (allow/deny).
                 if (isset($this->cachedOverrides[$key])) {
                     if ($this->cachedOverrides[$key] === 'allow') {
@@ -632,6 +672,13 @@ class AuthorizationService
         // Priority 6. UX only — the backend re-enforces on every request.
         try {
             foreach (DelegationService::getInstance()->activePermissionStrings($userId) as $delegatedKey) {
+                // Same hard-policy filter as the catalog loop above: a delegation
+                // row is data, not authority, and must not be able to advertise
+                // a supervisory appraisal action the enforcer hard-denies.
+                [$delegatedModule, $delegatedAction] = array_pad(explode(':', $delegatedKey, 2), 2, '');
+                if ($this->isHardDeniedAppraisalPermission($role, $delegatedModule, $delegatedAction)) {
+                    continue;
+                }
                 if (!in_array($delegatedKey, $out, true)) {
                     $out[] = $delegatedKey;
                 }

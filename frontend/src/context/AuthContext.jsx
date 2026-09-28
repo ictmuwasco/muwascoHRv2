@@ -95,6 +95,25 @@ export const AuthProvider = ({ children }) => {
   const refreshingRef = useRef(false);
 
   /**
+   * Is there a session worth refreshing?
+   *
+   * The access/refresh tokens are httpOnly cookies, so the ONLY session signal
+   * JS can read is the cached profile localStorage. Its absence means the
+   * browser has no session to renew.
+   */
+  const hasCachedSession = () => {
+    try {
+      const raw = localStorage.getItem('user');
+      if (!raw) return false;
+      const parsed = JSON.parse(raw);
+      return !!parsed && typeof parsed === 'object' && typeof parsed.id !== 'undefined';
+    } catch {
+      // Corrupt entry - treat as no session rather than throwing.
+      return false;
+    }
+  };
+
+  /**
    * Refresh the effective permission set from the server (§31). Single-flight:
    * concurrent callers (focus handler + interval + 403 handler) share one
    * in-flight request. The cached profile/permissions render instantly, then
@@ -104,6 +123,14 @@ export const AuthProvider = ({ children }) => {
    * independently on every request.
    */
   const refreshPermissions = async () => {
+    // An anonymous visitor has nothing to refresh, and the probe is guaranteed
+    // to fail in a way that cascades: /auth/user 401s, the client's recovery
+    // then attempts a silent renewal that 401s too, and both land in the console.
+    // Because this also runs on every window focus and on a 5-minute interval,
+    // that produced a fresh PAIR of errors every time the login tab regained
+    // focus. Skipping the call for a browser with no cached session removes both
+    // requests, and changes nothing for anyone who IS signed in.
+    if (!hasCachedSession()) return;
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     try {
@@ -113,10 +140,22 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('user', JSON.stringify(freshUser));
         setUser(freshUser);
       }
-    } catch {
-      // Silent — a stale session cookie simply leaves the cached profile in
-      // place; ProtectedRoute / backend 401 handling bounces the user to
-      // /login when a request actually fails.
+    } catch (error) {
+      // A 401 here is DEFINITIVE: the API client already attempted a silent
+      // renewal and that failed too (or was not applicable), so the session is
+      // genuinely over. We must NOT keep the cached profile in that case —
+      // that stale `user` is what made a signed-out browser look
+      // authenticated, and (worse) what made `can()` answer from permissions
+      // that no longer reflect the server, producing 403s on pages the user
+      // can no longer open. Clearing it lets ProtectedRoute send them to
+      // /login, which is the honest state.
+      //
+      // Any OTHER failure (network blip, 5xx) is transient: the cached profile
+      // is left alone so an offline tab does not sign the employee out.
+      if (error?.response?.status === 401) {
+        localStorage.removeItem('user');
+        setUser(null);
+      }
     } finally {
       refreshingRef.current = false;
     }
