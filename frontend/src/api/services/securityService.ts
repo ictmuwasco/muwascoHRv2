@@ -4,6 +4,7 @@ const SECURITY_API = '/security';
 
 export const securityService = {
   getOverview: () => apiClient.get(`${SECURITY_API}/overview`),
+  getAppraisalSecurity: () => apiClient.get(`${SECURITY_API}/appraisal`),
   getEvents: (params = {}) => apiClient.get(`${SECURITY_API}/events`, { params }),
   getEvent: (id: number) => apiClient.get(`${SECURITY_API}/events/${id}`),
   getIncidents: (params = {}) => apiClient.get(`${SECURITY_API}/incidents`, { params }),
