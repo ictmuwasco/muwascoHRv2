@@ -30,6 +30,7 @@ class LeaveApprovalService
     private LeaveCalculationService $calculationService;
     private DelegationService $delegationService;
     private DelegateService $delegateService;
+    private \App\Services\Notification\LeaveNotificationService $notificationService;
 
     public function __construct()
     {
@@ -38,6 +39,7 @@ class LeaveApprovalService
         $this->calculationService = new LeaveCalculationService();
         $this->delegationService = DelegationService::getInstance();
         $this->delegateService = new DelegateService();
+        $this->notificationService = new \App\Services\Notification\LeaveNotificationService();
     }
 
     /**
@@ -189,6 +191,17 @@ class LeaveApprovalService
 
             $this->db->commit();
 
+            // After commit: the decision is durable, and a notification failure
+            // must never be able to roll back an approval that already happened.
+            $fresh = $this->notificationService->findApplication($applicationId);
+            if ($fresh !== null) {
+                if ($nextStatus === 'approved') {
+                    $this->notificationService->notifyFullyApproved($fresh, $userId);
+                } else {
+                    $this->notificationService->notifyStageAdvanced($fresh, $currentStatus, $userId);
+                }
+            }
+
             return [
                 'success' => true,
                 'message' => $nextStatus === 'approved'
@@ -304,6 +317,11 @@ class LeaveApprovalService
 
             $this->db->commit();
 
+            $fresh = $this->notificationService->findApplication($applicationId);
+            if ($fresh !== null) {
+                $this->notificationService->notifyRejected($fresh, $reason, $userId);
+            }
+
             return ['success' => true, 'message' => 'Leave application rejected', 'data' => ['status' => 'rejected']];
         } catch (\Exception $e) {
             $this->db->rollback();
@@ -368,6 +386,11 @@ class LeaveApprovalService
 
             $this->db->commit();
 
+            $fresh = $this->notificationService->findApplication($applicationId);
+            if ($fresh !== null) {
+                $this->notificationService->notifyWithdrawn($fresh, 'invalidated');
+            }
+
             return ['success' => true, 'message' => 'Leave application invalidated', 'data' => ['status' => 'invalidated']];
         } catch (\Exception $e) {
             $this->db->rollback();
@@ -424,6 +447,11 @@ class LeaveApprovalService
             $this->logHistory($applicationId, $userId, 'cancelled', $app);
 
             $this->db->commit();
+
+            $fresh = $this->notificationService->findApplication($applicationId);
+            if ($fresh !== null) {
+                $this->notificationService->notifyWithdrawn($fresh, 'cancelled');
+            }
 
             return ['success' => true, 'message' => 'Leave application cancelled', 'data' => ['status' => 'cancelled']];
         } catch (\Exception $e) {
