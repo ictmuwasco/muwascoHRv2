@@ -65,20 +65,26 @@ echo "Running " . count($toRun) . " migration(s) (batch #{$batch})...\n\n";
 $success = 0;
 $failed = 0;
 
-// Migrations that are only valid on MariaDB (use ADD COLUMN/CONSTRAINT
-// IF NOT EXISTS syntax) but CI provisions MySQL 8.0. Skip them there —
-// the equivalent schema is applied by the PHP migrations / schema sync.
+// Migrations that are only valid on MariaDB (they use
+// ADD COLUMN/CONSTRAINT IF NOT EXISTS syntax, which MySQL 8.0 rejects).
+// Since CI was moved to mariadb:10.4 to match production
+// (see .github/workflows/deploy.yml), this skip list is now EMPTY: CI and
+// production run the identical engine, so every migration is applied
+// everywhere. The mechanism is retained defensively so re-introducing a
+// divergent CI engine can never silently skip DDL again.
 $isCiMysql = (getenv('CI') === 'true' || getenv('GITHUB_ACTIONS') === 'true');
-$ciSkipped = [
-    '005_add_dependants_column.sql',
-    '020_attendance_attendance_date_column.sql',
-];
+$ciSkipped = [];
 
 foreach ($toRun as $file) {
     if ($isCiMysql && in_array($file, $ciSkipped, true)) {
         echo "[~] {$file} ... SKIPPED on CI MySQL (MariaDB-only syntax)\n";
         $duration = 0;
-        $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, duration_ms, status) VALUES (?, ?, ?, 'completed')");
+        $stmt = $conn->prepare(
+            "INSERT INTO migrations (migration, batch, duration_ms, status, error_message)
+             VALUES (?, ?, ?, 'completed', NULL)
+             ON DUPLICATE KEY UPDATE
+                 batch = VALUES(batch), status = 'completed', error_message = NULL"
+        );
         $stmt->bind_param("ssi", $file, $batch, $duration);
         $stmt->execute();
         $success++;
@@ -89,28 +95,101 @@ foreach ($toRun as $file) {
     
     try {
         $sql = file_get_contents($migrationsDir . '/' . $file);
+
+        // Guard against a comment that silently breaks the whole file.
+        // mysqli::multi_query() splits on ';' with no SQL awareness, so a
+        // ';' OR an odd number of apostrophes inside a '--' comment splits a
+        // statement in half or opens a string literal that swallows the rest
+        // of the file. Both fail with a confusing "syntax error near 'SET @s'"
+        // pointing at the wrong line. Detect it here with a clear message.
+        $inLineComment = false;
+        $lineNo = 0;
+        foreach (explode("\n", $sql) as $lineText) {
+            $lineNo++;
+            $code = $inLineComment ? '' : $lineText;
+            $pos = strpos($code, '--');
+            if ($pos !== false) {
+                $inLineComment = substr($code, $pos + 2, 1) === ' ';
+                if ($inLineComment) { continue; }
+            }
+            if ($inLineComment) { continue; }
+            $commentPart = ($pos !== false) ? substr($code, 0, $pos) : $code;
+            $before = $commentPart;
+            $commentPart = preg_replace("/'(?:''|[^'])*'/", "''", $commentPart);
+            if (substr_count($before, "'") !== substr_count($commentPart, "'")) {
+                throw new RuntimeException(
+                    "Unbalanced quote in a comment on line {$lineNo}. "
+                    . "A '--' comment in a .sql migration must not contain an odd "
+                    . "number of apostrophes (e.g. contractions) or a ';' - multi_query "
+                    . "splits on those and corrupts the statement."
+                );
+            }
+        }
         
-        if ($conn->multi_query($sql)) {
+        // multi_query() stops at the FIRST failing statement and everything
+        // after it in the same file is silently discarded. The previous
+        // version never inspected the result chain, so a migration that died
+        // half-way was still recorded as 'completed' — that is exactly how
+        // 041_ai_assistant.sql came to be marked complete while its last two
+        // tables were never created (repaired by 100_repair_ai_knowledge_base).
+        // Walking next_result() forces each statement's error to surface.
+        $queriesOk = $conn->multi_query($sql);
+        $queryError = null;
+        if ($queriesOk) {
             do {
                 if ($result = $conn->store_result()) {
                     $result->free();
                 }
+                // Throw if the server reported an error for the statement that
+                // was just executed.
+                if ($conn->errno !== 0) {
+                    $queryError = $conn->error . ' (errno ' . $conn->errno . ')';
+                    break;
+                }
             } while ($conn->more_results() && $conn->next_result());
+        } else {
+            $queryError = $conn->error . ' (errno ' . $conn->errno . ')';
+        }
+        if ($queryError !== null) {
+            throw new RuntimeException($queryError);
         }
         
         $duration = (int)((microtime(true) - $start) * 1000);
         
-        $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, duration_ms, status) VALUES (?, ?, ?, 'completed')");
+        // Upsert, not INSERT. migrations.uk_migration is UNIQUE on the file
+        // name, so a plain INSERT throws on a retry: a migration recorded as
+        // 'failed' can never be re-attempted because the ledger row already
+        // exists. Re-running a corrected migration is a normal part of the
+        // workflow, so both the success and failure paths upsert.
+        $stmt = $conn->prepare(
+            "INSERT INTO migrations (migration, batch, duration_ms, status, error_message)
+             VALUES (?, ?, ?, 'completed', NULL)
+             ON DUPLICATE KEY UPDATE
+                 batch = VALUES(batch),
+                 duration_ms = VALUES(duration_ms),
+                 status = 'completed',
+                 error_message = NULL,
+                 executed_at = CURRENT_TIMESTAMP"
+        );
         $stmt->bind_param("ssi", $file, $batch, $duration);
         $stmt->execute();
         
         echo "✓ ({$duration}ms)\n";
         $success++;
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         $duration = (int)((microtime(true) - $start) * 1000);
         $errorMsg = $e->getMessage();
         
-        $stmt = $conn->prepare("INSERT INTO migrations (migration, batch, duration_ms, status, error_message) VALUES (?, ?, ?, 'failed', ?)");
+        $stmt = $conn->prepare(
+            "INSERT INTO migrations (migration, batch, duration_ms, status, error_message)
+             VALUES (?, ?, ?, 'failed', ?)
+             ON DUPLICATE KEY UPDATE
+                 batch = VALUES(batch),
+                 duration_ms = VALUES(duration_ms),
+                 status = 'failed',
+                 error_message = VALUES(error_message),
+                 executed_at = CURRENT_TIMESTAMP"
+        );
         $stmt->bind_param("ssis", $file, $batch, $duration, $errorMsg);
         $stmt->execute();
         
