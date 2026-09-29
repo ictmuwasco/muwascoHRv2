@@ -294,15 +294,6 @@ return [
             ],
         ],
 
-        'payroll' => [
-            'key'     => 'payroll',
-            'label'   => 'Payroll',
-            'actions' => [
-                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
-                ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
-            ],
-        ],
-
         'notifications' => [
             'key'     => 'notifications',
             'label'   => 'Notifications Administration',

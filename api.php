@@ -53,7 +53,6 @@ use App\Controllers\HR\AppraisalCycleController;
 use App\Controllers\HR\KPIController;
 use App\Controllers\HR\PerformanceContractController;
 use App\Controllers\HR\SectionalObjectiveController;
-use App\Controllers\HR\PayrollController;
 use App\Controllers\HR\ComplaintController;
 use App\Controllers\Settings\SettingController;
 use App\Controllers\System\QueryLogController;
@@ -558,12 +557,6 @@ $router->add('GET', '/reports/appraisal/export',         \App\Controllers\Report
 
 $router->add('GET', '/reports/{type}/export/{format}', ReportController::class, 'export', 'reports:export', '20:300');
 
-// Payroll routes
-$router->add('GET', '/payroll/periods', PayrollController::class, 'periods', 'payroll:view');
-$router->add('POST', '/payroll/periods', PayrollController::class, 'storePeriod', 'payroll:manage');
-$router->add('GET', '/payroll/records', PayrollController::class, 'records', 'payroll:view');
-$router->add('POST', '/payroll/records', PayrollController::class, 'storeRecord', 'payroll:manage');
-
 // Complaint routes — employees file and list their OWN complaints (self-scope
 // enforced in the controller); HR triage/update requires complaints:view.
 $router->add('GET', '/complaints', ComplaintController::class, 'index');
@@ -717,13 +710,6 @@ $router->add('DELETE', '/sectional-objectives/{id}',    SectionalObjectiveContro
 // Strategy & Performance dashboard + report endpoints
 $router->add('GET',    '/dashboard/strategic-performance', DashboardController::class, 'strategicPerformance', 'dashboard:view');
 $router->add('GET',    '/reports/strategic-performance',   ReportController::class, 'strategicPerformance', 'reports:view');
-
-// Payroll routes (duplicate registration kept for backward compatibility —
-// first match wins, identical controller targets)
-$router->add('GET',    '/payroll/periods',           PayrollController::class, 'periods', 'payroll:view');
-$router->add('POST',   '/payroll/periods',           PayrollController::class, 'storePeriod', 'payroll:manage');
-$router->add('GET',    '/payroll/records',           PayrollController::class, 'records', 'payroll:view');
-$router->add('POST',   '/payroll/records',           PayrollController::class, 'storeRecord', 'payroll:manage');
 
 // Complaint routes (duplicate registration kept for backward compatibility)
 $router->add('GET',    '/complaints',                ComplaintController::class, 'index');
