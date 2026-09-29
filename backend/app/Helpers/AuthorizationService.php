@@ -752,11 +752,21 @@ class AuthorizationService
     /**
      * Check if a database table exists.
      *
+     * The name is interpolated into a LIKE pattern, which cannot take a bind
+     * parameter, so it is validated against an explicit allowlist first. This
+     * method only ever needs to probe a fixed set of core authorization
+     * tables; anything else is rejected rather than reaching the query.
+     *
      * @param string $tableName
      * @return bool
      */
     private function tableExists(string $tableName): bool
     {
+        $allowed = ['user_page_permissions', 'role_permissions', 'roles', 'delegations'];
+        if (!in_array($tableName, $allowed, true)) {
+            return false;
+        }
+
         try {
             $conn = \App\Helpers\Database::getInstance()->getConnection();
             $result = $conn->query("SHOW TABLES LIKE '{$tableName}'");
