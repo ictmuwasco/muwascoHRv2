@@ -39,7 +39,10 @@ const LeaveApplication = () => {
     if (employeeId) {
       loadDelegates();
     }
-  }, [employeeId]);
+    // Re-fetch when the leave window changes too: delegate availability is
+    // date-dependent (someone covering a colleague until Friday is free next
+    // month), so the candidate list must be re-evaluated per window.
+  }, [employeeId, startDate, endDate]);
 
   useEffect(() => {
     if (employeeId) {
@@ -214,15 +217,35 @@ const LeaveApplication = () => {
 
   const loadDelegates = async () => {
     try {
-      // Get eligible delegates based on logged-in user's role
-      const response = await api.get('/leave/eligible-delegates');
+      // Pass the leave window so the API can flag candidates who are ALREADY
+      // committed as somebody else's delegate for these dates. A delegate can
+      // only act for one person at a time, so those options come back disabled
+      // rather than failing the submission later.
+      const params = {};
+      if (startDate && endDate) {
+        params.start_date = startDate;
+        params.end_date = endDate;
+      }
+      const response = await api.get('/leave/eligible-delegates', { params });
       const delegateList = response.data.data || [];
       setDelegates(delegateList);
 
-      // Auto-select first delegate if only one available
-      if (delegateList.length === 1 && !delegateEmpId) {
-        setDelegateEmpId(delegateList[0].id);
+      // Auto-select only when there is exactly one candidate AND that candidate
+      // is actually free for the chosen window.
+      const selectable = delegateList.filter((d) => d.is_available !== false);
+      if (selectable.length === 1 && !delegateEmpId) {
+        setDelegateEmpId(selectable[0].id);
       }
+
+      // Drop a previously chosen delegate if they just became unavailable for
+      // these dates, so the form cannot submit an invalid pairing.
+      setDelegateEmpId((current) => {
+        if (!current) return current;
+        const still = delegateList.some(
+          (d) => String(d.id) === String(current) && d.is_available !== false,
+        );
+        return still ? current : '';
+      });
     } catch (err) {
       console.error('Failed to load delegates:', err);
       // Don't show error to user - empty delegate list is valid
@@ -449,16 +472,37 @@ const LeaveApplication = () => {
                 required
               >
                 <option value="">Select Delegate</option>
-                {delegates.map((delegate, index) => (
-                  <option key={`${delegate.id}-${index}`} value={delegate.id}>
-                    {delegate.first_name} {delegate.last_name} ({delegate.employee_id}) -{' '}
-                    {delegate.role}
-                  </option>
-                ))}
+                {delegates.map((delegate, index) => {
+                  // A delegate may hold only ONE acting assignment at a time.
+                  // Anyone already covering a colleague for this window is
+                  // disabled here so the clash is visible before submitting,
+                  // rather than rejected by the server afterwards.
+                  const unavailable = delegate.is_available === false;
+                  return (
+                    <option
+                      key={`${delegate.id}-${index}`}
+                      value={delegate.id}
+                      disabled={unavailable}
+                    >
+                      {delegate.first_name} {delegate.last_name} ({delegate.employee_id}) -{' '}
+                      {delegate.role}
+                      {unavailable ? ` — unavailable: ${delegate.unavailable_reason}` : ''}
+                    </option>
+                  );
+                })}
               </select>
               <p className="text-xs text-gray-500 mt-1">
                 This person will temporarily take over your duties and approvals while on leave.
+                They gain those pages automatically once the leave is approved, for the leave period
+                only.
               </p>
+              {delegates.some((d) => d.is_available === false) && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-300 rounded px-2 py-1 mt-1">
+                  One person can only act for one colleague at a time. Delegates already covering
+                  someone else during these dates are unavailable — please choose another, or pick
+                  dates after their current assignment ends.
+                </p>
+              )}
             </div>
           </div>
 
