@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Modal from '../../../components/ui/Modal';
+import Combobox from '../../../components/ui/Combobox';
 import Button from '../../../components/ui/Button';
 import { Plus } from 'lucide-react';
 import { workplanService } from '../../../api/services/workplanService';
@@ -63,6 +64,18 @@ export default function TierAddWorkplanModal({
   const [sourceId, setSourceId] = useState('');
   const [rows, setRows] = useState<RowState[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // Each activity row gets a responsible-officer picker over the unit's staff,
+  // so the option list is built once and shared by every row.
+  const employeeOptions = useMemo(
+    () =>
+      employees.map((emp) => ({
+        value: emp.id,
+        label: `${emp.name ?? ''}${emp.employee_id ? ` (${emp.employee_id})` : ''}`.trim(),
+        description: emp.position ?? emp.department_name ?? undefined,
+      })),
+    [employees],
+  );
 
   const hasSubsections = subsections.length > 0;
   const allCycles = liveCycles ?? cycles;
@@ -251,19 +264,14 @@ export default function TierAddWorkplanModal({
               </div>
               <div>
                 <label className={labelCls}>Responsible Officer</label>
-                <select
-                  className={inputCls}
+                <Combobox
                   value={row.officer_id}
-                  onChange={(e) => updateRow(idx, { officer_id: e.target.value })}
-                >
-                  <option value="">— Unassigned —</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={String(emp.id)}>
-                      {emp.name}
-                      {emp.position ? ` (${emp.position})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => updateRow(idx, { officer_id: v })}
+                  options={employeeOptions}
+                  placeholder="Search employees"
+                  emptyMessage="No employee matches your search."
+                  noOptionsMessage="No employees available in your unit."
+                />
               </div>
             </div>
 
