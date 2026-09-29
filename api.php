@@ -21,6 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 use App\Controllers\Auth\AuthController;
+use App\Controllers\Auth\PasswordResetController;
 use App\Controllers\Employee\EmployeeController;
 use App\Controllers\HR\DepartmentController;
 use App\Controllers\Leave\LeaveController;
@@ -44,6 +45,8 @@ use App\Controllers\Meeting\MeetingMinutesController;
 use App\Controllers\Reports\ReportsController as ReportController;
 use App\Controllers\Reports\AttendanceReportController;
 use App\Controllers\HR\AppraisalController;
+use App\Controllers\HR\AppraisalWorkflowController;
+use App\Controllers\HR\AppraisalReportController;
 use App\Controllers\HR\StrategicPlanController;
 use App\Controllers\HR\WorkplanController;
 use App\Controllers\HR\AppraisalCycleController;
@@ -331,6 +334,14 @@ $router->add('POST', '/auth/logout', AuthController::class, 'logout');
 $router->add('POST', '/auth/refresh', AuthController::class, 'refresh');
 $router->add('GET', '/auth/user', AuthController::class, 'me');
 $router->add('POST', '/auth/change-password', AuthController::class, 'changePassword');
+// Self-service password reset: emailed link + 6-digit OTP.
+// Unauthenticated by necessity, so each action carries its own throttle in the
+// controller (3/15min per address + 10/15min per IP; 10/15min per link for the
+// OTP and completion steps).
+$router->add('POST', '/auth/forgot-password',           PasswordResetController::class, 'request',    null, '20:300');
+$router->add('GET',  '/auth/reset-password/validate',   PasswordResetController::class, 'validate',   null, '60:300');
+$router->add('POST', '/auth/reset-password/verify-otp', PasswordResetController::class, 'verifyOtp',  null, '10:300');
+$router->add('POST', '/auth/reset-password/complete',   PasswordResetController::class, 'complete',   null, '10:300');
 
 // Holiday routes — reads are reference data (authenticated-only);
 // writes are permission-gated in the controller and here.
@@ -525,6 +536,21 @@ $router->add('GET', '/reports/attendance/compliance', AttendanceReportController
 $router->add('GET', '/reports/attendance/employees', AttendanceReportController::class, 'employees', 'reports:view');
 $router->add('GET', '/reports/attendance/records', AttendanceReportController::class, 'records', 'reports:view');
 $router->add('GET', '/reports/attendance/export', AttendanceReportController::class, 'export', 'reports:export', '20:300');
+// Appraisal Reports module - company-wide appraisal analytics.
+// Registered BEFORE the /reports/{type}/export/{format} wildcard so
+// GET /reports/appraisal (ReportsController::appraisal) stays reachable.
+$router->add('GET', '/reports/appraisal/options',        \App\Controllers\Reports\AppraisalReportController::class, 'options',        'reports:view');
+$router->add('GET', '/reports/appraisal/summary',        \App\Controllers\Reports\AppraisalReportController::class, 'summary',        'reports:view');
+$router->add('GET', '/reports/appraisal/trends',         \App\Controllers\Reports\AppraisalReportController::class, 'trends',         'reports:view');
+$router->add('GET', '/reports/appraisal/by-department',  \App\Controllers\Reports\AppraisalReportController::class, 'byDepartment',   'reports:view');
+$router->add('GET', '/reports/appraisal/by-section',     \App\Controllers\Reports\AppraisalReportController::class, 'bySection',      'reports:view');
+$router->add('GET', '/reports/appraisal/by-subsection',  \App\Controllers\Reports\AppraisalReportController::class, 'bySubsection',   'reports:view');
+$router->add('GET', '/reports/appraisal/by-status',      \App\Controllers\Reports\AppraisalReportController::class, 'byStatus',       'reports:view');
+$router->add('GET', '/reports/appraisal/performers',     \App\Controllers\Reports\AppraisalReportController::class, 'performers',     'reports:view');
+$router->add('GET', '/reports/appraisal/insights',       \App\Controllers\Reports\AppraisalReportController::class, 'insights',       'reports:view');
+$router->add('GET', '/reports/appraisal/employees',      \App\Controllers\Reports\AppraisalReportController::class, 'employees',      'reports:view');
+$router->add('GET', '/reports/appraisal/appraisals',     \App\Controllers\Reports\AppraisalReportController::class, 'appraisals',     'reports:view');
+$router->add('GET', '/reports/appraisal/export',         \App\Controllers\Reports\AppraisalReportController::class, 'export',         'reports:export', '20:300');
 
 $router->add('GET', '/reports/{type}/export/{format}', ReportController::class, 'export', 'reports:export', '20:300');
 
@@ -558,22 +584,51 @@ $router->add('POST', '/admin/financial-year/allocate', FinancialYearController::
 $router->add('GET', '/admin/financial-years/leave-types', FinancialYearController::class, 'leaveTypes', 'financial_year:view');
 $router->add('GET', '/admin/financial-years/employees', FinancialYearController::class, 'employees', 'financial_year:edit');
 
-// Appraisal routes
-$router->add('GET', '/appraisals', AppraisalController::class, 'index', 'performance:view');
-$router->add('POST', '/appraisals', AppraisalController::class, 'store', 'performance:manage');
+// Performance appraisal workflow. Literal self-service and queue paths must be
+// registered before the legacy /appraisals/{id} wildcard.
+$router->add('GET',    '/appraisals/my',                    AppraisalWorkflowController::class, 'myAction', 'performance:feedback');
+$router->add('GET',    '/appraisals/my/{id}',               AppraisalWorkflowController::class, 'myDetailAction', 'performance:feedback');
+$router->add('POST',   '/appraisals/my/{id}/feedback',     AppraisalWorkflowController::class, 'feedbackAction', 'performance:feedback', '10:300');
+$router->add('GET',    '/appraisals/workspace',             AppraisalWorkflowController::class, 'workspaceAction', 'performance:supervise');
+$router->add('GET',    '/appraisals/supervisor/regular',      AppraisalWorkflowController::class, 'regularListAction', 'performance:supervise');
+$router->add('GET',    '/appraisals/supervisor/pending',      AppraisalWorkflowController::class, 'pendingListAction', 'performance:approve');
+$router->add('GET',    '/appraisals/supervisor/escalated',    AppraisalWorkflowController::class, 'escalatedListAction', 'performance:approve');
+$router->add('GET',    '/appraisals/supervisor/rejected',     AppraisalWorkflowController::class, 'rejectedListAction', 'performance:approve');
+$router->add('GET',    '/appraisals/supervisor/regular/{id}',    AppraisalWorkflowController::class, 'regularDetailAction', 'performance:supervise');
+$router->add('GET',    '/appraisals/supervisor/pending/{id}',    AppraisalWorkflowController::class, 'pendingDetailAction', 'performance:approve');
+$router->add('GET',    '/appraisals/supervisor/escalated/{id}',  AppraisalWorkflowController::class, 'escalatedDetailAction', 'performance:approve');
+$router->add('GET',    '/appraisals/supervisor/rejected/{id}',   AppraisalWorkflowController::class, 'rejectedDetailAction', 'performance:approve');
+$router->add('POST',   '/appraisals',                       AppraisalWorkflowController::class, 'createAction', 'performance:score', '20:300');
+$router->add('PUT',    '/appraisals/{id}/scores',          AppraisalWorkflowController::class, 'saveScoresAction', 'performance:score', '60:300');
+$router->add('PUT',    '/appraisals/{id}/decision',        AppraisalWorkflowController::class, 'decisionAction', 'performance:approve', '30:300');
 
-// Literal sub-paths MUST be registered BEFORE the "/appraisals/{id}" wildcard:
-// the router matches in registration order, so registering /appraisals/pending
-// after {id} let the wildcard capture it as id = "pending" and the request
-// 404'd with "Appraisal not found." instead of returning the pending queue.
-$router->add('GET', '/appraisals/pending', AppraisalController::class, 'pending', 'performance:view');
-$router->add('GET', '/appraisals/employee/{id}', AppraisalController::class, 'byEmployee', 'performance:view');
+// Completed Appraisals page (read-only archive + document export).
+// Registered BEFORE the /appraisals/{id} wildcard below so "completed" is
+// never parsed as an appraisal id.
+//
+// The ROUTER gate is deliberately `performance:feedback` (granted to EVERY
+// role) rather than `performance:supervise`: officers must be able to reach
+// the page to download their own appraisals. The router only answers "may
+// this account open the page at all" - the real scope decision is made in
+// AppraisalReportService, which pins non-supervisors to their own employee
+// record. Gating this at the router on `supervise` returned 403 before the
+// controller ever ran, which is what locked officers out.
+//
+// `?format=pdf|word|print` streams a document instead of JSON, so that route
+// is deliberately NOT wrapped in a JSON envelope.
+$router->add('GET', '/appraisals/completed',            AppraisalReportController::class, 'completedAction', 'performance:feedback');
+$router->add('GET', '/appraisals/completed/filters',   AppraisalReportController::class, 'filtersAction',   'performance:supervise');
+$router->add('GET', '/appraisals/completed/analytics', AppraisalReportController::class, 'analyticsAction', 'performance:supervise');
+$router->add('GET', '/appraisals/{id}/report',         AppraisalReportController::class, 'downloadAction',  'performance:feedback', '30:300');
+$router->add('GET', '/appraisals/{id}/report/detail',  AppraisalReportController::class, 'showAction',      'performance:feedback');
 
-$router->add('GET', '/appraisals/{id}', AppraisalController::class, 'show', 'performance:view');
-$router->add('PUT', '/appraisals/{id}', AppraisalController::class, 'update', 'performance:manage');
-$router->add('DELETE', '/appraisals/{id}', AppraisalController::class, 'destroy', 'performance:manage');
-$router->add('PUT', '/appraisals/{id}/submit', AppraisalController::class, 'submit', 'performance:manage');
-$router->add('PUT', '/appraisals/{id}/approve', AppraisalController::class, 'approve', 'performance:manage');
+// Compatibility read-only endpoints. All appraisal writes go through the
+// audited workflow routes above; legacy update/submit/approve/delete methods
+// are intentionally no longer registered.
+$router->add('GET', '/appraisals', AppraisalController::class, 'index', 'performance:supervise');
+$router->add('GET', '/appraisals/pending', AppraisalController::class, 'pending', 'performance:approve');
+$router->add('GET', '/appraisals/employee/{id}', AppraisalController::class, 'byEmployee', 'performance:supervise');
+$router->add('GET', '/appraisals/{id}', AppraisalController::class, 'show', 'performance:supervise');
 
 // ========================================================================
 // Strategy & Performance module routes
@@ -675,6 +730,11 @@ $router->add('PUT',    '/complaints/{id}',           ComplaintController::class,
 // Notification routes — every user manages their OWN notifications
 // (ownership enforced in the controller).
 $router->add('GET', '/notifications', NotificationController::class, 'index');
+// Literal path, registered ahead of the {id} route. Ordering is not strictly
+// required here: {id} compiles to ([^/]+) and '/notifications/{id}/read' has an
+// extra segment, so it cannot swallow '/notifications/unread'. Declaring the
+// literal first just keeps the intent obvious to the next reader.
+$router->add('GET', '/notifications/unread', NotificationController::class, 'unread');
 $router->add('POST', '/notifications/{id}/read', NotificationController::class, 'markAsRead');
 $router->add('POST', '/notifications/read-all', NotificationController::class, 'markAllAsRead');
 
@@ -827,6 +887,8 @@ use App\Controllers\Security\SecurityAdminController;
 
 // Dashboard read APIs
 $router->add('GET', '/security/overview', SecurityDashboardController::class, 'overview', 'security:view');
+$router->add('GET', '/security/report', SecurityDashboardController::class, 'report', 'security:view', '30:300');
+$router->add('GET', '/security/appraisal', SecurityDashboardController::class, 'appraisal', 'security:view', '30:300');
 $router->add('GET', '/security/events', SecurityDashboardController::class, 'events', 'security:view', '60:300');
 $router->add('GET', '/security/events/{id}', SecurityDashboardController::class, 'eventDetail', 'security:view');
 $router->add('GET', '/security/incidents', SecurityDashboardController::class, 'incidents', 'security:view', '60:300');

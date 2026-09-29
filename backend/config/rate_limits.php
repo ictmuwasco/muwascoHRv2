@@ -24,12 +24,18 @@ declare(strict_types=1);
  *                                   (5 / 15 min, per IP + account identifier)
  *   - POST /auth/change-password  — protectAgainstBruteForce in the controller
  *                                   (5 / 15 min, per account)
+ *   - POST /auth/forgot-password, /auth/reset-password/verify-otp,
+ *     /auth/reset-password/complete — throttled in PasswordResetController
+ *                                   (3/15 min per address + 10/15 min per IP for
+ *                                   the request; 10/15 min per LINK for the OTP
+ *                                   and completion steps, plus a hard 5-wrong-code
+ *                                   cap stored per row)
  *   - POST /admin/notifications/test-send — 5/hour in NotificationTestController
  *   - POST|DELETE /push/subscribe — throttled in PushSubscriptionController
  *
- * There is deliberately NO self-service "forgot password" endpoint in this
- * application (password resets are admin-driven via POST /users/{id}/change-
- * password, which is throttled below at 10/15 min).
+ * Password reset IS now self-service (added in migration 093), alongside the
+ * pre-existing admin-driven reset at POST /users/{id}/change-password, which
+ * remains throttled below at 10/15 min.
  */
 return [
 
@@ -90,6 +96,11 @@ return [
         'PUT /leave/{id}/reject',
         'PUT /leave/{id}/invalidate',
         'PUT /leave/{id}/cancel',
+        'POST /appraisals/my/{id}/feedback',
+        'POST /appraisals',
+        'PUT /appraisals/{id}/scores',
+        'PUT /appraisals/{id}/decision',
+        'GET /security/appraisal',
     ],
 
     /**
