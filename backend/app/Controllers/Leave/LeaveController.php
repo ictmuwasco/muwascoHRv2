@@ -690,6 +690,42 @@ class LeaveController extends BaseController
                     break;
             }
 
+            // Annotate each candidate with whether they are ALREADY committed as
+            // somebody else's delegate for the requested window, so the form can
+            // show an unavailable person as unavailable instead of letting the
+            // application be rejected on submit. Only meaningful once the applicant
+            // has chosen dates; with no window we skip the lookup entirely.
+            $startDate = trim((string) ($_GET['start_date'] ?? ''));
+            $endDate   = trim((string) ($_GET['end_date'] ?? ''));
+            $windowGiven = preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) === 1
+                        && preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate) === 1;
+
+            if ($windowGiven && $delegates !== []) {
+                try {
+                    $busy = \App\Services\DelegationService::getInstance()
+                        ->busyDelegateEmployeeIds(
+                            array_map(static fn(array $d): int => (int) $d['id'], $delegates),
+                            $startDate,
+                            $endDate
+                        );
+                    foreach ($delegates as $i => $delegate) {
+                        $clash = $busy[(int) $delegate['id']] ?? null;
+                        $delegates[$i]['is_available'] = $clash === null;
+                        $delegates[$i]['unavailable_reason'] = $clash === null
+                            ? null
+                            : sprintf(
+                                'Already covering %s (%s to %s)',
+                                $clash['delegator_name'],
+                                $clash['start_date'],
+                                $clash['end_date']
+                            );
+                    }
+                } catch (\Throwable $e) {
+                    // Best-effort UX hint only — never fail the dropdown.
+                    error_log('eligibleDelegatesAction: availability lookup failed: ' . $e->getMessage());
+                }
+            }
+
             \App\Helpers\ApiResponse::success($delegates);
         } catch (\Exception $e) {
             error_log('Error in eligibleDelegatesAction: ' . $e->getMessage());
