@@ -762,9 +762,13 @@ $router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewP
 $router->add('GET', '/profile/documents/{id}/view', EmployeeController::class, 'viewProfileDocument');
 $router->add('DELETE', '/profile/documents/{id}', EmployeeController::class, 'deleteProfileDocument', 'profile:edit');
 
-// Profile contracts routes — self-service
+// Profile contracts routes — self-service.
+// Reading your own contract history is self-service (profile:view). Renewing
+// is NOT: it mutates the employment record, so it is gated on employees:edit
+// (HR/admin only). profile:edit is held by every staff role including officer,
+// so it must never be the gate here — see EmployeePolicy::canRenewContract().
 $router->add('GET', '/profile/contracts', EmployeeController::class, 'getProfileContracts', 'profile:view');
-$router->add('POST', '/profile/contracts/{id}/renew', EmployeeController::class, 'renewProfileContract', 'profile:edit', '20:300');
+$router->add('POST', '/profile/contracts/{id}/renew', EmployeeController::class, 'renewProfileContract', 'employees:edit', '20:300');
 
 // Profile picture routes
 $router->add('POST', '/profile/profile-image', EmployeeController::class, 'uploadProfileImage', 'profile:edit', '20:300');
