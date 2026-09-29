@@ -132,15 +132,27 @@ jobs:
     needs: quality
     runs-on: ubuntu-latest
 
+    # MariaDB 10.4 — MUST match production.
+    # Production runs MariaDB 10.4.32 (XAMPP/local + deploy target). This
+    # project uses MariaDB-only DDL in several migrations, e.g.
+    #   ALTER TABLE ... ADD COLUMN IF NOT EXISTS
+    # which MySQL 8.0 does not accept. CI previously ran mysql:8.0, so
+    # run.php had to SKIP those migrations there (see $ciSkipped), meaning
+    # CI validated a *different schema* than production. Aligning the engine
+    # removes that divergence and lets the skip list be emptied.
     services:
-      mysql:
-        image: mysql:8.0
+      mariadb:
+        image: mariadb:10.4
         env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: muwasco
+          MARIADB_ROOT_PASSWORD: root
+          MARIADB_DATABASE: muwasco
         ports:
           - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+        options: >-
+          --health-cmd="mariadb-admin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
 
     steps:
       - uses: actions/checkout@v4
@@ -158,21 +170,42 @@ jobs:
       - name: Dump optimized autoloader (CI classmap refresh)
         run: composer dump-autoload --optimize --strict-psr --no-interaction
 
-      - name: Wait for MySQL to be ready
+      - name: Wait for MariaDB to be ready
         run: |
           for i in $(seq 1 30); do
-            if mysqladmin ping -h 127.0.0.1 -u root -proot --silent 2>/dev/null; then
-              echo "MySQL is ready"
+            if mariadb-admin ping -h 127.0.0.1 -u root -proot --silent 2>/dev/null; then
+              echo "MariaDB is ready"
               break
             fi
-            echo "Waiting for MySQL... ($i/30)"
+            echo "Waiting for MariaDB... ($i/30)"
             sleep 2
-            if [ "$i" = "30" ]; then echo "MySQL never became ready" >&2; exit 1; fi
+            if [ "$i" = "30" ]; then echo "MariaDB never became ready" >&2; exit 1; fi
           done
+
+      - name: Show engine version
+        run: |
+          set -e
+          mariadb -h 127.0.0.1 -u root -proot -e "SELECT VERSION() AS engine_version;"
 
       # ---- Run database migrations to create tables --------------------
       - name: Prepare storage dirs
         run: mkdir -p backend/storage/logs backend/storage/cache backend/storage/backups
+
+      # ---- MANDATORY pre-migration backup (see docs/DATABASE_ARCHITECTURE.md)
+      # run.php applies DROP TABLE / ALTER TABLE / TRUNCATE statements with no
+      # recovery path of its own. Snapshot first so a bad migration is always
+      # reversible. `set -euo pipefail` makes a failed dump abort the job
+      # rather than silently continuing into a destructive migration.
+      - name: Backup database before migrations
+        run: |
+          set -euo pipefail
+          STAMP=$(date -u +%Y%m%d_%H%M%S)
+          OUT="backend/storage/backups/ci_pre_migration_${STAMP}.sql"
+          mariadb-dump -h 127.0.0.1 -u root -proot \
+            --single-transaction --routines --triggers --events \
+            --default-character-set=utf8mb4 muwasco > "$OUT"
+          test -s "$OUT" || { echo "Backup is empty - aborting" >&2; exit 1; }
+          echo "Backup written: $OUT ($(du -h "$OUT" | cut -f1))"
 
       - name: Run database migrations
         run: php backend/database/run.php
