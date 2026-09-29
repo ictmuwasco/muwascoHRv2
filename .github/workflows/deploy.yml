@@ -233,26 +233,32 @@ jobs:
       - name: Run PHPUnit tests
         run: |
           set -eo pipefail
-          # `|| true` keeps `set -e` from aborting when neither dir exists yet,
-          # and `tr -d '[:space:]'` strips wc's padding so the -gt test is safe.
+          # The previous version printed "PHPUnit skipped - no tests to run"
+          # and exited 0 when no *Test.php files existed, so a repository with
+          # zero tests reported a green test job. Fail instead: an empty suite
+          # is a gap that must be visible, not a pass.
           TESTS=$(find backend/tests tests -name '*Test.php' -type f 2>/dev/null | wc -l | tr -d '[:space:]') || true
+          if [ "$TESTS" -eq 0 ]; then
+            echo "ERROR: no *Test.php files found. The test job must not pass vacuously." >&2
+            exit 1
+          fi
+          echo "Found $TESTS test file(s)"
+
+          # backend/phpunit.xml.dist is the tracked config. The gitignored
+          # backend/phpunit.xml is a local developer override and never
+          # reaches CI, so .dist is preferred when both somehow exist.
           CONFIG=""
           if [ -f "phpunit.xml.dist" ]; then CONFIG="phpunit.xml.dist";
           elif [ -f "backend/phpunit.xml.dist" ]; then CONFIG="backend/phpunit.xml.dist";
           elif [ -f "backend/phpunit.xml" ]; then CONFIG="backend/phpunit.xml";
           fi
-          if [ "$TESTS" -gt 0 ]; then
-            if [ -n "$CONFIG" ]; then
-              echo "Found $TESTS test file(s) - running PHPUnit with $CONFIG..."
-              vendor/bin/phpunit -c "$CONFIG" --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
-            else
-              echo "Found $TESTS test file(s) - running PHPUnit with auto-discovered config..."
-              vendor/bin/phpunit --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
-            fi
-          else
-            echo "No *Test.php files found - skipping PHPUnit (test suite is not tracked in this repo)"
-            echo "PHPUnit skipped - no tests to run" > /tmp/phpunit_full.log
+          if [ -z "$CONFIG" ]; then
+            echo "ERROR: no PHPUnit configuration found (expected backend/phpunit.xml.dist)." >&2
+            exit 1
           fi
+
+          echo "Running PHPUnit with $CONFIG"
+          vendor/bin/phpunit -c "$CONFIG" --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
         env:
           # Ephemeral CI test database only - never a production credential.
           # Referenced as GitHub Secrets so the workflow file carries no
