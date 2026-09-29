@@ -15,14 +15,44 @@ use App\Exceptions\RuntimeException;
 class ConfigValidator
 {
     /**
-     * Required environment variables
+     * Required environment variables - enforced in EVERY environment.
      */
     private static array $requiredEnvVars = [
+        'APP_ENV',
+        'DB_CONNECTION',
         'DB_HOST',
         'DB_DATABASE',
         'DB_USERNAME',
         'JWT_SECRET',
     ];
+
+    /**
+     * Required only when APP_ENV=production.
+     *
+     * DB_PASSWORD is deliberately NOT in the blanket list above: the local
+     * XAMPP `root` account legitimately has an EMPTY password, so demanding
+     * it everywhere would break local development on boot. In production an
+     * empty/absent DB password is fatal, because backend/config/database.php
+     * falls back to '' and would silently connect to whatever no-auth MySQL
+     * is reachable - precisely the "insecure default" this class prevents.
+     */
+    private static array $productionRequiredEnvVars = [
+        'DB_PASSWORD',
+    ];
+
+    /**
+     * Placeholder / insecure defaults that must never reach production.
+     * Keyed by variable name; compared case-insensitively.
+     */
+    private static array $forbiddenValues = [
+        'DB_PASSWORD' => ['', 'password', 'root', 'admin', 'secret', '123456', 'changeme'],
+        'JWT_SECRET'  => ['', 'secret', 'changeme', 'password'],
+    ];
+
+    private static function isProduction(): bool
+    {
+        return strtolower(trim((string) env('APP_ENV', ''))) === 'production';
+    }
 
     /**
      * Validate all required configuration
@@ -32,8 +62,51 @@ class ConfigValidator
     public static function validate(): void
     {
         self::validateEnvVars();
+        self::validateInsecureDefaults();
         self::validateJwtSecret();
         self::validateDatabaseConfig();
+    }
+
+    /**
+     * Reject known-insecure placeholder values in production.
+     *
+     * A missing variable is caught above; this catches a variable that is
+     * PRESENT but set to a value that provides no real protection.
+     */
+    private static function validateInsecureDefaults(): void
+    {
+        if (!self::isProduction()) {
+            return; // local/staging may legitimately use simple or empty values
+        }
+
+        // A value that is present but is not a real credential is as bad as a
+        // missing one - it silently provides no protection.
+        $missing = [];
+        $offenders = [];
+        foreach (self::$productionRequiredEnvVars as $var) {
+            if (env($var) === null || trim((string) env($var, '')) === '') {
+                $missing[] = $var;
+            }
+        }
+        foreach (self::$forbiddenValues as $var => $banned) {
+            $value = strtolower(trim((string) env($var, '')));
+            if (in_array($value, $banned, true)) {
+                $offenders[] = $var;
+            }
+        }
+
+        $errors = [];
+        if (!empty($missing)) {
+            $errors[] = 'missing required production config: ' . implode(', ', $missing);
+        }
+        if (!empty($offenders)) {
+            $errors[] = 'insecure default value(s): ' . implode(', ', $offenders);
+        }
+        if (!empty($errors)) {
+            throw new \RuntimeException(
+                'Production configuration invalid - ' . implode('; ', $errors)
+            );
+        }
     }
 
     /**
