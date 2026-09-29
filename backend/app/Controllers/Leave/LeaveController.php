@@ -40,6 +40,40 @@ class LeaveController extends BaseController
     }
 
     /**
+     * employees.id (the INT surrogate PK) for the authenticated user, or 0.
+     *
+     * The single correct way to turn an account into an employee row in this
+     * schema. users.employee_id / employees.employee_id hold the BUSINESS CODE
+     * ('242'), while every `*.employee_id` foreign key in the leave tables
+     * points at employees.id (514). Confusing the two silently reads — and
+     * writes — the wrong employee's records.
+     *
+     * @return int employees.id, or 0 when the account has no employee record
+     */
+    private function currentEmployeePk(): int
+    {
+        $userId = (int) (Auth::getInstance()->id() ?? 0);
+        if ($userId <= 0) {
+            return 0;
+        }
+
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare('
+            SELECT e.id
+            FROM employees e
+            JOIN users u ON u.employee_id = e.employee_id
+            WHERE u.id = ?
+            LIMIT 1
+        ');
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        return $row ? (int) $row['id'] : 0;
+    }
+
+    /**
      * GET /api/leave
      * List leave applications.
      */
@@ -55,46 +89,43 @@ class LeaveController extends BaseController
             return;
         }
 
-        $currentUser = Auth::getInstance()->user();
-        $employeeId = $currentUser['employee_id'] ?? null;
-
         $db = \App\Helpers\Database::getInstance()->getConnection();
-        
-        // If user has an employee_id, filter to show only their leave applications
-        if ($employeeId) {
-            $query = "
-                SELECT la.*, 
-                       e.first_name, e.last_name, e.employee_id,
-                       lt.name as leave_type_name,
-                       de.first_name as delegate_first_name, de.last_name as delegate_last_name
-                FROM leave_applications la
-                LEFT JOIN employees e ON la.employee_id = e.id
-                LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
-                LEFT JOIN employees de ON la.delegate_emp_id = de.id
-                WHERE la.employee_id = ?
-                ORDER BY la.applied_at DESC
-            ";
-            $stmt = $db->prepare($query);
-            $stmt->bind_param('i', $employeeId);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $leaves = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
-        } else {
-            // Fallback: show all if no employee_id (shouldn't happen for normal users)
-            $query = "
-                SELECT la.*, 
-                       e.first_name, e.last_name, e.employee_id,
-                       lt.name as leave_type_name,
-                       de.first_name as delegate_first_name, de.last_name as delegate_last_name
-                FROM leave_applications la
-                LEFT JOIN employees e ON la.employee_id = e.id
-                LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
-                LEFT JOIN employees de ON la.delegate_emp_id = de.id
-                ORDER BY la.applied_at DESC
-            ";
-            $result = $db->query($query);
-            $leaves = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
-        }
+
+        // Resolve the employee's SURROGATE key.
+        //
+        // $currentUser['employee_id'] is the employees.employee_id BUSINESS CODE
+        // (e.g. '242', 'ADMIN001'), but leave_applications.employee_id is a FK to
+        // employees.id — the INT primary key (e.g. 514). Binding the code straight
+        // into `WHERE la.employee_id = ?` matched whichever unrelated employee
+        // happened to own that numeric id, so this page listed ANOTHER PERSON'S
+        // leave applications — and rendered a blank Delegate column, because
+        // those rows predate the delegate feature and carry delegate_emp_id =
+        // NULL. Every other service resolves the code through the users→
+        // employees join first; do the same here.
+        $employeePk = $this->currentEmployeePk();
+
+        // Self-service: this page is "My Leave Applications", so a user with no
+        // resolvable employee record gets an empty list. The previous fallback
+        // returned EVERY leave application in the organisation, which leaked the
+        // whole leave book to any account missing an employee link.
+        $query = "
+            SELECT la.*, 
+                   e.first_name, e.last_name, e.employee_id,
+                   lt.name as leave_type_name,
+                   de.first_name as delegate_first_name, de.last_name as delegate_last_name
+            FROM leave_applications la
+            LEFT JOIN employees e ON la.employee_id = e.id
+            LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
+            LEFT JOIN employees de ON la.delegate_emp_id = de.id
+            WHERE la.employee_id = ?
+            ORDER BY la.applied_at DESC
+        ";
+        $stmt = $db->prepare($query);
+        $stmt->bind_param('i', $employeePk);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $leaves = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        $stmt->close();
 
         // Map to frontend expected format
         $mapped = array_map(function ($row) {
@@ -105,7 +136,13 @@ class LeaveController extends BaseController
                 'start_date' => $row['start_date'] ?? '',
                 'end_date' => $row['end_date'] ?? '',
                 'days_requested' => (int) ($row['days_requested'] ?? 0),
-                'delegate_name' => trim(($row['delegate_first_name'] ?? '') . ' ' . ($row['delegate_last_name'] ?? '')),
+                // Applications created before the delegate feature (migration
+                // 012) have delegate_emp_id = NULL. Say so explicitly rather
+                // than shipping an empty string, which renders as a blank cell
+                // and looks like a bug instead of a historical fact.
+                'delegate_name' => trim(($row['delegate_first_name'] ?? '') . ' ' . ($row['delegate_last_name'] ?? ''))
+                    ?: 'Not recorded',
+                'has_delegate'  => !empty($row['delegate_emp_id']),
                 'status' => $row['status'] ? ucfirst(strtolower($row['status'])) : '',
                 'reason' => $row['reason'] ?? '',
             ];
@@ -688,6 +725,42 @@ class LeaveController extends BaseController
                     }
                     $stmt->close();
                     break;
+            }
+
+            // Annotate each candidate with whether they are ALREADY committed as
+            // somebody else's delegate for the requested window, so the form can
+            // show an unavailable person as unavailable instead of letting the
+            // application be rejected on submit. Only meaningful once the applicant
+            // has chosen dates; with no window we skip the lookup entirely.
+            $startDate = trim((string) ($_GET['start_date'] ?? ''));
+            $endDate   = trim((string) ($_GET['end_date'] ?? ''));
+            $windowGiven = preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) === 1
+                        && preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate) === 1;
+
+            if ($windowGiven && $delegates !== []) {
+                try {
+                    $busy = \App\Services\DelegationService::getInstance()
+                        ->busyDelegateEmployeeIds(
+                            array_map(static fn(array $d): int => (int) $d['id'], $delegates),
+                            $startDate,
+                            $endDate
+                        );
+                    foreach ($delegates as $i => $delegate) {
+                        $clash = $busy[(int) $delegate['id']] ?? null;
+                        $delegates[$i]['is_available'] = $clash === null;
+                        $delegates[$i]['unavailable_reason'] = $clash === null
+                            ? null
+                            : sprintf(
+                                'Already covering %s (%s to %s)',
+                                $clash['delegator_name'],
+                                $clash['start_date'],
+                                $clash['end_date']
+                            );
+                    }
+                } catch (\Throwable $e) {
+                    // Best-effort UX hint only — never fail the dropdown.
+                    error_log('eligibleDelegatesAction: availability lookup failed: ' . $e->getMessage());
+                }
             }
 
             \App\Helpers\ApiResponse::success($delegates);
