@@ -410,6 +410,101 @@ try {
         $applicationId = (int)$matches[1];
         $controller->cancelAction($applicationId);
     }
+    // Leave roster routes
+    elseif (preg_match('#^/leave/roster(/(stats|distribution|upcoming|departments|matrix|export|employees|financial-years))?$#', $endpoint, $matches)
+        && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveRosterController.php';
+        $controller = new \App\Controllers\LeaveRosterController();
+        $action = $matches[2] ?? '';
+        switch ($action) {
+            case 'stats':            $controller->statsAction(); break;
+            case 'distribution':     $controller->distributionAction(); break;
+            case 'upcoming':         $controller->upcomingAction(); break;
+            case 'departments':      $controller->departmentsAction(); break;
+            case 'matrix':           $controller->matrixAction(); break;
+            case 'export':           $controller->exportAction(); break;
+            case 'employees':        $controller->employeesAction(); break;
+            case 'financial-years':  $controller->financialYearsAction(); break;
+            default:                 $controller->indexAction(); break;
+        }
+    }
+    elseif ($endpoint === '/leave/roster' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveRosterController.php';
+        $controller = new \App\Controllers\LeaveRosterController();
+        $controller->storeAction();
+    }
+    elseif (preg_match('#^/leave/roster/(\d+)$#', $endpoint, $matches)
+        && ($requestMethod === 'PUT' || $requestMethod === 'DELETE')) {
+        require_once __DIR__ . '/backend/app/Controllers/LeaveRosterController.php';
+        $controller = new \App\Controllers\LeaveRosterController();
+        $rosterId = (int)$matches[1];
+        if ($requestMethod === 'PUT') {
+            $controller->updateAction($rosterId);
+        } else {
+            $controller->destroyAction($rosterId);
+        }
+    }
+    // Meeting routes
+    elseif ($endpoint === '/meetings' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/MeetingController.php';
+        $controller = new \App\Controllers\MeetingController();
+        $controller->indexAction();
+    }
+    elseif ($endpoint === '/meetings' && $requestMethod === 'POST') {
+        require_once __DIR__ . '/backend/app/Controllers/MeetingController.php';
+        $controller = new \App\Controllers\MeetingController();
+        $controller->storeAction();
+    }
+    elseif ($endpoint === '/meetings/eligible-employees' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/MeetingController.php';
+        $controller = new \App\Controllers\MeetingController();
+        $controller->eligibleEmployeesAction();
+    }
+    elseif ($endpoint === '/my-meetings' && $requestMethod === 'GET') {
+        require_once __DIR__ . '/backend/app/Controllers/MeetingController.php';
+        $controller = new \App\Controllers\MeetingController();
+        $controller->myMeetingsAction();
+    }
+    elseif (preg_match('#^/meetings/(\d+)/(cancel|confirm|decline|attendance)$#', $endpoint, $matches)
+        && ($requestMethod === 'PUT' || $requestMethod === 'POST')) {
+        require_once __DIR__ . '/backend/app/Controllers/MeetingController.php';
+        $controller = new \App\Controllers\MeetingController();
+        $meetingId = (int)$matches[1];
+        switch ($matches[2]) {
+            case 'cancel':     $controller->cancelAction($meetingId); break;
+            case 'confirm':    $controller->confirmAction($meetingId); break;
+            case 'decline':    $controller->declineAction($meetingId); break;
+            case 'attendance': $controller->markAttendanceAction($meetingId); break;
+        }
+    }
+    elseif (preg_match('#^/meetings/(\d+)/participants$#', $endpoint, $matches)
+        && ($requestMethod === 'GET' || $requestMethod === 'POST')) {
+        require_once __DIR__ . '/backend/app/Controllers/MeetingController.php';
+        $controller = new \App\Controllers\MeetingController();
+        $meetingId = (int)$matches[1];
+        if ($requestMethod === 'GET') {
+            $controller->participantsAction($meetingId);
+        } else {
+            $controller->addParticipantAction($meetingId);
+        }
+    }
+    elseif (preg_match('#^/meetings/(\d+)/participants/(\d+)$#', $endpoint, $matches)
+        && $requestMethod === 'DELETE') {
+        require_once __DIR__ . '/backend/app/Controllers/MeetingController.php';
+        $controller = new \App\Controllers\MeetingController();
+        $controller->removeParticipantAction((int)$matches[1], (int)$matches[2]);
+    }
+    elseif (preg_match('#^/meetings/(\d+)$#', $endpoint, $matches)
+        && ($requestMethod === 'GET' || $requestMethod === 'PUT')) {
+        require_once __DIR__ . '/backend/app/Controllers/MeetingController.php';
+        $controller = new \App\Controllers\MeetingController();
+        $meetingId = (int)$matches[1];
+        if ($requestMethod === 'GET') {
+            $controller->showAction($meetingId);
+        } else {
+            $controller->updateAction($meetingId);
+        }
+    }
     // Holiday routes
     elseif ($endpoint === '/holidays' && $requestMethod === 'GET') {
         require_once __DIR__ . '/backend/app/Controllers/HolidayController.php';

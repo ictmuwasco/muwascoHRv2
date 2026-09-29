@@ -17,7 +17,10 @@ import {
   ChevronRight,
   DollarSign,
   ClipboardList,
-  PartyPopper
+  PartyPopper,
+  CalendarRange,
+  BarChart3,
+  Video
 } from 'lucide-react'
 import Logo from './Logo'
 
@@ -32,7 +35,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const canManageLeave = MANAGER_ROLES.includes(role)
 
   useEffect(() => {
-    if (location.pathname.startsWith('/leave/manage')) {
+    if (location.pathname.startsWith('/leave/')) {
       setIsLeaveExpanded(true)
     }
   }, [location.pathname])
@@ -59,9 +62,19 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           submenu: [
             { name: 'My Leaves', href: '/leave', icon: Calendar },
             { name: 'Manage Leave', href: '/leave/manage', icon: ClipboardList },
+            { name: 'Leave Roster', href: '/leave/roster', icon: CalendarRange },
+            { name: 'Leave Oversight', href: '/leave/oversight', icon: BarChart3 },
           ],
         }
-      : { name: 'Leave', href: '/leave', icon: Calendar },
+      : {
+          name: 'Leave',
+          icon: Calendar,
+          submenu: [
+            { name: 'My Leaves', href: '/leave', icon: Calendar },
+            { name: 'Leave Roster', href: '/leave/roster', icon: CalendarRange },
+          ],
+        },
+    { name: 'Meetings', href: '/meetings', icon: Video },
     { name: 'Appraisal', href: '/appraisal', icon: Star },
     { name: 'Settings', href: '/settings', icon: Settings },
   ]

@@ -14,6 +14,8 @@ import Departments from './pages/Departments'
 import Attendance from './pages/Attendance'
 import Leave from './pages/Leave'
 import LeaveApplication from './pages/LeaveApplication'
+import LeaveRoster from './pages/LeaveRoster'
+import LeaveOversight from './pages/LeaveOversight'
 import ManageLeaveLayout from './pages/ManageLeaveLayout'
 import ManageLeavePendingTab from './pages/ManageLeavePendingTab'
 import ManageLeaveApprovedTab from './pages/ManageLeaveApprovedTab'
@@ -24,7 +26,7 @@ import SettingsNotificationsTab from './pages/SettingsNotificationsTab'
 import SettingsSecurityTab from './pages/SettingsSecurityTab'
 import SettingsAuditTab from './pages/SettingsAuditTab'
 import SettingsUsersTab from './pages/SettingsUsersTab'
-import SettingsPermissionsTab from './pages/SettingsPermissionsTab'
+import SettingsPermissionsTab from './components/settings/SettingsPermissionsTab'
 import Admin from './pages/Admin'
 import Appraisal from './pages/Appraisal.tsx'
 import Audit from './pages/Audit'
@@ -36,6 +38,9 @@ import Reports from './pages/Reports'
 import Profile from './pages/Profile'
 import StrategicPlan from './pages/StrategicPlan'
 import Holidays from './pages/Holidays'
+import MeetingsDashboard from './pages/MeetingsDashboard.tsx'
+import MyMeetings from './pages/MyMeetings.tsx'
+import CreateMeeting from './pages/CreateMeeting.tsx'
 
 function App() {
   return (
@@ -62,6 +67,8 @@ function App() {
           <Route path="attendance" element={<Attendance />} />
           <Route path="leave" element={<Leave />} />
           <Route path="leave/apply" element={<LeaveApplication />} />
+          <Route path="leave/roster" element={<LeaveRoster />} />
+          <Route path="leave/oversight" element={<LeaveOversight />} />
           <Route path="leave/manage" element={<ManageLeaveLayout />}>
             <Route index element={<Navigate to="pending" replace />} />
             <Route path="pending" element={<ManageLeavePendingTab />} />
@@ -85,6 +92,10 @@ function App() {
           <Route path="profile" element={<Profile />} />
           <Route path="strategic-plan" element={<StrategicPlan />} />
           <Route path="holidays" element={<Holidays />} />
+          <Route path="meetings" element={<MeetingsDashboard />} />
+          <Route path="meetings/create" element={<CreateMeeting />} />
+          <Route path="meetings/:id/edit" element={<CreateMeeting />} />
+          <Route path="my-meetings" element={<MyMeetings />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

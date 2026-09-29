@@ -192,14 +192,59 @@ class PermissionService
 
     /**
      * Get all effective permissions for a user.
-     * Combines role permissions with user overrides to show the final state.
+     * Combines role permissions with user overrides to show the final state
+     * for every module/action pair in the catalog.
      *
      * @param int $userId
-     * @return array Array of effective permissions with source info
+     * @return array Array of ['module', 'action', 'allowed', 'source']
      */
     public function getEffectivePermissions(int $userId): array
     {
-        return $this->authService->getAllEffectivePermissions($userId);
+        $user = db()->fetchOne('SELECT id, role FROM users WHERE id = ?', 'i', [$userId]);
+        if (!$user) {
+            return [];
+        }
+
+        $isSuperAdmin = $user['role'] === 'super_admin';
+
+        $rolePermissions = [];
+        foreach ($this->rbac->getRolePermissions($user['role']) as $perm) {
+            $rolePermissions[$perm['module'] . '.' . $perm['action']] = $perm['is_granted'];
+        }
+
+        $overrides = [];
+        foreach ($this->userPagePermissionModel->getByUserId($userId) as $override) {
+            $module = $override['module'] ?? $override['page_id'];
+            $action = $override['action'] ?? UserPagePermission::DEFAULT_ACTION;
+            $overrides[$module . '.' . $action] = $override['permission_type'];
+        }
+
+        $effective = [];
+        foreach ($this->getPermissionCatalog() as $moduleKey => $module) {
+            foreach ($module['actions'] as $action) {
+                $key = $moduleKey . '.' . $action['key'];
+
+                if ($isSuperAdmin) {
+                    $allowed = true;
+                    $source  = 'Super Admin';
+                } elseif (isset($overrides[$key])) {
+                    $allowed = $overrides[$key] === 'allow';
+                    $source  = 'Override';
+                } else {
+                    $allowed = $rolePermissions[$key] ?? false;
+                    $source  = isset($rolePermissions[$key]) ? 'Role' : 'Default';
+                }
+
+                $effective[] = [
+                    'module'  => $moduleKey,
+                    'action'  => $action['key'],
+                    'allowed' => $allowed,
+                    'source'  => $source,
+                ];
+            }
+        }
+
+        return $effective;
     }
 
     /**
@@ -238,7 +283,11 @@ class PermissionService
         }
 
         // Check if user exists
-        $user = db()->fetchOne('SELECT id, role FROM users WHERE id = ?', 'i', [$userId]);
+        $user = db()->fetchOne(
+            'SELECT id, role, email, first_name, last_name FROM users WHERE id = ?',
+            'i',
+            [$userId]
+        );
         if (!$user) {
             return ['success' => false, 'message' => 'User not found'];
         }
@@ -277,7 +326,7 @@ class PermissionService
             [
                 'target_type' => 'User',
                 'target_id'   => $userId,
-                'target_name' => $user['email'] ?? "User #{$userId}",
+                'target_name' => $this->describeUser($userId, $user),
                 'old_values'  => $previous ? [
                     'permission_type' => $previous['permission_type'],
                     'active'          => $previous['active'],
@@ -326,7 +375,11 @@ class PermissionService
         $this->authService->clearCache();
 
         // Log to audit trail
-        $user = db()->fetchOne('SELECT id, email FROM users WHERE id = ?', 'i', [$userId]);
+        $user = db()->fetchOne(
+            'SELECT id, email, first_name, last_name FROM users WHERE id = ?',
+            'i',
+            [$userId]
+        );
         $this->auditService->log(
             AuditService::MODULE_SETTINGS,
             AuditService::ACTION_PERMISSION_CHANGE,
@@ -334,7 +387,7 @@ class PermissionService
             [
                 'target_type' => 'User',
                 'target_id'   => $userId,
-                'target_name' => $user['email'] ?? "User #{$userId}",
+                'target_name' => $this->describeUser($userId, $user),
                 'old_values'  => [
                     'permission_type' => $previous['permission_type'],
                     'active'          => $previous['active'],
@@ -346,6 +399,23 @@ class PermissionService
         );
 
         return ['success' => true, 'message' => 'Permission override removed successfully'];
+    }
+
+    /**
+     * Human-readable label for a user, used as the audit trail target name.
+     *
+     * @param int $userId
+     * @param array|null $user Row containing first_name/last_name/email
+     * @return string
+     */
+    private function describeUser(int $userId, ?array $user): string
+    {
+        $name = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
+        if ($name !== '') {
+            return $name;
+        }
+
+        return $user['email'] ?? "User #{$userId}";
     }
 
     /**
