@@ -53,6 +53,45 @@ class DelegationService
     public const DELEGATABLE_MODULES = ['leave'];
 
     /**
+     * The leave ACTIONS a duty-cover delegate may receive, on top of every
+     * module's page permission. This is the authority the cover exists for:
+     * without approve/manage the delegate could see the queue but never
+     * decide anything in it.
+     *
+     * Still intersected with the delegator's own role grants at grant time,
+     * so this is a CEILING, never a grant by itself.
+     */
+    public const DELEGATABLE_ACTIONS = ['view', 'apply', 'approve', 'reject', 'manage', 'roster'];
+
+    /**
+     * Modules whose PAGE-level ('view') permission may be auto-granted to the
+     * duty-cover delegate when a leave application reaches 'approved'.
+     *
+     * Scope of this list is deliberately DAY-TO-DAY pages only — the modules a
+     * supervisor opens while covering an absent colleague. The grant is always
+     * intersected with what the DELEGATOR'S OWN ROLE actually holds, so a
+     * delegation can never manufacture authority the absent person did not
+     * have (the whole point of the module is to substitute for them, not to
+     * promote the delegate).
+     *
+     * Every entry is additionally filtered through NON_DELEGATABLE_MODULES at
+     * both grant time and resolution time, so adding an administrative module
+     * here can never leak settings / users / audit authority.
+     */
+    public const AUTO_DELEGATABLE_PAGE_MODULES = [
+        'dashboard', 'employees', 'departments', 'attendance',
+        'leave', 'meetings', 'reports', 'profile',
+    ];
+
+    /**
+     * `delegations.source` — where the row came from. 'manual' rows are the
+     * pre-existing explicit "New Delegation" flow; 'leave_application' rows
+     * are minted automatically by createFromApprovedLeave().
+     */
+    public const SOURCE_MANUAL           = 'manual';
+    public const SOURCE_LEAVE_APPLICATION = 'leave_application';
+
+    /**
      * Roles whose holders may CREATE a delegation (§5). Officers/employees
      * hold no supervisory authority they could transfer.
      */
@@ -474,6 +513,519 @@ class DelegationService
     }
 
     // ────────────────────────────────────────────────────────────────────
+    //  Automatic duty-cover delegation from an APPROVED leave application
+    // ────────────────────────────────────────────────────────────────────
+
+    /**
+     * Create (or return) the duty-cover delegation for an APPROVED leave
+     * application, wiring the delegate picked on the Apply Leave form
+     * (`leave_applications.delegate_emp_id`, migration 012) into the Acting
+     * Authority module so the delegate actually RECEIVES permissions.
+     *
+     * Why this exists: before it the two delegate mechanisms were disjoint.
+     * The Apply-Leave delegate was written to a column on the leave row and
+     * could only ever BACK-UP approve the applicant's own application — it
+     * granted no authority at all — while the `delegations` table (the only
+     * thing AuthorizationService Priority 6 consults) could only be populated
+     * by hand. Approving a leave therefore granted the appointee nothing.
+     *
+     * Failures are swallowed and logged: an approval that has already been
+     * committed must never be undone by a delegation problem.
+     *
+     * @return array{success: bool, message: string, data?: array}
+     */
+    public function createFromApprovedLeave(int $applicationId, int $approverUserId): array
+    {
+        try {
+            return $this->doCreateFromApprovedLeave($applicationId, $approverUserId);
+        } catch (\Throwable $e) {
+            error_log('[DelegationService] auto delegation failed for leave #' . $applicationId . ': ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Automatic delegation could not be created.'];
+        }
+    }
+
+    /**
+     * Real work behind createFromApprovedLeave().
+     *
+     * Design decisions:
+     *
+     *  - STATUS is 'approved'/'active' immediately, never 'pending'. The
+     *    leave workflow IS the authorization gate: the application's own
+     *    multi-stage chain (subsection → section → dept → MD → BOD → HR)
+     *    already vetted who may be absent and for how long. Routing an auto
+     *    row through HR a second time would make the feature unusable, and
+     *    the leave approver is recorded in `approved_by` so the grant stays
+     *    attributable.
+     *
+     *  - WINDOW is the leave window verbatim (start_date..end_date), so the
+     *    existing lazy sweep expires the authority on the last day of leave
+     *    with no cron, exactly like a manual delegation.
+     *
+     *  - PERMISSIONS are the delegator's OWN grants intersected with
+     *    AUTO_DELEGATABLE_PAGE_MODULES. The delegate can never receive more
+     *    than the absent person held; this substitutes, it never promotes.
+     *
+     *  - SCOPE is the APPLICANT'S ORG UNIT, resolved independently of role —
+     *    resolveDelegatorScope() is supervisory-only and returns null for an
+     *    officer/employee, so an ordinary employee on leave must resolve scope
+     *    a different way or no delegation would be recorded at all.
+     *
+     *  - IDEMPOTENT: one delegation per leave application (UNIQUE
+     *    leave_application_id, migration 096). Re-entry returns the existing
+     *    row instead of stacking duplicate grants.
+     */
+    private function doCreateFromApprovedLeave(int $applicationId, int $approverUserId): array
+    {
+        $app = $this->approvedLeaveWithDelegate($applicationId);
+        if (!$app) {
+            return ['success' => false, 'message' => 'No approved leave application with a delegate.'];
+        }
+
+        // Idempotency — a leave application mints at most one delegation.
+        $existing = $this->findByLeaveApplication($applicationId);
+        if ($existing !== null) {
+            return [
+                'success' => true,
+                'message' => 'Delegation already exists for this leave application',
+                'data'    => ['id' => (int) $existing['id'], 'status' => $existing['status'], 'created' => false],
+            ];
+        }
+
+        $applicantUserId = (int) ($app['applicant_user_id'] ?? 0);
+        $delegateUserId  = (int) ($app['delegate_user_id'] ?? 0);
+
+        // A delegate who IS the applicant must never hold authority over their
+        // own absence — the self-approval guard, which also absorbs a
+        // mis-picked delegate equal to the person going on leave.
+        if ($applicantUserId <= 0 || $delegateUserId <= 0) {
+            return ['success' => false, 'message' => 'Leave application is missing an applicant or delegate account.'];
+        }
+        if ($applicantUserId === $delegateUserId) {
+            return ['success' => false, 'message' => 'The appointed delegate is the applicant; no delegation created.'];
+        }
+
+        $delegate = $this->userById($delegateUserId);
+        if (!$delegate || (int) ($delegate['is_active'] ?? 0) !== 1) {
+            // The delegate exists as an employee but has no usable login, so
+            // there is no principal to attach the authority to.
+            return ['success' => false, 'message' => 'The appointed delegate has no active user account.'];
+        }
+
+        $delegatorRole = (string) ($app['applicant_role'] ?? '');
+        $scope = $this->resolveApplicantScope($app);
+        if ($scope === null) {
+            return ['success' => false, 'message' => 'The applicant organizational unit could not be resolved.'];
+        }
+
+        $permissions = $this->autoDelegatedPermissions($delegatorRole);
+        if ($permissions === []) {
+            return ['success' => false, 'message' => 'The applicant holds no delegatable page permissions.'];
+        }
+
+        $startDate = (string) $app['start_date'];
+        $endDate   = (string) $app['end_date'];
+        $reason    = mb_substr(sprintf(
+            'Automatic duty cover for approved leave application #%d (%s).',
+            $applicationId,
+            (string) ($app['leave_type_name'] ?? 'leave')
+        ), 0, 500);
+
+        // A leave that has already begun yields 'active' straight away; a
+        // future window yields 'approved' and is flipped to 'active' by the
+        // existing lazy sweep on its first day. Both are already "effective"
+        // for permission resolution, which filters on the date window.
+        $initialStatus = $startDate <= date('Y-m-d') ? 'active' : 'approved';
+        $scopeId       = (int) $scope['id'];
+        $source        = self::SOURCE_LEAVE_APPLICATION;
+
+        $stmt = $this->db->prepare("
+            INSERT INTO delegations
+                (delegator_user_id, delegate_user_id, delegated_role, scope_type, scope_id,
+                 permissions, start_date, end_date, reason, status, approved_by, approved_at,
+                 source, leave_application_id, created_by)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?)
+        ");
+        // bind_param() binds BY REFERENCE, so every argument must be a plain
+        // variable — an array index expression or a function call raises
+        // "Only variables should be passed by reference". Assign first, then
+        // bind (same pattern as LeaveApplicationService::insertApplication).
+        $scopeType  = (string) $scope['type'];
+        $permJson   = json_encode($permissions);
+
+        // Type string mirrors the 14 bound placeholders exactly, in order:
+        // delegator(i) delegate(i) role(s) scope_type(s) scope_id(i)
+        // permissions(s) start(s) end(s) reason(s) status(s) approved_by(i)
+        // source(s) leave_application_id(i) created_by(i).
+        // approved_at is written as NOW() and is deliberately NOT bound.
+        $stmt->bind_param(
+            'iississsssisii',
+            $applicantUserId,
+            $delegateUserId,
+            $delegatorRole,
+            $scopeType,
+            $scopeId,
+            $permJson,
+            $startDate,
+            $endDate,
+            $reason,
+            $initialStatus,
+            $approverUserId,
+            $source,
+            $applicationId,
+            $approverUserId
+        );
+        $stmt->execute();
+        $delegationId = (int) $this->db->insert_id;
+        $stmt->close();
+
+        $this->clearActiveCache();
+
+        $delegatorName = $this->userName($applicantUserId);
+        $delegateName  = $this->userName($delegateUserId);
+
+        AuditService::getInstance()->log(
+            AuditService::MODULE_DELEGATIONS,
+            AuditService::ACTION_CREATE,
+            "Delegation #{$delegationId} auto-created from approved leave #{$applicationId}: {$delegatorName} → {$delegateName} ({$startDate} to {$endDate})",
+            [
+                'target_type' => 'Delegation',
+                'target_id'   => $delegationId,
+                'metadata'    => [
+                    'source'              => self::SOURCE_LEAVE_APPLICATION,
+                    'leave_application_id' => $applicationId,
+                    'delegator_user_id'    => $applicantUserId,
+                    'delegate_user_id'     => $delegateUserId,
+                    'delegated_role'       => $delegatorRole,
+                    'scope'                => $scope['label'],
+                    'permissions'          => $permissions,
+                    'approved_by'          => $approverUserId,
+                    'start_date'           => $startDate,
+                    'end_date'             => $endDate,
+                ],
+            ]
+        );
+
+        $this->notifyUser(
+            $delegateUserId,
+            'You are now covering for ' . $delegatorName,
+            sprintf(
+                'Their %s leave was approved. You have temporary access to their pages (%s) from %s to %s. Your own permissions are unchanged and resume automatically afterwards.',
+                (string) ($app['leave_type_name'] ?? 'leave'),
+                implode(', ', $permissions),
+                $startDate,
+                $endDate
+            ),
+            'delegation_leave_cover',
+            '/delegations'
+        );
+
+        return [
+            'success' => true,
+            'message' => 'Automatic duty-cover delegation created',
+            'data'    => [
+                'id'            => $delegationId,
+                'status'        => $initialStatus,
+                'created'       => true,
+                'permissions'   => $permissions,
+                'delegate_name' => $delegateName,
+            ],
+        ];
+    }
+
+    /**
+     * Withdraw the automatic delegation minted for a leave application.
+     *
+     * Called when the leave itself is cancelled or invalidated AFTER it was
+     * approved: the person is no longer away, so the cover authority must stop
+     * immediately. Scoped strictly to the auto row linked to THIS application,
+     * so withdrawing one leave never disturbs an unrelated manual delegation.
+     *
+     * Safe to call when no row exists (e.g. cancelling a leave that never
+     * reached approval) — it simply reports false.
+     */
+    public function cancelForLeaveApplication(int $applicationId, string $reason = ''): bool
+    {
+        try {
+            return $this->doCancelForLeaveApplication($applicationId, $reason);
+        } catch (\Throwable $e) {
+            error_log('[DelegationService] auto delegation cancel failed for leave #' . $applicationId . ': ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /** Real work behind cancelForLeaveApplication(). */
+    private function doCancelForLeaveApplication(int $applicationId, string $reason): bool
+    {
+        $existing = $this->findByLeaveApplication($applicationId);
+        if ($existing === null) {
+            return false;
+        }
+        // Already terminal (expired / cancelled / rejected) — nothing to do.
+        if (!in_array($existing['status'], ['pending', 'approved', 'active'], true)) {
+            return false;
+        }
+
+        $delegationId = (int) $existing['id'];
+        $stmt = $this->db->prepare("UPDATE delegations SET status = 'cancelled' WHERE id = ?");
+        $stmt->bind_param('i', $delegationId);
+        $stmt->execute();
+        $stmt->close();
+
+        $this->clearActiveCache();
+
+        $reason = mb_substr(trim($reason), 0, 500);
+        AuditService::getInstance()->log(
+            AuditService::MODULE_DELEGATIONS,
+            AuditService::ACTION_DELEGATION_CANCELLED,
+            "Delegation #{$delegationId} cancelled — linked leave application #{$applicationId} was withdrawn",
+            [
+                'target_type' => 'Delegation',
+                'target_id'   => $delegationId,
+                'metadata'    => [
+                    'leave_application_id' => $applicationId,
+                    'delegate_user_id'     => (int) $existing['delegate_user_id'],
+                    'delegator_user_id'    => (int) $existing['delegator_user_id'],
+                    'previous_status'      => $existing['status'],
+                    'reason'               => $reason,
+                ],
+            ]
+        );
+
+        $this->notifyUser(
+            (int) $existing['delegate_user_id'],
+            'Duty cover ended',
+            'The leave you were covering for has been withdrawn, so your temporary authority has ended. Your normal permissions apply again.',
+            'delegation_cancelled',
+            '/delegations'
+        );
+
+        return true;
+    }
+
+    /**
+     * The approved leave application plus everything needed to build a
+     * delegation: the applicant's user + role, and the appointed delegate's
+     * user account (resolved from leave_applications.delegate_emp_id through
+     * employees.employee_id — the same linkage DelegateService uses).
+     *
+     * Returns null when the application is missing, is not yet 'approved', or
+     * carries no delegate — each of which means "no delegation to create".
+     *
+     * @return array<string, mixed>|null
+     */
+    private function approvedLeaveWithDelegate(int $applicationId): ?array
+    {
+        $stmt = $this->db->prepare("
+            SELECT la.id, la.start_date, la.end_date, la.status,
+                   la.employee_id, la.delegate_emp_id, la.applied_by_user_id,
+                   e.subsection_id, e.section_id, e.department_id,
+                   u.id AS applicant_user_id, u.role AS applicant_role,
+                   lt.name AS leave_type_name
+            FROM leave_applications la
+            JOIN employees e ON e.id = la.employee_id
+            LEFT JOIN users u ON u.employee_id = e.employee_id
+            LEFT JOIN leave_types lt ON lt.id = la.leave_type_id
+            WHERE la.id = ?
+        ");
+        $stmt->bind_param('i', $applicationId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$row || $row['status'] !== 'approved' || empty($row['delegate_emp_id'])) {
+            return null;
+        }
+
+        // The applicant is the EMPLOYEE who is away, not whoever typed the
+        // form. Fall back to applied_by_user_id only when the employee has no
+        // login of their own (HR filing on someone's behalf).
+        if (empty($row['applicant_user_id'])) {
+            $row['applicant_user_id'] = (int) ($row['applied_by_user_id'] ?? 0);
+        }
+        $row['applicant_role'] = (string) ($row['applicant_role'] ?? '');
+
+        $row['delegate_user_id'] = $this->userIdForEmployee((int) $row['delegate_emp_id']);
+        return $row;
+    }
+
+    /** users.id for an employees.id (active accounts only), or null. */
+    private function userIdForEmployee(int $employeeId): ?int
+    {
+        if ($employeeId <= 0) {
+            return null;
+        }
+        $stmt = $this->db->prepare("
+            SELECT u.id FROM users u
+            JOIN employees e ON e.employee_id = u.employee_id
+            WHERE e.id = ? AND u.is_active = 1
+            LIMIT 1
+        ");
+        $stmt->bind_param('i', $employeeId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row ? (int) $row['id'] : null;
+    }
+
+    /** The delegation linked to a leave application, or null. */
+    private function findByLeaveApplication(int $applicationId): ?array
+    {
+        $stmt = $this->db->prepare('
+            SELECT d.*,
+                   du.first_name AS delegator_first_name, du.last_name AS delegator_last_name,
+                   tu.first_name AS delegate_first_name,  tu.last_name AS delegate_last_name
+            FROM delegations d
+            JOIN users du ON du.id = d.delegator_user_id
+            JOIN users tu ON tu.id = d.delegate_user_id
+            WHERE d.leave_application_id = ?
+            LIMIT 1
+        ');
+        $stmt->bind_param('i', $applicationId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row ? $this->hydrate($row) : null;
+    }
+
+    /**
+     * The exact permission snapshot granted to an auto duty-cover delegate.
+     *
+     * For every module in AUTO_DELEGATABLE_PAGE_MODULES the APPLICANT'S OWN
+     * role grants are intersected with the actions that module may hand over:
+     * the 'leave' module contributes its approval actions (that is what lets
+     * the delegate actually decide applications in scope), every other module
+     * contributes its page permission only.
+     *
+     * Intersecting with the delegator's real grants is the security property
+     * that matters — a delegation SUBSTITUTES for the absent person, so the
+     * delegate can never end up holding authority the absent person lacked.
+     *
+     * @return array<int, string> sorted "module:action" strings
+     */
+    private function autoDelegatedPermissions(string $delegatorRole): array
+    {
+        if ($delegatorRole === '') {
+            return [];
+        }
+
+        $granted = [];
+        foreach (self::AUTO_DELEGATABLE_PAGE_MODULES as $module) {
+            // Defence in depth: the page allowlist and the hard blacklist are
+            // independent gates, so a future edit to either one still cannot
+            // hand out settings / users / audit authority.
+            if (in_array($module, self::NON_DELEGATABLE_MODULES, true)) {
+                continue;
+            }
+
+            $actions = ($module === 'leave') ? self::DELEGATABLE_ACTIONS : ['view'];
+            foreach ($this->roleGrants($delegatorRole, $module, $actions) as $permission) {
+                $granted[$permission] = true;
+            }
+        }
+
+        $list = array_keys($granted);
+        sort($list);
+        return $list;
+    }
+
+    /**
+     * Which of the given actions the role is actually granted for a module.
+     * The requested actions are first intersected with the central permission
+     * catalog, so an unknown action can never reach the query.
+     *
+     * @param array<int, string> $actions
+     * @return array<int, string>
+     */
+    private function roleGrants(string $role, string $module, array $actions): array
+    {
+        $moduleActions = array_values(array_intersect(self::catalogActionsFor($module), $actions));
+        if ($moduleActions === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($moduleActions), '?'));
+        $stmt = $this->db->prepare("
+            SELECT action FROM role_permissions
+            WHERE role = ? AND module = ? AND is_granted = 1
+              AND action IN ({$placeholders})
+        ");
+        $types  = 'ss' . str_repeat('s', count($moduleActions));
+        $params = array_merge([$role, $module], $moduleActions);
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        $granted = [];
+        while ($row = $result->fetch_assoc()) {
+            $granted[] = $module . ':' . $row['action'];
+        }
+        $stmt->close();
+        return $granted;
+    }
+
+    /**
+     * Action keys declared for a module in the central permission catalog
+     * (backend/config/permissions.php — the single source of truth). An
+     * unknown module yields [], which makes roleGrants() a no-op rather than a
+     * silently-wrong query.
+     *
+     * @return array<int, string>
+     */
+    private static function catalogActionsFor(string $module): array
+    {
+        static $cache = null;
+        if ($cache === null) {
+            $cache = [];
+            // Catalog is a plain PHP array literal — no DB, no side effects.
+            $catalog = require __DIR__ . '/../../config/permissions.php';
+            foreach (($catalog['modules'] ?? []) as $definition) {
+                $key = (string) ($definition['key'] ?? '');
+                if ($key === '') {
+                    continue;
+                }
+                foreach (($definition['actions'] ?? []) as $action) {
+                    $actionKey = (string) ($action['key'] ?? '');
+                    if ($actionKey !== '') {
+                        $cache[$key][] = $actionKey;
+                    }
+                }
+            }
+        }
+        return $cache[$module] ?? [];
+    }
+
+    /**
+     * Scope for the auto duty-cover delegation: the APPLICANT'S ORG UNIT,
+     * resolved from their employee record rather than from their role.
+     *
+     * Deliberately does NOT reuse resolveDelegatorScope(), which is
+     * supervisory-only and returns null for officer/employee — an ordinary
+     * employee taking leave must still produce a properly scoped delegation
+     * covering their own unit.
+     *
+     * @return array{type: string, id: int, label: string}|null
+     */
+    private function resolveApplicantScope(array $app): ?array
+    {
+        $subsectionId = (int) ($app['subsection_id'] ?? 0);
+        $sectionId    = (int) ($app['section_id'] ?? 0);
+        $departmentId = (int) ($app['department_id'] ?? 0);
+
+        if ($subsectionId > 0) {
+            return ['type' => 'subsection', 'id' => $subsectionId, 'label' => $this->scopeLabel('subsection', $subsectionId)];
+        }
+        if ($sectionId > 0) {
+            return ['type' => 'section', 'id' => $sectionId, 'label' => $this->scopeLabel('section', $sectionId)];
+        }
+        if ($departmentId > 0) {
+            return ['type' => 'department', 'id' => $departmentId, 'label' => $this->scopeLabel('department', $departmentId)];
+        }
+        // No org unit on the employee record at all — record the delegation
+        // as organization-wide rather than refusing to capture the hand-over.
+        return ['type' => 'organization', 'id' => 0, 'label' => 'Organization-wide'];
+    }
+
+    // ────────────────────────────────────────────────────────────────────
     //  Lookups: find / list / UI dropdown sources
     // ────────────────────────────────────────────────────────────────────
 
@@ -888,12 +1440,19 @@ class DelegationService
      * existing pending applications are covered automatically because this is
      * a plain scope query over the same tables).
      *
+     * When $stageAware is TRUE (pending queues only), each fragment is
+     * additionally restricted to the stage(s) whose required role equals this
+     * delegation's delegated_role — mirroring canActAsLeaveApprover()'s
+     * `STAGE_ROLES[status] === delegated_role` check so a section-head
+     * delegation, for example, never surfaces pending_dept_head rows.
+     * Scope fragments for approved/rejected history stay scope-only.
+     *
      * Fragments reference the `e` alias (applicant employee row) used by
      * LeaveApprovalService's queries.
      *
      * @return array<int, string> e.g. ['(e.section_id = 5)']
      */
-    public function delegatedVisibilityFragments(int $userId): array
+    public function delegatedVisibilityFragments(int $userId, bool $stageAware = false): array
     {
         $fragments = [];
         foreach ($this->activeForUser($userId) as $delegation) {
@@ -901,19 +1460,64 @@ class DelegationService
                 case 'organization':
                     // Org-wide authority (HR / MD / super admin delegator) —
                     // mirrors the delegator's own '1=1' visibility clause.
-                    return ['1=1'];
+                    if (!$stageAware) {
+                        return ['1=1'];
+                    }
+                    $scope = '1=1';
+                    break;
                 case 'department':
-                    $fragments[] = '(e.department_id = ' . (int) $delegation['scope_id'] . ')';
+                    $scope = '(e.department_id = ' . (int) $delegation['scope_id'] . ')';
                     break;
                 case 'section':
-                    $fragments[] = '(e.section_id = ' . (int) $delegation['scope_id'] . ')';
+                    $scope = '(e.section_id = ' . (int) $delegation['scope_id'] . ')';
                     break;
                 case 'subsection':
-                    $fragments[] = '(e.subsection_id = ' . (int) $delegation['scope_id'] . ')';
+                    $scope = '(e.subsection_id = ' . (int) $delegation['scope_id'] . ')';
                     break;
+                default:
+                    continue 2;
             }
+
+            if ($stageAware) {
+                // Only the pending stage(s) this delegated_role may decide —
+                // inverse of STAGE_ROLES (static keys, so the SQL stays static).
+                $statuses = self::pendingStatusesForRole((string) ($delegation['delegated_role'] ?? ''));
+                if ($statuses === []) {
+                    // Not a role that decides any pending stage (e.g.
+                    // delegated_role with no STAGE_ROLES entry) — contributes
+                    // nothing to the pending queue.
+                    continue;
+                }
+                $statusList = "'" . implode("','", $statuses) . "'";
+                $fragments[] = $scope === '1=1'
+                    ? "(la.status IN ({$statusList}))"
+                    : "({$scope} AND la.status IN ({$statusList}))";
+                continue;
+            }
+
+            $fragments[] = $scope;
         }
         return array_values(array_unique($fragments));
+    }
+
+    /**
+     * Pending stage statuses whose required role equals $role — the inverse
+     * of STAGE_ROLES (e.g. 'section_head' → ['pending_section_head']).
+     *
+     * @return array<int, string>
+     */
+    private static function pendingStatusesForRole(string $role): array
+    {
+        if ($role === '') {
+            return [];
+        }
+        $statuses = [];
+        foreach (self::STAGE_ROLES as $status => $stageRole) {
+            if ($stageRole === $role) {
+                $statuses[] = $status;
+            }
+        }
+        return $statuses;
     }
 
     // ────────────────────────────────────────────────────────────────────
@@ -928,7 +1532,100 @@ class DelegationService
         $row['delegator_name'] = trim(($row['delegator_first_name'] ?? '') . ' ' . ($row['delegator_last_name'] ?? ''));
         $row['delegate_name']  = trim(($row['delegate_first_name'] ?? '') . ' ' . ($row['delegate_last_name'] ?? ''));
         $row['scope_label']    = $this->scopeLabel((string) ($row['scope_type'] ?? ''), (int) ($row['scope_id'] ?? 0));
+
+        // Rows written before migration 096 have no `source` column value;
+        // they are all the original hand-created delegations.
+        $row['source'] = (string) ($row['source'] ?? self::SOURCE_MANUAL);
+        $row['is_auto'] = $row['source'] === self::SOURCE_LEAVE_APPLICATION;
+
+        // Pre-resolved labels so the Delegations page can render "who got
+        // which page" without duplicating the permission catalog in the SPA.
+        $row['permission_details'] = $this->permissionDetails($row['permissions']);
+
         return $row;
+    }
+
+    /**
+     * Expand "module:action" strings into the catalog's human labels, e.g.
+     * ['permission' => 'leave:approve', 'module_label' => 'Leave Management',
+     *  'action_label' => 'Approve', 'type' => 'action'].
+     *
+     * The `type` field comes from the central catalog ('page' drives sidebar /
+     * route visibility, 'action' drives buttons) which is exactly the
+     * distinction the UI needs to answer "which PAGES did this delegate get".
+     *
+     * @param array<int, string> $permissions
+     * @return array<int, array<string, string>>
+     */
+    private function permissionDetails(array $permissions): array
+    {
+        $catalog = self::permissionLabelMap();
+        $details = [];
+        foreach ($permissions as $permission) {
+            [$module, $action] = array_pad(explode(':', (string) $permission, 2), 2, '');
+            $moduleLabels = $catalog[$module] ?? null;
+            if ($moduleLabels === null) {
+                // Never drop a permission just because the catalog has not
+                // caught up — show the raw key rather than hide the grant.
+                $details[] = [
+                    'permission'   => (string) $permission,
+                    'module'       => $module,
+                    'action'       => $action,
+                    'module_label' => ucfirst(str_replace('_', ' ', $module)),
+                    'action_label' => ucfirst(str_replace('_', ' ', $action)),
+                    'type'         => 'action',
+                ];
+                continue;
+            }
+            $actionMeta = $moduleLabels['actions'][$action] ?? null;
+            $details[] = [
+                'permission'   => (string) $permission,
+                'module'       => $module,
+                'action'       => $action,
+                'module_label' => $moduleLabels['label'],
+                'action_label' => $actionMeta['label'] ?? ucfirst(str_replace('_', ' ', $action)),
+                'type'         => $actionMeta['type'] ?? 'action',
+            ];
+        }
+        return $details;
+    }
+
+    /**
+     * module key => ['label' => string, 'actions' => [key => ['label','type']]]
+     * built once from the central permission catalog.
+     *
+     * @return array<string, array{label: string, actions: array<string, array{label: string, type: string}>}>
+     */
+    private static function permissionLabelMap(): array
+    {
+        static $map = null;
+        if ($map !== null) {
+            return $map;
+        }
+        $map = [];
+        $catalog = require __DIR__ . '/../../config/permissions.php';
+        foreach (($catalog['modules'] ?? []) as $definition) {
+            $key = (string) ($definition['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $actions = [];
+            foreach (($definition['actions'] ?? []) as $action) {
+                $actionKey = (string) ($action['key'] ?? '');
+                if ($actionKey === '') {
+                    continue;
+                }
+                $actions[$actionKey] = [
+                    'label' => (string) ($action['label'] ?? $actionKey),
+                    'type'  => (string) ($action['type'] ?? 'action'),
+                ];
+            }
+            $map[$key] = [
+                'label'   => (string) ($definition['label'] ?? $key),
+                'actions' => $actions,
+            ];
+        }
+        return $map;
     }
 
     /** Human-readable scope label ("Section A", "Organization-wide", ...). */

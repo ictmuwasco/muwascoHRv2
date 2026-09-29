@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import api from '../../utils/api';
 import Card from '../../components/ui/Card';
 import { useAuth } from '../../context/AuthContext';
@@ -12,6 +12,17 @@ import { formatDate } from '../leave/leaveManageShared.jsx';
  *    Delegation" form: explicit delegate + window + authority + reason (§25).
  *  - Holders of delegations:approve (HR) can approve/reject pending requests
  *    (§11); delegator or HR can cancel pending/approved/active ones (§35).
+ *
+ * TWO SOURCES appear here (the `source` column, migration 096):
+ *
+ *  - 'manual' — the hand-created rows from the "New Delegation" button above,
+ *    which go through the pending → HR-approved queue.
+ *  - 'leave_application' — AUTO-MINTED the moment a leave application is
+ *    fully approved, for the delegate the applicant picked on the Apply Leave
+ *    form. These skip the manual queue on purpose: the leave workflow's own
+ *    multi-stage chain is already the authorization gate. They appear as
+ *    Active (window open) or Upcoming (window not yet open) and are marked
+ *    with a Leave #N reference, so the record explains itself.
  *
  * The page is pure UX: every action is re-authorized server-side and the
  * effective permissions (sidebar, Manage Leave, banner) update through the
@@ -64,6 +75,161 @@ const prettyPermission = (perm) => {
   return `${module} · ${action}`;
 };
 
+/**
+ * The backend pre-resolves every snapshotted permission into
+ * permission_details [{ permission, module_label, action_label, type }], where
+ * `type` is the catalog's 'page' (drives sidebar/route visibility) or 'action'
+ * (drives buttons). Preferring that keeps the permission vocabulary in ONE
+ * place — config/permissions.php — instead of duplicating labels in the SPA.
+ *
+ * Older rows may not carry it, so fall back to splitting the raw key.
+ */
+const detailsFor = (row) => {
+  if (Array.isArray(row.permission_details) && row.permission_details.length > 0) {
+    return row.permission_details;
+  }
+  return (row.permissions || []).map((perm) => {
+    const [module, action] = String(perm).split(':');
+    return {
+      permission: perm,
+      module,
+      action,
+      module_label: module,
+      action_label: action,
+      type: 'action',
+    };
+  });
+};
+
+/** Compact one-line summary for the table cell. */
+const summarise = (row) => {
+  const details = detailsFor(row);
+  if (details.length === 0) return '—';
+  return details.map((d) => `${d.module_label} · ${d.action_label}`).join(', ');
+};
+
+const sourceBadge = (row) =>
+  row.source === 'leave_application' ? (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-500/20 dark:text-indigo-300">
+      Auto — Leave #{row.leave_application_id}
+    </span>
+  ) : (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300">
+      Manual
+    </span>
+  );
+
+/**
+ * The expanded "who / what" panel for one delegation — the audit answer to
+ * "who is covering, and exactly which pages did they get?". Split into
+ * "Pages unlocked" (catalog type 'page' — drives sidebar + route visibility)
+ * and "Actions enabled" (button-level), because those are different kinds of
+ * authority and reading them as one flat list is how over-broad grants hide.
+ */
+const DetailRow = ({ row, pages, actions }) => (
+  <tr className="border-t border-gray-200 bg-gray-50 dark:bg-slate-800/50 dark:border-slate-700">
+    <td colSpan={8} className="px-4 py-4">
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+            Who
+          </h4>
+          <dl className="space-y-1 text-xs text-gray-700 dark:text-gray-300">
+            <div>
+              <dt className="inline font-medium">Away (delegator):</dt>{' '}
+              <dd className="inline">{row.delegator_name}</dd>
+            </div>
+            <div>
+              <dt className="inline font-medium">Acting (delegate):</dt>{' '}
+              <dd className="inline">{row.delegate_name}</dd>
+            </div>
+            <div>
+              <dt className="inline font-medium">Role covered:</dt>{' '}
+              <dd className="inline">{row.delegated_role || '—'}</dd>
+            </div>
+            <div>
+              <dt className="inline font-medium">Scope:</dt>{' '}
+              <dd className="inline">{row.scope_label}</dd>
+            </div>
+            <div>
+              <dt className="inline font-medium">Valid:</dt>{' '}
+              <dd className="inline">
+                {formatDate(row.start_date)} → {formatDate(row.end_date)}
+              </dd>
+            </div>
+            {row.leave_application_id && (
+              <div>
+                <dt className="inline font-medium">From leave:</dt>{' '}
+                <dd className="inline">Application #{row.leave_application_id}</dd>
+              </div>
+            )}
+            {row.reason && (
+              <div>
+                <dt className="inline font-medium">Reason:</dt>{' '}
+                <dd className="inline">{row.reason}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">
+            What pages & actions
+          </h4>
+          {pages.length === 0 && actions.length === 0 ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              No permissions were granted.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {pages.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Pages unlocked
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {pages.map((d) => (
+                      <span
+                        key={d.permission}
+                        title={d.permission}
+                        className="px-2 py-0.5 rounded bg-primary-100 text-primary-800 text-[11px] font-medium dark:bg-primary-500/20 dark:text-primary-200"
+                      >
+                        {d.module_label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {actions.length > 0 && (
+                <div>
+                  <p className="text-[11px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Actions enabled
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {actions.map((d) => (
+                      <span
+                        key={d.permission}
+                        title={d.permission}
+                        className="px-2 py-0.5 rounded bg-gray-200 text-gray-800 text-[11px] dark:bg-slate-600 dark:text-gray-200"
+                      >
+                        {d.module_label} · {d.action_label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                Temporary only — the delegate&apos;s own role and permissions are unchanged and
+                resume automatically on {formatDate(row.end_date)}.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </td>
+  </tr>
+);
+
 const Delegations = () => {
   const { can, user } = useAuth();
   const [rows, setRows] = useState([]);
@@ -71,6 +237,8 @@ const Delegations = () => {
   const [error, setError] = useState('');
   const [tab, setTab] = useState('pending');
   const [actionError, setActionError] = useState('');
+  // Which row's "who / what pages" panel is open (null = all collapsed).
+  const [expandedId, setExpandedId] = useState(null);
 
   // Create form state
   const [showCreate, setShowCreate] = useState(false);
@@ -228,6 +396,7 @@ const Delegations = () => {
           <table className="min-w-full text-sm">
             <thead>
               <tr className="text-left text-gray-600 dark:text-gray-400">
+                <th className="px-4 py-2">Source</th>
                 <th className="px-4 py-2">Delegator</th>
                 <th className="px-4 py-2">Delegate</th>
                 <th className="px-4 py-2">Authority</th>
@@ -241,7 +410,7 @@ const Delegations = () => {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-8 text-center text-gray-500 dark:text-gray-400"
                   >
                     Loading delegations…
@@ -250,7 +419,7 @@ const Delegations = () => {
               ) : visibleRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-8 text-center text-gray-500 dark:text-gray-400"
                   >
                     No delegations in this view.
@@ -262,57 +431,74 @@ const Delegations = () => {
                   const cancellable =
                     ['pending', 'approved', 'active'].includes(row.status) &&
                     (iAmDelegator || can('delegations', 'cancel'));
+                  const expanded = expandedId === row.id;
+                  const details = detailsFor(row);
+                  // Split on the catalog's page/action type: "which PAGES was
+                  // this delegate given" is the question the record has to
+                  // answer, and it is answered directly rather than inferred.
+                  const pages = details.filter((d) => d.type === 'page');
+                  const actions = details.filter((d) => d.type !== 'page');
                   return (
-                    <tr key={row.id} className="border-t border-gray-200 dark:border-slate-700">
-                      <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
-                        {row.delegator_name}
-                      </td>
-                      <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
-                        {row.delegate_name}
-                      </td>
-                      <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300">
-                        {(row.permissions || []).map(prettyPermission).join(', ')}
-                      </td>
-                      <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300">
-                        {row.scope_label}
-                      </td>
-                      <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300">
-                        {formatDate(row.start_date)} → {formatDate(row.end_date)}
-                      </td>
-                      <td className="px-4 py-2">
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge(row.status)}`}
-                        >
-                          {row.status}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 space-x-2 whitespace-nowrap">
-                        {row.status === 'pending' && canApprove && (
-                          <>
-                            <button
-                              onClick={() => decide(row.id, 'approve')}
-                              className="px-2 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => decide(row.id, 'reject')}
-                              className="px-2 py-1 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700"
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-                        {cancellable && (
+                    <Fragment key={row.id}>
+                      <tr className="border-t border-gray-200 dark:border-slate-700">
+                        <td className="px-4 py-2">{sourceBadge(row)}</td>
+                        <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
+                          {row.delegator_name}
+                        </td>
+                        <td className="px-4 py-2 text-gray-900 dark:text-gray-100">
+                          {row.delegate_name}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300 max-w-xs">
+                          <span className="line-clamp-2">{summarise(row)}</span>
                           <button
-                            onClick={() => decide(row.id, 'cancel')}
-                            className="px-2 py-1 rounded text-xs font-medium border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
+                            onClick={() => setExpandedId(expanded ? null : row.id)}
+                            className="mt-1 block text-primary-600 hover:underline dark:text-primary-400"
                           >
-                            Cancel
+                            {expanded ? 'Hide details' : `Details (${details.length})`}
                           </button>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300">
+                          {row.scope_label}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                          {formatDate(row.start_date)} → {formatDate(row.end_date)}
+                        </td>
+                        <td className="px-4 py-2">
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge(row.status)}`}
+                          >
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2 space-x-2 whitespace-nowrap">
+                          {row.status === 'pending' && canApprove && (
+                            <>
+                              <button
+                                onClick={() => decide(row.id, 'approve')}
+                                className="px-2 py-1 rounded text-xs font-medium bg-green-600 text-white hover:bg-green-700"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => decide(row.id, 'reject')}
+                                className="px-2 py-1 rounded text-xs font-medium bg-red-600 text-white hover:bg-red-700"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+                          {cancellable && (
+                            <button
+                              onClick={() => decide(row.id, 'cancel')}
+                              className="px-2 py-1 rounded text-xs font-medium border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {expanded && <DetailRow row={row} pages={pages} actions={actions} />}
+                    </Fragment>
                   );
                 })
               )}

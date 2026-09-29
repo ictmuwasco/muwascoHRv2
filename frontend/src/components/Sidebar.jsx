@@ -29,7 +29,7 @@ import Logo from './Logo';
 import { SETTINGS_VISIBILITY_PERMISSIONS, parsePermission } from '../config/pagePermissions';
 
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
-  const { can, canAny } = useAuth();
+  const { user, can, canAny } = useAuth();
   const location = useLocation();
   const [expandedParent, setExpandedParent] = useState(null);
 
@@ -78,6 +78,11 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   // Workplans: visible to roles with workplan:view permission
   // (hr_manager, super_admin, dept_head, section_head, sub_section_head, manager)
   const canViewWorkplans = can('workplan', 'view');
+  const canViewSupervisorAppraisals = !!user && !['officer', 'employee', 'bod_chairman'].includes(String(user.role || '').toLowerCase()) && can('performance', 'supervise');
+  // Completed Appraisals is also open to officers/staff (performance:feedback).
+  // The API pins them to their OWN appraisals server-side, so this only reveals
+  // the menu entry - it grants no access to anybody else's records.
+  const canViewCompletedAppraisals = canViewSupervisorAppraisals || can('performance', 'feedback');
 
   // Auto-expand the correct parent based on the current route.
   useEffect(() => {
@@ -99,6 +104,8 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       path.startsWith('/holidays')
     ) {
       setExpandedParent('HR Admin');
+    } else if (path.startsWith('/appraisal') || path.startsWith('/strategy/performance-appraisals')) {
+      setExpandedParent('Appraisal');
     } else if (canViewStrategy && path.startsWith('/strategy')) {
       setExpandedParent('Strategy & Performance');
     } else if (path.startsWith('/reports')) {
@@ -106,7 +113,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     } else {
       setExpandedParent(null);
     }
-  }, [location.pathname, canViewStrategy]);
+  }, [location.pathname, canViewStrategy, canViewSupervisorAppraisals]);
 
   const toggleParent = (name) => {
     setExpandedParent((prev) => (prev === name ? null : name));
@@ -295,9 +302,33 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     },
     {
       name: 'Appraisal',
-      href: '/appraisal',
       icon: Star,
-      visible: () => can('performance', 'view'),
+      visible: () => can('performance', 'feedback') || canViewSupervisorAppraisals,
+      submenu: [
+        {
+          name: 'My Appraisals',
+          href: '/appraisal/my',
+          icon: FileText,
+          visible: () => can('performance', 'feedback'),
+        },
+        {
+          name: 'Supervisor Appraisals',
+          href: '/strategy/performance-appraisals',
+          icon: ClipboardList,
+          visible: () => canViewSupervisorAppraisals,
+        },
+        {
+          // Completed Appraisals: read-only archive of finalised appraisals
+          // with score breakdown + PDF/Word/print export. Supervisors see their
+          // whole authorised scope; officers and staff (performance:feedback)
+          // see ONLY their own, with no filters - that self-scope is enforced
+          // server-side in AppraisalReportService, never in the client.
+          name: 'Completed Appraisals',
+          href: '/appraisal/completed',
+          icon: FileBarChart2,
+          visible: () => canViewCompletedAppraisals,
+        },
+      ],
     },
     ...(canViewStrategy
       ? [
@@ -361,6 +392,16 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           name: 'Leave Reports',
           href: '/leave/reports',
           icon: FileBarChart2,
+          visible: () => can('reports', 'view'),
+        },
+        {
+          // Company-wide appraisal analytics: performance trends, unit averages
+          // and outliers. Server-side scoping pins this to the caller's
+          // organisational scope, so a section head's figures describe their own
+          // unit - the link only reveals that the report exists.
+          name: 'Appraisal Reports',
+          href: '/reports/appraisal',
+          icon: Star,
           visible: () => can('reports', 'view'),
         },
       ],

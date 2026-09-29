@@ -108,6 +108,16 @@ class WorkplanController extends BaseController
                 $params[] = $like; $types .= 's';
             }
 
+            // "Only my own activities" (section / subsection tiers): work the
+            // supervisor assigned into this unit belongs in the source picker
+            // (GET /workplans/section-sources), not in this table. The unit
+            // dashboard still aggregates everything in scope.
+            if (isset($_GET['created_by_self']) && $_GET['created_by_self'] === '1') {
+                $where   .= ' AND w.created_by = ?';
+                $params[] = $this->getUserId() ?: 0;
+                $types   .= 'i';
+            }
+
             [$page, $perPage] = $this->getPaginationParams();
 
             $countSql = "SELECT COUNT(*) AS c
@@ -1170,6 +1180,12 @@ class WorkplanController extends BaseController
      * The created_by filter runs in the database (integer comparison), avoiding
      * the string-vs-integer strict-inequality pitfall that the client-side
      * filter suffered from.
+     *
+     * The parent link is NOT required: department / section heads often assign
+     * work straight down (parent_objective_id NULL) and that work must still
+     * be offered as a source. Rows already sitting in a subsection are never
+     * sources for a section head (and vice versa) — the picker only offers
+     * work AT the caller's own tier.
      */
     public function sectionSourcesAction(): void
     {
@@ -1190,15 +1206,26 @@ class WorkplanController extends BaseController
             // guarantees the section/subsection head never sees other units.
             [$scopeWhere, $scopeParams] = $this->workplans->viewScope($scope, $view);
 
-            $where  = $scopeWhere . ' AND w.parent_objective_id IS NOT NULL AND w.soft_deleted = 0';
+            $where  = $scopeWhere . ' AND w.soft_deleted = 0';
             $params = $scopeParams;
             $types  = str_repeat('i', count($scopeParams));
 
             // Only activities the caller did NOT create themselves — i.e. the
-            // ones their supervisor cascaded to them.
-            $where  .= ' AND w.created_by != ?';
+            // ones their supervisor gave to their unit. Management-created and
+            // legacy rows carry created_by = NULL, and `!=` never matches
+            // NULL, so treat NULL as "not mine".
+            $where  .= ' AND (w.created_by IS NULL OR w.created_by != ?)';
             $params[] = $userId;
             $types   .= 'i';
+
+            // Tier filter: a section head breaks SECTION-level work down, so a
+            // row already sitting in a subsection is not a source here; the
+            // subsection picker conversely only offers work in subsections.
+            if ($view === 'section') {
+                $where .= ' AND w.subsection_id IS NULL';
+            } else {
+                $where .= ' AND w.subsection_id IS NOT NULL';
+            }
 
             $rows = $this->workplans->selectRows(
                 "SELECT w.id, w.objective, w.level,

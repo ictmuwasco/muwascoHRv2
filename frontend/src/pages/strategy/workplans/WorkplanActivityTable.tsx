@@ -24,6 +24,9 @@ interface Props {
   view?: 'md' | 'department' | 'section' | 'subsection';
   onEdit?(row: WorkplanObjective): void;
   onCascade?(row: WorkplanObjective): void;
+  /** Hide the cascade action for rows whose next level down has no unit to
+   *  receive the work (e.g. a section without subsections). */
+  canCascade?(row: WorkplanObjective): boolean;
   onTrace(row: WorkplanObjective): void;
   onHistory(row: WorkplanObjective): void;
   onDelete?(row: WorkplanObjective): void;
@@ -208,6 +211,7 @@ export default function WorkplanActivityTable({
   view = 'department',
   onEdit,
   onCascade,
+  canCascade,
   onTrace,
   onHistory,
   onDelete,
@@ -319,7 +323,7 @@ export default function WorkplanActivityTable({
                 </td>
                 <td className={`${td} text-right whitespace-nowrap`}>
                   <div className="inline-flex items-center gap-1">
-                    {onCascade && canManage && (
+                    {onCascade && canManage && (!canCascade || canCascade(row)) && (
                       <button
                         onClick={() => onCascade(row)}
                         title="Cascade downward"
