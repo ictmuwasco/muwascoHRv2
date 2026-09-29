@@ -85,6 +85,20 @@ class AuditService
     public const ACTION_CLOCK_OUT       = 'CLOCK_OUT';
     public const ACTION_VIEW           = 'VIEW';
     public const ACTION_ACCESS_DENIED  = 'ACCESS_DENIED';
+    // Appraisal actions are deliberately granular. Supervisory access is
+    // denied to officer/employee/bod_chairman even if a stale user override
+    // attempts to grant it; self-service feedback remains owner-scoped.
+    public const ACTION_APPRAISAL_CREATED             = 'APPRAISAL_CREATED';
+    public const ACTION_APPRAISAL_SCORE_SAVED         = 'APPRAISAL_SCORE_SAVED';
+    public const ACTION_APPRAISAL_SUBMITTED            = 'APPRAISAL_SUBMITTED';
+    public const ACTION_APPRAISAL_FEEDBACK_SUBMITTED  = 'APPRAISAL_FEEDBACK_SUBMITTED';
+    public const ACTION_APPRAISAL_ESCALATED           = 'APPRAISAL_ESCALATED';
+    public const ACTION_APPRAISAL_APPROVED            = 'APPRAISAL_APPROVED';
+    public const ACTION_APPRAISAL_REJECTED            = 'APPRAISAL_REJECTED';
+    public const ACTION_APPRAISAL_REVISION_REQUESTED  = 'APPRAISAL_REVISION_REQUESTED';
+    public const ACTION_APPRAISAL_MEETING_REQUESTED   = 'APPRAISAL_MEETING_REQUESTED';
+    public const ACTION_APPRAISAL_ACCESSED            = 'APPRAISAL_ACCESSED';
+    public const ACTION_APPRAISAL_ACCESS_DENIED       = 'APPRAISAL_ACCESS_DENIED';
     public const ACTION_PUBLISH         = 'PUBLISH';
     public const ACTION_AMEND           = 'AMEND';
     public const ACTION_REOPEN          = 'REOPEN';
