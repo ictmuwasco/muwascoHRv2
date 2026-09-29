@@ -194,8 +194,8 @@ const LeaveApplication = () => {
       <div className="space-y-6">
         <Card>
           <div className="text-center py-8">
-            <div className="text-green-600 text-lg font-semibold">Leave application submitted successfully!</div>
-            <p className="text-gray-500 mt-2">Redirecting...</p>
+            <div className="text-green-600 dark:text-green-400 text-lg font-semibold">Leave application submitted successfully!</div>
+            <p className="text-gray-500 dark:text-gray-400 mt-2">Redirecting...</p>
           </div>
         </Card>
       </div>
@@ -205,18 +205,18 @@ const LeaveApplication = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Apply for Leave</h1>
-        <p className="text-gray-500">Submit a new leave application</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Apply for Leave</h1>
+        <p className="text-gray-500 dark:text-gray-400">Submit a new leave application</p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-400 text-red-700 px-4 py-3 rounded-md">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-400 text-red-700 dark:text-red-300 px-4 py-3 rounded-md">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="bg-green-50 border border-green-400 text-green-700 px-4 py-3 rounded-md">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-400 text-green-700 dark:text-green-300 px-4 py-3 rounded-md">
           {success}
         </div>
       )}
@@ -225,7 +225,7 @@ const LeaveApplication = () => {
         <Card>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Employee</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Employee</label>
               <select
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
@@ -242,7 +242,7 @@ const LeaveApplication = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Leave Type</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Leave Type</label>
               <select
                 value={leaveTypeId}
                 onChange={(e) => setLeaveTypeId(e.target.value)}
@@ -259,7 +259,7 @@ const LeaveApplication = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Start Date</label>
               <input
                 type="date"
                 value={startDate}
@@ -270,7 +270,7 @@ const LeaveApplication = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">End Date</label>
               <input
                 type="date"
                 value={endDate}
@@ -281,7 +281,7 @@ const LeaveApplication = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Delegate *</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Delegate *</label>
               <select
                 value={delegateEmpId}
                 onChange={(e) => setDelegateEmpId(e.target.value)}
@@ -295,7 +295,7 @@ const LeaveApplication = () => {
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 This person will temporarily take over your duties and approvals while on leave.
               </p>
             </div>
@@ -304,7 +304,7 @@ const LeaveApplication = () => {
           {/* Supporting Document for Sick/Study Leave */}
           {(leaveTypeId === '2' || leaveTypeId === '5') && (
             <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 {leaveTypeId === '2' ? 'Medical Document *' : 'Study Document *'}
               </label>
               <input
@@ -314,14 +314,14 @@ const LeaveApplication = () => {
                 className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 required={leaveTypeId === '2' || leaveTypeId === '5'}
               />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Allowed: PDF, JPG, PNG. Max size: 5MB.
               </p>
             </div>
           )}
 
           <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Leave</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Reason for Leave</label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
@@ -337,7 +337,7 @@ const LeaveApplication = () => {
           <Card>
             <h3 className="text-lg font-semibold mb-4">Leave Preview</h3>
             {calculating ? (
-              <div className="text-gray-500">Calculating...</div>
+              <div className="text-gray-500 dark:text-gray-400">Calculating...</div>
             ) : (
               <div className="space-y-2">
                 <div className="flex justify-between">
@@ -361,13 +361,13 @@ const LeaveApplication = () => {
                   </div>
                 )}
                 {unpaidDays > 0 && (
-                  <div className="flex justify-between text-red-600">
+                  <div className="flex justify-between text-red-600 dark:text-red-400">
                     <span>Unpaid Days:</span>
                     <span className="font-medium">{unpaidDays} days</span>
                   </div>
                 )}
                 {eligibleDays <= 0 && (
-                  <div className="text-red-600 font-medium">
+                  <div className="text-red-600 dark:text-red-400 font-medium">
                     No Eligible Leave Days. The selected dates fall on excluded days for this leave type.
                   </div>
                 )}

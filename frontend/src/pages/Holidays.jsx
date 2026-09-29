@@ -132,8 +132,8 @@ const Holidays = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Holidays</h1>
-          <p className="text-gray-500">Manage public holidays</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Holidays</h1>
+          <p className="text-gray-500 dark:text-gray-400">Manage public holidays</p>
         </div>
         <Button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ name: '', date: '', description: '', is_recurring: false }) }}>
           <Plus className="h-4 w-4 mr-2" />
@@ -142,13 +142,13 @@ const Holidays = () => {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md">
           {error}
         </div>
       )}
 
       {success && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded-md">
           {success}
         </div>
       )}
@@ -182,9 +182,9 @@ const Holidays = () => {
                 id="is_recurring"
                 checked={formData.is_recurring}
                 onChange={(e) => setFormData({ ...formData, is_recurring: e.target.checked })}
-                className="h-4 w-4 text-primary-600 border-gray-300 rounded"
+                className="h-4 w-4 text-primary-600 border-gray-300 dark:border-slate-600 rounded"
               />
-              <label htmlFor="is_recurring" className="text-sm text-gray-700">
+              <label htmlFor="is_recurring" className="text-sm text-gray-700 dark:text-gray-300">
                 Recurring annually
               </label>
             </div>

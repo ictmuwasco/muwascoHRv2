@@ -61,8 +61,8 @@ const Admin = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
-          <p className="text-gray-500">Financial year management & leave allocation</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Admin Panel</h1>
+          <p className="text-gray-500 dark:text-gray-400">Financial year management & leave allocation</p>
         </div>
         <Button onClick={() => setShowForm(!showForm)}>
           <Plus className="h-4 w-4 mr-2" />

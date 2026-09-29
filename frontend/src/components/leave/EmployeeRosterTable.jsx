@@ -31,7 +31,7 @@ const EmployeeRosterTable = ({
     return (
       <div className="text-center py-12">
         <Calendar className="h-12 w-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-101">
+        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
           No roster entries found
         </h3>
         <p className="text-gray-500 dark:text-gray-400 mt-2">
@@ -79,7 +79,7 @@ const EmployeeRosterTable = ({
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-        <thead className="bg-gray-50 dark:bg-slate-900">
+        <thead className="bg-gray-50 dark:bg-slate-900/40 dark:bg-slate-900">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Employee
@@ -119,7 +119,7 @@ const EmployeeRosterTable = ({
                       <User className="h-4 w-4 text-primary-600 dark:text-primary-400" />
                     </div>
                     <div>
-                      <div className="font-medium text-gray-900 dark:text-gray-101">
+                      <div className="font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
                         {emp.employee_name}
                       </div>
                       <div className="text-sm text-gray-500 dark:text-gray-400">
@@ -128,7 +128,7 @@ const EmployeeRosterTable = ({
                     </div>
                   </div>
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-300">
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400 dark:text-gray-300">
                   {emp.department_name || '—'}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">

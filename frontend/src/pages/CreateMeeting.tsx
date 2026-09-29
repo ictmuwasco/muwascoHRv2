@@ -197,8 +197,8 @@ const CreateMeeting = () => {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{isEditMode ? 'Edit Meeting' : 'Create Meeting'}</h1>
-            <p className="text-gray-500">{isEditMode ? 'Update meeting details' : 'Schedule a new meeting and invite employees'}</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{isEditMode ? 'Edit Meeting' : 'Create Meeting'}</h1>
+            <p className="text-gray-500 dark:text-gray-400">{isEditMode ? 'Update meeting details' : 'Schedule a new meeting and invite employees'}</p>
           </div>
         </div>
       </div>
@@ -307,7 +307,7 @@ const CreateMeeting = () => {
                         type="checkbox"
                         checked={selectedEmployees.includes(emp.id)}
                         onChange={() => toggleEmployee(emp.id)}
-                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 dark:border-slate-600 rounded"
                       />
                       <div className="ml-3">
                         <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -334,8 +334,8 @@ const CreateMeeting = () => {
                 employees
                   .filter((emp) => selectedEmployees.includes(emp.id))
                   .map((emp) => (
-                    <div key={emp.id} className="flex items-center px-4 py-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
-                      <p className="text-sm font-medium text-gray-900 dark:text-gray-101">
+                    <div key={emp.id} className="flex items-center px-4 py-3 bg-gray-50 dark:bg-slate-900/40 dark:bg-slate-700/50 rounded-lg">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 dark:text-gray-101">
                         {emp.first_name} {emp.last_name}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 ml-3">

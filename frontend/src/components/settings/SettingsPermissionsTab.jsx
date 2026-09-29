@@ -184,22 +184,22 @@ const PermissionsTab = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Shield className="h-5 w-5 text-blue-600" />
+            <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             Permission Management
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Hybrid RBAC + User Overrides — {stats?.total_users ?? '...'} users, {stats?.total_roles ?? '...'} roles, {stats?.total_modules ?? '...'} modules
           </p>
         </div>
         {stats && (
           <div className="flex gap-3">
-            <Badge className="bg-blue-100 text-blue-800">
+            <Badge className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300">
               {stats.total_overrides} Overrides
             </Badge>
-            <Badge className="bg-green-100 text-green-800">
+            <Badge className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300">
               {stats.allow_count} Allowed
             </Badge>
-            <Badge className="bg-red-100 text-red-800">
+            <Badge className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300">
               {stats.deny_count} Denied
             </Badge>
           </div>
@@ -207,14 +207,14 @@ const PermissionsTab = () => {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md flex items-center gap-2">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded-md flex items-center gap-2">
           <AlertTriangle className="h-4 w-4" />
           {error}
         </div>
       )}
 
       {successMsg && (
-        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-md flex items-center gap-2">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded-md flex items-center gap-2">
           <Check className="h-4 w-4" />
           {successMsg}
         </div>
@@ -225,7 +225,7 @@ const PermissionsTab = () => {
         <div className="col-span-12 lg:col-span-3">
           <Card>
             <div className="mb-3 relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 dark:text-gray-500" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -242,13 +242,13 @@ const PermissionsTab = () => {
                 >
                   <div className="flex items-center gap-3">
                     <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                      <UserIcon className="h-4 w-4 text-gray-500" />
+                      <UserIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
                         {user.first_name || user.last_name || user.email}
                       </p>
-                      <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
                     </div>
                     <Badge className={roleColor(user.role)}>
                       {user.role?.replace(/_/g, ' ')}
@@ -257,7 +257,7 @@ const PermissionsTab = () => {
                 </button>
               ))}
               {users.data.length === 0 && (
-                <p className="text-center text-sm text-gray-400 py-6">No users found</p>
+                <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-6">No users found</p>
               )}
             </div>
             
@@ -272,7 +272,7 @@ const PermissionsTab = () => {
                 >
                   Prev
                 </Button>
-                <span className="text-sm text-gray-500">Page {users.page} / {users.pages}</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400">Page {users.page} / {users.pages}</span>
                 <Button
                   variant="outline"
                   size="sm"
@@ -292,8 +292,8 @@ const PermissionsTab = () => {
             <Card>
               <div className="text-center py-12">
                 <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-gray-500 font-medium">Select a user to manage permissions</p>
-                <p className="text-sm text-gray-400 mt-1">
+                <p className="text-gray-500 dark:text-gray-400 font-medium">Select a user to manage permissions</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
                   Configure user-specific allow/deny overrides that affect their role-based permissions
                 </p>
               </div>
@@ -315,38 +315,38 @@ const PermissionsTab = () => {
                       {userPerms.user.role?.replace(/_/g, ' ')}
                     </Badge>
                   </h3>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                     {userPerms.user.email} {userPerms.user.designation && `• ${userPerms.user.designation}`}
                   </p>
                 </div>
-                <div className="text-right text-xs text-gray-400">
+                <div className="text-right text-xs text-gray-400 dark:text-gray-500">
                   {userPerms.user.is_active === 1 ? 'Active' : 'Inactive'}
                 </div>
               </div>
 
               {/* Permission matrix */}
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
                   <thead>
-                    <tr className="bg-gray-50">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <tr className="bg-gray-50 dark:bg-slate-900/40">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Module
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Action
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Role
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Override
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                         Effective
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
+                  <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-100 dark:divide-slate-700">
                     {catalog && Object.entries(catalog.modules).map(([moduleKey, module]) => (
                       <React.Fragment key={moduleKey}>
                         {module.actions.map((action) => {
@@ -356,11 +356,11 @@ const PermissionsTab = () => {
                           const isSaving = saveState.saving && saveState.userId === selectedUserId && saveState.module === moduleKey && saveState.action === action.key
                           
                           return (
-                            <tr key={`${moduleKey}-${action.key}`} className="hover:bg-gray-50">
+                            <tr key={`${moduleKey}-${action.key}`} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
                               <td className="px-4 py-3 text-sm font-medium">
                                 {module.label}
                                 {action.type === 'page' && (
-                                  <span className="ml-1 text-[10px] text-gray-400 uppercase">Page</span>
+                                  <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-500 uppercase">Page</span>
                                 )}
                               </td>
                               <td className="px-4 py-3 text-sm">
@@ -369,16 +369,16 @@ const PermissionsTab = () => {
                               <td className="px-4 py-3">
                                 {rolePerm?.defined ? (
                                   rolePerm.granted ? (
-                                    <span className="inline-flex items-center gap-1 text-green-700">
+                                    <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-300">
                                       <Check className="h-3.5 w-3.5" /> Granted
                                     </span>
                                   ) : (
-                                    <span className="inline-flex items-center gap-1 text-red-600">
+                                    <span className="inline-flex items-center gap-1 text-red-600 dark:text-red-400">
                                       <X className="h-3.5 w-3.5" /> Denied
                                     </span>
                                   )
                                 ) : (
-                                  <span className="text-gray-400 text-xs">Not defined</span>
+                                  <span className="text-gray-400 dark:text-gray-500 text-xs">Not defined</span>
                                 )}
                               </td>
                               <td className="px-4 py-3">
@@ -409,7 +409,7 @@ const PermissionsTab = () => {
                                     onClick={() => handleRemoveOverride(moduleKey, action.key)}
                                     disabled={!override || isSaving || userPerms.user.role === 'super_admin'}
                                     title="Remove override (inherit role)"
-                                    className="px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50"
+                                    className="px-2 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 disabled:opacity-50"
                                   >
                                     Inherit
                                   </button>
@@ -427,12 +427,12 @@ const PermissionsTab = () => {
                                       className="text-xs"
                                     />
                                     <div className="flex items-center justify-between mt-1">
-                                      <span className="text-[10px] text-gray-400">
+                                      <span className="text-[10px] text-gray-400 dark:text-gray-500">
                                         {override.granted_at && `Granted: ${formatDate(override.granted_at)}`}
                                       </span>
                                       <button
                                         onClick={() => handleSaveOverride(moduleKey, action.key, override.permission_type)}
-                                        className="text-[10px] text-blue-600 hover:underline"
+                                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline"
                                       >
                                         Save note
                                       </button>
@@ -445,24 +445,24 @@ const PermissionsTab = () => {
                                   effective.allowed ? (
                                     <div className="flex items-center gap-1.5">
                                       <span className="inline-flex h-2 w-2 rounded-full bg-green-500"></span>
-                                      <span className="text-sm text-green-700">Allowed</span>
+                                      <span className="text-sm text-green-700 dark:text-green-300">Allowed</span>
                                       {effective.source && effective.source !== 'Role' && (
-                                        <span className="text-[10px] text-gray-400">({effective.source})</span>
+                                        <span className="text-[10px] text-gray-400 dark:text-gray-500">({effective.source})</span>
                                       )}
                                     </div>
                                   ) : (
                                     <div className="flex items-center gap-1.5">
                                       <span className="inline-flex h-2 w-2 rounded-full bg-red-500"></span>
-                                      <span className="text-sm text-red-600">Denied</span>
+                                      <span className="text-sm text-red-600 dark:text-red-400">Denied</span>
                                       {effective.source && effective.source !== 'Role' && (
-                                        <span className="text-[10px] text-gray-400">({effective.source})</span>
+                                        <span className="text-[10px] text-gray-400 dark:text-gray-500">({effective.source})</span>
                                       )}
                                     </div>
                                   )
                                 ) : (
                                   <span className="inline-flex items-center gap-1.5">
                                     <span className="inline-flex h-2 w-2 rounded-full bg-gray-300"></span>
-                                    <span className="text-sm text-gray-500">Unknown</span>
+                                    <span className="text-sm text-gray-500 dark:text-gray-400">Unknown</span>
                                   </span>
                                 )}
                               </td>
@@ -477,11 +477,11 @@ const PermissionsTab = () => {
 
               {/* Super Admin notice */}
               {userPerms.user.role === 'super_admin' && (
-                <div className="mt-4 bg-purple-50 border border-purple-200 rounded-md p-4 flex items-start gap-3">
+                <div className="mt-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-md p-4 flex items-start gap-3">
                   <Info className="h-5 w-5 text-purple-500 mt-0.5" />
                   <div>
-                    <p className="text-sm font-medium text-purple-800">Super Admin — Full Access</p>
-                    <p className="text-xs text-purple-600 mt-1">
+                    <p className="text-sm font-medium text-purple-800 dark:text-purple-300">Super Admin — Full Access</p>
+                    <p className="text-xs text-purple-600 dark:text-purple-400 mt-1">
                       Super Admin always has global access. Permission overrides cannot be applied to this role.
                     </p>
                   </div>
@@ -490,7 +490,7 @@ const PermissionsTab = () => {
             </Card>
           ) : (
             <Card>
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 User not found
               </div>
             </Card>

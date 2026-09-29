@@ -261,14 +261,14 @@ const Departments = () => {
           <div className="flex gap-2">
             <button
               onClick={() => handleEditDepartment(row)}
-              className="text-blue-600 hover:text-blue-800"
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-800"
               title="Edit"
             >
               <Edit2 className="h-4 w-4" />
             </button>
             <button
               onClick={() => handleDeleteDepartment(row.id)}
-              className="text-red-600 hover:text-red-800"
+              className="text-red-600 dark:text-red-400 hover:text-red-800"
               title="Delete"
             >
               <Trash2 className="h-4 w-4" />
@@ -296,14 +296,14 @@ const Departments = () => {
           <div className="flex gap-2">
             <button
               onClick={() => handleEditSection(row)}
-              className="text-blue-600 hover:text-blue-800"
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-800"
               title="Edit"
             >
               <Edit2 className="h-4 w-4" />
             </button>
             <button
               onClick={() => handleDeleteSection(row.id)}
-              className="text-red-600 hover:text-red-800"
+              className="text-red-600 dark:text-red-400 hover:text-red-800"
               title="Delete"
             >
               <Trash2 className="h-4 w-4" />
@@ -331,14 +331,14 @@ const Departments = () => {
           <div className="flex gap-2">
             <button
               onClick={() => handleEditSubsection(row)}
-              className="text-blue-600 hover:text-blue-800"
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-800"
               title="Edit"
             >
               <Edit2 className="h-4 w-4" />
             </button>
             <button
               onClick={() => handleDeleteSubsection(row.id)}
-              className="text-red-600 hover:text-red-800"
+              className="text-red-600 dark:text-red-400 hover:text-red-800"
               title="Delete"
             >
               <Trash2 className="h-4 w-4" />
@@ -360,14 +360,14 @@ const Departments = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Departments</h1>
-        <p className="text-gray-500">Manage departments, sections, and subsections</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Departments</h1>
+        <p className="text-gray-500 dark:text-gray-400">Manage departments, sections, and subsections</p>
       </div>
 
       {/* Departments Section */}
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">Departments</h2>
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Departments</h2>
           <Button onClick={() => { resetDeptForm(); setShowDeptModal(true) }}>
             <Plus className="h-4 w-4 mr-2" />
             Add Department
@@ -383,7 +383,7 @@ const Departments = () => {
       {/* Sections Section */}
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">Sections</h2>
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Sections</h2>
           <Button onClick={() => { resetSectionForm(); setShowSectionModal(true) }}>
             <Plus className="h-4 w-4 mr-2" />
             Add Section
@@ -399,7 +399,7 @@ const Departments = () => {
       {/* Subsections Section */}
       <Card>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">Subsections</h2>
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Subsections</h2>
           <Button onClick={() => { resetSubsectionForm(); setShowSubsectionModal(true) }}>
             <Plus className="h-4 w-4 mr-2" />
             Add Subsection
@@ -415,14 +415,14 @@ const Departments = () => {
       {/* Add/Edit Department Modal */}
       {showDeptModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md">
             <h2 className="text-xl font-bold mb-4">
               {editingDept ? 'Edit Department' : 'Add Department'}
             </h2>
             <form onSubmit={handleAddDepartment}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Department Name
                   </label>
                   <input
@@ -434,7 +434,7 @@ const Departments = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Description
                   </label>
                   <textarea
@@ -465,14 +465,14 @@ const Departments = () => {
       {/* Add/Edit Section Modal */}
       {showSectionModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md">
             <h2 className="text-xl font-bold mb-4">
               {editingSection ? 'Edit Section' : 'Add Section'}
             </h2>
             <form onSubmit={handleAddSection}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Section Name
                   </label>
                   <input
@@ -484,7 +484,7 @@ const Departments = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Department
                   </label>
                   <select
@@ -522,14 +522,14 @@ const Departments = () => {
       {/* Add/Edit Subsection Modal */}
       {showSubsectionModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-6 w-full max-w-md">
             <h2 className="text-xl font-bold mb-4">
               {editingSubsection ? 'Edit Subsection' : 'Add Subsection'}
             </h2>
             <form onSubmit={handleAddSubsection}>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Subsection Name
                   </label>
                   <input
@@ -541,7 +541,7 @@ const Departments = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Department
                   </label>
                   <select
@@ -562,7 +562,7 @@ const Departments = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Section
                   </label>
                   <select
@@ -580,7 +580,7 @@ const Departments = () => {
                     ))}
                   </select>
                   {availableSections.length === 0 && subsectionDepartmentId && (
-                    <p className="mt-1 text-sm text-yellow-600">No sections found for this department</p>
+                    <p className="mt-1 text-sm text-yellow-600 dark:text-yellow-400">No sections found for this department</p>
                   )}
                 </div>
               </div>
