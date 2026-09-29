@@ -20,6 +20,17 @@ export const buildSuggestedQuestions = (user, can) => {
   const canAny = (pairs) =>
     typeof can === 'function' && pairs.some(([module, action]) => can(module, action));
 
+  // Own appraisal status/scores — performance:feedback is seeded to every
+  // role, but an explicit gate keeps the chip honest for per-user revocations.
+  if (canAny([['performance', 'feedback']])) {
+    questions.push('What is the status of my appraisal?');
+  }
+
+  // Own in-app inbox — settings:notifications (self-service, all roles).
+  if (canAny([['settings', 'notifications']])) {
+    questions.push('Do I have any unread notifications?');
+  }
+
   // Approvers / HR: the approval queue question.
   if (
     canAny([
@@ -62,8 +73,10 @@ export const buildSuggestedQuestions = (user, can) => {
     questions.push('Summarize my team\u2019s attendance this month.');
   }
 
-  // De-duplicate (defensive) and cap the chips so the panel stays tidy.
-  return Array.from(new Set(questions)).slice(0, 6);
+  // De-duplicate (defensive) and cap the chips so the panel stays tidy. The
+  // cap is 9 (not 6) so the supervisory chips still surface for heads after
+  // the self-service block grew (appraisal status + notifications).
+  return Array.from(new Set(questions)).slice(0, 9);
 };
 
 export default buildSuggestedQuestions;

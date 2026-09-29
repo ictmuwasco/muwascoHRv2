@@ -99,6 +99,84 @@ class SectionalObjectiveController extends BaseController
         $stmt->close();
         return $rows;
     }
+    /**
+     * Resolve the stored employee references for display without limiting names
+     * to the caller's currently assignable employee list. An existing KPI may
+     * legitimately refer to an inactive employee or a role that is no longer
+     * eligible for new assignments; its name must still remain readable.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function withAssignedEmployeeNames(array $rows): array
+    {
+        $employeeIds = [];
+        foreach ($rows as $row) {
+            foreach ($this->parseEmployeeIds($row['assigned_to_employee_ids'] ?? null) as $employeeId) {
+                $employeeIds[$employeeId] = $employeeId;
+            }
+        }
+
+        $namesById = [];
+        if ($employeeIds !== []) {
+            $ids = array_values($employeeIds);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $this->db->prepare(
+                "SELECT id, first_name, last_name
+                 FROM employees
+                 WHERE id IN ($placeholders)"
+            );
+            $stmt->bind_param(str_repeat('i', count($ids)), ...$ids);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            while ($employee = $result->fetch_assoc()) {
+                $name = trim(
+                    implode(' ', array_filter([
+                        $employee['first_name'] ?? '',
+                        $employee['last_name'] ?? '',
+                    ], static fn (string $part): bool => trim($part) !== ''))
+                );
+                $namesById[(int) $employee['id']] = $name !== '' ? $name : 'Unnamed employee';
+            }
+            $stmt->close();
+        }
+
+        foreach ($rows as &$row) {
+            $names = [];
+            foreach ($this->parseEmployeeIds($row['assigned_to_employee_ids'] ?? null) as $employeeId) {
+                $names[] = $namesById[$employeeId] ?? 'Employee unavailable';
+            }
+            $row['assigned_employee_names'] = $names;
+        }
+        unset($row);
+
+        return $rows;
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function parseEmployeeIds(?string $raw): array
+    {
+        if ($raw === null || trim($raw) === '') {
+            return [];
+        }
+
+        $ids = [];
+        foreach (explode(',', $raw) as $value) {
+            $value = trim($value);
+            if ($value === '' || !ctype_digit($value)) {
+                continue;
+            }
+            $id = (int) $value;
+            if ($id > 0 && !in_array($id, $ids, true)) {
+                $ids[] = $id;
+            }
+        }
+
+        return $ids;
+    }
+
 
     private static function roleOf(array $e): string
     {
@@ -319,6 +397,7 @@ class SectionalObjectiveController extends BaseController
             $stmt->execute();
             $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             $stmt->close();
+            $rows = $this->withAssignedEmployeeNames($rows);
 
             $emp = $this->scopedEmployees($scope);
 
