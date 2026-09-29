@@ -23,6 +23,7 @@ import Tabs from '../../components/ui/Tabs';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
 import Input from '../../components/ui/Input';
+import Combobox from '../../components/ui/Combobox';
 import api from '../../utils/api';
 import minutesService from '../../api/services/meetingMinutesService';
 import type {
@@ -188,6 +189,19 @@ const MeetingMinutesModal = ({
   const [saving, setSaving] = useState(false);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Chairperson/secretary pickers scan the full staff list, so they get
+  // type-to-filter. emp_no and designation ride along in `description`, which
+  // means the filter also matches on staff number and job title.
+  const employeeOptions = useMemo(
+    () =>
+      options.employees.map((e) => ({
+        value: e.id,
+        label: `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim() || 'Unnamed employee',
+        description: [e.emp_no, e.designation].filter(Boolean).join(' · ') || undefined,
+      })),
+    [options.employees],
+  );
 
   useEffect(() => {
     const load = async () => {
@@ -467,34 +481,24 @@ const MeetingMinutesModal = ({
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Field label="Chairperson">
-          <select
-            className={selectCls}
+          <Combobox
             value={form.chairperson_id}
-            onChange={(e) => updateField('chairperson_id', e.target.value)}
+            onChange={(v) => updateField('chairperson_id', v)}
+            options={employeeOptions}
+            placeholder="Search chairperson"
+            noOptionsMessage="No employees found."
             disabled={isViewOnly}
-          >
-            <option value="">Select chairperson</option>
-            {options.employees.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.first_name} {e.last_name}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
         <Field label="Secretary">
-          <select
-            className={selectCls}
+          <Combobox
             value={form.secretary_id}
-            onChange={(e) => updateField('secretary_id', e.target.value)}
+            onChange={(v) => updateField('secretary_id', v)}
+            options={employeeOptions}
+            placeholder="Search secretary"
+            noOptionsMessage="No employees found."
             disabled={isViewOnly}
-          >
-            <option value="">Select secretary</option>
-            {options.employees.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.first_name} {e.last_name}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
       </div>
     </div>

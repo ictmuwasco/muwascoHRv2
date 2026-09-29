@@ -31,7 +31,9 @@ class NotificationService
     }
 
     /**
-     * Send an in-app notification.
+     * Send an in-app notification using the live notifications schema.
+     * `action_url` replaced the legacy `link` column; keeping this mapping in
+     * one place prevents appraisal notifications from failing at runtime.
      */
     public function sendInApp(int $userId, string $title, string $message, string $type = 'info', ?string $link = null): int
     {
@@ -41,8 +43,10 @@ class NotificationService
             'title' => $title,
             'message' => $message,
             'type' => $type,
-            'link' => $link,
+            'category' => 'general',
+            'action_url' => $link,
             'is_read' => 0,
+            'is_sent' => 1,
             'created_at' => date('Y-m-d H:i:s'),
         ]);
     }
@@ -63,6 +67,15 @@ class NotificationService
             $mail->Password = \env('MAIL_PASSWORD', '');
             $mail->SMTPSecure = \env('MAIL_ENCRYPTION', 'tls');
             $mail->Port = (int) \env('MAIL_PORT', 587);
+
+            // Bound the SMTP conversation. PHPMailer's own default is 300s, and
+            // PHP CLI runs with max_execution_time=0 (unlimited), so a stalling
+            // mail host would pin a worker process indefinitely. That matters
+            // far beyond one message: the scheduled task uses an
+            // IgnoreNew instance policy, so one stuck worker makes every later
+            // run be refused and the whole notification queue stops draining.
+            $mail->Timeout = (int) \env('MAIL_TIMEOUT', 20);
+            $mail->SMTPKeepAlive = false;
 
             // Sender and recipient
             $mail->setFrom(\env('MAIL_FROM_ADDRESS', 'noreply@muwasco.co.ke'), \env('MAIL_FROM_NAME', 'MUWASCO HR System'));
@@ -137,7 +150,7 @@ class NotificationService
         $db = \db();
         $db->update(
             'notifications',
-            ['is_read' => 1, 'read_at' => date('Y-m-d H:i:s')],
+            ['is_read' => 1],
             'id = ? AND user_id = ?',
             'ii',
             [$notificationId, $userId]
@@ -152,7 +165,7 @@ class NotificationService
         $db = \db();
         $db->update(
             'notifications',
-            ['is_read' => 1, 'read_at' => date('Y-m-d H:i:s')],
+            ['is_read' => 1],
             'user_id = ? AND is_read = 0',
             'i',
             [$userId]
