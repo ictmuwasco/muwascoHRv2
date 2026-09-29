@@ -19,6 +19,7 @@ const SecurityTab = () => {
   const [incidents, setIncidents] = useState([]);
   const [incidentsMeta, setIncidentsMeta] = useState({ page: 1, per_page: 25, total: 0 });
   const [aiThreats, setAiThreats] = useState(null);
+  const [appraisalSecurity, setAppraisalSecurity] = useState(null);
   const [vulnerabilities, setVulnerabilities] = useState([]);
   const [selectedTab, setSelectedTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -32,6 +33,7 @@ const SecurityTab = () => {
     'events',
     'incidents',
     'endpoints',
+    'appraisal-security',
     'vulnerabilities',
     'ai-analyst',
     'ai-copilot',
@@ -90,6 +92,15 @@ const SecurityTab = () => {
       setVulnerabilities(res.data?.data?.data || []);
     } catch (err) {
       /* silently fail */
+    }
+  }, []);
+
+  const loadAppraisalSecurity = useCallback(async () => {
+    try {
+      const res = await securityService.getAppraisalSecurity();
+      setAppraisalSecurity(res.data?.data || res.data);
+    } catch {
+      setAppraisalSecurity({ error: 'Unable to load appraisal security summary.' });
     }
   }, []);
 
@@ -171,6 +182,7 @@ const SecurityTab = () => {
             key={tab}
             onClick={() => {
               setSelectedTab(tab);
+              if (tab === 'appraisal-security') loadAppraisalSecurity();
               if (tab === 'ai-analyst') loadAiThreats();
               if (tab === 'vulnerabilities') loadVulnerabilities();
             }}
@@ -426,6 +438,40 @@ const SecurityTab = () => {
             </table>
           </div>
         </Card>
+      )}
+      {selectedTab === 'appraisal-security' && (
+        <div className="space-y-6">
+          <Card>
+            <div className="flex items-center gap-3">
+              <Shield className="h-6 w-6 text-primary-600" />
+              <div>
+                <h3 className="text-lg font-semibold">Appraisal Security Summary</h3>
+                <p className="text-sm text-gray-500">Authorization, audit, and monitoring coverage for the appraisal workflow.</p>
+              </div>
+            </div>
+          </Card>
+          {!appraisalSecurity ? (
+            <p className="py-8 text-center text-sm text-gray-500">Loading appraisal security summary…</p>
+          ) : appraisalSecurity.error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{appraisalSecurity.error}</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                {[
+                  ['Security events', appraisalSecurity.counts?.total ?? 0],
+                  ['Access denials', appraisalSecurity.counts?.denied ?? 0],
+                  ['Rate-limited', appraisalSecurity.counts?.rate_limited ?? 0],
+                  ['Object attempts', appraisalSecurity.counts?.object_attempts ?? 0],
+                ].map(([label, value]) => <div key={label} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800"><p className="text-xs uppercase tracking-wide text-gray-500">{label}</p><p className="mt-1 text-2xl font-bold text-primary-600">{value}</p></div>)}
+              </div>
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card title="Workflow audit activity"><div className="space-y-3 text-sm"><div className="flex justify-between"><span className="text-gray-500">Audit actions</span><strong>{appraisalSecurity.audit_actions?.length ?? 0}</strong></div><div className="flex justify-between"><span className="text-gray-500">Appraisal routes monitored</span><strong>{appraisalSecurity.route_count ?? 0}</strong></div><p className="border-t pt-3 text-xs text-gray-500">Employee comments and rejection narratives are kept in the protected appraisal records, not copied into the general audit log.</p></div></Card>
+                <Card title="Policy controls"><ul className="space-y-2 text-sm text-gray-600 dark:text-gray-300"><li>✓ Employee feedback is owner-scoped server-side</li><li>✓ Officer, employee, and BOD roles have a hard supervisory deny</li><li>✓ Mutating appraisal routes are server-rate-limited</li><li>✓ Score and decision transitions are audited</li></ul></Card>
+              </div>
+              <Card title="Appraisal permission defaults"><div className="overflow-x-auto"><table className="min-w-full text-sm"><thead className="bg-gray-50 dark:bg-slate-900"><tr><th className="px-3 py-2 text-left">Role</th><th className="px-3 py-2 text-left">Action</th><th className="px-3 py-2 text-left">Default</th></tr></thead><tbody>{(appraisalSecurity.permission_defaults || []).map((p) => <tr key={`${p.role}-${p.action}`} className="border-t dark:border-slate-700"><td className="px-3 py-2">{p.role}</td><td className="px-3 py-2">{p.action}</td><td className={`px-3 py-2 font-medium ${Number(p.is_granted) ? 'text-green-600' : 'text-red-600'}`}>{Number(p.is_granted) ? 'Granted' : 'Denied'}</td></tr>)}</tbody></table></div></Card>
+            </>
+          )}
+        </div>
       )}
       {selectedTab === 'vulnerabilities' && (
         <Card title="Vulnerability & Control Status">

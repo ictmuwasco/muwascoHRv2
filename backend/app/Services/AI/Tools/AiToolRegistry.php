@@ -42,6 +42,11 @@ final class AiToolRegistry
         $this->register(new GetMyLeaveApplicationsTool());
         $this->register(new GetMyAttendanceTool());
         $this->register(new GetMyContractDetailsTool());
+        // performance:feedback — own appraisal status/scores (every role holds it).
+        $this->register(new GetMyAppraisalsTool());
+        $this->register(new GetMyAppraisalStatusTool());
+        // settings:notifications — own in-app inbox, strictly user_id-scoped.
+        $this->register(new GetMyNotificationsTool());
 
         // --- Organisation reference data ------------------------------------
         // HR Policy module (migration 081): the AI retrieves approved policy
@@ -58,6 +63,8 @@ final class AiToolRegistry
         $this->register(new GetUnitAttendanceSummaryTool());
         $this->register(new GetPendingLeaveApprovalsTool());
         $this->register(new GetEmployeeLeaveBalanceTool());
+        // performance:supervise — same gate as the AppraisalController reads.
+        $this->register(new GetPendingAppraisalReviewsTool());
 
         // --- Employee directory (employees:view, unit-narrowed) --------------
         $this->register(new SearchEmployeeDirectoryTool());

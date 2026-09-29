@@ -78,6 +78,54 @@ class DelegationController extends BaseController
     }
 
     /**
+     * GET /api/delegations/summary
+     * Per-tab row counts for the acting-authority register.
+     *
+     * Exists purely so the SIDEBAR can badge the "Delegations" entry with
+     * "how many are live right now?" without downloading whole delegation rows
+     * (each carrying a permissions JSON snapshot and two user joins) on every
+     * page load. The bucketing rules are delegated to DelegationService so the
+     * badge can never disagree with the register page, which buckets the same
+     * way client-side.
+     *
+     * Scoped by exactly the same listFor() call as the full endpoint, so a user
+     * can never learn a count for rows they may not read.
+     */
+    public function summaryAction(): void
+    {
+        $userId = Auth::getInstance()->id();
+        if (!$userId) {
+            $this->error('Authentication required', 401);
+            return;
+        }
+
+        $rows = $this->delegationService->listFor($userId);
+
+        $counts = ['pending' => 0, 'active' => 0, 'upcoming' => 0, 'history' => 0, 'total' => 0];
+        $today = date('Y-m-d');
+
+        foreach ($rows as $row) {
+            $status = (string) ($row['status'] ?? '');
+            $start  = (string) ($row['start_date'] ?? '');
+            $end    = (string) ($row['end_date'] ?? '');
+
+            if ($status === 'pending') {
+                $counts['pending']++;
+            } elseif ($status === 'active'
+                || ($status === 'approved' && $start <= $today && $end >= $today)) {
+                $counts['active']++;
+            } elseif ($status === 'approved' && $start > $today) {
+                $counts['upcoming']++;
+            } elseif (in_array($status, ['expired', 'cancelled', 'rejected'], true)) {
+                $counts['history']++;
+            }
+            $counts['total']++;
+        }
+
+        $this->success(['counts' => $counts]);
+    }
+
+    /**
      * GET /api/delegations/eligible-delegates
      * Active users the authenticated delegator may appoint (their scope).
      */

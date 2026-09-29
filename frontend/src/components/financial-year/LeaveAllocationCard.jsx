@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Button from '../ui/Button';
+import Combobox from '../ui/Combobox';
 import {
   getLeaveTypes,
   getEmployees,
@@ -65,6 +66,18 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId, canAllocat
       setLoading(false);
     }
   };
+
+  // The employee roster is the full active headcount, so it is far too long
+  // to scan in a closed <select>. Combobox adds type-to-filter on the name.
+  const employeeOptions = useMemo(
+    () =>
+      employees.map((emp) => ({
+        value: emp.id,
+        label: emp.full_name || 'Unnamed employee',
+        description: emp.employment_type ? emp.employment_type.replace(/_/g, ' ') : undefined,
+      })),
+    [employees],
+  );
 
   const handleSelectAll = (checked) => {
     setSelectAll(checked);
@@ -167,25 +180,18 @@ const LeaveAllocationCard = ({ financialYears, preselectedEmployeeId, canAllocat
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Select Employee <span className="text-red-500">*</span>
             </label>
-            <select
+            <Combobox
               value={formData.employee_id}
-              onChange={(e) => {
-                const id = e.target.value;
+              onChange={(id) => {
                 setFormData({ ...formData, employee_id: id });
                 setSelectedEmployee(
                   id ? employees.find((emp) => String(emp.id) === id) || null : null,
                 );
               }}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
-              required
-            >
-              <option value="">Select an employee</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.full_name}
-                </option>
-              ))}
-            </select>
+              options={employeeOptions}
+              placeholder="Search employees by name"
+              noOptionsMessage="No employees found."
+            />
           </div>
 
           <div>

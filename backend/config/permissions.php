@@ -161,7 +161,11 @@ return [
             'actions' => [
                 ['key' => 'view',   'label' => 'View',   'type' => 'page'],
                 ['key' => 'manage', 'label' => 'Manage', 'type' => 'action'],
-                // Phase 11 (migration 039): dedicated page permission for the
+                ['key' => 'supervise', 'label' => 'Supervisory Appraisal Access', 'type' => 'page'],
+                ['key' => 'score',     'label' => 'Create and Score Appraisals', 'type' => 'action'],
+                ['key' => 'approve',   'label' => 'Approve and Review Appraisals', 'type' => 'action'],
+                ['key' => 'feedback',  'label' => 'Submit Own Appraisal Feedback', 'type' => 'action'],
+                // Phase 11 (migration 091): dedicated page permission for the
                 // HR Admin "Appraisal Cycles" page. Decoupled from
                 // performance:view (the standalone Appraisal page, which heads
                 // keep) and performance:manage (appraisal create/submit/
