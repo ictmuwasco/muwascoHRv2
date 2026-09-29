@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { consumeReturnTo } from '../../utils/sessionRecovery';
 import {
   Eye,
   EyeOff,
@@ -19,12 +20,16 @@ import Logo from '../../components/Logo';
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login, isAuthenticated } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [error, setError] = useState('');
+  // Pre-seeded with the reason carried across the redirect, so an employee
+  // whose session ended is told WHY in plain language rather than staring at
+  // an empty form wondering what happened.
+  const [error, setError] = useState(() => searchParams.get('reason') || '');
   const [loading, setLoading] = useState(false);
   const [touched, setTouched] = useState({ email: false, password: false });
 
@@ -57,8 +62,11 @@ const Login = () => {
       const result = await login(email, password);
 
       if (result.success) {
-        // Navigate to dashboard; ProtectedRoute will handle consent check
-        navigate('/dashboard', { replace: true });
+        // Return the employee to the page their session expired on, rather
+        // than dumping them on the dashboard. Falls back to the dashboard when
+        // there is nothing remembered (a normal first sign-in).
+        const destination = consumeReturnTo() || '/dashboard';
+        navigate(destination, { replace: true });
       } else {
         setError(result.message);
       }
@@ -202,9 +210,7 @@ const Login = () => {
                   </label>
                   <button
                     type="button"
-                    onClick={() => {
-                      /* hook up forgot-password flow here */
-                    }}
+                    onClick={() => navigate('/forgot-password')}
                     className="text-xs font-medium text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
                   >
                     Forgot password?
