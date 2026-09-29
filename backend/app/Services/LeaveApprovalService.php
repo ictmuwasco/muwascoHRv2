@@ -30,6 +30,7 @@ class LeaveApprovalService
     private LeaveCalculationService $calculationService;
     private DelegationService $delegationService;
     private DelegateService $delegateService;
+    private \App\Services\Notification\LeaveNotificationService $notificationService;
 
     public function __construct()
     {
@@ -38,6 +39,7 @@ class LeaveApprovalService
         $this->calculationService = new LeaveCalculationService();
         $this->delegationService = DelegationService::getInstance();
         $this->delegateService = new DelegateService();
+        $this->notificationService = new \App\Services\Notification\LeaveNotificationService();
     }
 
     /**
@@ -189,6 +191,26 @@ class LeaveApprovalService
 
             $this->db->commit();
 
+            // After commit: the decision is durable, and a notification failure
+            // must never be able to roll back an approval that already happened.
+            $fresh = $this->notificationService->findApplication($applicationId);
+            if ($fresh !== null) {
+                if ($nextStatus === 'approved') {
+                    $this->notificationService->notifyFullyApproved($fresh, $userId);
+                } else {
+                    $this->notificationService->notifyStageAdvanced($fresh, $currentStatus, $userId);
+                }
+            }
+
+            // Terminal approval also hands the appointed duty-cover delegate
+            // their temporary authority (DelegationService::createFromApprovedLeave).
+            // Deliberately AFTER commit: the leave is approved either way, and
+            // the service swallows + logs its own failures so a delegation
+            // problem can never undo a decision the approver already made.
+            if ($nextStatus === LeaveWorkflowRules::STATUS_APPROVED) {
+                $this->delegationService->createFromApprovedLeave($applicationId, $userId);
+            }
+
             return [
                 'success' => true,
                 'message' => $nextStatus === 'approved'
@@ -304,6 +326,11 @@ class LeaveApprovalService
 
             $this->db->commit();
 
+            $fresh = $this->notificationService->findApplication($applicationId);
+            if ($fresh !== null) {
+                $this->notificationService->notifyRejected($fresh, $reason, $userId);
+            }
+
             return ['success' => true, 'message' => 'Leave application rejected', 'data' => ['status' => 'rejected']];
         } catch (\Exception $e) {
             $this->db->rollback();
@@ -368,6 +395,21 @@ class LeaveApprovalService
 
             $this->db->commit();
 
+            // The person is no longer away, so any duty-cover delegation minted
+            // for this leave stops immediately. Scoped to THIS application's
+            // auto row, so an unrelated manual delegation is never touched.
+            if ($wasApproved) {
+                $this->delegationService->cancelForLeaveApplication(
+                    $applicationId,
+                    'Leave application #' . $applicationId . ' was invalidated.'
+                );
+            }
+
+            $fresh = $this->notificationService->findApplication($applicationId);
+            if ($fresh !== null) {
+                $this->notificationService->notifyWithdrawn($fresh, 'invalidated');
+            }
+
             return ['success' => true, 'message' => 'Leave application invalidated', 'data' => ['status' => 'invalidated']];
         } catch (\Exception $e) {
             $this->db->rollback();
@@ -424,6 +466,11 @@ class LeaveApprovalService
             $this->logHistory($applicationId, $userId, 'cancelled', $app);
 
             $this->db->commit();
+
+            $fresh = $this->notificationService->findApplication($applicationId);
+            if ($fresh !== null) {
+                $this->notificationService->notifyWithdrawn($fresh, 'cancelled');
+            }
 
             return ['success' => true, 'message' => 'Leave application cancelled', 'data' => ['status' => 'cancelled']];
         } catch (\Exception $e) {
@@ -584,11 +631,15 @@ class LeaveApprovalService
      * active delegation (§17/§18): the delegate sees EXACTLY what the
      * delegator would see, for as long as the delegation is active. When no
      * delegation applies, the clause is returned unchanged.
+     *
+     * $stageAware (pending queues only) additionally restricts each fragment
+     * to the stage(s) the delegated_role owns, mirroring
+     * DelegationService::canActAsLeaveApprover().
      */
-    private function wrapWithDelegatedScopes(string $where, int $userId): string
+    private function wrapWithDelegatedScopes(string $where, int $userId, bool $stageAware = false): string
     {
         try {
-            $fragments = $this->delegationService->delegatedVisibilityFragments($userId);
+            $fragments = $this->delegationService->delegatedVisibilityFragments($userId, $stageAware);
         } catch (\Throwable $e) {
             return $where;
         }
@@ -596,6 +647,134 @@ class LeaveApprovalService
             return $where;
         }
         return '(' . $where . ' OR ' . implode(' OR ', $fragments) . ')';
+    }
+
+    /**
+     * WHERE fragment for the PENDING queue: list ONLY applications the current
+     * user is actually entitled to decide right now.
+     *
+     * Mirrors isAuthorisedApprover() stage-by-stage (role gate + LIVE org-head
+     * lookup — the same correlated subqueries as LeaveWorkflowService::
+     * getManagers()), so that:
+     *   - a row leaves an approver's queue as soon as it advances to a stage
+     *     they cannot decide (section head approves → pending_dept_head →
+     *     disappears from the section head's Pending tab);
+     *   - approvers never see their OWN application (self-approval is not a
+     *     decision path — the applicant tracks it under "My Leave");
+     *   - delegations and applicant-picked duty-cover delegates are matched
+     *     stage-aware too.
+     *
+     * Scope-only visibility (buildApproverWhereClause) is deliberately NOT
+     * used for pending rows: it lists every pending row in the approver's org
+     * unit regardless of stage, which produced "You are not authorised to
+     * approve this application" on rows the user could not decide.
+     *
+     * The SAME fragment is used by getPendingForApprover() and
+     * countForApprover('pending') so the tab badge always matches the rows.
+     */
+    private function buildPendingAuthorityWhere(int $userId, string $role, int $employeeId, array $currentUser): string
+    {
+        $empId = (int) $employeeId;
+        $auth = Auth::getInstance();
+        $branches = [];
+
+        // HR manager / super admin bypass: they may decide ANY pending stage
+        // (isAuthorisedApprover() returns true before the stage switch).
+        if ($auth->isSuperAdmin() || $auth->isHRManager()) {
+            $branches[] = '1=1';
+        } else {
+            // LIVE org-head lookups — byte-for-byte mirrors of the correlated
+            // subqueries in LeaveWorkflowService::getManagers(). Alias `e` is
+            // the applicant's employees row, already joined by both callers.
+            $liveSubsectionHead = "(SELECT e2.id FROM employees e2 JOIN users u2 ON u2.employee_id = e2.employee_id WHERE e2.subsection_id = e.subsection_id AND u2.role = 'sub_section_head' LIMIT 1)";
+            $liveSectionHead    = "(SELECT e3.id FROM employees e3 JOIN users u3 ON u3.employee_id = e3.employee_id WHERE e3.section_id = e.section_id AND u3.role = 'section_head' LIMIT 1)";
+            $liveDeptHead       = "(SELECT e4.id FROM employees e4 JOIN users u4 ON u4.employee_id = e4.employee_id WHERE e4.department_id = e.department_id AND u4.role = 'dept_head' LIMIT 1)";
+
+            if ($role === 'sub_section_head') {
+                $branches[] = "(la.status = 'pending_subsection_head' AND {$liveSubsectionHead} = {$empId})";
+            }
+            if (in_array($role, ['section_head', 'sub_section_head'], true)) {
+                $branches[] = "(la.status = 'pending_section_head' AND {$liveSectionHead} = {$empId})";
+            }
+            if (in_array($role, ['dept_head', 'section_head', 'sub_section_head'], true)) {
+                $branches[] = "(la.status = 'pending_dept_head' AND {$liveDeptHead} = {$empId})";
+            }
+            if ($role === 'managing_director') {
+                // Mirrors isAuthorisedApprover(): role check only, no emp-id match.
+                $branches[] = "la.status = 'pending_managing_director'";
+            }
+            if (in_array($role, ['bod_chair', 'bod_chairman'], true)) {
+                $branches[] = "la.status = 'pending_bod_chair'";
+            }
+            if ($role === 'manager') {
+                $branches[] = "la.status = 'pending_manager'";
+            }
+            if ($role === 'hr_manager') {
+                // isAuthorisedApprover()'s switch: pending_hr → hr_manager.
+                // (The session bypass above normally covers this already;
+                // this branch keeps DB-role and session-role views identical.)
+                $branches[] = "la.status = 'pending_hr'";
+            }
+            // pending_hr_manager: no natural branch on purpose — mirrors
+            // isAuthorisedApprover(), which has NO switch case for it either;
+            // only the HR/super-admin bypass or a stage-matched delegation
+            // decides those rows.
+        }
+
+        $natural = $branches !== [] ? '(' . implode(' OR ', $branches) . ')' : '1=0';
+
+        // Active delegations: delegator's scope AND the stage(s) the
+        // delegated_role owns (routed like canActAsLeaveApprover()).
+        $authority = $this->wrapWithDelegatedScopes($natural, $userId, true);
+
+        // Applicant-picked duty-cover delegate (012 feature): mirrors
+        // DelegateService::canDelegateApprove() — valid only when the natural
+        // approver at this stage IS the applicant (self-application backup).
+        $dutyCover = $this->dutyCoverDelegateClause($empId, $currentUser);
+        if ($dutyCover !== null) {
+            $authority = '(' . $authority . ' OR ' . $dutyCover . ')';
+        }
+
+        // Never surface your own application in the approvals queue.
+        return '(la.employee_id <> ' . $empId . ' AND ' . $authority . ')';
+    }
+
+    /**
+     * SQL branch for the applicant-picked duty-cover delegate (mirror of
+     * DelegateService::canDelegateApprove()): the recorded delegate may decide
+     * a pending stage ONLY when that stage's natural approver is the applicant
+     * themself (self-application backup) and the delegate shares the
+     * applicant's org unit. Delegate ≠ applicant is already enforced by the
+     * caller's `la.employee_id <> ...` exclusion.
+     *
+     * Returns null when the user has no org unit (can never be a duty-cover).
+     */
+    private function dutyCoverDelegateClause(int $employeeId, array $currentUser): ?string
+    {
+        $emp = (int) $employeeId;
+        $mySubsection = (int) ($currentUser['subsection_id'] ?? 0);
+        $mySection    = (int) ($currentUser['section_id'] ?? 0);
+        $myDepartment = (int) ($currentUser['department_id'] ?? 0);
+
+        // Applicant's user role — mirror of DelegateService::getEmployeeRole().
+        $applicantRole = "(SELECT u2.role FROM users u2 WHERE u2.employee_id = e.employee_id LIMIT 1)";
+
+        $branches = [];
+        if ($mySubsection > 0) {
+            $branches[] = "(la.status = 'pending_subsection_head' AND {$applicantRole} = 'sub_section_head' AND e.subsection_id = {$mySubsection})";
+        }
+        if ($mySection > 0) {
+            $branches[] = "(la.status = 'pending_section_head' AND {$applicantRole} = 'section_head' AND e.section_id = {$mySection})";
+        }
+        if ($myDepartment > 0) {
+            $branches[] = "(la.status = 'pending_dept_head' AND {$applicantRole} = 'dept_head' AND e.department_id = {$myDepartment})";
+        }
+
+        if ($branches === []) {
+            return null;
+        }
+
+        return '(la.delegate_emp_id = ' . $emp . ' AND (' . implode(' OR ', $branches) . '))';
     }
 
     /**
@@ -827,13 +1006,10 @@ class LeaveApprovalService
 
         $pendingStatuses = "'pending_subsection_head','pending_section_head','pending_dept_head','pending_managing_director','pending_hr','pending_hr_manager','pending_bod_chair','pending_manager'";
 
-        // Build the WHERE clause based on role, then extend it with the
-        // delegated scopes of any active delegation (§17/§18) so the delegate
-        // is ROUTED the applications the delegator would see.
-        $where = $this->wrapWithDelegatedScopes(
-            $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'pending'),
-            $userId
-        );
+        // Stage-aware AUTHORITY filter (not scope): only rows this user may
+        // decide at their CURRENT stage, never their own application. See
+        // buildPendingAuthorityWhere() — the same fragment feeds the count.
+        $where = $this->buildPendingAuthorityWhere($userId, $role, $employeeId, $currentUser);
 
         $sql = "
             SELECT la.*, lt.name as leave_type_name,
@@ -1192,12 +1368,23 @@ class LeaveApprovalService
                 break;
         }
 
-        // Same delegated-scope extension as the SELECT queries so the count
-        // always matches the visible rows (delegated queues included).
-        $where = $this->wrapWithDelegatedScopes(
-            $this->buildApproverWhereClause($role, $employeeId, $currentUser, $category),
-            (int) ($userId ?? 0)
-        );
+        // Same filter as the SELECT queries so the count always matches the
+        // visible rows (delegated queues included). The pending category uses
+        // the stage-aware AUTHORITY fragment — NOT the scope-only clause —
+        // otherwise the badge would count rows the tab no longer shows.
+        if ($category === 'pending') {
+            $where = $this->buildPendingAuthorityWhere(
+                (int) ($userId ?? 0),
+                $role,
+                $employeeId,
+                $currentUser
+            );
+        } else {
+            $where = $this->wrapWithDelegatedScopes(
+                $this->buildApproverWhereClause($role, $employeeId, $currentUser, $category),
+                (int) ($userId ?? 0)
+            );
+        }
 
         $sql = "
             SELECT COUNT(*) AS total
