@@ -15,6 +15,9 @@ export interface Kpi {
   role: string | null;
   assigned_to_employee_ids: string | null;
   department_id: number | null;
+  /** Human-readable names resolved for every stored employee reference. */
+  assigned_employee_names?: string[];
+
   section_id: number | null;
   subsection_id: number | null;
   is_active: number;
