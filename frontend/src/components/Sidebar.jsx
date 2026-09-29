@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import api from '../utils/api';
 import {
   LayoutDashboard,
   Users,
@@ -29,7 +30,7 @@ import Logo from './Logo';
 import { SETTINGS_VISIBILITY_PERMISSIONS, parsePermission } from '../config/pagePermissions';
 
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
-  const { can, canAny } = useAuth();
+  const { user, can, canAny } = useAuth();
   const location = useLocation();
   const [expandedParent, setExpandedParent] = useState(null);
 
@@ -78,6 +79,60 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   // Workplans: visible to roles with workplan:view permission
   // (hr_manager, super_admin, dept_head, section_head, sub_section_head, manager)
   const canViewWorkplans = can('workplan', 'view');
+  const canViewSupervisorAppraisals = !!user && !['officer', 'employee', 'bod_chairman'].includes(String(user.role || '').toLowerCase()) && can('performance', 'supervise');
+  // Completed Appraisals is also open to officers/staff (performance:feedback).
+  // The API pins them to their OWN appraisals server-side, so this only reveals
+  // the menu entry - it grants no access to anybody else's records.
+  const canViewCompletedAppraisals = canViewSupervisorAppraisals || can('performance', 'feedback');
+
+  // Delegations / Acting Authority register.
+  //
+  // `delegations:view` alone is not enough to show this entry. The register is
+  // an OVERSIGHT artefact — it lists who is covering whom across an org unit —
+  // and officers are excluded from it entirely (migration 097 revokes
+  // delegations:view for the role; DelegationService::REGISTER_EXCLUDED_ROLES
+  // short-circuits the API as defence in depth).
+  //
+  // The explicit role check on top of the permission is deliberate: it mirrors
+  // the canViewSupervisorAppraisals pattern above, and it means a stray
+  // per-user 'delegations:view' ALLOW override cannot re-expose the menu entry
+  // to an officer. UX only — the server still decides what rows come back.
+  const userRole = String(user?.role || '').toLowerCase();
+  const canViewDelegations =
+    can('delegations', 'view') && !['officer'].includes(userRole);
+
+  // Live badge counts for the Delegations entry.
+  //
+  // Fetched once from the lightweight /delegations/summary (integers only, not
+  // whole delegation rows) and refreshed whenever the user navigates back to the
+  // register, so the number reflects the state they are about to see rather
+  // than whatever was true when the shell first mounted.
+  const [delegationCounts, setDelegationCounts] = useState(null);
+
+  useEffect(() => {
+    if (!canViewDelegations) {
+      setDelegationCounts(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const response = await api.get('/delegations/summary');
+        if (!cancelled) {
+          setDelegationCounts(response.data?.data?.counts || null);
+        }
+      } catch {
+        // A missing badge must never break navigation — the link still works.
+        if (!cancelled) setDelegationCounts(null);
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewDelegations, location.pathname]);
 
   // Auto-expand the correct parent based on the current route.
   useEffect(() => {
@@ -99,6 +154,8 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       path.startsWith('/holidays')
     ) {
       setExpandedParent('HR Admin');
+    } else if (path.startsWith('/appraisal') || path.startsWith('/strategy/performance-appraisals')) {
+      setExpandedParent('Appraisal');
     } else if (canViewStrategy && path.startsWith('/strategy')) {
       setExpandedParent('Strategy & Performance');
     } else if (path.startsWith('/reports')) {
@@ -106,7 +163,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     } else {
       setExpandedParent(null);
     }
-  }, [location.pathname, canViewStrategy]);
+  }, [location.pathname, canViewStrategy, canViewSupervisorAppraisals]);
 
   const toggleParent = (name) => {
     setExpandedParent((prev) => (prev === name ? null : name));
@@ -232,15 +289,8 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
               icon: User,
               visible: () => can('leave', 'view'),
             },
-            // Temporary Delegation / Acting Authority (§24): every role can
-            // VIEW its own delegations; create/approve are gated in-page and
-            // by the backend. Delegates see the authority they were granted.
-            {
-              name: 'Delegations',
-              href: '/delegations',
-              icon: UserCheck,
-              visible: () => can('delegations', 'view'),
-            },
+            // NOTE: 'Delegations' is intentionally NOT here. It is a top-level
+            // entry below, so its count badge is always on screen.
           ],
         }
       : {
@@ -261,14 +311,42 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
               icon: User,
               visible: () => can('leave', 'view'),
             },
-            {
-              name: 'Delegations',
-              href: '/delegations',
-              icon: UserCheck,
-              visible: () => can('delegations', 'view'),
-            },
           ],
         },
+    // Temporary Delegation / Acting Authority register (§24).
+    //
+    // Deliberately a TOP-LEVEL entry rather than a child of the Leave group:
+    // submenu children are only rendered while their parent is expanded, so
+    // burying it there meant the register was invisible until the user guessed
+    // to open Leave — and the count badge that makes it worth opening had
+    // nowhere to live. Acting-authority cover is its own concern, independent
+    // of leave administration.
+    //
+    // Visible to every role EXCEPT officer, and scoped server-side to the
+    // viewer's own org unit (see canViewDelegations above).
+    {
+      name: 'Delegations',
+      href: '/delegations',
+      icon: UserCheck,
+      visible: () => canViewDelegations,
+      // "Live now" count — the number a supervisor actually opens this page for.
+      // Pending is surfaced too, because an unapproved request is the one thing
+      // that is waiting on someone.
+      badge: () => {
+        const counts = delegationCounts;
+        if (!counts) return null;
+        const live = (counts.active || 0) + (counts.upcoming || 0);
+        if (live === 0 && (counts.pending || 0) === 0) return null;
+        const urgent = (counts.pending || 0) > 0;
+        return {
+          value: urgent ? counts.pending : live,
+          urgent,
+          title: urgent
+            ? `${counts.pending} awaiting approval`
+            : `${counts.active} active now · ${counts.upcoming} upcoming`,
+        };
+      },
+    },
     {
       name: 'Roster',
       icon: CalendarRange,
@@ -295,9 +373,33 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     },
     {
       name: 'Appraisal',
-      href: '/appraisal',
       icon: Star,
-      visible: () => can('performance', 'view'),
+      visible: () => can('performance', 'feedback') || canViewSupervisorAppraisals,
+      submenu: [
+        {
+          name: 'My Appraisals',
+          href: '/appraisal/my',
+          icon: FileText,
+          visible: () => can('performance', 'feedback'),
+        },
+        {
+          name: 'Supervisor Appraisals',
+          href: '/strategy/performance-appraisals',
+          icon: ClipboardList,
+          visible: () => canViewSupervisorAppraisals,
+        },
+        {
+          // Completed Appraisals: read-only archive of finalised appraisals
+          // with score breakdown + PDF/Word/print export. Supervisors see their
+          // whole authorised scope; officers and staff (performance:feedback)
+          // see ONLY their own, with no filters - that self-scope is enforced
+          // server-side in AppraisalReportService, never in the client.
+          name: 'Completed Appraisals',
+          href: '/appraisal/completed',
+          icon: FileBarChart2,
+          visible: () => canViewCompletedAppraisals,
+        },
+      ],
     },
     ...(canViewStrategy
       ? [
@@ -361,6 +463,16 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           name: 'Leave Reports',
           href: '/leave/reports',
           icon: FileBarChart2,
+          visible: () => can('reports', 'view'),
+        },
+        {
+          // Company-wide appraisal analytics: performance trends, unit averages
+          // and outliers. Server-side scoping pins this to the caller's
+          // organisational scope, so a section head's figures describe their own
+          // unit - the link only reveals that the report exists.
+          name: 'Appraisal Reports',
+          href: '/reports/appraisal',
+          icon: Star,
           visible: () => can('reports', 'view'),
         },
       ],
@@ -464,12 +576,14 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
             }
             // For routes with children, mark active on the prefix so the parent item lights up.
             const routeIsPrefix = location.pathname.startsWith(item.href);
+            const badge = item.badge ? item.badge() : null;
             return (
               <NavLink
                 key={item.name}
                 to={item.href}
                 end={!item.href.startsWith('/settings')}
                 onClick={onClose}
+                title={badge?.title}
                 className={({ isActive }) =>
                   `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
                     isActive || (item.href === '/settings' && routeIsPrefix)
@@ -479,7 +593,20 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
                 }
               >
                 <item.icon className="h-5 w-5" />
-                <span className="font-medium">{item.name}</span>
+                <span className="font-medium flex-1">{item.name}</span>
+                {/* Count badge — e.g. how many duty-cover arrangements are live
+                    right now. Red when something is waiting on an approver. */}
+                {badge && (
+                  <span
+                    className={`ml-2 min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-xs font-semibold text-center ${
+                      badge.urgent
+                        ? 'bg-red-600 text-white'
+                        : 'bg-primary-100 text-primary-800 dark:bg-primary-500/25 dark:text-primary-200'
+                    }`}
+                  >
+                    {badge.value}
+                  </span>
+                )}
               </NavLink>
             );
           })}
