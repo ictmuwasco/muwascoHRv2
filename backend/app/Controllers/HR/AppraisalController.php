@@ -53,7 +53,7 @@ class AppraisalController extends BaseController
      */
     public function indexAction(): void
     {
-        $this->requirePermission('performance', 'view');
+        $this->requirePermission('performance', 'supervise');
         [$where, $params, $types] = $this->scopeClause();
 
         $stmt = $this->db->prepare(
@@ -74,10 +74,12 @@ class AppraisalController extends BaseController
      */
     public function showAction(int $id): void
     {
-        $this->requirePermission('performance', 'view');
+        $this->requirePermission('performance', 'supervise');
 
-        $stmt = $this->db->prepare(self::ROW_SELECT . ' WHERE a.id = ? LIMIT 1');
-        $stmt->bind_param('i', $id);
+        [$where, $params] = $this->scopeClause();
+        $stmt = $this->db->prepare(self::ROW_SELECT . " WHERE a.id = ? AND {$where} LIMIT 1");
+        $values = array_merge([$id], $params);
+        $stmt->bind_param(str_repeat('i', count($values)), ...$values);
         $stmt->execute();
         $row = $stmt->get_result()->fetch_assoc();
         $stmt->close();
@@ -111,7 +113,7 @@ class AppraisalController extends BaseController
      */
     public function storeAction(): void
     {
-        $this->requirePermission('performance', 'manage');
+        $this->requirePermission('performance', 'score');
         $data = $this->getJsonBody();
 
         $employeeId = (int) ($data['employee_id'] ?? 0);
@@ -171,7 +173,7 @@ class AppraisalController extends BaseController
      */
     public function updateAction(int $id): void
     {
-        $this->requirePermission('performance', 'manage');
+        $this->requirePermission('performance', 'score');
         $data = $this->getJsonBody();
 
         $this->assertExists($id);
@@ -220,7 +222,7 @@ class AppraisalController extends BaseController
      */
     public function destroyAction(int $id): void
     {
-        $this->requirePermission('performance', 'manage');
+        $this->requirePermission('performance', 'score');
 
         // assertExists() also enforces the caller's data scope, so a unit head
         // cannot delete another unit's draft by id.
@@ -261,11 +263,11 @@ class AppraisalController extends BaseController
      */
     public function pendingAction(): void
     {
-        $this->requirePermission('performance', 'view');
+        $this->requirePermission('performance', 'approve');
         [$where, $params, $types] = $this->scopeClause();
 
         $stmt = $this->db->prepare(
-            self::ROW_SELECT . " WHERE $where AND a.status = 'submitted'
+            self::ROW_SELECT . " WHERE $where AND a.status IN ('submitted','pending_dept_approval','under_review')
                                  ORDER BY a.submitted_at ASC, a.id ASC LIMIT 200"
         );
         if ($params !== []) {
@@ -283,7 +285,7 @@ class AppraisalController extends BaseController
      */
     public function byEmployeeAction(int $id): void
     {
-        $this->requirePermission('performance', 'view');
+        $this->requirePermission('performance', 'supervise');
 
         // Scope applies here too: a unit head must not be able to read another
         // unit's appraisals just by guessing an employee id.
@@ -311,7 +313,7 @@ class AppraisalController extends BaseController
      */
     public function submitAction(int $id): void
     {
-        $this->requirePermission('performance', 'view');
+        $this->requirePermission('performance', 'score');
 
         $row = $this->assertExists($id);
 
@@ -350,7 +352,7 @@ class AppraisalController extends BaseController
      */
     public function approveAction(int $id): void
     {
-        $this->requirePermission('performance', 'manage');
+        $this->requirePermission('performance', 'approve');
 
         $row = $this->assertExists($id);
 

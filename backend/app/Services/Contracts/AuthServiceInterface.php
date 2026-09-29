@@ -29,8 +29,26 @@ interface AuthServiceInterface extends ServiceInterface
 
     /**
      * Refresh user token.
+     *
+     * @deprecated Renewal no longer works from a user id, because identifying
+     *             the caller requires a still-valid access token - which is
+     *             exactly what has expired by the time renewal is needed. Use
+     *             {@see self::renewFromRefreshToken()} instead.
      */
     public function refreshToken(int $userId): ?string;
+
+    /**
+     * Issue a new access token from a refresh-token cookie value.
+     *
+     * @return array{token:string,expires_in:int,refresh_expires_in:int}
+     * @throws \InvalidArgumentException when the token is expired/revoked
+     */
+    public function renewFromRefreshToken(string $refreshToken): array;
+
+    /**
+     * Revoke every outstanding refresh token for a user.
+     */
+    public function revokeAllRefreshTokens(int $userId): void;
 
     /**
      * Validate user credentials.

@@ -160,10 +160,32 @@ export default function TierWorkplanPage({
   const deptId = (!wideRole || pinToOwnDepartment) && ownDepartment != null ? ownDepartment : null;
   const deptContracts =
     deptId != null ? refs.contracts.filter((c) => c.department_id === deptId) : refs.contracts;
+
+  // Per-row cascade gating: the dialog always pushes one level down
+  // (organisation -> department -> section -> subsection), so offer the
+  // action only when that next level actually has units to receive the work.
+  // A section without subsections therefore gets NO cascade button at all
+  // (instead of a dialog that dead-ends), and subsection-level rows never
+  // cascade. Legacy rows without a level keep the old behaviour.
+  const canCascadeRow = (row: WorkplanObjective): boolean => {
+    switch (row.level) {
+      case 'organisation':
+        return deptContracts.length > 0;
+      case 'department':
+        return (tier.list?.sections ?? []).length > 0;
+      case 'section':
+        return (tier.list?.subsections ?? []).length > 0;
+      case 'subsection':
+        return false;
+      default:
+        return true;
+    }
+  };
   // Source activities for section / subsection heads - fetched from the
   // dedicated sectionSources endpoint so the server handles unit-scoping,
-  // the parent_objective_id IS NOT NULL filter (cascaded only) and the
-  // created_by != self exclusion (no string-vs-integer strict-inequality bug).
+  // the tier filter (section sources never sit in subsections and vice versa)
+  // and the NULL-safe created-by-someone-else exclusion (no
+  // string-vs-integer strict-inequality bug).
   // Refreshed after saves and manual refreshes (see below) so the picker picks
   // up work cascaded into the unit without needing a full page remount.
   const [sectionSources, setSectionSources] = useState<{ id: number; objective: string }[]>([]);
@@ -363,6 +385,7 @@ export default function TierWorkplanPage({
         canManage={canManage}
         showOfficer={showOfficer}
         view={view}
+        canCascade={canCascadeRow}
         onSaveProgress={saveProgress}
         onEdit={(row) => setForm({ open: true, mode: 'edit', record: row })}
         {...(cascadeEnabled

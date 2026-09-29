@@ -29,7 +29,7 @@ import Logo from './Logo';
 import { SETTINGS_VISIBILITY_PERMISSIONS, parsePermission } from '../config/pagePermissions';
 
 const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
-  const { can, canAny } = useAuth();
+  const { user, can, canAny } = useAuth();
   const location = useLocation();
   const [expandedParent, setExpandedParent] = useState(null);
 
@@ -78,6 +78,27 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   // Workplans: visible to roles with workplan:view permission
   // (hr_manager, super_admin, dept_head, section_head, sub_section_head, manager)
   const canViewWorkplans = can('workplan', 'view');
+  const canViewSupervisorAppraisals = !!user && !['officer', 'employee', 'bod_chairman'].includes(String(user.role || '').toLowerCase()) && can('performance', 'supervise');
+  // Completed Appraisals is also open to officers/staff (performance:feedback).
+  // The API pins them to their OWN appraisals server-side, so this only reveals
+  // the menu entry - it grants no access to anybody else's records.
+  const canViewCompletedAppraisals = canViewSupervisorAppraisals || can('performance', 'feedback');
+
+  // Delegations / Acting Authority register.
+  //
+  // `delegations:view` alone is not enough to show this entry. The register is
+  // an OVERSIGHT artefact — it lists who is covering whom across an org unit —
+  // and officers are excluded from it entirely (migration 097 revokes
+  // delegations:view for the role; DelegationService::REGISTER_EXCLUDED_ROLES
+  // short-circuits the API as defence in depth).
+  //
+  // The explicit role check on top of the permission is deliberate: it mirrors
+  // the canViewSupervisorAppraisals pattern above, and it means a stray
+  // per-user 'delegations:view' ALLOW override cannot re-expose the menu entry
+  // to an officer. UX only — the server still decides what rows come back.
+  const userRole = String(user?.role || '').toLowerCase();
+  const canViewDelegations =
+    can('delegations', 'view') && !['officer'].includes(userRole);
 
   // Auto-expand the correct parent based on the current route.
   useEffect(() => {
@@ -99,6 +120,8 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       path.startsWith('/holidays')
     ) {
       setExpandedParent('HR Admin');
+    } else if (path.startsWith('/appraisal') || path.startsWith('/strategy/performance-appraisals')) {
+      setExpandedParent('Appraisal');
     } else if (canViewStrategy && path.startsWith('/strategy')) {
       setExpandedParent('Strategy & Performance');
     } else if (path.startsWith('/reports')) {
@@ -106,7 +129,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     } else {
       setExpandedParent(null);
     }
-  }, [location.pathname, canViewStrategy]);
+  }, [location.pathname, canViewStrategy, canViewSupervisorAppraisals]);
 
   const toggleParent = (name) => {
     setExpandedParent((prev) => (prev === name ? null : name));
@@ -232,14 +255,14 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
               icon: User,
               visible: () => can('leave', 'view'),
             },
-            // Temporary Delegation / Acting Authority (§24): every role can
-            // VIEW its own delegations; create/approve are gated in-page and
-            // by the backend. Delegates see the authority they were granted.
+            // Temporary Delegation / Acting Authority register (§24). Visible
+            // to every role EXCEPT officer, and scoped server-side to the
+            // viewer's own org unit (see canViewDelegations above).
             {
               name: 'Delegations',
               href: '/delegations',
               icon: UserCheck,
-              visible: () => can('delegations', 'view'),
+              visible: () => canViewDelegations,
             },
           ],
         }
@@ -265,7 +288,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
               name: 'Delegations',
               href: '/delegations',
               icon: UserCheck,
-              visible: () => can('delegations', 'view'),
+              visible: () => canViewDelegations,
             },
           ],
         },
@@ -295,9 +318,33 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
     },
     {
       name: 'Appraisal',
-      href: '/appraisal',
       icon: Star,
-      visible: () => can('performance', 'view'),
+      visible: () => can('performance', 'feedback') || canViewSupervisorAppraisals,
+      submenu: [
+        {
+          name: 'My Appraisals',
+          href: '/appraisal/my',
+          icon: FileText,
+          visible: () => can('performance', 'feedback'),
+        },
+        {
+          name: 'Supervisor Appraisals',
+          href: '/strategy/performance-appraisals',
+          icon: ClipboardList,
+          visible: () => canViewSupervisorAppraisals,
+        },
+        {
+          // Completed Appraisals: read-only archive of finalised appraisals
+          // with score breakdown + PDF/Word/print export. Supervisors see their
+          // whole authorised scope; officers and staff (performance:feedback)
+          // see ONLY their own, with no filters - that self-scope is enforced
+          // server-side in AppraisalReportService, never in the client.
+          name: 'Completed Appraisals',
+          href: '/appraisal/completed',
+          icon: FileBarChart2,
+          visible: () => canViewCompletedAppraisals,
+        },
+      ],
     },
     ...(canViewStrategy
       ? [
@@ -361,6 +408,16 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           name: 'Leave Reports',
           href: '/leave/reports',
           icon: FileBarChart2,
+          visible: () => can('reports', 'view'),
+        },
+        {
+          // Company-wide appraisal analytics: performance trends, unit averages
+          // and outliers. Server-side scoping pins this to the caller's
+          // organisational scope, so a section head's figures describe their own
+          // unit - the link only reveals that the report exists.
+          name: 'Appraisal Reports',
+          href: '/reports/appraisal',
+          icon: Star,
           visible: () => can('reports', 'view'),
         },
       ],

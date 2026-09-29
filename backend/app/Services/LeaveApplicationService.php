@@ -20,6 +20,7 @@ class LeaveApplicationService
     private LeaveCalculationService $calculationService;
     private LeaveDocumentService $documentService;
     private LeaveWorkflowService $workflowService;
+    private \App\Services\Notification\LeaveNotificationService $notificationService;
 
     public function __construct()
     {
@@ -27,6 +28,7 @@ class LeaveApplicationService
         $this->calculationService = new LeaveCalculationService();
         $this->documentService = new LeaveDocumentService();
         $this->workflowService = new LeaveWorkflowService();
+        $this->notificationService = new \App\Services\Notification\LeaveNotificationService();
     }
 
     /**
@@ -60,6 +62,21 @@ class LeaveApplicationService
         $delegateAuthCheck = $this->verifyDelegateAuthorization($userId, $delegateEmpId);
         if (!$delegateAuthCheck['authorized']) {
             return ['success' => false, 'message' => 'Access denied: You are not authorized to select this delegate.'];
+        }
+
+        // Availability check: a delegate can act for only ONE colleague at a
+        // time, so refuse the application up front if this person is already
+        // committed across the requested window.
+        //
+        // Enforcing here as well as at approval time is deliberate. The
+        // approval-time guard (DelegationService::createFromApprovedLeave) is
+        // the hard boundary, but by then the leave is already approved and
+        // balances are deducted — telling the applicant afterwards would leave
+        // them on leave with nobody covering. Rejecting at submission lets them
+        // simply nominate somebody else.
+        $availability = $this->checkDelegateAvailability($delegateEmpId, $startDate, $endDate);
+        if (!$availability['available']) {
+            return ['success' => false, 'message' => $availability['message']];
         }
 
         $leaveType = $this->getLeaveType($leaveTypeId);
@@ -200,6 +217,19 @@ class LeaveApplicationService
             $delegateService->notifyDelegate($applicationId, $delegateEmpId, $userId);
 
             $this->db->commit();
+
+            // Notifications run AFTER commit, deliberately. Inside the
+            // transaction a rollback would discard them, but a queue row also
+            // consumes its dedupe key - and the employee is already waiting on
+            // this response, so nothing here may be able to fail the request.
+            $application = $this->notificationService->findApplication($applicationId);
+            if ($application !== null) {
+                if ($initialStatus === 'approved') {
+                    $this->notificationService->notifyFullyApproved($application, $userId);
+                } else {
+                    $this->notificationService->notifyApplied($application);
+                }
+            }
 
             return [
                 'success' => true,
@@ -475,6 +505,52 @@ class LeaveApplicationService
             default:
                 return ['authorized' => false];
         }
+    }
+
+    /**
+     * Is this employee free to act as delegate for the given window?
+     *
+     * A delegate may hold only ONE acting assignment at a time. The slot is
+     * released as soon as the existing delegation reaches a terminal state, or
+     * once its end_date has passed (the lazy sweep in DelegationService flips
+     * it to 'expired'), so a delegate becomes selectable again once the leave
+     * they were covering has ended — exactly the rule the requirement states.
+     *
+     * Delegates WITHOUT a user account cannot hold acting authority (there is no
+     * principal to attach it to), so they are treated as available here; the
+     * real check is DelegationService::userIdForEmployee() at approval time.
+     *
+     * @return array{available: bool, message: string}
+     */
+    private function checkDelegateAvailability(int $delegateEmployeeId, string $startDate, string $endDate): array
+    {
+        $ok = ['available' => true, 'message' => ''];
+
+        try {
+            $busy = DelegationService::getInstance()
+                ->busyDelegateEmployeeIds([$delegateEmployeeId], $startDate, $endDate);
+        } catch (\Throwable $e) {
+            // An availability lookup must never block a legitimate leave
+            // application; the approval-time guard still protects the grant.
+            error_log('[LeaveApplicationService] delegate availability check failed: ' . $e->getMessage());
+            return $ok;
+        }
+
+        $clash = $busy[$delegateEmployeeId] ?? null;
+        if ($clash === null) {
+            return $ok;
+        }
+
+        return [
+            'available' => false,
+            'message'   => sprintf(
+                'The selected delegate is already covering %s from %s to %s. One person can only act for one colleague at a time — please choose someone else, or pick dates after %s.',
+                $clash['delegator_name'],
+                $clash['start_date'],
+                $clash['end_date'],
+                $clash['end_date']
+            ),
+        ];
     }
 
     /**
