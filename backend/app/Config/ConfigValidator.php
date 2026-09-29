@@ -63,6 +63,7 @@ class ConfigValidator
     {
         self::validateEnvVars();
         self::validateInsecureDefaults();
+        self::validateProductionSecurityPosture();
         self::validateJwtSecret();
         self::validateDatabaseConfig();
     }
@@ -105,6 +106,70 @@ class ConfigValidator
         if (!empty($errors)) {
             throw new \RuntimeException(
                 'Production configuration invalid - ' . implode('; ', $errors)
+            );
+        }
+    }
+
+    /**
+     * Enforce the production security posture that the dev template relaxes.
+     *
+     * .env.example deliberately ships the developer-friendly posture
+     * (SESSION_SECURE_COOKIE=false and long token lifetimes) so the project
+     * runs on http://localhost with no TLS and no ceremony. Those exact
+     * values must never survive into production:
+     *
+     *  - SESSION_SECURE_COOKIE=false over HTTPS means the session cookie is
+     *    also sent in cleartext on any http:// request, so one downgrade
+     *    (or an image/link to an http:// URL) leaks it.
+     *  - An 8-hour access token / 30-day refresh token is the dev default.
+     *    Production is 1 hour / 7 days; a stolen token stays usable far
+     *    longer than it needs to be.
+     *
+     * Both are checked here so a mis-copied .env fails loudly at boot rather
+     * than silently shipping a weaker posture than intended.
+     */
+    private static function validateProductionSecurityPosture(): void
+    {
+        if (!self::isProduction()) {
+            return; // dev/staging legitimately run without TLS
+        }
+
+        $errors = [];
+
+        $secureCookie = strtolower(trim((string) env('SESSION_SECURE_COOKIE', '')));
+        if ($secureCookie !== 'true') {
+            $errors[] = 'SESSION_SECURE_COOKIE must be true in production (currently "'
+                . ($secureCookie === '' ? 'unset' : $secureCookie) . '")';
+        }
+
+        // Maxima, not exact matches: a longer token than the production
+        // template is always a weakening, never a hardening.
+        $accessMax = 3600;   // 1 hour
+        $refreshMax = 604800; // 7 days
+
+        $access = (int) env('JWT_ACCESS_TOKEN_EXPIRY', $accessMax);
+        if ($access > $accessMax) {
+            $errors[] = "JWT_ACCESS_TOKEN_EXPIRY must be <= {$accessMax}s in production (currently {$access}s)";
+        }
+
+        $refresh = (int) env('JWT_REFRESH_TOKEN_EXPIRY', $refreshMax);
+        if ($refresh > $refreshMax) {
+            $errors[] = "JWT_REFRESH_TOKEN_EXPIRY must be <= {$refreshMax}s in production (currently {$refresh}s)";
+        }
+
+        // The application must not run as a MySQL superuser in production.
+        // A superuser can read every database on the server, drop tables and
+        // create users, so a single application-layer compromise becomes a
+        // full server compromise. .env.production.example ships
+        // DB_USERNAME=muwascohr for exactly this reason.
+        $dbUser = strtolower(trim((string) env('DB_USERNAME', '')));
+        if ($dbUser === 'root') {
+            $errors[] = 'DB_USERNAME must not be root in production; use a least-privilege account';
+        }
+
+        if (!empty($errors)) {
+            throw new \RuntimeException(
+                'Production security posture invalid - ' . implode('; ', $errors)
             );
         }
     }
