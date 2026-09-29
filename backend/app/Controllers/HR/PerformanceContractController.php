@@ -359,9 +359,21 @@ class PerformanceContractController extends BaseController
         ];
     }
 
+    /**
+     * Existence check for a single row by primary key.
+     *
+     * The table name cannot be a bind parameter, so it is validated against an
+     * explicit allowlist before being interpolated. Callers must pass one of
+     * these literals; anything else returns false rather than reaching the
+     * query. This mirrors the identical guard in AppraisalController.
+     */
     private function rowExists(string $table, int $id): bool
     {
-        return $this->countStatement("SELECT COUNT(*) AS c FROM $table WHERE id = ?", 'i', $id) > 0;
+        if (!in_array($table, ['departments', 'financial_years', 'strategic_plan'], true)) {
+            return false;
+        }
+
+        return $this->countStatement("SELECT COUNT(*) AS c FROM `$table` WHERE id = ?", 'i', $id) > 0;
     }
 
     private function countStatement(string $sql, string $types, ...$params): int

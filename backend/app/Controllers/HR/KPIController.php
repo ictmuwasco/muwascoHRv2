@@ -239,9 +239,21 @@ class KPIController extends BaseController
         return '1=0';
     }
 
+    /**
+     * Existence check for a single row by primary key.
+     *
+     * The table name cannot be a bind parameter, so it is validated against an
+     * explicit allowlist before being interpolated. Callers must pass one of
+     * these literals; anything else returns false rather than reaching the
+     * query. This mirrors the identical guard in AppraisalController.
+     */
     private function rowExists(string $table, int $id): bool
     {
-        $stmt = $this->db->prepare("SELECT COUNT(*) AS c FROM $table WHERE id = ?");
+        if (!in_array($table, ['performance_contracts'], true)) {
+            return false;
+        }
+
+        $stmt = $this->db->prepare("SELECT COUNT(*) AS c FROM `$table` WHERE id = ?");
         if (!$stmt) {
             return false;
         }
