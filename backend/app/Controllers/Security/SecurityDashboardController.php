@@ -40,6 +40,63 @@ class SecurityDashboardController extends BaseController
         }
     }
 
+    public function appraisalAction(): void
+    {
+        $this->requirePermission('security', 'view');
+        try {
+            $db = \db();
+            $events = $db->fetchAll(
+                "SELECT id, event_type, severity, user_id, route, resource_type, resource_id,
+                        action_taken, description, detected_at
+                 FROM security_events
+                 WHERE resource_type = 'EmployeeAppraisal' OR route LIKE '%/appraisals%'
+                 ORDER BY detected_at DESC LIMIT 25"
+            );
+            $counts = $db->fetchOne(
+                "SELECT COUNT(*) AS total,
+                        COALESCE(SUM(action_taken IN ('DENIED', 'BLOCKED')), 0) AS denied,
+                        COALESCE(SUM(action_taken = 'RATE_LIMITED'), 0) AS rate_limited,
+                        COALESCE(SUM(event_type IN ('IDOR_ENUMERATION', 'IDOR_ATTEMPT')), 0) AS object_attempts
+                 FROM security_events
+                 WHERE resource_type = 'EmployeeAppraisal' OR route LIKE '%/appraisals%'"
+            );
+            $audit = $db->fetchAll(
+                "SELECT action, COUNT(*) AS count
+                 FROM audit_logs
+                 WHERE module = 'Performance' AND action LIKE 'APPRAISAL_%'
+                 GROUP BY action ORDER BY count DESC"
+            );
+            $routes = array_values(array_filter(
+                \ApiRouter::getRouteRegistry(),
+                static fn (array $route): bool => str_contains($route['path'] ?? '', '/appraisals')
+            ));
+            $routeCount = count($routes);
+            $permissionDefaults = $db->fetchAll(
+                "SELECT role, action, is_granted
+                 FROM role_permissions
+                 WHERE module = 'performance' AND action IN ('supervise','score','approve','feedback')
+                 ORDER BY role, action"
+            );
+            $this->success([
+                'counts' => $counts ?: ['total' => 0, 'denied' => 0, 'rate_limited' => 0, 'object_attempts' => 0],
+                'recent_events' => $events,
+                'audit_actions' => $audit,
+                'route_count' => $routeCount,
+                'permission_defaults' => $permissionDefaults,
+                'policy' => [
+                    'employee_ownership_enforced' => true,
+                    'organizational_scope_enforced' => true,
+                    'officer_supervisory_hard_deny' => true,
+                    'state_transitions_audited' => true,
+                    'sensitive_comments_in_general_audit' => false,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            \logger()->error('Appraisal security summary error', ['error' => $e->getMessage()]);
+            $this->error('Failed to load appraisal security summary', 500);
+        }
+    }
+
     public function eventsAction(): void
     {
         $this->requirePermission('security', 'view');
@@ -190,6 +247,228 @@ class SecurityDashboardController extends BaseController
     }
 
     /**
+     * GET /security/report — Comprehensive SOC & Executive Security Reporting.
+     * Supports range presets (today, 7d, 30d, 90d, custom) and format (json, csv).
+     */
+    public function reportAction(): void
+    {
+        $this->requirePermission('security', 'view');
+        try {
+            $range = $_GET['range'] ?? '30d';
+            $dateFrom = $_GET['date_from'] ?? null;
+            $dateTo = $_GET['date_to'] ?? null;
+            $format = strtolower((string) ($_GET['format'] ?? 'json'));
+
+            if (!empty($dateFrom) && !empty($dateTo)) {
+                $from = substr($dateFrom, 0, 10);
+                $to = substr($dateTo, 0, 10);
+            } else {
+                switch ($range) {
+                    case 'today':
+                        $from = date('Y-m-d');
+                        $to = date('Y-m-d');
+                        break;
+                    case '7d':
+                        $from = date('Y-m-d', strtotime('-6 days'));
+                        $to = date('Y-m-d');
+                        break;
+                    case '90d':
+                        $from = date('Y-m-d', strtotime('-89 days'));
+                        $to = date('Y-m-d');
+                        break;
+                    case '30d':
+                    default:
+                        $from = date('Y-m-d', strtotime('-29 days'));
+                        $to = date('Y-m-d');
+                        break;
+                }
+            }
+
+            $startDt = $from . ' 00:00:00';
+            $endDt = $to . ' 23:59:59';
+            $db = \db();
+
+            $eventsTotal = (int) ($db->fetchValue(
+                "SELECT COUNT(*) FROM security_events WHERE detected_at BETWEEN ? AND ?",
+                'ss', [$startDt, $endDt]
+            ) ?? 0);
+
+            $sevRows = $db->fetchAll(
+                "SELECT severity, COUNT(*) as count FROM security_events WHERE detected_at BETWEEN ? AND ? GROUP BY severity",
+                'ss', [$startDt, $endDt]
+            );
+            $bySeverity = ['LOW' => 0, 'MEDIUM' => 0, 'HIGH' => 0, 'CRITICAL' => 0];
+            foreach ($sevRows as $sr) {
+                $sev = strtoupper((string) ($sr['severity'] ?? ''));
+                if (isset($bySeverity[$sev])) {
+                    $bySeverity[$sev] = (int) $sr['count'];
+                }
+            }
+
+            $actionRows = $db->fetchAll(
+                "SELECT action_taken, COUNT(*) as count FROM security_events WHERE detected_at BETWEEN ? AND ? GROUP BY action_taken",
+                'ss', [$startDt, $endDt]
+            );
+
+            $defendedCount = (int) ($db->fetchValue(
+                "SELECT COUNT(*) FROM security_events WHERE detected_at BETWEEN ? AND ? AND action_taken IN ('BLOCKED', 'DENIED', 'RATE_LIMITED')",
+                'ss', [$startDt, $endDt]
+            ) ?? 0);
+
+            $topEvents = $db->fetchAll(
+                "SELECT event_type, severity, COUNT(*) as count, MAX(risk_score) as max_risk FROM security_events WHERE detected_at BETWEEN ? AND ? GROUP BY event_type, severity ORDER BY count DESC LIMIT 10",
+                'ss', [$startDt, $endDt]
+            );
+
+            $topRoutes = $db->fetchAll(
+                "SELECT route, http_method, COUNT(*) as count, MAX(severity) as highest_severity FROM security_events WHERE detected_at BETWEEN ? AND ? AND route IS NOT NULL AND route != '' GROUP BY route, http_method ORDER BY count DESC LIMIT 10",
+                'ss', [$startDt, $endDt]
+            );
+
+            $topIps = $db->fetchAll(
+                "SELECT ip_address, COUNT(*) as count, MAX(severity) as max_severity, COUNT(DISTINCT event_type) as unique_attacks FROM security_events WHERE detected_at BETWEEN ? AND ? AND ip_address IS NOT NULL AND ip_address != '' GROUP BY ip_address ORDER BY count DESC LIMIT 10",
+                'ss', [$startDt, $endDt]
+            );
+
+            $timeline = $db->fetchAll(
+                "SELECT DATE(detected_at) as date, severity, COUNT(*) as count FROM security_events WHERE detected_at BETWEEN ? AND ? GROUP BY DATE(detected_at), severity ORDER BY date ASC",
+                'ss', [$startDt, $endDt]
+            );
+
+            $incidentsTotal = (int) ($db->fetchValue(
+                "SELECT COUNT(*) FROM security_incidents WHERE first_seen BETWEEN ? AND ?",
+                'ss', [$startDt, $endDt]
+            ) ?? 0);
+            $incidentsActive = (int) ($db->fetchValue(
+                "SELECT COUNT(*) FROM security_incidents WHERE first_seen BETWEEN ? AND ? AND status IN ('NEW','INVESTIGATING','CONTAINED')",
+                'ss', [$startDt, $endDt]
+            ) ?? 0);
+            $incidentsResolved = (int) ($db->fetchValue(
+                "SELECT COUNT(*) FROM security_incidents WHERE first_seen BETWEEN ? AND ? AND status = 'RESOLVED'",
+                'ss', [$startDt, $endDt]
+            ) ?? 0);
+            $incidentsFalsePositive = (int) ($db->fetchValue(
+                "SELECT COUNT(*) FROM security_incidents WHERE first_seen BETWEEN ? AND ? AND status = 'FALSE_POSITIVE'",
+                'ss', [$startDt, $endDt]
+            ) ?? 0);
+            $avgRisk = (float) ($db->fetchValue(
+                "SELECT AVG(risk_score) FROM security_incidents WHERE first_seen BETWEEN ? AND ?",
+                'ss', [$startDt, $endDt]
+            ) ?? 0);
+            $avgMttrMinutes = (float) ($db->fetchValue(
+                "SELECT AVG(TIMESTAMPDIFF(MINUTE, first_seen, resolved_at)) FROM security_incidents WHERE first_seen BETWEEN ? AND ? AND resolved_at IS NOT NULL",
+                'ss', [$startDt, $endDt]
+            ) ?? 0);
+
+            $posture = SecurityRiskEngine::getInstance()->calculatePosture();
+
+            $healthScore = 100;
+            $healthScore -= min(40, $bySeverity['CRITICAL'] * 15);
+            $healthScore -= min(30, $bySeverity['HIGH'] * 5);
+            $healthScore -= min(20, $incidentsActive * 10);
+            $healthScore = max(10, min(100, $healthScore));
+
+            $resolutionRate = $incidentsTotal > 0
+                ? round((($incidentsResolved + $incidentsFalsePositive) / $incidentsTotal) * 100, 1)
+                : 100.0;
+
+            $reportData = [
+                'period' => [
+                    'range' => $range,
+                    'date_from' => $from,
+                    'date_to' => $to,
+                    'generated_at' => date('Y-m-d H:i:s'),
+                ],
+                'summary' => [
+                    'health_score' => $healthScore,
+                    'posture' => $posture['posture'] ?? 'GOOD',
+                    'posture_reasons' => $posture['reasons'] ?? [],
+                    'total_events' => $eventsTotal,
+                    'critical_events' => $bySeverity['CRITICAL'],
+                    'high_events' => $bySeverity['HIGH'],
+                    'medium_events' => $bySeverity['MEDIUM'],
+                    'low_events' => $bySeverity['LOW'],
+                    'defended_count' => $defendedCount,
+                    'defense_rate' => $eventsTotal > 0 ? round(($defendedCount / $eventsTotal) * 100, 1) : 100.0,
+                    'total_incidents' => $incidentsTotal,
+                    'active_incidents' => $incidentsActive,
+                    'resolved_incidents' => $incidentsResolved,
+                    'false_positive_incidents' => $incidentsFalsePositive,
+                    'resolution_rate' => $resolutionRate,
+                    'avg_incident_risk' => round($avgRisk, 1),
+                    'avg_mttr_minutes' => round($avgMttrMinutes, 1),
+                ],
+                'by_severity' => $bySeverity,
+                'by_action' => $actionRows,
+                'top_event_types' => $topEvents,
+                'top_attacked_routes' => $topRoutes,
+                'top_offending_ips' => $topIps,
+                'timeline' => $timeline,
+            ];
+
+            if ($format === 'csv') {
+                $filename = "security_report_{$from}_to_{$to}.csv";
+                header('Content-Type: text/csv; charset=utf-8');
+                header('Content-Disposition: attachment; filename="' . $filename . '"');
+                header('Cache-Control: no-store, no-cache');
+                $out = fopen('php://output', 'w');
+                fwrite($out, "\xEF\xBB\xBF");
+
+                fputcsv($out, ['MUWASCO HR - SECURITY AUDIT & SOC EXECUTIVE REPORT']);
+                fputcsv($out, ['Generated At', date('Y-m-d H:i:s')]);
+                fputcsv($out, ['Reporting Period', "{$from} to {$to}"]);
+                fputcsv($out, []);
+
+                fputcsv($out, ['--- EXECUTIVE SUMMARY ---']);
+                fputcsv($out, ['Metric', 'Value']);
+                fputcsv($out, ['Security Health Score', "{$healthScore}/100"]);
+                fputcsv($out, ['Current Posture', $posture['posture'] ?? 'GOOD']);
+                fputcsv($out, ['Total Security Events', $eventsTotal]);
+                fputcsv($out, ['Critical Events', $bySeverity['CRITICAL']]);
+                fputcsv($out, ['High Severity Events', $bySeverity['HIGH']]);
+                fputcsv($out, ['Medium Severity Events', $bySeverity['MEDIUM']]);
+                fputcsv($out, ['Low Severity Events', $bySeverity['LOW']]);
+                fputcsv($out, ['Automated Mitigations (Blocked/Denied)', $defendedCount]);
+                fputcsv($out, ['Defense Efficacy Rate', ($reportData['summary']['defense_rate']) . '%']);
+                fputcsv($out, ['Total Incidents', $incidentsTotal]);
+                fputcsv($out, ['Active Incidents', $incidentsActive]);
+                fputcsv($out, ['Resolved Incidents', $incidentsResolved]);
+                fputcsv($out, ['Incident Resolution Rate', "{$resolutionRate}%"]);
+                fputcsv($out, ['Avg MTTR (Minutes)', round($avgMttrMinutes, 1)]);
+                fputcsv($out, []);
+
+                fputcsv($out, ['--- TOP SECURITY EVENT TYPES ---']);
+                fputcsv($out, ['Event Type', 'Severity', 'Count', 'Max Risk Score']);
+                foreach ($topEvents as $te) {
+                    fputcsv($out, [$te['event_type'], $te['severity'], $te['count'], $te['max_risk']]);
+                }
+                fputcsv($out, []);
+
+                fputcsv($out, ['--- TOP ATTACKED / SUSPICIOUS ROUTES ---']);
+                fputcsv($out, ['HTTP Method', 'Route', 'Event Count', 'Highest Severity']);
+                foreach ($topRoutes as $tr) {
+                    fputcsv($out, [$tr['http_method'] ?? 'ALL', $tr['route'], $tr['count'], $tr['highest_severity']]);
+                }
+                fputcsv($out, []);
+
+                fputcsv($out, ['--- TOP OFFENDING IP ADDRESSES ---']);
+                fputcsv($out, ['IP Address', 'Total Events', 'Max Severity', 'Unique Attack Signatures']);
+                foreach ($topIps as $ti) {
+                    fputcsv($out, [$ti['ip_address'], $ti['count'], $ti['max_severity'], $ti['unique_attacks']]);
+                }
+
+                fclose($out);
+                exit;
+            }
+
+            $this->success($reportData);
+        } catch (\Throwable $e) {
+            \logger()->error('Security report generation error', ['error' => $e->getMessage()]);
+            $this->error('Failed to generate security report: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
      * POST /security/ai/copilot — AI Security Copilot.
      * The AI may ONLY call pre-approved backend tools; it never queries the
      * database directly and can never authorize data access itself.
@@ -251,7 +530,7 @@ class SecurityDashboardController extends BaseController
         // controller-level policy check (EmployeePolicy::canView / canEdit,
         // ObjectAuthorization, etc.). Parameterized resource routes for these
         // types get object_auth = true.
-        $objectPolicyResources = ['employees', 'leave', 'attendance', 'meetings', 'users'];
+        $objectPolicyResources = ['employees', 'leave', 'attendance', 'meetings', 'users', 'appraisals'];
 
         $inventory = [];
         foreach ($registry as $route) {
@@ -261,7 +540,7 @@ class SecurityDashboardController extends BaseController
             // Determine the resource family for object-auth inference.
             $resource = null;
             if ($hasParam) {
-                if (preg_match('#^/(employees|leave|attendance|meetings|users|departments|positions)/#i', $route['path'], $m)) {
+                if (preg_match('#^/(employees|leave|attendance|meetings|users|departments|positions|appraisals)/#i', $route['path'], $m)) {
                     $resource = $m[1];
                 }
             }
