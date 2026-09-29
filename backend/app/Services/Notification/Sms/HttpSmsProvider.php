@@ -64,7 +64,7 @@ class HttpSmsProvider implements SmsProviderInterface
             CURLOPT_POSTFIELDS     => json_encode($payload),
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => $this->timeoutSeconds,
-            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_HTTPHEADER     => [
                 'x-api-key: ' . $this->apiKey,
                 'Content-Type: application/json',
