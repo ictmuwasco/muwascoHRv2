@@ -84,8 +84,17 @@ $patterns = [
 // explanatory comment in LeaveController, failing CI on a non-secret. Business
 // codes cannot be distinguished from passwords by substring alone, so the
 // false positive is removed rather than worked around.
+//
+// The Phase 1 DB-password literal was also removed here, and that removal is
+// self-inflicted in a way worth recording: the 2026-09-29 git-filter-repo
+// history scrub rewrote that literal to the marker REDACTED_ROTATE *everywhere
+// it appeared - including on this line*. The denylist then matched its own
+// placeholder and failed CI on JWT.php and SECURITY_AUDIT.md, which contain
+// the marker but no credential. The underlying secret is purged from history
+// and rotated, so the entry has nothing left to protect. The guard below
+// (skipping placeholder-shaped entries) stops that class of self-match
+// recurring if this file is ever scrubbed again.
 $knownLeaks = [
-    'REDACTED_ROTATE',   // DB password committed in .env.example / backup.sh (Phase 1)
     'Admin@123',   // default admin password committed in setup scripts
 ];
 
@@ -181,6 +190,13 @@ foreach ($files as $rel) {
 
     if (!$selfScan) {
         foreach ($knownLeaks as $leak) {
+            // Guard: a placeholder-shaped entry is not a credential. This file
+            // has been rewritten by git-filter-repo more than once, and a scrub
+            // marker landing in $knownLeaks made the scanner fail CI on its own
+            // redaction output. Skip such entries rather than self-matching.
+            if ($leak === '' || isPlaceholderValue($leak)) {
+                continue;
+            }
             $offset = 0;
             while (($pos = stripos($content, $leak, $offset)) !== false) {
                 $line = substr_count(substr($content, 0, $pos), "\n") + 1;
