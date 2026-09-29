@@ -84,6 +84,11 @@ probe_out.txt
 facts*.txt
 gather.ps1
 
+# Local data exports (employee names/IDs) emitted by repair tooling.
+# Operational data, not source - never commit.
+tools/*-backup.json
+profile-image-backup.json
+
 # ── Runtime uploads (user content) ───────────────────────────────────────────
 backend/app/public/uploads/
 backend/storage/uploads/
