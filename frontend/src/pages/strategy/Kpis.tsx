@@ -26,6 +26,7 @@ const TABS = [
   { to: '/strategy/performance-contracts', label: 'Performance Contracts' },
   { to: '/strategy/workplans', label: 'Workplans' },
   { to: '/strategy/kpis', label: 'KPIs' },
+  { to: '/strategy/performance-appraisals', label: 'Performance Appraisals' },
   { to: '/strategy/reports', label: 'Performance Reports' },
 ];
 
@@ -54,7 +55,7 @@ const labelCls =
 
 export default function Kpis() {
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [data, setData] = useState<KpiListPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -72,6 +73,7 @@ export default function Kpis() {
   const [formRecurrent, setFormRecurrent] = useState(false);
 
   const userId = Number((user as any)?.id ?? (user as any)?.user_id ?? 0);
+  const canViewSupervisorAppraisals = !!user && !['officer', 'employee', 'bod_chairman'].includes(String((user as any)?.role || '').toLowerCase()) && can('performance', 'supervise');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,17 +122,29 @@ export default function Kpis() {
     return m;
   }, [cycles]);
 
+  const assignedEmployeeNames = useCallback(
+    (k: Kpi): string[] => {
+      const names = (k.assigned_employee_names ?? []).map((name) => name.trim()).filter(Boolean);
+      if (names.length > 0) return names;
+
+      // Compatibility fallback for an older API response. Never expose an
+      // internal employee ID when a name is not available.
+      return parseIds(k.assigned_to_employee_ids).map(
+        (id) => empName.get(id) || 'Employee unavailable',
+      );
+    },
+    [empName],
+  );
+
   const canEditRow = (k: Kpi) => canManage || (!!k.created_by && k.created_by === userId);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return objectives;
     return objectives.filter((k) =>
-      parseIds(k.assigned_to_employee_ids).some((id) =>
-        (empName.get(id) || '').toLowerCase().includes(q),
-      ),
+      assignedEmployeeNames(k).some((name) => name.toLowerCase().includes(q)),
     );
-  }, [objectives, search, empName]);
+  }, [objectives, search, assignedEmployeeNames]);
 
   const totalMarks = filtered.reduce((s, k) => s + Number(k.max_score || 0), 0);
 
@@ -271,7 +285,7 @@ export default function Kpis() {
 
       {/* Strategy & Performance module tabs */}
       <div className="flex space-x-1 border-b overflow-x-auto">
-        {TABS.map((tab) => (
+        {TABS.filter((tab) => tab.to !== '/strategy/performance-appraisals' || canViewSupervisorAppraisals).map((tab) => (
           <Link
             key={tab.to}
             to={tab.to}
@@ -383,8 +397,8 @@ export default function Kpis() {
               <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
                 {filtered.map((k) => {
                   const actIds = parseIds(k.activity_ids);
-                  const empIds = parseIds(k.assigned_to_employee_ids);
-                  const empNames = empIds.map((id) => empName.get(id) || `#${id}`).join(', ');
+                  const empNames = assignedEmployeeNames(k);
+                  const empNamesLabel = empNames.join(', ');
                   const edit = canEditRow(k);
                   return (
                     <tr
@@ -421,9 +435,9 @@ export default function Kpis() {
                       </td>
                       <td
                         className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-[220px]"
-                        title={empNames}
+                        title={empNamesLabel}
                       >
-                        {empNames || '—'}
+                        {empNamesLabel || '—'}
                       </td>
                       <td className="px-4 py-3 text-sm text-center font-bold text-gray-900 dark:text-gray-100">
                         {k.max_score}
