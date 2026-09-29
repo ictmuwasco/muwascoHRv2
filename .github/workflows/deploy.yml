@@ -177,9 +177,9 @@ jobs:
       - name: Run database migrations
         run: php backend/database/run.php
         env:
-          DB_DATABASE: muwasco
-          DB_USERNAME: root
-          DB_PASSWORD: root
+          DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
+          DB_USERNAME: ${{ secrets.CI_DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
 
@@ -190,9 +190,9 @@ jobs:
       - name: Run SecurityPermissionsSeeder
         run: php backend/database/seed.php SecurityPermissionsSeeder
         env:
-          DB_DATABASE: muwasco
-          DB_USERNAME: root
-          DB_PASSWORD: root
+          DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
+          DB_USERNAME: ${{ secrets.CI_DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
 
@@ -221,13 +221,21 @@ jobs:
             echo "PHPUnit skipped - no tests to run" > /tmp/phpunit_full.log
           fi
         env:
-          DB_DATABASE: muwasco
-          DB_USERNAME: root
-          DB_PASSWORD: root
+          # Ephemeral CI test database only - never a production credential.
+          # Referenced as GitHub Secrets so the workflow file carries no
+          # password literal. NOTE: GitHub expressions do NOT support `||`
+          # fallbacks (same constraint documented on the frontend build step),
+          # so these are referenced directly - set CI_DB_PASSWORD and
+          # CI_JWT_SECRET in the repository secrets.
+          DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
+          DB_USERNAME: ${{ secrets.CI_DB_USERNAME }}
+          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
           APP_ENV: testing
-          JWT_SECRET: ci-only-secret-0123456789abcdef0123456789abcdef
+          # Must stay STABLE across runs or PHPUnit's per-run token signatures
+          # become incomparable. CI-only value, not a production secret.
+          JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
           JWT_ISSUER: muwasco-hr-system
 
       - name: Show phpunit log
