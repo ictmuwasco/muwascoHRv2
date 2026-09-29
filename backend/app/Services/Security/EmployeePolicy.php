@@ -73,6 +73,23 @@ final class EmployeePolicy
     }
 
     /**
+     * Can the given user renew a contract?
+     *
+     * Contract renewal is an HR function, never self-service. It creates a
+     * successor contract row with a new term and stamps the employment record,
+     * so officers, employees and dept heads may READ their own contract history
+     * through /profile but must go through HR to actually extend their term.
+     *
+     * Uses the same authority as the HR endpoint
+     * (POST /employees/{id}/contracts/{contractId}/renew → canEdit) so the
+     * self-service route can never be the weaker of the two.
+     */
+    public static function canRenewContract(int $userId): bool
+    {
+        return $userId > 0 && self::isHrOrAdmin($userId);
+    }
+
+    /**
      * Can the given user view sensitive information (salary, national_id, etc.)?
      */
     public static function canViewSensitive(int $userId, array $employee): bool
