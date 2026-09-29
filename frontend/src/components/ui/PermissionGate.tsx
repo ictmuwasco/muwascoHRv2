@@ -44,7 +44,10 @@ import Button from './Button';
  *   employee/EmployeeForm (route-gated)    employees              employees:create | :edit
  *   employee/EmployeeProfile               employees              CanEdit (NOK, dependants,
  *                                                                 documents, renew, convert)
- *   employee/Profile                       profile                CanEdit (single-write)
+ *   employee/Profile                       profile                CanEdit (single-write) for
+ *                                                                 NOK/dependants/documents;
+ *                                                                 renew uses employees
+ *                                                                 (HR-only, not profile:edit)
  *   hr-admin/Departments                   departments            CanCreate/CanEdit/CanDelete
  *   hr-admin/Holidays                      holidays               PermButton create/edit/delete
  *   hr-admin/FinancialYear                 financial_year         create card + allocate card
