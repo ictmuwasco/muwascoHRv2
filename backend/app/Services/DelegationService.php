@@ -888,12 +888,19 @@ class DelegationService
      * existing pending applications are covered automatically because this is
      * a plain scope query over the same tables).
      *
+     * When $stageAware is TRUE (pending queues only), each fragment is
+     * additionally restricted to the stage(s) whose required role equals this
+     * delegation's delegated_role — mirroring canActAsLeaveApprover()'s
+     * `STAGE_ROLES[status] === delegated_role` check so a section-head
+     * delegation, for example, never surfaces pending_dept_head rows.
+     * Scope fragments for approved/rejected history stay scope-only.
+     *
      * Fragments reference the `e` alias (applicant employee row) used by
      * LeaveApprovalService's queries.
      *
      * @return array<int, string> e.g. ['(e.section_id = 5)']
      */
-    public function delegatedVisibilityFragments(int $userId): array
+    public function delegatedVisibilityFragments(int $userId, bool $stageAware = false): array
     {
         $fragments = [];
         foreach ($this->activeForUser($userId) as $delegation) {
@@ -901,19 +908,64 @@ class DelegationService
                 case 'organization':
                     // Org-wide authority (HR / MD / super admin delegator) —
                     // mirrors the delegator's own '1=1' visibility clause.
-                    return ['1=1'];
+                    if (!$stageAware) {
+                        return ['1=1'];
+                    }
+                    $scope = '1=1';
+                    break;
                 case 'department':
-                    $fragments[] = '(e.department_id = ' . (int) $delegation['scope_id'] . ')';
+                    $scope = '(e.department_id = ' . (int) $delegation['scope_id'] . ')';
                     break;
                 case 'section':
-                    $fragments[] = '(e.section_id = ' . (int) $delegation['scope_id'] . ')';
+                    $scope = '(e.section_id = ' . (int) $delegation['scope_id'] . ')';
                     break;
                 case 'subsection':
-                    $fragments[] = '(e.subsection_id = ' . (int) $delegation['scope_id'] . ')';
+                    $scope = '(e.subsection_id = ' . (int) $delegation['scope_id'] . ')';
                     break;
+                default:
+                    continue 2;
             }
+
+            if ($stageAware) {
+                // Only the pending stage(s) this delegated_role may decide —
+                // inverse of STAGE_ROLES (static keys, so the SQL stays static).
+                $statuses = self::pendingStatusesForRole((string) ($delegation['delegated_role'] ?? ''));
+                if ($statuses === []) {
+                    // Not a role that decides any pending stage (e.g.
+                    // delegated_role with no STAGE_ROLES entry) — contributes
+                    // nothing to the pending queue.
+                    continue;
+                }
+                $statusList = "'" . implode("','", $statuses) . "'";
+                $fragments[] = $scope === '1=1'
+                    ? "(la.status IN ({$statusList}))"
+                    : "({$scope} AND la.status IN ({$statusList}))";
+                continue;
+            }
+
+            $fragments[] = $scope;
         }
         return array_values(array_unique($fragments));
+    }
+
+    /**
+     * Pending stage statuses whose required role equals $role — the inverse
+     * of STAGE_ROLES (e.g. 'section_head' → ['pending_section_head']).
+     *
+     * @return array<int, string>
+     */
+    private static function pendingStatusesForRole(string $role): array
+    {
+        if ($role === '') {
+            return [];
+        }
+        $statuses = [];
+        foreach (self::STAGE_ROLES as $status => $stageRole) {
+            if ($stageRole === $role) {
+                $statuses[] = $status;
+            }
+        }
+        return $statuses;
     }
 
     // ────────────────────────────────────────────────────────────────────

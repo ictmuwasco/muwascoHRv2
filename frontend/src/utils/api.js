@@ -1,4 +1,5 @@
 import { reportClientError, getRequestId, setRequestId } from './errorReporting';
+import { handleSessionExpired, rememberReturnTo, renewSession } from './sessionRecovery';
 // Single source of truth for the API base URL (VITE_API_URL at build time,
 // defaulting to '/api' — see .env.example and src/config/api.ts). Importing
 // the shared constant means a production deployment repoints the entire SPA
@@ -82,60 +83,23 @@ const NON_RETRIABLE_PATHS = ['/auth/login', '/auth/logout', '/auth/refresh'];
  * Silent, single-flight session renewal.
  *
  * The backend keeps the employee signed in with an httpOnly `access_token`
- * cookie that expires after one hour (while the PHP session lives for two).
- * When any API call answers 401 we renew the cookie once via /auth/refresh
- * and then replay the original request, so an employee who leaves the tab
- * idle is never logged out mid-shift. Concurrent 401s share one refresh.
+ * cookie (8 hours) backed by a longer-lived `refresh_token` cookie (30 days).
+ * When any API call answers 401 we renew from the refresh cookie once and
+ * replay the original request, so an employee who leaves the tab idle is never
+ * logged out mid-shift.
+ *
+ * The renewal itself now works from the refresh cookie rather than the access
+ * token, so it succeeds in exactly the case it exists for: the access token
+ * has already expired. Concurrent 401s share one in-flight request
+ * (renewSession in ./sessionRecovery is single-flight app-wide).
  */
-let refreshPromise = null;
 
 /**
- * Definitive session death — the silent renewal already failed. Mirror the
- * axios client's 401 handling (api/client.ts): drop the cached profile from
- * localStorage and return the employee to the sign-in screen instead of
- * leaving them stranded on a protected page where every request 401s.
- *
- * Runs at most once per page load and never loops on /login itself: the
- * login/logout/refresh endpoints are non-retriable (NON_RETRIABLE_PATHS), so
- * a wrong password can never mark the error isAuthError and re-trigger this.
+ * Session death is now handled centrally by handleSessionExpired() in
+ * ./sessionRecovery, which also remembers the current page so the login screen
+ * can return the employee to it. Keeping the logic in one place is what stops
+ * the two HTTP clients from disagreeing about when to give up.
  */
-let authRedirectSent = false;
-
-const bounceToLogin = () => {
-  try {
-    localStorage.removeItem('user');
-  } catch {
-    /* storage may be unavailable — the redirect still runs */
-  }
-  if (authRedirectSent || typeof window === 'undefined') return;
-  if (window.location.pathname.startsWith('/login')) return;
-  authRedirectSent = true;
-  window.location.assign('/login');
-};
-
-const refreshSession = () => {
-  if (!refreshPromise) {
-    refreshPromise = (async () => {
-      // Bounded: a hung renewal must never stall the replay chain (or the
-      // caller's spinner) indefinitely.
-      const refreshController = new AbortController();
-      const refreshTimer = setTimeout(() => refreshController.abort(), 15000);
-      const response = await fetch(`${API_URL}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        signal: refreshController.signal,
-      }).finally(() => clearTimeout(refreshTimer));
-      if (!response.ok) {
-        throw new Error(`Token refresh failed (${response.status})`);
-      }
-      return true;
-    })().finally(() => {
-      refreshPromise = null;
-    });
-  }
-  return refreshPromise;
-};
 
 /**
  * In-flight de-duplication for GET requests (single-flight).
@@ -306,15 +270,18 @@ const performRequest = async (endpoint, options = {}) => {
 
   // Expired access-token cookie -> renew once, then replay the request.
   if (response.status === 401 && isRetriable) {
+    rememberReturnTo();
     try {
-      await refreshSession();
+      await renewSession();
       response = await send();
     } catch (err) {
       if (err && err.name === 'AbortError') throw toTimeoutError();
-      const error = new Error('Your session has expired. Please sign in again.');
+      // Renewal failed for good: the session really is over. Say so in plain
+      // language and send the user to sign in, keeping their destination.
+      const error = new Error('Your session has ended. Please sign in again.');
       error.isAuthError = true;
       error.response = { data: {}, status: 401, statusText: 'Unauthorized' };
-      bounceToLogin();
+      handleSessionExpired('Your session ended after a period of inactivity. Please sign in again.');
       throw error;
     }
   }
