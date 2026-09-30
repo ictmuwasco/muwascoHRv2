@@ -56,7 +56,6 @@ export const renewSession = (): Promise<void> => {
   return renewalPromise;
 };
 
-
 const RETURN_TO_KEY = 'auth:returnTo';
 
 /** Session-scoped (not localStorage) so it cannot resurrect a stale tab weeks later. */
@@ -105,7 +104,9 @@ let redirecting = false;
  *
  * @param reason Short, user-facing explanation.
  */
-export const handleSessionExpired = (reason = 'Your session has ended. Please sign in again.'): void => {
+export const handleSessionExpired = (
+  reason = 'Your session has ended. Please sign in again.',
+): void => {
   if (typeof window === 'undefined') return;
   if (window.location.pathname.startsWith('/login')) return;
   if (redirecting) return;

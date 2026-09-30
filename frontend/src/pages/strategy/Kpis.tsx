@@ -73,7 +73,12 @@ export default function Kpis() {
   const [formRecurrent, setFormRecurrent] = useState(false);
 
   const userId = Number((user as any)?.id ?? (user as any)?.user_id ?? 0);
-  const canViewSupervisorAppraisals = !!user && !['officer', 'employee', 'bod_chairman'].includes(String((user as any)?.role || '').toLowerCase()) && can('performance', 'supervise');
+  const canViewSupervisorAppraisals =
+    !!user &&
+    !['officer', 'employee', 'bod_chairman'].includes(
+      String((user as any)?.role || '').toLowerCase(),
+    ) &&
+    can('performance', 'supervise');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -285,7 +290,9 @@ export default function Kpis() {
 
       {/* Strategy & Performance module tabs */}
       <div className="flex space-x-1 border-b overflow-x-auto">
-        {TABS.filter((tab) => tab.to !== '/strategy/performance-appraisals' || canViewSupervisorAppraisals).map((tab) => (
+        {TABS.filter(
+          (tab) => tab.to !== '/strategy/performance-appraisals' || canViewSupervisorAppraisals,
+        ).map((tab) => (
           <Link
             key={tab.to}
             to={tab.to}

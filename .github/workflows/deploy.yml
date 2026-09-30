@@ -172,14 +172,36 @@ jobs:
 
       - name: Wait for MariaDB to be ready
         run: |
+          set -uo pipefail
+          # Diagnostic first. The previous version only ever printed
+          # "Waiting for MariaDB... (N/30)" and then exited 1, so a missing
+          # client binary, a wrong port mapping and a genuinely slow container
+          # were indistinguishable. If the admin client is not on PATH the
+          # loop can never succeed no matter how long it waits.
+          if ! command -v mariadb-admin >/dev/null 2>&1; then
+            echo "::error::mariadb-admin is not on PATH on this runner image."
+            ls /usr/bin | grep -iE '^(mysql|mariadb)' || echo "(no mysql/mariadb client binaries found in /usr/bin)"
+            exit 1
+          fi
+          echo "Using client: $(command -v mariadb-admin)"
+
+          # Which port is actually listening? The service maps 3306, but a
+          # host runner may already have something bound there.
+          (command -v ss >/dev/null 2>&1 && ss -ltn | grep -E ':(3306|33060)\b') || true
+
           for i in $(seq 1 30); do
-            if mariadb-admin ping -h 127.0.0.1 -u root -proot --silent 2>/dev/null; then
-              echo "MariaDB is ready"
+            if mariadb-admin ping -h 127.0.0.1 -P 3306 -u root -proot --silent 2>/dev/null; then
+              echo "MariaDB is ready after ${i} attempt(s)"
               break
+            fi
+            if [ "$i" = "30" ]; then
+              echo "::error::MariaDB never became ready after 30 attempts."
+              echo "--- last ping attempt, stderr shown:"
+              mariadb-admin ping -h 127.0.0.1 -P 3306 -u root -proot 2>&1 || true
+              exit 1
             fi
             echo "Waiting for MariaDB... ($i/30)"
             sleep 2
-            if [ "$i" = "30" ]; then echo "MariaDB never became ready" >&2; exit 1; fi
           done
 
       - name: Show engine version
