@@ -1,14 +1,132 @@
-# Database Production Hardening — Phase 2 Report
+# Database Production Hardening
 
-> Indexing, integrity and security-hardening phase. Follows the table-usage
-> and dead-table audit in `DATABASE_ARCHITECTURE.md`.
+> **Phase 3 (2026-09-29):** backup integrity, test harness and serialization
+> hardening landed. Earlier phases: `DATABASE_ARCHITECTURE.md` (table usage
+> audit) and §2 below (indexing).
 >
 > **Engine:** MariaDB **10.4.32** (production *and* CI — aligned in Phase 1).
-> **Date:** 2026-09-29.
 
 ---
 
-## 1. What was done in this phase
+## 0. Phase 3 — what changed, and what it cost to find
+
+Three defects turned out to be worse than §4 below suggested. Each was found
+by measuring rather than reading, and each is now guarded by a test.
+
+### 0.1 A plain `mysqldump` of this database could not be restored
+
+This was carried forward as an unverified caveat. It was real.
+
+`attendance.attendance_date` is
+`GENERATED ALWAYS AS (cast(clock_in as date)) STORED`, and 257 rows carry
+`clock_in = '0000-00-00'`. On the live server `sql_mode` includes
+`NO_ZERO_IN_DATE`/`NO_ZERO_DATE`, so `cast()` yields **NULL** and
+`uk_attendance_employee_date` is satisfied — NULLs never collide in a UNIQUE
+index. The live table is therefore consistent.
+
+`mysqldump` emits a prologue that **resets the session** to
+`SQL_MODE='NO_AUTO_VALUE_ON_ZERO'`, dropping `NO_ZERO_DATE`. On restore,
+`cast('0000-00-00' AS date)` then yields the literal date, and the three such
+rows belonging to employee 383 collide:
+
+```
+ERROR 1062 (23000): Duplicate entry '383-0000-00-00'
+    for key 'uk_attendance_employee_date'
+```
+
+**Fix:** `backup.sh` patches that prologue back to include
+`NO_ZERO_IN_DATE,NO_ZERO_DATE`. **Verified** by restoring into a scratch
+database: 87/87 tables, and `attendance` (14,826), `employees` (193),
+`leave_applications` (721), `audit_logs` (1,011), `users` (195),
+`notifications` (2,747), `ai_messages` (32) and `role_permissions` (480) all
+match live row counts exactly.
+
+`restore_test()` now runs as part of every backup. A gzip checksum only proves
+the file was not truncated — this dump was perfectly intact and still
+unrestorable, which is exactly the failure a checksum cannot see.
+
+> Note: `--skip-generated-columns` is a MySQL 8 option and is **rejected** by
+> MariaDB's `mysqldump`. Do not add it.
+
+### 0.2 CI had never run a single test
+
+`backend/tests/` did not exist. Three compounding reasons:
+
+1. `backend/phpunit.xml` pointed at `tests/Unit/Services`,
+   `tests/Unit/Repositories` and `tests/Unit/Controllers` — none of which ever
+   existed. PHPUnit aborts entirely when a declared directory is missing.
+2. `.gitignore:115` ignores `backend/phpunit.xml`, with the comment
+   *"phpunit.xml.dist is tracked"* — **but no `.dist` file was ever
+   committed**, so on CI the config lookup found nothing at all.
+3. The job counted `*Test.php` files with `find`, found zero, printed
+   *"PHPUnit skipped — no tests to run"* and **exited 0**.
+
+Every "tests pass" claim in this project's history was therefore vacuous.
+
+**Fixed:** `backend/phpunit.xml.dist` is tracked; the job now exits 1 when no
+tests or no config are found. **40 tests, 63 assertions, all passing.**
+
+### 0.3 Malformed JSON was silently discarding HR data
+
+16 bare `json_decode()` calls, none using `JSON_THROW_ON_ERROR`. The failure
+mode was invisible: `null` returned, a nearby `is_array()` guard coalesced it
+to `[]`, and data disappeared with no exception and no log line.
+
+Worst case, `EmployeeService`: `next_of_kin` and `dependants` arrive as JSON
+strings with **no upstream validation**. Malformed JSON decoded to `null`, the
+guard fell through, and the employee's next of kin was never saved — the
+caller received **200 and no error**.
+
+**Fixed** via `App\Helpers\Json`, which separates the two cases that were
+conflated:
+
+| Case | Method | Behaviour |
+|---|---|---|
+| Our own TEXT columns | `decodeStored()` | Never throws. Logs, returns a safe default. One corrupt row cannot take down a profile page or an authorization check. |
+| Request bodies | `decodeRequest()` | Throws; the global handler answers **400 INVALID_JSON**. |
+
+Applied to delegation permissions (authorization-critical — a corrupt value
+must not silently become an empty scope), notification payloads, employee
+next-of-kin, workplan dependencies, AI source metadata, security-AI tool
+calls, rate-limiter state, cache entries and the shared request-body reader.
+
+Three existing behaviours are **preserved and documented**, not "fixed":
+`AiToolExecutor` returns `null` as its DENY sentinel; `WorkplanService::
+decodeJsonField` falls back to the raw string; `SecurityMiddleware` and
+`BaseValidator` already checked `json_last_error()`.
+
+### 0.4 Genuine orphans found (reported, not deleted)
+
+The new tests surfaced real data problems the earlier audit had not reached.
+
+| Table.column | Orphans | Detail | Action |
+|---|---|---|---|
+| `employee_leave_balances.employee_id` | 30 | Employees 441/500/503/505 gone; all FY 30 | **Not deleted** — leave balances affect entitlement history |
+| `notifications.user_id` | 32 | `user_id` 0 and 2 gone | **Not deleted** — inert; every read path filters `WHERE user_id = ?` |
+
+Both are recorded as a **ratchet baseline** in `SchemaIntegrityTest`: the test
+passes at or below the baseline, so any **new** orphan fails immediately.
+
+> **A false positive worth recording.** `users.employee_id` joins to
+> `employees.employee_id` (a `varchar` staff code like `'MOW12'`), *not*
+> `employees.id`. Joining on `employees.id` reports **193 phantom orphans**
+> that do not exist. This was hit during the audit; acting on it would have
+> destroyed valid data. The test now documents the correct key.
+
+### 0.5 Corrections to the earlier report
+
+- **§4.4 understated it:** 16 `json_decode` sites, not 12.
+- **§4.5 was worse than "dead column":** `users.session_token` holds **166
+  non-null plaintext values**. Still untouched pending sign-off.
+- **§4.1 collation counts were slightly off:** measured 48
+  `utf8mb4_general_ci` / 36 `utf8mb4_unicode_ci` / 3 `utf8_general_ci`.
+- **`attendance.accuracy` is correctly a `float`** — a GPS radius in metres,
+  not money. Now asserted explicitly so nobody "corrects" it. All money is
+  `DECIMAL`.
+
+---
+
+## 1. What was done in the indexing phase
 
 Migration **`103_additive_query_indexes.sql`** — **12 indexes added, purely
 additive.** No column dropped, no row deleted, no data mutated.
@@ -209,6 +327,8 @@ to re-queue it.
 
 ---
 
-*Phase 2 complete: additive indexing landed and measured. Destructive work
-(§4.1–4.6) deliberately held pending the decisions above.*
+*Phase 2 complete: additive indexing landed and measured. Phase 3 complete:
+backup restore fixed and proven, CI now runs real tests, malformed JSON can no
+longer silently discard HR data. Destructive work (§4.1–4.6) deliberately
+held pending the decisions above.*
 
