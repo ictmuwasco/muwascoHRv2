@@ -297,7 +297,6 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
 
-                             
       - name: Run PHPUnit tests
         run: |
           set -eo pipefail
@@ -326,7 +325,19 @@ jobs:
           fi
 
           echo "Running PHPUnit with $CONFIG"
-          vendor/bin/phpunit -c "$CONFIG" --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
+          # `set -o pipefail` plus `| tee` already propagates PHPUnit's exit
+          # code, but the output is only visible in the log stream. Echo the
+          # captured log on failure so the cause appears inline in the step
+          # summary, where it can be read without admin rights to the raw job
+          # log. The previous version gave no indication of WHY the run
+          # stopped, which is what made this hard to diagnose.
+          if ! vendor/bin/phpunit -c "$CONFIG" --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log; then
+            echo "::error::PHPUnit failed. Captured output follows:"
+            cat /tmp/phpunit_full.log || true
+            echo "--- environment actually visible to PHP ---"
+            php -r 'foreach (["DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","APP_ENV","CI"] as $k) { printf("%s=%s\n", $k, var_export(getenv($k), true)); }'
+            exit 1
+          fi
         env:
           # Same ephemeral service container as the migration steps: the
           # credentials live in this workflow's `services:` block, not in
