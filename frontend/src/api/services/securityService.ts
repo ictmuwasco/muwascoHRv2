@@ -28,6 +28,8 @@ export const securityService = {
   containIncident: (id: number) => apiClient.post(`${SECURITY_API}/incidents/${id}/contain`),
   getReport: (params = {}) => apiClient.get(`${SECURITY_API}/report`, { params }),
   exportReport: (params = {}) =>
-    apiClient.get(`${SECURITY_API}/report`, { params: { ...params, format: 'csv' }, responseType: 'blob' }),
+    apiClient.get(`${SECURITY_API}/report`, {
+      params: { ...params, format: 'csv' },
+      responseType: 'blob',
+    }),
 };
-

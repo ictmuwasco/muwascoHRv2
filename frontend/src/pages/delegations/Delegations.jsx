@@ -79,14 +79,18 @@ const filterRows = (rows, tab) => {
  */
 const emptyExplanation = (rows, tab) => {
   if (rows.length === 0) {
-    return 'No delegations have been recorded for anyone in your scope yet. A delegation is '
-      + 'created automatically when a leave application is approved and names a delegate.';
+    return (
+      'No delegations have been recorded for anyone in your scope yet. A delegation is ' +
+      'created automatically when a leave application is approved and names a delegate.'
+    );
   }
   const elsewhere = TABS.filter((t) => t.key !== tab && filterRows(rows, t.key).length > 0);
   if (elsewhere.length > 0) {
-    return `Nothing in this view. There ${elsewhere.length === 1 ? 'is' : 'are'} `
-      + `${elsewhere.map((t) => t.label).join(' and ')} `
-      + `${elsewhere.length === 1 ? 'entry' : 'entries'} instead.`;
+    return (
+      `Nothing in this view. There ${elsewhere.length === 1 ? 'is' : 'are'} ` +
+      `${elsewhere.map((t) => t.label).join(' and ')} ` +
+      `${elsewhere.length === 1 ? 'entry' : 'entries'} instead.`
+    );
   }
   return 'Nothing in this view.';
 };
@@ -205,9 +209,7 @@ const DetailRow = ({ row, pages, actions }) => (
             What pages & actions
           </h4>
           {pages.length === 0 && actions.length === 0 ? (
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              No permissions were granted.
-            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">No permissions were granted.</p>
           ) : (
             <div className="space-y-2">
               {pages.length > 0 && (
@@ -394,8 +396,8 @@ const Delegations = () => {
           {/* One-line digest of the whole register, so the answer to "is anyone
               covering for me right now?" is readable without clicking tabs. */}
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            {liveCount} live now · {pendingCount} awaiting approval · {totalCount} total in
-            your scope
+            {liveCount} live now · {pendingCount} awaiting approval · {totalCount} total in your
+            scope
           </p>
         </div>
 

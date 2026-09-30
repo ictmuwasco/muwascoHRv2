@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BellRing, BellOff, Loader2, Smartphone, MonitorSmartphone, CheckCircle2, AlertTriangle } from 'lucide-react';
+import {
+  BellRing,
+  BellOff,
+  Loader2,
+  Smartphone,
+  MonitorSmartphone,
+  CheckCircle2,
+  AlertTriangle,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import Card from '../../ui/Card';
 import {
@@ -153,17 +161,18 @@ const PushDevicesCard = ({ devices, hasVapid, onDevicesChange }) => {
   // subscription; offering a no-op button is how a stale state gets ignored.
   const alreadyOn = status === 'on' || status === 'on-unregistered';
 
-  const badge = {
-    'on': { tone: 'green', text: 'Active on this device' },
-    'on-unregistered': {
-      tone: 'amber',
-      text: 'Browser has it, but the server has no record — press Enable to re-register',
-    },
-    'not-asked': { tone: 'gray', text: 'Permission not requested yet' },
-    'server-unconfigured': { tone: 'amber', text: 'Server push not configured' },
-    'server-unknown': { tone: 'gray', text: 'Could not verify server push config' },
-    blocked: { tone: 'red', text: 'Blocked for this site' },
-  }[status] ?? null;
+  const badge =
+    {
+      on: { tone: 'green', text: 'Active on this device' },
+      'on-unregistered': {
+        tone: 'amber',
+        text: 'Browser has it, but the server has no record — press Enable to re-register',
+      },
+      'not-asked': { tone: 'gray', text: 'Permission not requested yet' },
+      'server-unconfigured': { tone: 'amber', text: 'Server push not configured' },
+      'server-unknown': { tone: 'gray', text: 'Could not verify server push config' },
+      blocked: { tone: 'red', text: 'Blocked for this site' },
+    }[status] ?? null;
 
   return (
     <Card className="p-6">
@@ -257,9 +266,9 @@ const PushDevicesCard = ({ devices, hasVapid, onDevicesChange }) => {
 
           {status === 'on-unregistered' && (
             <p className="mt-3 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-3">
-              This browser holds a push subscription but the server has no matching
-              registration for your account — usually after a server key change or
-              signing in with a different account on a shared device. Press
+              This browser holds a push subscription but the server has no matching registration for
+              your account — usually after a server key change or signing in with a different
+              account on a shared device. Press
               <strong> Enable on this device</strong> to re-register it.
             </p>
           )}

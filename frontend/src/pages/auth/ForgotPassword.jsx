@@ -195,7 +195,10 @@ const ForgotPassword = () => {
                       />
                     </div>
                     {emailError && (
-                      <p id="reset-email-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      <p
+                        id="reset-email-error"
+                        className="mt-1 text-xs text-red-600 dark:text-red-400"
+                      >
                         {emailError}
                       </p>
                     )}

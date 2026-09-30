@@ -88,7 +88,8 @@ apiClient.interceptors.response.use(
       // token is ordinary operation, not a fault, and logging it buries real
       // incidents.
       const alreadyRetried = (error.config as { _retried?: boolean } | undefined)?._retried;
-      const isAuthEndpoint = requestUrl.includes('/auth/refresh') || requestUrl.includes('/auth/login');
+      const isAuthEndpoint =
+        requestUrl.includes('/auth/refresh') || requestUrl.includes('/auth/login');
 
       if (!alreadyRetried && !isAuthEndpoint) {
         (error.config as { _retried?: boolean })._retried = true;
@@ -96,10 +97,14 @@ apiClient.interceptors.response.use(
           await renewSession();
           return apiClient.request(error.config as InternalAxiosRequestConfig);
         } catch {
-          handleSessionExpired('Your session ended after a period of inactivity. Please sign in again.');
+          handleSessionExpired(
+            'Your session ended after a period of inactivity. Please sign in again.',
+          );
         }
       } else {
-        handleSessionExpired('Your session ended after a period of inactivity. Please sign in again.');
+        handleSessionExpired(
+          'Your session ended after a period of inactivity. Please sign in again.',
+        );
       }
     }
     return Promise.reject(error);

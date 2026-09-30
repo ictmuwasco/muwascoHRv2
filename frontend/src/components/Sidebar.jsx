@@ -79,7 +79,10 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   // Workplans: visible to roles with workplan:view permission
   // (hr_manager, super_admin, dept_head, section_head, sub_section_head, manager)
   const canViewWorkplans = can('workplan', 'view');
-  const canViewSupervisorAppraisals = !!user && !['officer', 'employee', 'bod_chairman'].includes(String(user.role || '').toLowerCase()) && can('performance', 'supervise');
+  const canViewSupervisorAppraisals =
+    !!user &&
+    !['officer', 'employee', 'bod_chairman'].includes(String(user.role || '').toLowerCase()) &&
+    can('performance', 'supervise');
   // Completed Appraisals is also open to officers/staff (performance:feedback).
   // The API pins them to their OWN appraisals server-side, so this only reveals
   // the menu entry - it grants no access to anybody else's records.
@@ -98,8 +101,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   // per-user 'delegations:view' ALLOW override cannot re-expose the menu entry
   // to an officer. UX only — the server still decides what rows come back.
   const userRole = String(user?.role || '').toLowerCase();
-  const canViewDelegations =
-    can('delegations', 'view') && !['officer'].includes(userRole);
+  const canViewDelegations = can('delegations', 'view') && !['officer'].includes(userRole);
 
   // Live badge counts for the Delegations entry.
   //
@@ -154,7 +156,10 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
       path.startsWith('/holidays')
     ) {
       setExpandedParent('HR Admin');
-    } else if (path.startsWith('/appraisal') || path.startsWith('/strategy/performance-appraisals')) {
+    } else if (
+      path.startsWith('/appraisal') ||
+      path.startsWith('/strategy/performance-appraisals')
+    ) {
       setExpandedParent('Appraisal');
     } else if (canViewStrategy && path.startsWith('/strategy')) {
       setExpandedParent('Strategy & Performance');
