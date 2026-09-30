@@ -8,6 +8,21 @@
     config lookup in deploy.yml fell through every candidate path and PHPUnit
     had no configuration at all. Combined with zero test files, that is why the
     suite reported success while running nothing.
+
+    PATH RESOLUTION - READ THIS BEFORE "FIXING" IT AGAIN.
+    PHPUnit 9 resolves `bootstrap` relative to the DIRECTORY CONTAINING THIS
+    CONFIG FILE, not the process working directory. Since this file lives in
+    backend/, "tests/bootstrap.php" already resolves to
+    backend/tests/bootstrap.php, from any working directory.
+
+    That is why the suite ran fine locally. The CI failure was NOT a path
+    problem - it was a blank DB_PASSWORD (see deploy.yml). Do not add a
+    `backend/` prefix here: doing so resolves to backend/backend/... and the
+    run dies with "Cannot open file backend\backend/tests/bootstrap.php",
+    which was verified by actually running it.
+
+    The <directory> elements below are relative to this same directory, which
+    is why "tests/Unit" and "tests/Integration" are correct as written.
 -->
 <phpunit
     bootstrap="tests/bootstrap.php"
