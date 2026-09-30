@@ -96,14 +96,14 @@ class EmployeeService implements EmployeeServiceInterface
      * write arbitrary employees-table columns.
      *
      * Deliberately NOT client-writable:
-     *   - salary            — sensitive HR data; owned by the payroll domain
-     *   - profile_image_url — set exclusively by the profile-image endpoints
-     *   - profile_token     — consent/onboarding server-side token
-     *   - id / created_at / updated_at — server-owned
+     *   - salary            Ã¢â‚¬â€ sensitive HR data; owned by the payroll domain
+     *   - profile_image_url Ã¢â‚¬â€ set exclusively by the profile-image endpoints
+     *   - profile_token     Ã¢â‚¬â€ consent/onboarding server-side token
+     *   - id / created_at / updated_at Ã¢â‚¬â€ server-owned
      *
      * next_of_kin / dependants ARE writable: array forms are persisted to
      * the child tables (saveNextOfKin/saveDependants) and JSON-string forms
-     * to the employees text columns — both replaced into $data by the
+     * to the employees text columns Ã¢â‚¬â€ both replaced into $data by the
      * service's own handling before this filter runs.
      */
     private const EMPLOYEE_WRITABLE_FIELDS = [
@@ -114,6 +114,36 @@ class EmployeeService implements EmployeeServiceInterface
         'employee_status', 'scale_id', 'contract_start_date', 'contract_end_date',
         'next_of_kin', 'dependants',
     ];
+
+    /**
+     * Normalise a next_of_kin / dependants payload that may arrive as a
+     * JSON string or as an already-decoded array.
+     *
+     * This is caller-supplied input on a write path and nothing upstream
+     * validates it. The previous bare json_decode() returned null on
+     * malformed JSON, the is_array() guard then fell through, and the
+     * employee's next of kin was silently never saved - the caller received a
+     * 200 and no error at all. decodeRequest() throws a JsonException on
+     * malformed input so the controller can answer 400 rather than lose data
+     * quietly.
+     *
+     * @return array<mixed>|null Null when the value is neither valid JSON nor
+     *                          an array, which the caller treats as "absent".
+     */
+    private function decodeEmbeddedList(mixed $value, string $field): ?array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        if (!is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        $decoded = \App\Helpers\Json::decodeRequest($value, null, 'employee.' . $field);
+
+        return is_array($decoded) ? $decoded : null;
+    }
 
     /**
      * Keep only client-writable fields, silently dropping anything else.
@@ -171,14 +201,8 @@ class EmployeeService implements EmployeeServiceInterface
 
         // Handle next_of_kin - save to separate table
         if (isset($data['next_of_kin'])) {
-            $nextOfKin = $data['next_of_kin'];
-            if (is_string($nextOfKin)) {
-                $decoded = json_decode($nextOfKin, true);
-                if (is_array($decoded)) {
-                    $nextOfKin = $decoded;
-                }
-            }
-            if (is_array($nextOfKin)) {
+            $nextOfKin = $this->decodeEmbeddedList($data['next_of_kin'], 'next_of_kin');
+            if ($nextOfKin !== null) {
                 // Convert single object to array
                 if (isset($nextOfKin['name'])) {
                     $nextOfKin = [$nextOfKin];
@@ -190,14 +214,8 @@ class EmployeeService implements EmployeeServiceInterface
         
         // Handle dependants - save to separate table
         if (isset($data['dependants'])) {
-            $dependants = $data['dependants'];
-            if (is_string($dependants)) {
-                $decoded = json_decode($dependants, true);
-                if (is_array($decoded)) {
-                    $dependants = $decoded;
-                }
-            }
-            if (is_array($dependants)) {
+            $dependants = $this->decodeEmbeddedList($data['dependants'], 'dependants');
+            if ($dependants !== null) {
                 $this->employeeRepository->saveDependants($id, $dependants);
                 unset($data['dependants']);
             }
@@ -372,14 +390,8 @@ class EmployeeService implements EmployeeServiceInterface
 
         // Handle next_of_kin - save to separate table
         if (isset($data['next_of_kin'])) {
-            $nextOfKin = $data['next_of_kin'];
-            if (is_string($nextOfKin)) {
-                $decoded = json_decode($nextOfKin, true);
-                if (is_array($decoded)) {
-                    $nextOfKin = $decoded;
-                }
-            }
-            if (is_array($nextOfKin)) {
+            $nextOfKin = $this->decodeEmbeddedList($data['next_of_kin'], 'next_of_kin');
+            if ($nextOfKin !== null) {
                 // Convert single object to array
                 if (isset($nextOfKin['name'])) {
                     $nextOfKin = [$nextOfKin];
@@ -391,14 +403,8 @@ class EmployeeService implements EmployeeServiceInterface
         
         // Handle dependants - save to separate table
         if (isset($data['dependants'])) {
-            $dependants = $data['dependants'];
-            if (is_string($dependants)) {
-                $decoded = json_decode($dependants, true);
-                if (is_array($decoded)) {
-                    $dependants = $decoded;
-                }
-            }
-            if (is_array($dependants)) {
+            $dependants = $this->decodeEmbeddedList($data['dependants'], 'dependants');
+            if ($dependants !== null) {
                 $this->employeeRepository->saveDependants($id, $dependants);
                 unset($data['dependants']);
             }
@@ -683,7 +689,7 @@ class EmployeeService implements EmployeeServiceInterface
      * get a contract history record and can be renewed. 'csuite' (technical
      * manager, internal auditor, commercial manager, managing director, ...)
      * is contract-based and renewable, but accrues leave at the
-     * permanent-employee rate — see FinancialYearService::getLeaveRules().
+     * permanent-employee rate Ã¢â‚¬â€ see FinancialYearService::getLeaveRules().
      */
     private function isContractBased(?string $employmentType): bool
     {
@@ -748,7 +754,7 @@ class EmployeeService implements EmployeeServiceInterface
      * date columns on the employee record. The contract history in
      * employee_contracts is preserved as-is (its rows become historical).
      * Unlike renewEmployeeContract(promote_to_permanent) this does NOT
-     * create a new contract term — it is a plain type change.
+     * create a new contract term Ã¢â‚¬â€ it is a plain type change.
      *
      * Throws InvalidArgumentException when the employee does not exist
      * or is not on a contract-based employment type ('contract'/'csuite').
@@ -776,7 +782,7 @@ class EmployeeService implements EmployeeServiceInterface
             $this->employeeRepository->update($employeeId, ['employment_type' => 'permanent']);
 
             // Clear the active contract dates (same defensive pattern as the
-            // renewal promotion path — tolerates a missing repository method).
+            // renewal promotion path Ã¢â‚¬â€ tolerates a missing repository method).
             if (method_exists($this->employeeRepository, 'clearContractDates')) {
                 $this->employeeRepository->clearContractDates($employeeId);
             } else {
@@ -809,7 +815,7 @@ class EmployeeService implements EmployeeServiceInterface
      * promote_to_permanent (bool) converts the employee to permanent
      * employment (employment_type = 'permanent', contract dates cleared)
      * while preserving the contract history. Defaults preserve the legacy
-     * today → +1 year term. Enforces one-renewal-per-contract inside the
+     * today Ã¢â€ â€™ +1 year term. Enforces one-renewal-per-contract inside the
      * insert transaction.
      */
     public function renewEmployeeContract(int $employeeId, int $previousContractId, array $options = []): array
@@ -891,7 +897,7 @@ class EmployeeService implements EmployeeServiceInterface
             // If the caller requested a promotion to permanent, convert the
             // employee's employment_type to 'permanent' and clear the contract
             // date columns on the employee record (contract history is kept
-            // as-is in employee_contracts — those rows become historical).
+            // as-is in employee_contracts Ã¢â‚¬â€ those rows become historical).
             // Otherwise keep them in sync with the newly created active contract.
             $promoteToPermanent = !empty($options['promote_to_permanent']);
             if ($promoteToPermanent) {
@@ -917,7 +923,7 @@ class EmployeeService implements EmployeeServiceInterface
             $db->commit();
         } catch (\Throwable $e) {
             $db->rollback();
-            // Business-rule errors keep their client-safe message (→ HTTP 400).
+            // Business-rule errors keep their client-safe message (Ã¢â€ â€™ HTTP 400).
             if ($e instanceof \InvalidArgumentException) {
                 throw $e;
             }

@@ -18,19 +18,20 @@
     failOnRisky="false"
 >
     <testsuites>
+        <testsuite name="Unit Tests">
+            <directory suffix="Test.php">tests/Unit</directory>
+        </testsuite>
         <testsuite name="Integration Tests">
             <directory suffix="Test.php">tests/Integration</directory>
         </testsuite>
         <!--
-            A "Unit Tests" suite is deliberately NOT declared yet.
+            A suite is declared here only alongside the directory it names.
 
             The previous configuration pointed at tests/Unit/Services,
             tests/Unit/Repositories and tests/Unit/Controllers, none of which
             ever existed. PHPUnit aborts the entire run when a declared
-            directory is missing, so a phantom suite is worse than no suite.
-
-            Add a suite here only alongside the directory it names, so a
-            missing path can never again be mistaken for a passing run.
+            directory is missing, so a phantom suite is worse than no suite -
+            it looks configured while running nothing.
         -->
     </testsuites>
 </phpunit>

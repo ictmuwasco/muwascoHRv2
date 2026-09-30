@@ -520,7 +520,11 @@ class SecurityMiddleware
         }
 
         $raw = stream_get_contents($fh);
-        $data = json_decode((string) $raw, true);
+        // Corrupt rate-limit state is treated as a fresh window below, which
+        // fails open for that one request. Logging it means a truncated or
+        // half-written lock file is visible instead of silently resetting
+        // counters.
+        $data = \App\Helpers\Json::decodeStored((string) $raw, null, 'rate_limit.' . $action);
         if (!is_array($data) || !isset($data['count'], $data['first']) || ($now - (int) $data['first']) > $windowSeconds) {
             $data = ['count' => 0, 'first' => $now];
         }

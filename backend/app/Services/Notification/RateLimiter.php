@@ -51,7 +51,11 @@ final class RateLimiter
         try {
             flock($fh, LOCK_EX);
             $raw   = stream_get_contents($fh);
-            $state = $raw !== false && $raw !== '' ? json_decode($raw, true) : null;
+            $state = \App\Helpers\Json::decodeStored(
+                $raw !== false && $raw !== '' ? (string) $raw : null,
+                null,
+                'rate_limiter.state'
+            );
 
             if (!is_array($state) || !isset($state['window_start'], $state['count'])
                 || $now - (int) $state['window_start'] > $windowSeconds) {

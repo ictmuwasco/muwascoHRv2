@@ -148,6 +148,12 @@ final class AiToolExecutor
         if (strlen($arguments) > self::MAX_ARGUMENTS_JSON_CHARS) {
             return null;
         }
+        // Untrusted LLM-supplied tool arguments. A bare json_decode()
+        // returns null on malformed input, which is exactly this method's
+        // documented "reject the call" sentinel, so the explicit check is
+        // deliberately NOT routed through Json::decodeStored(): here null
+        // means DENY, and collapsing it to [] would hand the tool a default
+        // argument set the model never asked for.
         $decoded = json_decode($arguments, true);
         return is_array($decoded) ? $decoded : null;
     }

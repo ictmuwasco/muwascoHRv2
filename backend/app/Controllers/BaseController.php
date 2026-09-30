@@ -226,12 +226,63 @@ abstract class BaseController
 
     /**
      * Get JSON request body.
+     *
+     * A bare json_decode() returns null for a malformed body, and the
+     * is_array() coalesce then turned that into an empty array. Every
+     * controller reading a required field from this method therefore saw
+     * "field missing" and answered a validation error for a body the client
+     * had actually sent - or, worse, treated a corrupted request as an empty
+     * one and performed a partial write.
+     *
+     * A malformed body is a client error, so it is reported as 400 rather
+     * than reinterpreted. An empty body is still legitimate (form posts send
+     * nothing) and still returns [].
      */
     protected function getJsonBody(): array
     {
         $body = file_get_contents('php://input');
-        $data = json_decode($body, true);
-        return is_array($data) ? $data : [];
+
+        if ($body === false || trim((string) $body) === '') {
+            return [];
+        }
+
+        $decoded = \App\Helpers\Json::decodeRequest((string) $body, [], 'request body');
+
+        if (!is_array($decoded)) {
+            // Valid JSON, but not an object/array (e.g. a bare "5" or a
+            // quoted string). Still unusable as a request payload.
+            return [];
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * Get the request payload, preferring a JSON body and falling back to POST.
+     *
+     * `json_decode(...) ?: $_POST` cannot distinguish "client sent a body that
+     * is not JSON" from "client sent no body", so a malformed body was
+     * silently reinterpreted as a form post. A partial or empty $_POST then
+     * flowed into a write path and produced a confusing validation error -
+     * or, if the field happened to be optional, a partial write.
+     *
+     * An empty body still falls back to $_POST (form posts are legitimate).
+     * A non-empty body that is not a JSON object throws, and the global
+     * handler answers 400.
+     *
+     * @return array<string,mixed>
+     */
+    protected function getRequestPayload(): array
+    {
+        $raw = file_get_contents('php://input');
+
+        if ($raw === false || trim((string) $raw) === '') {
+            return $_POST;
+        }
+
+        $decoded = \App\Helpers\Json::decodeRequest((string) $raw, [], 'request body');
+
+        return is_array($decoded) ? $decoded : [];
     }
 
     /**
