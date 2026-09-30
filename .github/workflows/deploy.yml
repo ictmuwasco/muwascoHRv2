@@ -220,6 +220,33 @@ jobs:
       - name: Prepare storage dirs
         run: mkdir -p backend/storage/logs backend/storage/cache backend/storage/backups
 
+      # ---- Prove the app can actually reach the database before migrating ----
+      # run.php exits with a bare "FATAL: ..." on connection failure, which is
+      # indistinguishable from a genuine migration error. This makes the two
+      # separate, so a future credential or service problem is named rather
+      # than investigated as a schema fault.
+      - name: Verify database connectivity
+        run: |
+          set -euo pipefail
+          php -r '
+            require "backend/bootstrap.php";
+            try {
+              $c = \App\Helpers\Database::getInstance()->getConnection();
+              $r = $c->query("SELECT VERSION() v, DATABASE() d");
+              $row = $r->fetch_assoc();
+              echo "Connected to " . $row["d"] . " on " . $row["v"] . PHP_EOL;
+            } catch (Throwable $e) {
+              fwrite(STDERR, "::error::cannot connect to the CI database: " . $e->getMessage() . PHP_EOL);
+              exit(1);
+            }
+          '
+        env:
+          DB_DATABASE: muwasco
+          DB_USERNAME: root
+          DB_PASSWORD: root
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+
       # ---- MANDATORY pre-migration backup (see docs/DATABASE_ARCHITECTURE.md)
       # run.php applies DROP TABLE / ALTER TABLE / TRUNCATE statements with no
       # recovery path of its own. Snapshot first so a bad migration is always
@@ -239,9 +266,21 @@ jobs:
       - name: Run database migrations
         run: php backend/database/run.php
         env:
-          DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
-          DB_USERNAME: ${{ secrets.CI_DB_USERNAME }}
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+          # These deliberately do NOT use ${{ secrets.* }}. The CI database is
+          # an ephemeral service container defined in this file, with its
+          # credentials in the `services:` block above (root/root). A missing
+          # secret expands to an empty string, and bootstrap's env() treats
+          # '' as unset, so DB_USERNAME silently became "root" and
+          # DB_PASSWORD became "" - the connection was rejected and run.php
+          # died in well under a second, before executing a single migration.
+          # That is why the step failed instantly and repeatedly while passing
+          # perfectly on a developer machine.
+          #
+          # The service is torn down with the job, so these are not production
+          # credentials and belong in the workflow, not in repository secrets.
+          DB_DATABASE: muwasco
+          DB_USERNAME: root
+          DB_PASSWORD: root
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
 
@@ -252,9 +291,9 @@ jobs:
       - name: Run SecurityPermissionsSeeder
         run: php backend/database/seed.php SecurityPermissionsSeeder
         env:
-          DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
-          DB_USERNAME: ${{ secrets.CI_DB_USERNAME }}
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+          DB_DATABASE: muwasco
+          DB_USERNAME: root
+          DB_PASSWORD: root
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
 
@@ -289,15 +328,13 @@ jobs:
           echo "Running PHPUnit with $CONFIG"
           vendor/bin/phpunit -c "$CONFIG" --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log
         env:
-          # Ephemeral CI test database only - never a production credential.
-          # Referenced as GitHub Secrets so the workflow file carries no
-          # password literal. NOTE: GitHub expressions do NOT support `||`
-          # fallbacks (same constraint documented on the frontend build step),
-          # so these are referenced directly - set CI_DB_PASSWORD and
-          # CI_JWT_SECRET in the repository secrets.
-          DB_DATABASE: ${{ secrets.CI_DB_DATABASE }}
-          DB_USERNAME: ${{ secrets.CI_DB_USERNAME }}
-          DB_PASSWORD: ${{ secrets.CI_DB_PASSWORD }}
+          # Same ephemeral service container as the migration steps: the
+          # credentials live in this workflow's `services:` block, not in
+          # repository secrets. See the comment there for why an unset secret
+          # silently produced an empty DB_PASSWORD.
+          DB_DATABASE: muwasco
+          DB_USERNAME: root
+          DB_PASSWORD: root
           DB_HOST: 127.0.0.1
           DB_PORT: 3306
           APP_ENV: testing
