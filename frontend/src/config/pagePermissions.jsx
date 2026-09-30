@@ -86,6 +86,9 @@ export const PAGE_PERMISSIONS = {
   '/consent': { id: 'consent', permission: 'consent:view' },
   '/holidays': { id: 'holidays', permission: 'holidays:view' },
   '/appraisal': { id: 'appraisal', permission: 'performance:view' },
+  '/appraisal/my': { id: 'appraisal_my', permission: 'performance:feedback' },
+  '/appraisal/completed': { id: 'appraisal_completed', permission: 'performance:feedback' },
+  '/strategy/performance-appraisals': { id: 'performance_appraisals', permission: 'performance:supervise' },
 
   // --- Strategy & performance --------------------------------------------------
   '/strategy/strategic-plan': { id: 'strategic_plan', permission: 'strategic_plan:view' },
@@ -105,6 +108,7 @@ export const PAGE_PERMISSIONS = {
   // --- Reports ---------------------------------------------------------------------
   '/reports': { id: 'reports', permission: 'reports:view' },
   '/reports/attendance': { id: 'reports_attendance', permission: 'reports:view' },
+  '/reports/appraisal': { id: 'reports_appraisal', permission: 'reports:view' },
 
   // --- Settings module (§27): the whole page is a protected module. The page
   // shell requires settings:view (super_admin by default); each tab requires

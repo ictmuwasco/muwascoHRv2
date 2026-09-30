@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { Menu, Bell, LogOut, Sun, Moon } from 'lucide-react';
+import { Menu, LogOut, Sun, Moon } from 'lucide-react';
 import api from '../utils/api';
+import NotificationBell from './NotificationBell';
 // Base URL for direct file access (auth cookie is sent automatically) —
 // centralized in src/config/api.ts so every consumer shares VITE_API_URL.
 import { API_BASE_URL as API_BASE } from '../config/api';
@@ -98,11 +99,11 @@ const Header = ({ onToggleSidebar = () => {} }) => {
             {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
 
-          {/* Notifications */}
-          <button className="relative text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">
-            <Bell className="h-6 w-6" />
-            <span className="absolute top-0 right-0 h-2 w-2 bg-red-600 rounded-full"></span>
-          </button>
+          {/* Notifications — live badge + dropdown.
+              Replaces a static bell that showed a permanent red dot regardless
+              of whether there was anything unread. `enabled` is driven by the
+              auth state so an anonymous visitor never triggers a guaranteed 401. */}
+          <NotificationBell enabled={!!user} />
 
           {/* User dropdown */}
           <div className="relative">

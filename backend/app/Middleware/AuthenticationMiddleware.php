@@ -25,6 +25,13 @@ use App\Helpers\Session;
  *   - POST /api/auth/login           credential exchange
  *   - POST /api/system/client-errors pre-login browser error collector
  *   - GET  /api/consent/status       must answer pre-session gracefully
+ *   - the four /api/auth/*-password   self-service reset steps. Unauthenticated
+ *     reset endpoints                  BY NECESSITY - a locked-out user has no
+ *                                      session. Safety comes from the emailed
+ *                                      single-use link plus the 6-digit code,
+ *                                      the per-row wrong-code cap, and the
+ *                                      per-address/per-IP throttles in
+ *                                      PasswordResetController.
  */
 class AuthenticationMiddleware extends BaseMiddleware
 {
@@ -32,6 +39,11 @@ class AuthenticationMiddleware extends BaseMiddleware
         'POST /auth/login',
         'POST /system/client-errors',
         'GET /consent/status',
+        // Self-service password reset (see migration 093).
+        'POST /auth/forgot-password',
+        'GET /auth/reset-password/validate',
+        'POST /auth/reset-password/verify-otp',
+        'POST /auth/reset-password/complete',
     ];
 
     /** Per-request cache of account-status lookups (user id => active?). */

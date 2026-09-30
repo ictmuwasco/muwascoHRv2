@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { getRequestId, setRequestId, reportClientError } from '../utils/errorReporting';
+import { handleSessionExpired, renewSession } from '../utils/sessionRecovery';
 // Single source of truth for the API base URL (VITE_API_URL — typed in
 // src/vite-env.d.ts, documented in .env.example).
 import { API_BASE_URL } from '../config/api';
@@ -39,7 +40,7 @@ apiClient.interceptors.response.use(
     if (serverId) setRequestId(String(serverId));
     return response;
   },
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     const status = error.response?.status;
 
     // Adopt correlation id even from failed responses (error envelope §12).
@@ -78,8 +79,28 @@ apiClient.interceptors.response.use(
     }
 
     if (status === 401) {
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      // A 401 here means the ACCESS token is gone. Renew once from the
+      // httpOnly refresh_token cookie, then replay. Only if renewal itself
+      // fails is the session genuinely over (see utils/api.js, which owns
+      // the single-flight renewal).
+      //
+      // 401s are deliberately NOT reported to System Monitoring: an expired
+      // token is ordinary operation, not a fault, and logging it buries real
+      // incidents.
+      const alreadyRetried = (error.config as { _retried?: boolean } | undefined)?._retried;
+      const isAuthEndpoint = requestUrl.includes('/auth/refresh') || requestUrl.includes('/auth/login');
+
+      if (!alreadyRetried && !isAuthEndpoint) {
+        (error.config as { _retried?: boolean })._retried = true;
+        try {
+          await renewSession();
+          return apiClient.request(error.config as InternalAxiosRequestConfig);
+        } catch {
+          handleSessionExpired('Your session ended after a period of inactivity. Please sign in again.');
+        }
+      } else {
+        handleSessionExpired('Your session ended after a period of inactivity. Please sign in again.');
+      }
     }
     return Promise.reject(error);
   },

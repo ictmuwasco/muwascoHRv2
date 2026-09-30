@@ -15,14 +15,44 @@ use App\Exceptions\RuntimeException;
 class ConfigValidator
 {
     /**
-     * Required environment variables
+     * Required environment variables - enforced in EVERY environment.
      */
     private static array $requiredEnvVars = [
+        'APP_ENV',
+        'DB_CONNECTION',
         'DB_HOST',
         'DB_DATABASE',
         'DB_USERNAME',
         'JWT_SECRET',
     ];
+
+    /**
+     * Required only when APP_ENV=production.
+     *
+     * DB_PASSWORD is deliberately NOT in the blanket list above: the local
+     * XAMPP `root` account legitimately has an EMPTY password, so demanding
+     * it everywhere would break local development on boot. In production an
+     * empty/absent DB password is fatal, because backend/config/database.php
+     * falls back to '' and would silently connect to whatever no-auth MySQL
+     * is reachable - precisely the "insecure default" this class prevents.
+     */
+    private static array $productionRequiredEnvVars = [
+        'DB_PASSWORD',
+    ];
+
+    /**
+     * Placeholder / insecure defaults that must never reach production.
+     * Keyed by variable name; compared case-insensitively.
+     */
+    private static array $forbiddenValues = [
+        'DB_PASSWORD' => ['', 'password', 'root', 'admin', 'secret', '123456', 'changeme'],
+        'JWT_SECRET'  => ['', 'secret', 'changeme', 'password'],
+    ];
+
+    private static function isProduction(): bool
+    {
+        return strtolower(trim((string) env('APP_ENV', ''))) === 'production';
+    }
 
     /**
      * Validate all required configuration
@@ -32,8 +62,116 @@ class ConfigValidator
     public static function validate(): void
     {
         self::validateEnvVars();
+        self::validateInsecureDefaults();
+        self::validateProductionSecurityPosture();
         self::validateJwtSecret();
         self::validateDatabaseConfig();
+    }
+
+    /**
+     * Reject known-insecure placeholder values in production.
+     *
+     * A missing variable is caught above; this catches a variable that is
+     * PRESENT but set to a value that provides no real protection.
+     */
+    private static function validateInsecureDefaults(): void
+    {
+        if (!self::isProduction()) {
+            return; // local/staging may legitimately use simple or empty values
+        }
+
+        // A value that is present but is not a real credential is as bad as a
+        // missing one - it silently provides no protection.
+        $missing = [];
+        $offenders = [];
+        foreach (self::$productionRequiredEnvVars as $var) {
+            if (env($var) === null || trim((string) env($var, '')) === '') {
+                $missing[] = $var;
+            }
+        }
+        foreach (self::$forbiddenValues as $var => $banned) {
+            $value = strtolower(trim((string) env($var, '')));
+            if (in_array($value, $banned, true)) {
+                $offenders[] = $var;
+            }
+        }
+
+        $errors = [];
+        if (!empty($missing)) {
+            $errors[] = 'missing required production config: ' . implode(', ', $missing);
+        }
+        if (!empty($offenders)) {
+            $errors[] = 'insecure default value(s): ' . implode(', ', $offenders);
+        }
+        if (!empty($errors)) {
+            throw new \RuntimeException(
+                'Production configuration invalid - ' . implode('; ', $errors)
+            );
+        }
+    }
+
+    /**
+     * Enforce the production security posture that the dev template relaxes.
+     *
+     * .env.example deliberately ships the developer-friendly posture
+     * (SESSION_SECURE_COOKIE=false and long token lifetimes) so the project
+     * runs on http://localhost with no TLS and no ceremony. Those exact
+     * values must never survive into production:
+     *
+     *  - SESSION_SECURE_COOKIE=false over HTTPS means the session cookie is
+     *    also sent in cleartext on any http:// request, so one downgrade
+     *    (or an image/link to an http:// URL) leaks it.
+     *  - An 8-hour access token / 30-day refresh token is the dev default.
+     *    Production is 1 hour / 7 days; a stolen token stays usable far
+     *    longer than it needs to be.
+     *
+     * Both are checked here so a mis-copied .env fails loudly at boot rather
+     * than silently shipping a weaker posture than intended.
+     */
+    private static function validateProductionSecurityPosture(): void
+    {
+        if (!self::isProduction()) {
+            return; // dev/staging legitimately run without TLS
+        }
+
+        $errors = [];
+
+        $secureCookie = strtolower(trim((string) env('SESSION_SECURE_COOKIE', '')));
+        if ($secureCookie !== 'true') {
+            $errors[] = 'SESSION_SECURE_COOKIE must be true in production (currently "'
+                . ($secureCookie === '' ? 'unset' : $secureCookie) . '")';
+        }
+
+        // Maxima, not exact matches: a longer token than the production
+        // template is always a weakening, never a hardening.
+        $accessMax = 3600;   // 1 hour
+        $refreshMax = 604800; // 7 days
+
+        $access = (int) env('JWT_ACCESS_TOKEN_EXPIRY', $accessMax);
+        if ($access > $accessMax) {
+            $errors[] = "JWT_ACCESS_TOKEN_EXPIRY must be <= {$accessMax}s in production (currently {$access}s)";
+        }
+
+        $refresh = (int) env('JWT_REFRESH_TOKEN_EXPIRY', $refreshMax);
+        if ($refresh > $refreshMax) {
+            $errors[] = "JWT_REFRESH_TOKEN_EXPIRY must be <= {$refreshMax}s in production (currently {$refresh}s)";
+        }
+
+        // The application must not run as a MySQL superuser in production.
+        // A superuser can read every database on the server, drop tables and
+        // create users, so a single application-layer compromise becomes a
+        // full server compromise. .env.production.example ships
+        // DB_USERNAME=muwascohr for exactly this reason.
+        $dbUser = strtolower(trim((string) env('DB_USERNAME', '')));
+        if ($dbUser === 'root') {
+            $errors[] = 'DB_USERNAME must not be root in production; use a least-privilege account';
+        }
+
+        if (!empty($errors)) {
+            throw new \RuntimeException(
+                'Production security posture invalid - ' . implode('; ', $errors)
+            );
+        }
     }
 
     /**

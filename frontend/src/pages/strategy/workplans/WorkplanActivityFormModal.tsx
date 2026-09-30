@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Modal from '../../../components/ui/Modal';
+import Combobox from '../../../components/ui/Combobox';
 import Button from '../../../components/ui/Button';
 import { workplanService } from '../../../api/services/workplanService';
 import type {
@@ -97,6 +98,22 @@ export default function WorkplanActivityFormModal({
   const [cycleIds, setCycleIds] = useState<number[]>([]);
   const [integrated, setIntegrated] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // The assignable-employee list is the whole unit's staff, so the
+  // responsible-employee picker gets type-to-filter. The staff number and
+  // unit ride along in `description`, so the filter matches those too.
+  const employeeOptions = useMemo(
+    () =>
+      employees.map((emp) => ({
+        value: emp.id,
+        label: `${emp.name ?? ''}${emp.employee_id ? ` (${emp.employee_id})` : ''}`.trim(),
+        description:
+          [emp.position, emp.subsection_name || emp.section_name || emp.department_name]
+            .filter(Boolean)
+            .join(' · ') || undefined,
+      })),
+    [employees],
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -435,19 +452,14 @@ export default function WorkplanActivityFormModal({
             {showOfficer && (
               <div>
                 <label className={labelCls}>Responsible Employee</label>
-                <select
-                  className={inputCls}
+                <Combobox
                   value={officerId}
-                  onChange={(e) => setOfficerId(e.target.value)}
-                >
-                  <option value="">— Unassigned —</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={String(emp.id)}>
-                      {emp.name}
-                      {emp.position ? ` (${emp.position})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setOfficerId}
+                  options={employeeOptions}
+                  placeholder="Search employees"
+                  emptyMessage="No employee matches your search."
+                  noOptionsMessage="No employees available in your unit."
+                />
               </div>
             )}
           </div>

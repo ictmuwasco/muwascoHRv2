@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Modal from '../../../components/ui/Modal';
+import Combobox from '../../../components/ui/Combobox';
 import Button from '../../../components/ui/Button';
 import { GitBranch } from 'lucide-react';
 import { workplanService } from '../../../api/services/workplanService';
@@ -75,6 +76,18 @@ export default function CascadeActivityDialog({
   const [pEnd, setPEnd] = useState('');
   const [budget, setBudget] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Subsection-level staff can be numerous, so the assignee picker filters
+  // by name / staff number / role instead of listing everyone in a <select>.
+  const employeeOptions = useMemo(
+    () =>
+      employees.map((emp) => ({
+        value: emp.id,
+        label: `${emp.name ?? ''}${emp.employee_id ? ` (${emp.employee_id})` : ''}`.trim(),
+        description: emp.position ?? emp.department_name ?? undefined,
+      })),
+    [employees],
+  );
   const [cycleIds, setCycleIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
   /** Error rendered inside the dialog (see fail()). */
@@ -304,19 +317,14 @@ export default function CascadeActivityDialog({
         {parentLevel === 'subsection' && (
           <div>
             <label className={labelCls}>{targetLabel}</label>
-            <select
-              className={inputCls}
+            <Combobox
               value={officerId}
-              onChange={(e) => setOfficerId(e.target.value)}
-            >
-              <option value="">— Unassigned —</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={String(emp.id)}>
-                  {emp.name}
-                  {emp.position ? ` (${emp.position})` : ''}
-                </option>
-              ))}
-            </select>
+              onChange={setOfficerId}
+              options={employeeOptions}
+              placeholder="Search employees"
+              emptyMessage="No employee matches your search."
+              noOptionsMessage="No employees available in your unit."
+            />
           </div>
         )}
 

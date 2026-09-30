@@ -15,6 +15,8 @@ import {
 
 // Eagerly loaded - needed immediately for initial render
 import Login from './pages/auth/Login';
+import ForgotPassword from './pages/auth/ForgotPassword';
+import ResetPassword from './pages/auth/ResetPassword';
 import DataProtectionConsent from './pages/auth/DataProtectionConsent';
 import Dashboard from './pages/dashboard/Dashboard';
 
@@ -23,6 +25,7 @@ const Employees = lazy(() => import('./pages/employee/Employees'));
 const EmployeeProfile = lazy(() => import('./pages/employee/EmployeeProfile'));
 const EmployeeForm = lazy(() => import('./pages/employee/EmployeeForm'));
 const Profile = lazy(() => import('./pages/employee/Profile'));
+const Notifications = lazy(() => import('./pages/Notifications'));
 
 // Lazy loaded - Leave pages
 const Leave = lazy(() => import('./pages/leave/Leave'));
@@ -44,7 +47,6 @@ const AppraisalCycles = lazy(() => import('./pages/hr-admin/AppraisalCycles'));
 const Departments = lazy(() => import('./pages/hr-admin/Departments'));
 const Attendance = lazy(() => import('./pages/attendance/Attendance'));
 const AttendanceDashboard = lazy(() => import('./pages/attendance/AttendanceDashboard'));
-const Appraisal = lazy(() => import('./pages/hr-admin/Appraisal'));
 
 // Lazy loaded - Meeting pages
 const MeetingsDashboard = lazy(() => import('./pages/meetings/MeetingsDashboard'));
@@ -60,6 +62,7 @@ const ErrorMonitoring = lazy(() => import('./pages/settings/ErrorMonitoring'));
 const Reports = lazy(() => import('./pages/reports/Reports'));
 const AttendanceReport = lazy(() => import('./pages/reports/AttendanceReport'));
 const LeaveReports = lazy(() => import('./pages/reports/LeaveReports'));
+const AppraisalReport = lazy(() => import('./pages/reports/AppraisalReport'));
 const StrategicPlan = lazy(() => import('./pages/strategic-plan/StrategicPlan'));
 
 // Lazy loaded - HR Policy & Procedures module
@@ -86,6 +89,9 @@ const SubsectionHeadWorkplan = lazy(
   () => import('./pages/strategy/workplans/SubsectionHeadWorkplan'),
 );
 const Kpis = lazy(() => import('./pages/strategy/Kpis'));
+const MyAppraisals = lazy(() => import('./pages/appraisal/MyAppraisals'));
+const SupervisorAppraisals = lazy(() => import('./pages/appraisal/SupervisorAppraisals'));
+const CompletedAppraisals = lazy(() => import('./pages/appraisal/CompletedAppraisals'));
 
 // Settings components (eagerly loaded - small and frequently used)
 import SettingsLayout, { SettingsIndexRedirect } from './components/settings/SettingsLayout';
@@ -125,6 +131,18 @@ const SafeFallback = () => {
   return <Navigate to={firstPermittedRoute(can)} replace />;
 };
 
+const AppraisalIndexRedirect = () => {
+  const { can, user } = useAuth();
+  const supervisor = can('performance', 'supervise')
+    && !['officer', 'employee', 'bod_chairman'].includes(String(user?.role || '').toLowerCase());
+  return (
+    <Navigate
+      to={supervisor ? '/strategy/performance-appraisals' : '/appraisal/my'}
+      replace
+    />
+  );
+};
+
 function App() {
   return (
     <AuthProvider>
@@ -132,6 +150,11 @@ function App() {
         <ConnectionStatus />
         <Routes>
           <Route path="/login" element={<Login />} />
+      {/* Self-service password reset. Both pages are unauthenticated by
+          necessity; ResetPassword re-validates the emailed link on mount and
+          refuses to continue if it has expired or been used. */}
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/data-protection-consent" element={<DataProtectionConsent />} />
 
           <Route
@@ -148,6 +171,17 @@ function App() {
               element={
                 <Guarded route="/dashboard">
                   <Dashboard />
+                </Guarded>
+              }
+            />
+
+            {/* In-app notification inbox. Every authenticated user has one -
+                there is no permission gate because the data is their own. */}
+            <Route
+              path="notifications"
+              element={
+                <Guarded route="/notifications">
+                  <Notifications />
                 </Guarded>
               }
             />
@@ -384,14 +418,39 @@ function App() {
             />
             <Route
               path="appraisal"
-              element={
-                <Guarded route="/appraisal">
-                  <Suspense fallback={<PageLoader />}>
-                    <Appraisal />
-                  </Suspense>
-                </Guarded>
-              }
+              element={<AppraisalIndexRedirect />}
             />
+             <Route
+               path="appraisal/my"
+               element={
+                 <Guarded route="/appraisal/my">
+                   <Suspense fallback={<PageLoader />}>
+                     <MyAppraisals />
+                   </Suspense>
+                 </Guarded>
+               }
+             />
+             <Route
+               path="appraisal/completed"
+               element={
+                 <Guarded route="/appraisal/completed">
+                   <Suspense fallback={<PageLoader />}>
+                     <CompletedAppraisals />
+                   </Suspense>
+                 </Guarded>
+               }
+             />
+             <Route
+               path="strategy/performance-appraisals"
+               element={
+                 <Guarded route="/strategy/performance-appraisals">
+                   <Suspense fallback={<PageLoader />}>
+                     <SupervisorAppraisals />
+                   </Suspense>
+                 </Guarded>
+               }
+             />
+
             <Route
               path="audit"
               element={
@@ -418,6 +477,16 @@ function App() {
                 <Guarded route="/reports/attendance">
                   <Suspense fallback={<PageLoader />}>
                     <AttendanceReport />
+                  </Suspense>
+                </Guarded>
+              }
+            />
+            <Route
+              path="reports/appraisal"
+              element={
+                <Guarded route="/reports/appraisal">
+                  <Suspense fallback={<PageLoader />}>
+                    <AppraisalReport />
                   </Suspense>
                 </Guarded>
               }
@@ -674,6 +743,10 @@ function App() {
                 path="audit"
                 element={
                   <Guarded route="/settings/audit">
+                    {/* Full audit page: filters, pagination and the
+                        per-event detail modal. SettingsAuditTab is the
+                        reduced four-card summary and is no longer used
+                        here. */}
                     <Suspense fallback={<PageLoader />}>
                       <Audit />
                     </Suspense>

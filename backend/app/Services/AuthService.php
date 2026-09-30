@@ -114,8 +114,11 @@ class AuthService implements AuthServiceInterface
             \logger()->warning('Consent check during login failed', ['error' => $e->getMessage()]);
         }
 
-        // Business rule: Generate token (JWT or session)
-        $token = $this->generateToken($user);
+        // Business rule: Generate the token pair (JWT or session). Issuing the
+        // refresh token here is what lets the SPA recover later WITHOUT asking
+        // the user to sign in again - see renewFromRefreshToken().
+        $tokens = $this->issueTokenPair($user);
+        $token = $tokens['token'];
 
         // Business rule: Update last login
         $this->updateLastLogin($user['id']);
@@ -125,8 +128,7 @@ class AuthService implements AuthServiceInterface
             session_regenerate_id(true);
         }
 
-        // Security: Set httpOnly access-token cookie (F-05)
-        $this->setAccessTokenCookie($token);
+        // The access-token cookie is already set by issueTokenPair() above.
 
         // Business rule: Create session
         $this->session->set('user_id', $user['id']);
@@ -159,6 +161,10 @@ class AuthService implements AuthServiceInterface
                 'consent_accepted' => $consentAccepted,
             ],
             'token' => $token,
+            // Let the SPA schedule a proactive renewal before the access token
+            // lapses, instead of waiting for a 401 to discover it.
+            'expires_in' => $tokens['expires_in'],
+            'refresh_expires_in' => $tokens['refresh_expires_in'],
         ];
     }
 
@@ -177,6 +183,11 @@ class AuthService implements AuthServiceInterface
 
         // Business rule: Clear remember me cookie
         $this->clearRememberMeCookie();
+
+        // Security: Revoke every outstanding refresh token, so a cookie copied
+        // before logout cannot be replayed to resurrect the session.
+        $this->revokeAllRefreshTokens((int) $userId);
+        $this->clearRefreshTokenCookie();
 
         // Security: Clear the httpOnly access-token cookie (F-05)
         $this->clearAccessTokenCookie();
@@ -396,6 +407,220 @@ class AuthService implements AuthServiceInterface
     private function generateToken(array $user): string
     {
         return \App\Helpers\JWT::getInstance()->generateAccessToken($user);
+    }
+
+    /**
+     * Issue a fresh access+refresh pair and persist the refresh token.
+     *
+     * Called on login AND on every renewal. The refresh token is stored
+     * HASHED alongside its token_id, so a database leak does not hand an
+     * attacker usable renewal credentials.
+     *
+     * @return array{token:string,expires_in:int,refresh_expires_in:int}
+     */
+    private function issueTokenPair(array $user): array
+    {
+        $access = $this->generateToken($user);
+        $refresh = \App\Helpers\JWT::getInstance()->generateRefreshToken($user);
+
+        $this->setAccessTokenCookie($access);
+        $this->setRefreshTokenCookie($refresh);
+        $this->persistRefreshToken((int) $user['id'], $refresh);
+
+        return [
+            'token'              => $access,
+            'expires_in'         => (int) \env('JWT_ACCESS_TOKEN_EXPIRY', 28800),
+            'refresh_expires_in' => (int) \env('JWT_REFRESH_TOKEN_EXPIRY', 2592000),
+        ];
+    }
+
+    /**
+     * Persist a refresh token so it can be revoked and so a stolen cookie can
+     * be traced to a single issued credential.
+     */
+    private function persistRefreshToken(int $userId, string $refreshToken): void
+    {
+        $payload = $this->decodeRefreshToken($refreshToken);
+        if ($payload === null) {
+            return;
+        }
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $expiresAt = date('Y-m-d H:i:s', time() + (int) \env('JWT_REFRESH_TOKEN_EXPIRY', 2592000));
+        // bind_param needs VARIABLES by reference: a cast expression such as
+        // (string) $payload->token_id is a temporary and raises
+        // "Argument #2 cannot be passed by reference".
+        $tokenId = (string) $payload->token_id;
+        $stmt = $db->prepare(
+            'INSERT INTO refresh_tokens (token_id, user_id, expires_at, created_at)
+             VALUES (?, ?, ?, NOW())'
+        );
+        // Types must match the VALUES, not the columns' apparent nature:
+        // expires_at is a DATETIME but must be bound as a string ('s').
+        // Declaring it 'i' makes mysqli cast '2026-10-27 08:00:00' to 0, so
+        // every refresh token is stored already expired and renewal can
+        // never succeed. token_id=s, user_id=i, expires_at=s.
+        $stmt->bind_param('sis', $tokenId, $userId, $expiresAt);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    /**
+     * Decode a refresh token WITHOUT enforcing `exp`.
+     *
+     * firebase/php-jwt throws on an expired token, but we need the claims to
+     * decide WHY it failed. Every caller re-checks expiry against the database
+     * record, so an expired token can never actually be redeemed.
+     */
+    private function decodeRefreshToken(string $token): ?object
+    {
+        try {
+            $decoded = \Firebase\JWT\JWT::decode(
+                $token,
+                new \Firebase\JWT\Key((string) \env('JWT_SECRET'), 'HS256')
+            );
+            if (($decoded->type ?? '') !== 'refresh' || !isset($decoded->sub, $decoded->token_id)) {
+                return null;
+            }
+            return $decoded;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Revoke one issued refresh token.
+     */
+    private function revokeRefreshTokenId(string $tokenId): void
+    {
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare('UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_id = ? AND revoked_at IS NULL');
+        $stmt->bind_param('s', $tokenId);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    /**
+     * Revoke EVERY refresh token for a user (logout / password change) so a
+     * stolen cookie cannot outlive the session that created it.
+     */
+    public function revokeAllRefreshTokens(int $userId): void
+    {
+        if ($userId <= 0) {
+            return;
+        }
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+        $stmt = $db->prepare('UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = ? AND revoked_at IS NULL');
+        $stmt->bind_param('i', $userId);
+        $stmt->execute();
+        $stmt->close();
+    }
+    /**
+     * Renew an access token from the refresh-token cookie.
+     *
+     * This is what makes an expired access token RECOVERABLE. The previous
+     * implementation identified the caller with getAuthUserId(), which needs
+     * a still-valid access token or a live PHP session - so once the access
+     * token expired, renewal was impossible and the user was signed out. The
+     * refresh cookie is independent of the access token, so it survives.
+     *
+     * @throws \InvalidArgumentException when the refresh token is unusable
+     * @return array{token:string,expires_in:int,refresh_expires_in:int}
+     */
+    public function renewFromRefreshToken(string $refreshToken): array
+    {
+        $payload = $this->decodeRefreshToken($refreshToken);
+        if ($payload === null) {
+            throw new \InvalidArgumentException('Session expired. Please sign in again.');
+        }
+
+        $userId = (int) $payload->sub;
+        $tokenId = (string) $payload->token_id;
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+
+        $stmt = $db->prepare(
+            'SELECT id, expires_at FROM refresh_tokens
+             WHERE token_id = ? AND user_id = ? AND revoked_at IS NULL
+             LIMIT 1'
+        );
+        $stmt->bind_param('si', $tokenId, $userId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$row || strtotime((string) $row['expires_at']) <= time()) {
+            if ($row) {
+                $this->revokeRefreshTokenId($tokenId);
+            }
+            throw new \InvalidArgumentException('Session expired. Please sign in again.');
+        }
+
+        $user = $this->userRepository->findById($userId);
+        if (!$user || !$this->isUserActive($userId)) {
+            $this->revokeRefreshTokenId($tokenId);
+            throw new \InvalidArgumentException('Session expired. Please sign in again.');
+        }
+
+        $employee = $this->employeeRepository->findByEmail((string) $user['email']);
+        if ($employee && isset($employee['id'])) {
+            $user['employee_id'] = $employee['id'];
+        }
+
+        // Rotate: the presented token is single-use, so a stolen cookie is
+        // usable at most once and the theft becomes detectable (a second
+        // attempt finds the row already revoked).
+        $this->revokeRefreshTokenId($tokenId);
+
+        // Restore the session so the request that triggered renewal is also
+        // authorised, not just the ones that follow it.
+        $this->session->set('user_id', $userId);
+        $this->session->set('user_role', $user['role']);
+        $this->session->set('user_email', $user['email']);
+        $this->session->set('session_valid', true);
+        $this->session->set('last_activity', time());
+
+        return $this->issueTokenPair($user);
+    }
+
+    /**
+     * Set the refresh token as a long-lived httpOnly cookie.
+     */
+    private function setRefreshTokenCookie(string $token): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        setcookie('refresh_token', $token, [
+            'expires'  => time() + (int) \env('JWT_REFRESH_TOKEN_EXPIRY', 2592000),
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => $this->isSecureRequest(),
+            'httponly' => true,
+            // Lax (not Strict) so the cookie still rides along on the
+            // top-level navigation back into the SPA after a hard reload.
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    /** Clear the refresh cookie on logout / failed renewal. */
+    private function clearRefreshTokenCookie(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        setcookie('refresh_token', '', [
+            'expires'  => time() - 3600,
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => $this->isSecureRequest(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    private function isSecureRequest(): bool
+    {
+        return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (int) ($_SERVER['SERVER_PORT'] ?? 80) === 443;
     }
 
     /**

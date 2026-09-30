@@ -10,7 +10,6 @@ import {
   Clock,
   FileText,
   Star,
-  Bell,
   AlertTriangle,
   Hourglass,
   CalendarDays,
@@ -80,15 +79,6 @@ interface AttendanceData {
   office_mode: 'default' | 'alternative' | 'manual';
   offices: Office[];
 }
-
-interface Notification {
-  id: number;
-  is_read: number;
-  title: string;
-  message: string;
-  created_at: string;
-}
-
 interface Analytics {
   attendance: Record<string, any> | null;
   departments: Record<string, any> | null;
@@ -213,11 +203,6 @@ const Dashboard = () => {
   // Refs to prevent duplicate requests (state updates are async)
   const clockInInFlight = useRef(false);
   const clockOutInFlight = useRef(false);
-
-  // Notifications state
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-
   // Analytics state
   const [analytics, setAnalytics] = useState<Analytics>({
     attendance: null,
@@ -247,12 +232,6 @@ const Dashboard = () => {
 
   // HR Policy & Procedures Manual dashboard card (§3)
   const [currentPolicy, setCurrentPolicy] = useState<CurrentPolicyResponse['policy']>(null);
-
-  useEffect(() => {
-    fetchAttendanceDashboard();
-    fetchNotifications();
-    fetchCurrentPolicy();
-  }, []);
 
   // HR Insights widget + the org-wide analytics charts (Attendance, Leave,
   // Department, Employee statistics) are HR-restricted surfaces - only
@@ -324,27 +303,6 @@ const Dashboard = () => {
     } catch (error) {
       console.error('Failed to fetch attendance data:', error);
     }
-  };
-
-  interface NotificationsPayload {
-    notifications: Notification[];
-    unread_count?: number;
-  }
-
-  const fetchNotifications = async () => {
-    try {
-      const response = await api.get<NotificationsPayload>('/notifications');
-      const raw = response.data?.data as NotificationsPayload | Notification[] | undefined;
-      const list = Array.isArray(raw) ? raw : (raw?.notifications ?? []);
-      setNotifications(Array.isArray(list) ? list : []);
-      const unread = Array.isArray(raw) ? 0 : Number(raw?.unread_count) || 0;
-      setUnreadCount(unread);
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error);
-    }
-  };
-
-  const fetchCurrentPolicy = async () => {
     try {
       const response = await hrPolicyService.getCurrent();
       setCurrentPolicy(response?.policy ?? null);
@@ -1285,60 +1243,6 @@ const Dashboard = () => {
           </Button>
         </Card>
       )}
-
-      {/* Notifications Widget */}
-      <Card>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <Bell className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Notifications
-            </h3>
-            {unreadCount > 0 && (
-              <span className="bg-red-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                {unreadCount}
-              </span>
-            )}
-          </div>
-          <Button variant="outline" size="sm" onClick={fetchNotifications}>
-            Refresh
-          </Button>
-        </div>
-
-        <div className="space-y-3 max-h-96 overflow-y-auto">
-          {notifications.length > 0 ? (
-            notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={`p-3 rounded-lg border ${
-                  notification.is_read
-                    ? 'bg-gray-50 dark:bg-slate-900/40 border-gray-200 dark:border-slate-700'
-                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                      {notification.title}
-                    </h4>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                      {notification.message}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                      {new Date(notification.created_at).toLocaleString()}
-                    </p>
-                  </div>
-                  {!notification.is_read && (
-                    <div className="h-2 w-2 bg-blue-500 rounded-full mt-1"></div>
-                  )}
-                </div>
-              </div>
-            ))
-          ) : (
-            <p className="text-gray-500 dark:text-gray-400 text-center py-8">No notifications</p>
-          )}
-        </div>
-      </Card>
 
       {/* Analytics Graphs - live Recharts visualisations fed by the
            /dashboard/charts/* endpoints. HR-restricted surface: charts are

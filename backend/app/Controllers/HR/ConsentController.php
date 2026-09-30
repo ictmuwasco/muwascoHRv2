@@ -90,7 +90,14 @@ class ConsentController extends BaseController
                 return;
             }
 
-            $input = json_decode(file_get_contents('php://input'), true);
+            // Malformed body is a client error, not an empty request: the bare
+            // decode() returned null and the flow continued with employee_id
+            // '' , which reads as a missing field rather than a broken body.
+            $input = \App\Helpers\Json::decodeRequest(
+                file_get_contents('php://input') ?: '',
+                [],
+                'consent.body'
+            );
             $employeeId = trim((string) ($input['employee_id'] ?? ''));
             error_log("Employee ID to verify: '$employeeId' for user ID: $userId");
 
@@ -269,7 +276,14 @@ class ConsentController extends BaseController
                 return;
             }
 
-            $input = json_decode(file_get_contents('php://input'), true);
+            // Malformed body is a client error, not an empty request: the bare
+            // decode() returned null and the flow continued with employee_id
+            // '' , which reads as a missing field rather than a broken body.
+            $input = \App\Helpers\Json::decodeRequest(
+                file_get_contents('php://input') ?: '',
+                [],
+                'consent.body'
+            );
             $employeeId = trim((string) ($input['employee_id'] ?? ''));
             $agreed = !empty($input['agreed']);
 

@@ -25,6 +25,7 @@ import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
 import { auditService } from '../../api/services/auditService';
 import { userService } from '../../api/services/userService';
+import { employeeService } from '../../api/services/employeeService';
 import type { AuditLog, AuditStatus, User as UserType } from '../../types';
 
 interface AuditStatistics {
@@ -89,6 +90,18 @@ const Audit = () => {
 
   // --- Resolved user names (cache to avoid repeated API calls) ---
   const [resolvedUsers, setResolvedUsers] = useState<Record<number, ResolvedUser>>({});
+
+  /**
+   * Resolved EMPLOYEE names, keyed by employees.id.
+   *
+   * Separate from resolvedUsers because the two live in different tables and
+   * are read through different endpoints (/users/{id} vs /employees/{id}).
+   * Collapsing them would make a Performance event's appraisee look up as a
+   * user account and fail.
+   */
+  const [resolvedEmployees, setResolvedEmployees] = useState<
+    Record<number, { name: string; email: string; employee_code: string }>
+  >({});
 
   // --- Fetch all data on mount ---
   useEffect(() => {
@@ -199,12 +212,17 @@ const Audit = () => {
       const fullLog = await auditService.getLogById(log.id);
       setSelectedLog(fullLog);
 
-      // Resolve user IDs to real names (actor + target)
+      // Resolve ids to real names (actor + target)
       const idsToResolve: (number | null | undefined)[] = [fullLog.user_id];
       if (fullLog.target_type === 'User' && fullLog.target_id) {
         idsToResolve.push(fullLog.target_id);
       }
-      await Promise.all(idsToResolve.map((id) => resolveUserName(id)));
+      await Promise.all([
+        ...idsToResolve.map((id) => resolveUserName(id)),
+        // The appraisee behind an EmployeeAppraisal/Employee target is an
+        // EMPLOYEE, not a user account - it needs its own lookup.
+        resolveTargetEmployee(fullLog),
+      ]);
     } catch (error) {
       console.error('Failed to fetch audit log details:', error);
       // Fall back to the row data we already have
@@ -341,13 +359,95 @@ const Audit = () => {
     if (log.target_type === 'User' && log.target_id && resolvedUsers[log.target_id]) {
       return resolvedUsers[log.target_id].name;
     }
+    // A resolved EMPLOYEE target (many modules audit against employees, and
+    // EmployeeAppraisal rows carry the appraisee in new_values.employee_id).
+    const employeeId = targetEmployeeKey(log);
+    if (employeeId && resolvedEmployees[employeeId]) {
+      return resolvedEmployees[employeeId].name;
+    }
     // Fall back to the stored target_name
-    return log.target_name || `User #${log.target_id ?? ''}`;
+    if (log.target_name) return log.target_name;
+    // Last resort. The old code hard-coded "User #<id>", which was actively
+    // misleading: target_type is NOT always 'User' (EmployeeAppraisal,
+    // Employee, LeaveApplication, Meeting, ...), so a Performance event
+    // rendered as "User #54" and looked like a broken user reference. Say what
+    // the record actually is instead.
+    if (log.target_type && log.target_id) {
+      return `${humanizeTargetType(log.target_type)} #${log.target_id}`;
+    }
+    return log.target_name || '—';
   };
+
+  /** 'EmployeeAppraisal' -> 'Employee appraisal'. */
+  const humanizeTargetType = (type: string): string => {
+    const spaced = type.replace(/_/g, ' ').trim();
+    return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+  };
+
+  /**
+   * The employees.id this audit row is really about, if any.
+   *
+   * Two shapes matter:
+   *   - target_type 'Employee'            -> target_id IS the employees PK
+   *   - target_type 'EmployeeAppraisal'   -> new_values.employee_id is the PK
+   *     (the target is the appraisal row; the person is carried alongside it)
+   * Everything else has no resolvable person.
+   */
+  const targetEmployeeKey = (log: AuditLog): number | null => {
+    if (log.target_type === 'Employee' && log.target_id) return log.target_id;
+    if (log.target_type === 'EmployeeAppraisal') {
+      const raw = (log as any).new_values?.employee_id;
+      const n = Number(raw);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }
+    return null;
+  };
+
+  /**
+   * Fetch and cache the employee behind a target row.
+   *
+   * Silently no-ops on failure: the audit log must still render if the
+   * employees:view permission is absent, and a name is an enrichment, never a
+   * reason to hide the event.
+   */
+  const resolveTargetEmployee = useCallback(
+    async (log: AuditLog): Promise<void> => {
+      const employeeId = targetEmployeeKey(log);
+      if (!employeeId || resolvedEmployees[employeeId]) return;
+      try {
+        const response = await employeeService.getById(employeeId);
+        const e: any = response.data;
+        const resolved = {
+          name:
+            [e?.first_name, e?.last_name, e?.surname].filter(Boolean).join(' ').trim() ||
+            e?.email ||
+            `Employee #${employeeId}`,
+          email: e?.email || '',
+          employee_code: e?.employee_id ? String(e.employee_id) : '',
+        };
+        setResolvedEmployees((prev) => ({ ...prev, [employeeId]: resolved }));
+      } catch {
+        /* enrichment only - never block the details modal */
+      }
+    },
+    [resolvedEmployees],
+  );
 
   const getTargetDisplayEmail = (log: AuditLog): string => {
     if (log.target_type === 'User' && log.target_id && resolvedUsers[log.target_id]) {
       return resolvedUsers[log.target_id].email;
+    }
+    const employeeId = targetEmployeeKey(log);
+    if (employeeId && resolvedEmployees[employeeId]) {
+      return resolvedEmployees[employeeId].email;
+    }
+    return '';
+  };
+
+  const getTargetDisplayCode = (log: AuditLog): string => {
+    const employeeId = targetEmployeeKey(log);
+    if (employeeId && resolvedEmployees[employeeId]) {
+      return resolvedEmployees[employeeId].employee_code;
     }
     return '';
   };
@@ -787,7 +887,7 @@ const Audit = () => {
                       <div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Type</div>
                         <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {selectedLog.target_type}
+                          {humanizeTargetType(selectedLog.target_type)}
                         </div>
                       </div>
                     )}
@@ -804,6 +904,13 @@ const Audit = () => {
                       <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
                         {getTargetDisplayName(selectedLog)}
                       </div>
+                      {/* Staff number, so the person is identifiable at a glance
+                          even when the name is missing from the log itself. */}
+                      {getTargetDisplayCode(selectedLog) && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          Staff No: {getTargetDisplayCode(selectedLog)}
+                        </p>
+                      )}
                       {getTargetDisplayEmail(selectedLog) && (
                         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                           {getTargetDisplayEmail(selectedLog)}

@@ -189,7 +189,7 @@ const Reports = () => {
     { id: 'employees', label: 'Employee Reports', icon: FileText, to: '/reports' },
     { id: 'attendance', label: 'Attendance Reports', icon: BarChart3, to: '/reports/attendance' },
     { id: 'leave', label: 'Leave Reports', icon: FileText },
-    { id: 'appraisal', label: 'Appraisal Reports', icon: BarChart3 },
+    { id: 'appraisal', label: 'Appraisal Reports', icon: BarChart3, to: '/reports/appraisal' },
     { id: 'documentation', label: 'Documentation', icon: FileText },
   ];
 

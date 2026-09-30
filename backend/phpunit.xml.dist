@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Canonical PHPUnit configuration. This file is tracked in git.
+
+    There is also a gitignored backend/phpunit.xml, which is the local
+    developer override. The .gitignore comment claimed phpunit.xml.dist was
+    the tracked file, but no .dist file had ever been committed - so on CI the
+    config lookup in deploy.yml fell through every candidate path and PHPUnit
+    had no configuration at all. Combined with zero test files, that is why the
+    suite reported success while running nothing.
+-->
+<phpunit
+    bootstrap="tests/bootstrap.php"
+    colors="true"
+    verbose="true"
+    stopOnFailure="false"
+    failOnWarning="false"
+    failOnRisky="false"
+>
+    <testsuites>
+        <testsuite name="Unit Tests">
+            <directory suffix="Test.php">tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Integration Tests">
+            <directory suffix="Test.php">tests/Integration</directory>
+        </testsuite>
+        <!--
+            A suite is declared here only alongside the directory it names.
+
+            The previous configuration pointed at tests/Unit/Services,
+            tests/Unit/Repositories and tests/Unit/Controllers, none of which
+            ever existed. PHPUnit aborts the entire run when a declared
+            directory is missing, so a phantom suite is worse than no suite -
+            it looks configured while running nothing.
+        -->
+    </testsuites>
+</phpunit>

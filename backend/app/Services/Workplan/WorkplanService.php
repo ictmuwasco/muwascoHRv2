@@ -452,8 +452,12 @@ class WorkplanService
         if ($value === null || $value === '') {
             return null;
         }
-        $decoded = json_decode($value, true);
-        return $decoded !== null ? $decoded : $value;
+        // Stored column with a deliberate pass-through fallback: some legacy
+        // rows hold a bare label rather than JSON, so a non-JSON value is
+        // returned unchanged. Passing $value as the default preserves that
+        // fallback exactly, while decodeStored() still logs the value so a
+        // corrupt field is visible instead of silently degrading to null.
+        return \App\Helpers\Json::decodeStored($value, $value, 'workplan.json_field');
     }
 
     /** Rank used to enforce that cascades always flow strictly downward. */

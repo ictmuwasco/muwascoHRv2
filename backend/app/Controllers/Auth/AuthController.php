@@ -145,19 +145,57 @@ class AuthController extends BaseController
     }
 
     /**
-     * POST /api/auth/refresh - Refresh access token.
+     * POST /api/auth/refresh - Renew the access token.
+     *
+     * Identifies the caller from the httpOnly `refresh_token` cookie, NOT from
+     * the access token. That distinction is the whole point: the previous
+     * version called getAuthUserId(), which needs a still-valid access token
+     * (or a live PHP session), so the moment the access token expired renewal
+     * became impossible and the user was signed out mid-shift. The refresh
+     * token outlives the access token, so renewal now works in exactly the
+     * case it exists for.
      */
     public function refreshAction(): void
     {
+        $refreshToken = (string) ($_COOKIE['refresh_token'] ?? '');
+
+        if ($refreshToken === '') {
+            $this->clearAuthCookies();
+            $this->error('No active session. Please sign in again.', 401);
+        }
+
         try {
-            $userId = $this->getAuthUserId();
-            $token = $this->authService->refreshToken($userId);
-            $this->success(['token' => $token], 'Token refreshed');
+            $tokens = $this->authService->renewFromRefreshToken($refreshToken);
+            $this->success($tokens, 'Session renewed');
         } catch (\InvalidArgumentException $e) {
+            // Expired, revoked or malformed refresh token: the session is
+            // genuinely over. Drop the stale cookies so the browser stops
+            // presenting them and the SPA can redirect cleanly.
+            $this->clearAuthCookies();
             $this->error($e->getMessage(), 401);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             \logger()->error('Token refresh error', ['error' => $e->getMessage()]);
-            $this->error('Token refresh failed. Please try again.', 500);
+            $this->error('Session renewal failed. Please try again.', 500);
+        }
+    }
+
+    /** Expire both auth cookies after a failed renewal. */
+    private function clearAuthCookies(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+        $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (int) ($_SERVER['SERVER_PORT'] ?? 80) === 443;
+        foreach (['access_token', 'refresh_token'] as $name) {
+            setcookie($name, '', [
+                'expires'  => time() - 3600,
+                'path'     => '/',
+                'domain'   => '',
+                'secure'   => $secure,
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
         }
     }
 

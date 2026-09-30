@@ -36,6 +36,9 @@ class JWT
     /** Publicly-known placeholder secrets that must never be used. */
     private const FORBIDDEN_SECRETS = [
         'your-secret-key-here',
+        // Rotated + purged from git history 2026-09-29. The entry is retained
+        // deliberately: if this value ever resurfaces (old clone, stale
+        // deploy, restored backup) authentication must still refuse it.
         'REDACTED_ROTATE',
         'your-jwt-secret-key',
         'change-me',

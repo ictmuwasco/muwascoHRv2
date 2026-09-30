@@ -230,7 +230,12 @@ final class SecurityAiAnalysisService
     private function extractToolCall(string $content): ?array
     {
         $json = $this->extractJson($content);
-        $data = json_decode($json, true);
+        // The content here is LLM output, not trusted input. A bare
+        // json_decode() returned null on malformed output and the guard below
+        // then treated it as "no tool call", which is the safe default, but it
+        // did so silently. decodeStored() keeps the same default and makes the
+        // failure visible in the log.
+        $data = \App\Helpers\Json::decodeStored($json, null, 'security_ai.tool_call');
 
         if (!is_array($data) || !isset($data['tool']) || !is_string($data['tool'])) {
             return null;
@@ -344,7 +349,11 @@ final class SecurityAiAnalysisService
     private function parseAndValidateResponse(string $content): array
     {
         $json = $this->extractJson($content);
-        $data = json_decode($json, true);
+        // Untrusted LLM output: same reasoning as extractToolCall() - keep the
+        // safe default response, but log the malformed output so a systematic
+        // parsing failure is visible rather than looking like "AI had nothing
+        // to report".
+        $data = \App\Helpers\Json::decodeStored($json, null, 'security_ai.response');
 
         if (!is_array($data)) {
             return $this->defaultErrorResponse();
@@ -435,7 +444,14 @@ final class SecurityAiAnalysisService
 
         foreach ($toolCalls as $call) {
             $name = $call['name'] ?? '';
-            $args = json_decode($call['arguments'] ?? '{}', true) ?? [];
+            // 'arguments' is a JSON string produced by extractToolCall() (it
+            // json_encode()s the args array). Decoding it defensively means a
+            // malformed blob yields [] rather than null, and the allowlist
+            // check below stays the real security boundary.
+            $args = \App\Helpers\Json::decodeStoredArray(
+                is_string($call['arguments'] ?? null) ? $call['arguments'] : '{}',
+                'security_ai.tool_args'
+            );
 
             if (!isset($allowedTools[$name])) {
                 $results[] = ['tool' => $name, 'error' => 'Tool not available'];
