@@ -438,18 +438,43 @@ jobs:
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
-      - name: Deploy via FTP/SFTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+      - name: Deploy to production over SSH
+        # SSH replaces the previous FTP/SFTP deploy (SamKirkland/FTP-Deploy-Action),
+        # which had two problems:
+        #   1. It required a long-lived PLAINTEXT PASSWORD in repository secrets.
+        #      Anyone able to read the repo's Actions configuration, or the
+        #      secret list, could read-write /public_html/.
+        #   2. FTP is fronted by xinetd (port 21 LISTEN via xinetd, psa-ftpd not
+        #      running), so a single connection is spawned per transfer and the
+        #      action's server-dir did not match the vhost document root.
+        #
+        # rsync is run WITHOUT --delete ON PURPOSE. backend/public/ contains
+        # .htaccess, index.php, robots.txt, favicon.ico and uploads/ that the
+        # build does NOT produce; a --delete sync would destroy them on every
+        # deploy. Stale fingerprinted bundles do not accumulate because
+        # frontend/scripts/clean-assets.mjs prunes them from the runner before
+        # this step uploads.
+        #
+        # DEPLOY_PATH must be the vhost document root. Plesk's default for a
+        # domain is /var/www/vhosts/<domain>/httpdocs - confirm with:
+        #   grep DocumentRoot /var/www/vhosts/muwascoerp.co.ke/conf/httpd.conf
+        uses: appleboy/rsync-action@v1.2.0
         with:
-          server: ${{ secrets.FTP_HOST }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          server-dir: /public_html/
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            **/.env
-            backend/tests/**
-            frontend/assets/js/**/*.map
-            *.md
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: ./
+          target: ${{ vars.DEPLOY_PATH }}
+          delete: false
+          args: >-
+            -avz
+            --exclude=.git
+            --exclude=node_modules
+            --exclude=.env
+            --exclude=.env.*
+            --exclude=backend/tests
+            --exclude=frontend/dist
+            --exclude=*.md
+            --exclude=backend/docs
+            --exclude=frontend/src

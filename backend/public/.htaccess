@@ -25,6 +25,52 @@
 </IfModule>
 
 # ===========================================================================
+# File/extension deny rules
+#
+# WHY DUPLICATED HERE
+#   When Apache's DocumentRoot points at backend/public, the repository-root
+#   .htaccess is NOT read. The root file's path rules deliberately exempt
+#   backend/public/ (`backend/(?!public/)`), so in that layout those rules are
+#   skipped entirely and this file was the ONLY thing standing between a
+#   visitor and whatever sits in the web root.
+#
+#   The root .htaccess rules are path-based (deny whole trees). These are
+#   extension-based, which is a genuinely different axis: the live server was
+#   observed returning 403 for /.env and /foo.sql while /x.env and /bar.md
+#   fell through to the PHP front controller (302 -> login.php). Extension
+#   matching alone therefore does NOT protect files whose names do not end in
+#   a denied extension. Denying both here keeps the two layouts equivalent.
+#
+#   404 rather than 403 would avoid confirming existence, but 403 is kept to
+#   match the already-shipped root .htaccess behaviour.
+# ===========================================================================
+<IfModule mod_authz_core.c>
+    # Deny all dotfiles and their directories (.env, .git, .htpasswd, ...).
+    # FilesMatch alone cannot match a leading-dot NAME, so this is separate.
+    <FilesMatch "^\.">
+        Require all denied
+    </FilesMatch>
+
+    <FilesMatch "\.(env|log|sql|md|lock|ya?ml|sh|bat|ps1|ini|toml|ts|tsx|jsx|bak|backup|orig|swp|save)$">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+<IfModule !mod_authz_core.c>
+    <FilesMatch "^\.">
+        Deny from all
+    </FilesMatch>
+    <FilesMatch "\.(env|log|sql|md|lock|ya?ml|sh|bat|ps1|ini|toml|ts|tsx|jsx|bak|backup|orig|swp|save)$">
+        Deny from all
+    </FilesMatch>
+</IfModule>
+
+# Never serve a directory listing. Also stops the uploader probe from
+# enumerating uploads/employee_documents/ or uploads/profile_images/.
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
+
+# ===========================================================================
 # Asset delivery (performance)
 #
 # This file is the complete web configuration when Apache's DocumentRoot points
