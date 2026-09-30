@@ -492,3 +492,26 @@ jobs:
             --exclude=*.md
             --exclude=backend/docs
             --exclude=frontend/src
+            --exclude=backend/storage/logs/*
+            --exclude=backend/storage/cache/*
+            --exclude=backend/storage/backups/*
+          # rsync runs WITHOUT --delete. backend/public/ contains .htaccess,
+          # index.php, robots.txt, favicon.ico and uploads/ that the build does
+          # NOT produce; a --delete sync would destroy them on every deploy.
+          # Stale fingerprinted bundles do not accumulate because
+          # frontend/scripts/clean-assets.mjs prunes them on the runner BEFORE
+          # this step uploads. A stale hash yields a 404, never wrong code,
+          # whereas deleting a live uploads/ file is unrecoverable.
+          #
+          # NOT excluded, deliberately:
+          #   vendor/   composer install runs on the runner above and vendor/ is
+          #             gitignored, so it exists ONLY in the workspace. Excluding
+          #             it ships no autoloader and every API request fatals
+          #             "Class not found".
+          #   backend/database/   migration SQL, the record of schema changes.
+          #   .env.example / .env.production.example
+          #             templates only - harmless, and a useful reference for
+          #             whoever writes the live .env.
+          #
+          # The live .env is EXCLUDED above and must be written by hand on the
+          # server; it is never present in the workspace, so nothing to strip.
