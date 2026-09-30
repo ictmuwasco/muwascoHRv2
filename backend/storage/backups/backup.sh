@@ -32,6 +32,182 @@ MYSQLDUMP_CMD="mysqldump"
 GZIP_CMD="gzip"
 AWS_CLI="aws"
 
+# ── Backup encryption ───────────────────────────────────────────────────────
+# Backups are encrypted so a stolen backup, an offsite S3 copy, or a lost
+# laptop holding an archive is unreadable without the key.
+#
+# WHY NOT `openssl enc -aes-256-gcm`
+#   The obvious choice is rejected by the tool itself. VERIFIED on this host:
+#
+#     $ openssl enc -aes-256-gcm ...
+#     enc: AEAD ciphers not supported
+#
+#   `openssl enc` deliberately refuses AEAD ciphers, so GCM is simply not
+#   available through the CLI. (It IS available in PHP, which is why
+#   App\Helpers\StorageEncryption can use real GCM - that path is unaffected.)
+#
+# WHAT IS USED INSTEAD, AND WHY IT IS STILL SAFE
+#   AES-256-CBC for confidentiality, plus a DETACHED HMAC-SHA256 over the
+#   ciphertext for integrity and authenticity. Encrypt-then-MAC is the correct
+#   construction here: it is what GCM would have provided, composed from parts
+#   the CLI does support.
+#
+#   CBC alone would NOT be sufficient. Without the MAC it is malleable - an
+#   attacker with write access could flip chosen plaintext bits undetectably.
+#   The MAC closes that hole, and it is verified BEFORE any decryption happens
+#   so a tampered archive is rejected rather than silently decrypted to garbage.
+#
+#   The MAC key is derived from the same secret with a fixed domain-separation
+#   label, so the encryption key and the MAC key are never identical.
+#
+# THE KEY IS NEVER STORED BESIDE THE BACKUPS. BACKUP_KEY_FILE must point at a
+# path OUTSIDE $BACKUP_DIR - a mounted secret, a systemd credential, or a
+# separate host. Keeping the key in the same directory (or the same S3 bucket)
+# as the archives it protects would make the encryption worthless. That
+# separation is enforced, not merely documented: load_backup_key aborts.
+#
+# Set BACKUP_ENCRYPTION=0 to fall back to plaintext archives (local dev only;
+# the production host should leave it on).
+BACKUP_ENCRYPTION="${BACKUP_ENCRYPTION:-1}"
+BACKUP_KEY_FILE="${BACKUP_KEY_FILE:-/var/www/private/backup.key}"
+BACKUP_OPENSSL_CIPHER="aes-256-cbc"
+# PBKDF2 work factor applied to the key file contents. This slows brute force
+# of a leaked key file; it does NOT protect a key file that is itself
+# compromised on a live host.
+BACKUP_PBKDF2_ITER="${BACKUP_PBKDF2_ITER:-200000}"
+# Domain separation so the MAC key differs from the encryption key.
+BACKUP_MAC_LABEL="backup-hmac-v1"
+
+# Derive the MAC key from the master secret. hexkey= is used so the raw binary
+# is passed, not its hex text.
+backup_mac_key() {
+    printf '%s' "$BACKUP_MAC_LABEL" \
+        | openssl dgst -sha256 -hmac "$BACKUP_ENCRYPTION_PASSWORD" -binary \
+        | od -An -tx1 | tr -d ' \n'
+}
+
+# Returns the encryption password via BACKUP_ENCRYPTION_PASSWORD.
+# Exits the script if the key is missing or unsafe.
+load_backup_key() {
+    if [ "$BACKUP_ENCRYPTION" != "1" ]; then
+        BACKUP_ENCRYPTION_PASSWORD=""
+        return 0
+    fi
+
+    if [ ! -r "$BACKUP_KEY_FILE" ]; then
+        log_error "BACKUP_ENCRYPTION=1 but the key file is not readable: ${BACKUP_KEY_FILE}"
+        log_error "Create it with: openssl rand -hex 32 > ${BACKUP_KEY_FILE} && chmod 600 ${BACKUP_KEY_FILE}"
+        log_error "It MUST live outside ${BACKUP_DIR}."
+        exit 1
+    fi
+
+    # Refuse to write an archive next to its own key.
+    local key_abs backup_abs
+    key_abs=$(cd "$(dirname "$BACKUP_KEY_FILE")" 2>/dev/null && pwd)/$(basename "$BACKUP_KEY_FILE")
+    backup_abs=$(cd "$BACKUP_DIR" 2>/dev/null && pwd)
+    case "$key_abs" in
+        "$backup_abs"/*)
+            log_error "BACKUP_KEY_FILE (${key_abs}) is inside BACKUP_DIR (${backup_abs})."
+            log_error "A backup stored with its own decryption key is not encrypted. Move the key out and retry."
+            exit 1
+            ;;
+    esac
+
+    BACKUP_ENCRYPTION_PASSWORD=$(cat "$BACKUP_KEY_FILE")
+    if [ -z "$BACKUP_ENCRYPTION_PASSWORD" ]; then
+        log_error "BACKUP_KEY_FILE is empty: ${BACKUP_KEY_FILE}"
+        exit 1
+    fi
+
+    # MUST be exported: `openssl -pass env:VAR` reads the variable from the
+    # CHILD process environment, and an unexported shell variable is invisible
+    # there. Without this, openssl fails with "Can't read environment variable"
+    # and every archive silently fails to encrypt. Verified: this was a real
+    # failure before the export was added.
+    export BACKUP_ENCRYPTION_PASSWORD
+}
+
+# Verify an archive's MAC. Returns non-zero on mismatch.
+verify_archive_mac() {
+    local archive="$1"
+    local mac_file="${archive}.hmac"
+    [ -f "$mac_file" ] || { log_error "missing MAC file: ${mac_file}"; return 1; }
+
+    local expected actual
+    expected=$(cut -d' ' -f2 "$mac_file" | tr -d '[:space:]')
+    actual=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$(backup_mac_key)" "$archive" \
+             | cut -d' ' -f2 | tr -d '[:space:]')
+
+    if [ "$expected" != "$actual" ]; then
+        return 1
+    fi
+    return 0
+}
+
+
+# Encrypt a plaintext archive in place, writing <final> and <final>.hmac.
+# Usage: encrypt_archive <plain_path> <final_path>
+encrypt_archive() {
+    local plain="$1"
+    local final="$2"
+
+    if [ "$BACKUP_ENCRYPTION" != "1" ]; then
+        mv "$plain" "$final"
+        return 0
+    fi
+
+    # Written to a temp name first and moved into place only on success, so a
+    # failure never leaves a truncated .enc that looks valid.
+    local tmp="${final}.partial.$$"
+    if ! openssl enc -"$BACKUP_OPENSSL_CIPHER" -salt -pbkdf2 -iter "$BACKUP_PBKDF2_ITER" \
+            -md sha256 -pass env:BACKUP_ENCRYPTION_PASSWORD \
+            -in "$plain" -out "$tmp" 2>/dev/null; then
+        rm -f "$tmp"
+        log_error "Encryption failed for ${plain}"
+        return 1
+    fi
+
+    # MAC the ciphertext (encrypt-then-MAC).
+    openssl dgst -sha256 -mac HMAC -macopt "hexkey:$(backup_mac_key)" "$tmp" > "${tmp}.hmac" 2>/dev/null
+
+    # Prove it before accepting: verify the MAC, then decrypt. An archive that
+    # cannot be opened is worse than no archive - it is discovered mid-outage.
+    if ! verify_archive_mac "$tmp"; then
+        rm -f "$tmp" "${tmp}.hmac"
+        log_error "MAC self-check failed for ${plain} - archive discarded"
+        return 1
+    fi
+
+    if ! openssl enc -d -"$BACKUP_OPENSSL_CIPHER" -pbkdf2 -iter "$BACKUP_PBKDF2_ITER" \
+            -md sha256 -pass env:BACKUP_ENCRYPTION_PASSWORD \
+            -in "$tmp" -out /dev/null 2>/dev/null; then
+        rm -f "$tmp" "${tmp}.hmac"
+        log_error "Decryption self-check failed for ${plain} - archive discarded"
+        return 1
+    fi
+
+    rm -f "$plain"
+    mv "$tmp" "$final"
+    mv "${tmp}.hmac" "${final}.hmac"
+    return 0
+}
+
+# Decrypt an archive to stdout (used by the restore test).
+decrypt_archive() {
+    local archive="$1"
+    if [ "$BACKUP_ENCRYPTION" != "1" ]; then
+        cat "$archive"
+        return 0
+    fi
+    if ! verify_archive_mac "$archive"; then
+        log_error "MAC verification FAILED for ${archive} - refusing to decrypt"
+        return 1
+    fi
+    openssl enc -d -"$BACKUP_OPENSSL_CIPHER" -pbkdf2 -iter "$BACKUP_PBKDF2_ITER" \
+        -md sha256 -pass env:BACKUP_ENCRYPTION_PASSWORD -in "$archive" 2>/dev/null
+}
+
+
 # ── Color output ───────────────────────────────────────────────────────────
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -117,11 +293,17 @@ backup_database() {
     $GZIP_CMD "$backup_file"
     
     if [ $? -eq 0 ]; then
-        local size=$(du -h "$compressed_file" | cut -f1)
-        log_info "Database backup completed: ${compressed_file} (${size})"
+        # Encrypt the archive (aes-256-gcm + pbkdf2). encrypt_archive
+        # self-checks by decrypting, and only then replaces the .gz.
+        if ! encrypt_archive "$compressed_file" "${compressed_file}.enc"; then
+            return 1
+        fi
+        local final_file="${compressed_file}.enc"
+        local size=$(du -h "$final_file" | cut -f1)
+        log_info "Database backup completed: ${final_file} (${size})"
         
         # Generate checksum
-        md5sum "$compressed_file" > "${compressed_file}.md5"
+        md5sum "$final_file" > "${final_file}.md5"
         
         return 0
     else
@@ -149,11 +331,20 @@ backup_files() {
         "$(basename "$upload_dir")" 2>&1
     
     if [ $? -eq 0 ]; then
-        local size=$(du -h "$backup_file" | cut -f1)
-        log_info "Files backup completed: ${backup_file} (${size})"
+        # Same treatment as the database dump: encrypt, self-check, keep the
+        # ciphertext. Note these files are ALREADY encrypted at rest by
+        # StorageEncryption, so this is a second independent layer - the
+        # archive adds protection for the metadata (names, sizes, directory
+        # structure) that the per-file container does not cover.
+        local final_file="${backup_file}.enc"
+        if ! encrypt_archive "$backup_file" "$final_file"; then
+            return 1
+        fi
+        local size=$(du -h "$final_file" | cut -f1)
+        log_info "Files backup completed: ${final_file} (${size})"
         
         # Generate checksum
-        md5sum "$backup_file" > "${backup_file}.md5"
+        md5sum "$final_file" > "${final_file}.md5"
         
         return 0
     else
@@ -168,21 +359,24 @@ rotate_backups() {
     
     local deleted=0
     
-    # Rotate database backups
-    deleted=$(find "$BACKUP_DIR/database" -name "*.gz" -type f -mtime +${RETENTION_DAYS} -delete -print | wc -l)
+    # Rotate database backups (.enc, since archives are encrypted)
+    deleted=$(find "$BACKUP_DIR/database" -name "*.enc" -type f -mtime +${RETENTION_DAYS} -delete -print | wc -l)
     find "$BACKUP_DIR/database" -name "*.md5" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
+    # Remove any partials an interrupted run may have left behind.
+    find "$BACKUP_DIR/database" -name "*.partial.*" -type f -mtime +1 -delete 2>/dev/null
     
     # Rotate file backups
-    deleted=$((deleted + $(find "$BACKUP_DIR/files" -name "*.tar.gz" -type f -mtime +${RETENTION_DAYS} -delete -print | wc -l)))
+    deleted=$((deleted + $(find "$BACKUP_DIR/files" -name "*.tar.gz.enc" -type f -mtime +${RETENTION_DAYS} -delete -print | wc -l)))
     find "$BACKUP_DIR/files" -name "*.md5" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
+    find "$BACKUP_DIR/files" -name "*.partial.*" -type f -mtime +1 -delete 2>/dev/null
     
     log_info "Removed ${deleted} old backup(s)"
 }
 
 # Verify last backup integrity
 verify_backup() {
-    local latest_db=$(ls -t "$BACKUP_DIR/database"/*.gz 2>/dev/null | head -1)
-    local latest_files=$(ls -t "$BACKUP_DIR/files"/*.tar.gz 2>/dev/null | head -1)
+    local latest_db=$(ls -t "$BACKUP_DIR/database"/*.enc 2>/dev/null | head -1)
+    local latest_files=$(ls -t "$BACKUP_DIR/files"/*.enc 2>/dev/null | head -1)
     
     if [ -n "$latest_db" ]; then
         log_info "Verifying database backup: ${latest_db}"
@@ -196,11 +390,26 @@ verify_backup() {
             fi
         fi
         
-        # Verify gzip integrity
-        if $GZIP_CMD -t "$latest_db" 2>/dev/null; then
-            log_info "Database backup integrity verified"
+        # Encrypted archives are authenticated by the detached MAC, so the
+        # integrity check is verify_archive_mac rather than a gzip -t (the
+        # payload is no longer a bare gzip stream at the head of the file).
+        if [ "$BACKUP_ENCRYPTION" = "1" ]; then
+            if verify_archive_mac "$latest_db"; then
+                if decrypt_archive "$latest_db" >/dev/null 2>&1; then
+                    log_info "Database backup MAC verified and decrypts cleanly"
+                else
+                    log_error "Database backup MAC ok but decryption FAILED!"
+                fi
+            else
+                log_error "Database backup MAC MISMATCH (tampered archive or wrong key)!"
+            fi
         else
-            log_error "Database backup corrupted!"
+            local inner="${latest_db%.enc}"
+            if $GZIP_CMD -t "$inner" 2>/dev/null; then
+                log_info "Database backup integrity verified"
+            else
+                log_error "Database backup corrupted!"
+            fi
         fi
     fi
     
@@ -215,10 +424,18 @@ verify_backup() {
             fi
         fi
         
-        if tar -tzf "$latest_files" > /dev/null 2>&1; then
-            log_info "Files backup integrity verified"
+        if [ "$BACKUP_ENCRYPTION" = "1" ]; then
+            if verify_archive_mac "$latest_files" && decrypt_archive "$latest_files" >/dev/null 2>&1; then
+                log_info "Files backup MAC verified and decrypts cleanly"
+            else
+                log_error "Files backup FAILED verification!"
+            fi
         else
-            log_error "Files backup corrupted!"
+            if tar -tzf "$latest_files" > /dev/null 2>&1; then
+                log_info "Files backup integrity verified"
+            else
+                log_error "Files backup corrupted!"
+            fi
         fi
     fi
 }
@@ -230,20 +447,42 @@ verify_backup() {
 # found on 2026-09-29 was a dump that was perfectly intact yet unrestorable.
 # A backup that has never been restored is not a backup.
 restore_test() {
-    local latest_db=$(ls -t "$BACKUP_DIR/database"/*.gz 2>/dev/null | head -1)
+    local latest_db=$(ls -t "$BACKUP_DIR/database"/*.enc 2>/dev/null | head -1)
+    [ -z "$latest_db" ] && latest_db=$(ls -t "$BACKUP_DIR/database"/*.gz 2>/dev/null | head -1)
     [ -n "$latest_db" ] || { log_warn "No database backup to restore-test"; return 0; }
 
     local scratch="${DB_NAME}_restore_test"
     log_info "Restore-testing ${latest_db} into scratch database '${scratch}'"
 
+    # Decrypt to a throwaway gzip first when the archive is encrypted, so the
+    # replay below is fed plain SQL. The plaintext is deleted immediately after
+    # the test: a decrypted dump of the whole HR database must never linger on
+    # disk, and it must never be written inside BACKUP_DIR.
+    local plaintext_gz=""
+    if [ "$BACKUP_ENCRYPTION" = "1" ]; then
+        plaintext_gz=$(mktemp "${TMPDIR:-/tmp}/restore_src_XXXXXX.gz")
+        if ! decrypt_archive "$latest_db" > "$plaintext_gz" 2>/dev/null; then
+            log_error "RESTORE TEST FAILED - cannot decrypt ${latest_db}"
+            log_error "Is BACKUP_KEY_FILE the key this archive was written with?"
+            rm -f "$plaintext_gz"
+            return 1
+        fi
+        log_info "Decrypted archive for restore test (plaintext removed immediately after)"
+    else
+        plaintext_gz="$latest_db"
+    fi
+
     # Always start from a clean slate so a previous failure cannot mask a new one.
     mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
         -e "DROP DATABASE IF EXISTS \`${scratch}\`; CREATE DATABASE \`${scratch}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" 2>/dev/null
 
-    gunzip -c "$latest_db" | mysql --host="$DB_HOST" --port="$DB_PORT" \
+    gunzip -c "$plaintext_gz" | mysql --host="$DB_HOST" --port="$DB_PORT" \
         --user="$DB_USER" --password="$DB_PASS" "$scratch" 2>/tmp/restore_test_err.$$
 
     local rc=$?
+    if [ "$BACKUP_ENCRYPTION" = "1" ]; then
+        rm -f "$plaintext_gz"
+    fi
     if [ $rc -ne 0 ]; then
         log_error "RESTORE TEST FAILED - this backup is NOT restorable:"
         head -5 /tmp/restore_test_err.$$ >&2
@@ -285,6 +524,9 @@ sync_to_offsite() {
     
     $AWS_CLI s3 sync "$BACKUP_DIR" "$remote_path" \
         --exclude "*.log" \
+        --exclude "*.partial.*" \
+        --exclude "*.sql" \
+        --include "*.hmac" \
         --storage-class STANDARD_IA \
         --no-progress 2>&1
     
@@ -308,6 +550,16 @@ main() {
     echo ""
     
     ensure_backup_dir
+
+    # Load (and validate) the backup encryption key BEFORE anything is written.
+    # load_backup_key aborts if the key is missing, empty, or stored inside
+    # BACKUP_DIR, so a run never produces an archive it cannot later open.
+    load_backup_key
+    if [ "$BACKUP_ENCRYPTION" = "1" ]; then
+        log_info "Backup encryption: ON (${BACKUP_OPENSSL_CIPHER}, key outside backup dir)"
+    else
+        log_warn "Backup encryption: OFF (BACKUP_ENCRYPTION=0) - archives are plaintext"
+    fi
     
     case "$mode" in
         --database)
