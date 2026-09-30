@@ -164,7 +164,10 @@ export const appraisalReportService = {
     if (filters.section_id) params.section_id = filters.section_id;
     if (filters.subsection_id) params.subsection_id = filters.subsection_id;
     if (filters.search) params.search = filters.search;
-    const res = await apiClient.get<ApiResponse<CompletedAppraisalResponse>>('/appraisals/completed', { params });
+    const res = await apiClient.get<ApiResponse<CompletedAppraisalResponse>>(
+      '/appraisals/completed',
+      { params },
+    );
     // Return the PAYLOAD, not the envelope, matching options() and detail().
     // This used to hand back the whole `{success, message, data}` object while
     // the page read `res.data.items`, so the lookup landed on `envelope.items`
@@ -173,7 +176,9 @@ export const appraisalReportService = {
   },
 
   options: async (): Promise<AppraisalReportOptions> => {
-    const res = await apiClient.get<ApiResponse<AppraisalReportOptions>>('/appraisals/completed/filters');
+    const res = await apiClient.get<ApiResponse<AppraisalReportOptions>>(
+      '/appraisals/completed/filters',
+    );
     return res.data.data;
   },
 
@@ -192,12 +197,17 @@ export const appraisalReportService = {
     if (filters.section_id) params.section_id = filters.section_id;
     if (filters.subsection_id) params.subsection_id = filters.subsection_id;
     if (filters.search) params.search = filters.search;
-    const res = await apiClient.get<ApiResponse<AppraisalAnalytics>>('/appraisals/completed/analytics', { params });
+    const res = await apiClient.get<ApiResponse<AppraisalAnalytics>>(
+      '/appraisals/completed/analytics',
+      { params },
+    );
     return res.data.data;
   },
 
   detail: async (id: number): Promise<AppraisalReport> => {
-    const res = await apiClient.get<ApiResponse<AppraisalReport>>(`/appraisals/${id}/report/detail`);
+    const res = await apiClient.get<ApiResponse<AppraisalReport>>(
+      `/appraisals/${id}/report/detail`,
+    );
     return res.data.data;
   },
 
@@ -224,7 +234,8 @@ export const appraisalReportService = {
    * possible on a plain navigation, so this is only used after the caller
    * has already confirmed access through the list.
    */
-  printUrl: (id: number): string => `${apiClient.defaults.baseURL}/appraisals/${id}/report?format=print`,
+  printUrl: (id: number): string =>
+    `${apiClient.defaults.baseURL}/appraisals/${id}/report?format=print`,
 };
 
 /** Save a Blob response to disk under the server-supplied filename. */

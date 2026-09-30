@@ -138,7 +138,9 @@ export const notificationService = {
    *
    * Separate from list() so polling the badge never pulls the whole inbox.
    */
-  listUnread: async (limit = 5): Promise<ApiResponse<{ notifications: InboxNotification[]; unread_count: number }>> => {
+  listUnread: async (
+    limit = 5,
+  ): Promise<ApiResponse<{ notifications: InboxNotification[]; unread_count: number }>> => {
     const response = await apiClient.get<
       ApiResponse<{ notifications: InboxNotification[]; unread_count: number }>
     >('/notifications/unread', { params: { limit } });
@@ -153,9 +155,10 @@ export const notificationService = {
   },
 
   markAllAsRead: async (): Promise<ApiResponse<{ marked_read: number; unread_count: number }>> => {
-    const response = await apiClient.post<
-      ApiResponse<{ marked_read: number; unread_count: number }>
-    >('/notifications/read-all');
+    const response =
+      await apiClient.post<ApiResponse<{ marked_read: number; unread_count: number }>>(
+        '/notifications/read-all',
+      );
     return response.data;
   },
 };

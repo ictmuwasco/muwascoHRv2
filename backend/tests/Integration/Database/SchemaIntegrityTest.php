@@ -293,22 +293,31 @@ final class SchemaIntegrityTest extends TestCase
      * Guards the exact condition that made a plain mysqldump unrestorable.
      *
      * attendance.attendance_date is a STORED generated column and 257 rows
-     * carry clock_in = '0000-00-00'. On this server sql_mode makes cast()
-     * yield NULL, so the unique key is satisfied. A restore that drops
+     * carry clock_in = '0000-00-00'. On a server whose sql_mode includes
+     * NO_ZERO_IN_DATE/NO_ZERO_DATE, cast() yields NULL, so the unique key is
+     * satisfied - NULLs never collide in a UNIQUE index. A restore that drops
      * NO_ZERO_DATE (which mysqldump's own prologue does) recomputes the literal
      * date 0000-00-00 and three rows for employee 383 collide.
      *
-     * If this fails, the dump produced by backup.sh will not restore.
+     * NOTE ON WHAT IS ASSERTED HERE. An earlier version asserted that
+     * @@SESSION.sql_mode contains NO_ZERO_DATE. That was wrong: the app never
+     * sets sql_mode, so this is whatever the SERVER defaults to, and the
+     * defaults differ by deployment. XAMPP here runs
+     * NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION, while the CI
+     * mariadb:10.4 container uses MariaDB's stock
+     * STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,
+     * NO_ENGINE_SUBSTITUTION - which has no NO_ZERO_DATE at all. The test
+     * therefore passed locally and failed on CI for a reason that had nothing
+     * to do with the schema.
+     *
+     * What actually matters is the DATA invariant: attendance_date must never
+     * hold a materialised 0000-00-00. That is asserted below and is
+     * deployment-independent. The sql_mode dependency is handled where it
+     * belongs - backup.sh pins NO_ZERO_IN_DATE/NO_ZERO_DATE into the dump
+     * prologue, and restore_test() proves a real restore works.
      */
     public function testZeroDateAttendanceRowsAreStillRepresentableAsNull(): void
     {
-        $mode = (string) $this->scalar('SELECT @@SESSION.sql_mode');
-        $this->assertStringContainsString(
-            'NO_ZERO_DATE',
-            $mode,
-            'Session sql_mode lost NO_ZERO_DATE; a dump of this schema is no longer restorable.'
-        );
-
         $rows = (int) $this->scalar(
             "SELECT COUNT(*) FROM attendance
              WHERE clock_in = '0000-00-00 00:00:00' AND attendance_date IS NOT NULL"
@@ -317,7 +326,8 @@ final class SchemaIntegrityTest extends TestCase
             0,
             $rows,
             'Zero-date clock_in rows now materialise a real 0000-00-00 attendance_date. '
-            . 'This is the state that makes mysqldump output unrestorable.'
+            . 'This is the state that makes mysqldump output unrestorable: with the '
+            . 'unique key on (employee_id, attendance_date), such rows collide on restore.'
         );
     }
 

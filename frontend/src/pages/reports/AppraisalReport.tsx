@@ -162,10 +162,13 @@ const StatCard = ({
 const PerformerRow = ({ p, tone }: { p: AppraisalPerformer; tone: 'top' | 'bottom' }) => (
   <li className="flex items-center justify-between gap-3 py-2">
     <div className="min-w-0">
-      <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{p.employee_name}</p>
+      <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+        {p.employee_name}
+      </p>
       <p className="truncate text-xs text-gray-500 dark:text-gray-400">
         {p.employee_code}
-        {p.department ? ` - ${p.department}` : ''} - {p.appraisals} appraisal{p.appraisals === 1 ? '' : 's'}
+        {p.department ? ` - ${p.department}` : ''} - {p.appraisals} appraisal
+        {p.appraisals === 1 ? '' : 's'}
       </p>
     </div>
     <Badge variant={bandVariant(p.percentage)}>
@@ -190,7 +193,10 @@ const UnitList = ({
   if (!units.length) return null;
   const best = Math.max(...units.map((u) => u.percentage));
   return (
-    <Card title={title} subtitle={`${units.length} unit${units.length === 1 ? '' : 's'} with scored appraisals`}>
+    <Card
+      title={title}
+      subtitle={`${units.length} unit${units.length === 1 ? '' : 's'} with scored appraisals`}
+    >
       <ul className="divide-y divide-gray-100 dark:divide-slate-700/60">
         {units.map((u) => (
           <li key={u.id} className="py-2">
@@ -207,7 +213,9 @@ const UnitList = ({
               ) : (
                 <span className="truncate text-sm text-gray-700 dark:text-gray-300">{u.name}</span>
               )}
-              <span className={`shrink-0 text-sm font-semibold ${band(u.percentage)}`}>{u.percentage}%</span>
+              <span className={`shrink-0 text-sm font-semibold ${band(u.percentage)}`}>
+                {u.percentage}%
+              </span>
             </div>
             <div className="mt-1 flex items-center gap-2">
               {/* Scaled against the leader in THIS list, not 100%, so a tier
@@ -239,8 +247,13 @@ const AppraisalReport = () => {
   const [departments, setDepartments] = useState<AppraisalUnitStat[]>([]);
   const [sections, setSections] = useState<AppraisalUnitStat[]>([]);
   const [subsections, setSubsections] = useState<AppraisalUnitStat[]>([]);
-  const [byStatus, setByStatus] = useState<Array<{ status: string; label: string; count: number }>>([]);
-  const [performers, setPerformers] = useState<{ top: AppraisalPerformer[]; bottom: AppraisalPerformer[] }>({
+  const [byStatus, setByStatus] = useState<Array<{ status: string; label: string; count: number }>>(
+    [],
+  );
+  const [performers, setPerformers] = useState<{
+    top: AppraisalPerformer[];
+    bottom: AppraisalPerformer[];
+  }>({
     top: [],
     bottom: [],
   });
@@ -367,7 +380,11 @@ const AppraisalReport = () => {
       setSort(key);
       // Text columns read naturally A-Z; scores and dates are most useful
       // highest/newest first, so a first click is descending for those.
-      setDir(key === 'employee' || key === 'code' || key === 'department' || key === 'cycle' ? 'asc' : 'desc');
+      setDir(
+        key === 'employee' || key === 'code' || key === 'department' || key === 'cycle'
+          ? 'asc'
+          : 'desc',
+      );
     }
     setPage(1);
   };
@@ -375,11 +392,16 @@ const AppraisalReport = () => {
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
-      const blob = await appraisalReportService.exportCsv({ ...filters, search: search || undefined });
+      const blob = await appraisalReportService.exportCsv({
+        ...filters,
+        search: search || undefined,
+      });
       downloadBlob(blob, `appraisal-report-${new Date().toISOString().slice(0, 10)}.csv`);
       toast.success('Appraisal report exported');
     } catch (err: any) {
-      toast.error(err?.response?.data?.message || 'Export failed. You may not have export permission.');
+      toast.error(
+        err?.response?.data?.message || 'Export failed. You may not have export permission.',
+      );
     } finally {
       setExporting(false);
     }
@@ -422,7 +444,10 @@ const AppraisalReport = () => {
   })).filter((b) => b.count > 0);
 
   const bandTotal = summary
-    ? summary.exemplary + summary.strong_performer + summary.meets_expectations + summary.needs_improvement
+    ? summary.exemplary +
+      summary.strong_performer +
+      summary.meets_expectations +
+      summary.needs_improvement
     : 0;
   const strongTotal = summary ? summary.exemplary + summary.strong_performer : 0;
   return (
@@ -442,7 +467,12 @@ const AppraisalReport = () => {
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="mr-1 h-4 w-4" /> Print
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setReloadKey((k) => k + 1)} disabled={loading}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setReloadKey((k) => k + 1)}
+            disabled={loading}
+          >
             <RefreshCw className={`mr-1 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
           <Can module="reports" action="export">
@@ -466,7 +496,9 @@ const AppraisalReport = () => {
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Cycle</label>
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+              Cycle
+            </label>
             <select
               value={filters.cycle_id ?? ''}
               onChange={(e) => patch({ cycle_id: e.target.value ? Number(e.target.value) : null })}
@@ -481,8 +513,14 @@ const AppraisalReport = () => {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Department</label>
-            <select value={filters.department_id ?? ''} onChange={(e) => applyDepartment(e.target.value)} className="input">
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+              Department
+            </label>
+            <select
+              value={filters.department_id ?? ''}
+              onChange={(e) => applyDepartment(e.target.value)}
+              className="input"
+            >
               <option value="">All departments</option>
               {(options?.departments ?? []).map((d) => (
                 <option key={d.id} value={d.id}>
@@ -492,11 +530,16 @@ const AppraisalReport = () => {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Section</label>
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+              Section
+            </label>
             <select
               value={filters.section_id ?? ''}
               onChange={(e) =>
-                patch({ section_id: e.target.value ? Number(e.target.value) : null, subsection_id: null })
+                patch({
+                  section_id: e.target.value ? Number(e.target.value) : null,
+                  subsection_id: null,
+                })
               }
               className="input"
             >
@@ -509,7 +552,9 @@ const AppraisalReport = () => {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Status</label>
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+              Status
+            </label>
             <select
               value={filters.status?.[0] ?? ''}
               onChange={(e) => patch({ status: e.target.value ? [e.target.value] : [] })}
@@ -524,7 +569,9 @@ const AppraisalReport = () => {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Search</label>
+            <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+              Search
+            </label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
@@ -572,7 +619,11 @@ const AppraisalReport = () => {
             title="Average Score"
             value={summary.average_percentage !== null ? `${summary.average_percentage}%` : 'N/A'}
             icon={BarChart3}
-            variant={summary.average_percentage !== null && summary.average_percentage >= 75 ? 'success' : 'warning'}
+            variant={
+              summary.average_percentage !== null && summary.average_percentage >= 75
+                ? 'success'
+                : 'warning'
+            }
             subtitle={`${summary.total_score} of ${summary.total_max_score} points`}
           />
           <StatCard title="Scored Appraisals" value={summary.scored_appraisals} icon={FileText} />
@@ -583,7 +634,11 @@ const AppraisalReport = () => {
             value={strongTotal}
             icon={Award}
             variant="success"
-            subtitle={bandTotal > 0 ? `${Math.round((strongTotal / bandTotal) * 100)}% of appraisals` : undefined}
+            subtitle={
+              bandTotal > 0
+                ? `${Math.round((strongTotal / bandTotal) * 100)}% of appraisals`
+                : undefined
+            }
           />
           <StatCard
             title="Needs Improvement"
@@ -599,7 +654,10 @@ const AppraisalReport = () => {
         <Card title="Appraisal Insights" subtitle="Derived from the current scope and filters">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {insights.map((insight, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+              <div
+                key={i}
+                className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200"
+              >
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary-500" />
                 <span>{insight}</span>
               </div>
@@ -613,7 +671,9 @@ const AppraisalReport = () => {
           {loading ? (
             <div className="h-full animate-pulse rounded-lg bg-gray-100 dark:bg-slate-900/50" />
           ) : trendData.length === 0 ? (
-            <p className="py-24 text-center text-sm text-gray-400">No scored appraisals for this selection.</p>
+            <p className="py-24 text-center text-sm text-gray-400">
+              No scored appraisals for this selection.
+            </p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trendData}>
@@ -627,7 +687,14 @@ const AppraisalReport = () => {
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                 <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} unit="%" />
                 <Tooltip />
-                <Area type="monotone" dataKey="Score" stroke="#10b981" fill="url(#scoreFill)" strokeWidth={2} connectNulls />
+                <Area
+                  type="monotone"
+                  dataKey="Score"
+                  stroke="#10b981"
+                  fill="url(#scoreFill)"
+                  strokeWidth={2}
+                  connectNulls
+                />
               </AreaChart>
             </ResponsiveContainer>
           )}
@@ -640,11 +707,20 @@ const AppraisalReport = () => {
             {loading ? (
               <div className="h-full animate-pulse rounded-lg bg-gray-100 dark:bg-slate-900/50" />
             ) : bandData.length === 0 ? (
-              <p className="py-24 text-center text-sm text-gray-400">No scored appraisals to band.</p>
+              <p className="py-24 text-center text-sm text-gray-400">
+                No scored appraisals to band.
+              </p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={bandData} dataKey="count" nameKey="name" innerRadius={55} outerRadius={90} paddingAngle={2}>
+                  <Pie
+                    data={bandData}
+                    dataKey="count"
+                    nameKey="name"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                  >
                     {bandData.map((entry, i) => (
                       <Cell key={i} fill={entry.fill} />
                     ))}
@@ -686,7 +762,9 @@ const AppraisalReport = () => {
           {loading ? (
             <div className="h-full animate-pulse rounded-lg bg-gray-100 dark:bg-slate-900/50" />
           ) : deptData.length === 0 ? (
-            <p className="py-24 text-center text-sm text-gray-400">No department data for this selection.</p>
+            <p className="py-24 text-center text-sm text-gray-400">
+              No department data for this selection.
+            </p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={deptData} layout="vertical" margin={{ left: 8, right: 24 }}>
@@ -702,9 +780,21 @@ const AppraisalReport = () => {
       </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <UnitList title="By Department" units={departments} onPick={(id) => applyDepartment(String(id))} />
-        <UnitList title="By Section" units={sections} onPick={(id) => patch({ section_id: id, subsection_id: null })} />
-        <UnitList title="By Subsection" units={subsections} onPick={(id) => patch({ subsection_id: id })} />
+        <UnitList
+          title="By Department"
+          units={departments}
+          onPick={(id) => applyDepartment(String(id))}
+        />
+        <UnitList
+          title="By Section"
+          units={sections}
+          onPick={(id) => patch({ section_id: id, subsection_id: null })}
+        />
+        <UnitList
+          title="By Subsection"
+          units={subsections}
+          onPick={(id) => patch({ subsection_id: id })}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -756,9 +846,12 @@ const AppraisalReport = () => {
         ) : rows.length === 0 ? (
           <div className="py-12 text-center">
             <BarChart3 className="mx-auto mb-2 h-8 w-8 text-gray-300" />
-            <p className="font-medium text-gray-500 dark:text-gray-400">No scored appraisals found</p>
+            <p className="font-medium text-gray-500 dark:text-gray-400">
+              No scored appraisals found
+            </p>
             <p className="mt-1 text-sm text-gray-400">
-              Every filter above narrows both this table and the charts above it. Try resetting them.
+              Every filter above narrows both this table and the charts above it. Try resetting
+              them.
             </p>
           </div>
         ) : (
@@ -768,7 +861,10 @@ const AppraisalReport = () => {
                 <thead className="bg-gray-50 dark:bg-slate-900">
                   <tr>
                     {REGISTER_COLUMNS.map((c) => (
-                      <th key={c.key} className={`px-3 py-2 ${c.numeric ? 'text-right' : 'text-left'}`}>
+                      <th
+                        key={c.key}
+                        className={`px-3 py-2 ${c.numeric ? 'text-right' : 'text-left'}`}
+                      >
                         <button
                           type="button"
                           onClick={() => handleSort(c.key)}
@@ -779,7 +875,9 @@ const AppraisalReport = () => {
                           }`}
                         >
                           {c.label}
-                          {sort === c.key && <span aria-hidden="true">{dir === 'asc' ? '+' : '-'}</span>}
+                          {sort === c.key && (
+                            <span aria-hidden="true">{dir === 'asc' ? '+' : '-'}</span>
+                          )}
                         </button>
                       </th>
                     ))}
@@ -787,19 +885,26 @@ const AppraisalReport = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white dark:divide-slate-800">
                   {rows.map((r) => (
-                    <tr key={r.appraisal_id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                    <tr
+                      key={r.appraisal_id}
+                      className="hover:bg-gray-50 dark:hover:bg-slate-700/50"
+                    >
                       <td className="whitespace-nowrap px-3 py-2 text-gray-900 dark:text-gray-100">
                         {r.employee_code}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
                         {r.employee_name}
                         {r.employee_type && (
-                          <span className="ml-1 text-xs font-normal text-gray-400">{r.employee_type}</span>
+                          <span className="ml-1 text-xs font-normal text-gray-400">
+                            {r.employee_type}
+                          </span>
                         )}
                       </td>
                       <td className="px-3 py-2 text-gray-900 dark:text-gray-100">
                         {r.department ?? '-'}
-                        {r.section && <span className="block text-xs text-gray-400">{r.section}</span>}
+                        {r.section && (
+                          <span className="block text-xs text-gray-400">{r.section}</span>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-gray-900 dark:text-gray-100">
                         {r.cycle ?? '-'}
@@ -843,7 +948,12 @@ const AppraisalReport = () => {
                   Page {page} of {lastPage} - {total} appraisals
                 </p>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <Button
@@ -863,8 +973,8 @@ const AppraisalReport = () => {
 
       <p className="text-xs text-gray-400">
         Averages are weighted by points scored (total score / total possible), not an average of
-        per-appraisal percentages. Only appraisals with recorded scores are included, and only within
-        your organisational scope.
+        per-appraisal percentages. Only appraisals with recorded scores are included, and only
+        within your organisational scope.
       </p>
     </div>
   );

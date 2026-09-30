@@ -101,3 +101,14 @@ if (!function_exists('logger')) {
         return $logger;
     }
 }
+
+if (!function_exists('db')) {
+    function db(): \App\Helpers\Database
+    {
+        static $db = null;
+        if ($db === null) {
+            $db = \App\Helpers\Database::getInstance();
+        }
+        return $db;
+    }
+}

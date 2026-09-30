@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, ChevronDown, ChevronUp, Download, FileText, Filter, Printer, RefreshCw, Search, X } from 'lucide-react';
+import {
+  BarChart3,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FileText,
+  Filter,
+  Printer,
+  RefreshCw,
+  Search,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
@@ -107,7 +118,8 @@ const CompletedAppraisals = () => {
   // never flashes a full set of dropdowns before narrowing to their own.
   const scopeLevel = options?.scope?.level ?? 'organisation';
   const showDepartment = isSupervisor && scopeLevel === 'organisation';
-  const showSection = isSupervisor && (scopeLevel === 'organisation' || scopeLevel === 'department');
+  const showSection =
+    isSupervisor && (scopeLevel === 'organisation' || scopeLevel === 'department');
   const showSubsection = isSupervisor && scopeLevel !== 'subsection';
 
   const load = useCallback(async () => {
@@ -181,7 +193,6 @@ const CompletedAppraisals = () => {
       cancelled = true;
     };
   }, [authLoading, isSupervisor, status, cycleId, departmentId, sectionId, subsectionId, search]);
-
 
   // Only supervisors have filter options to fetch. Officers skipped this
   // before, which is exactly where the 403 came from.
@@ -303,7 +314,8 @@ const CompletedAppraisals = () => {
     setNotice("Print view ready - use your browser's print dialog.");
   };
 
-  const hasFilters = !!status || !!cycleId || !!departmentId || !!sectionId || !!subsectionId || !!search;
+  const hasFilters =
+    !!status || !!cycleId || !!departmentId || !!sectionId || !!subsectionId || !!search;
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
 
   return (
@@ -320,7 +332,8 @@ const CompletedAppraisals = () => {
           </p>
         </div>
         <Button variant="outline" onClick={load} disabled={loading}>
-          <RefreshCw className="mr-2 h-4 w-4" />Refresh
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Refresh
         </Button>
       </div>
 
@@ -357,14 +370,16 @@ const CompletedAppraisals = () => {
               <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Filters</span>
               {hasFilters && (
                 <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-800 dark:bg-primary-900 dark:text-primary-100">
-                  {[
-                    status && STATUS_LABELS[status],
-                    cycleId,
-                    departmentId,
-                    sectionId,
-                    subsectionId,
-                    search,
-                  ].filter(Boolean).length}{' '}
+                  {
+                    [
+                      status && STATUS_LABELS[status],
+                      cycleId,
+                      departmentId,
+                      sectionId,
+                      subsectionId,
+                      search,
+                    ].filter(Boolean).length
+                  }{' '}
                   active
                 </span>
               )}
@@ -376,7 +391,8 @@ const CompletedAppraisals = () => {
             </button>
             {hasFilters && filtersOpen && (
               <Button variant="ghost" size="sm" onClick={resetFilters}>
-                <X className="mr-1 h-4 w-4" />Clear
+                <X className="mr-1 h-4 w-4" />
+                Clear
               </Button>
             )}
           </div>
@@ -434,8 +450,13 @@ const CompletedAppraisals = () => {
               </div>
               <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end">
                 <div className="relative w-full md:max-w-sm">
-                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Search</label>
-                  <Search className="absolute left-3 top-9 h-4 w-4 text-gray-400" aria-hidden="true" />
+                  <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Search
+                  </label>
+                  <Search
+                    className="absolute left-3 top-9 h-4 w-4 text-gray-400"
+                    aria-hidden="true"
+                  />
                   <input
                     value={search}
                     onChange={(e) => {
@@ -488,10 +509,22 @@ const CompletedAppraisals = () => {
               <thead className="bg-gray-50 dark:bg-slate-900">
                 <tr>
                   {(isSupervisor
-                    ? ['Employee', 'Cycle', 'Unit', 'Score', 'Appraiser', 'Submitted', 'Status', 'Actions']
+                    ? [
+                        'Employee',
+                        'Cycle',
+                        'Unit',
+                        'Score',
+                        'Appraiser',
+                        'Submitted',
+                        'Status',
+                        'Actions',
+                      ]
                     : ['Cycle', 'Score', 'Submitted', 'Status', 'Actions']
                   ).map((h) => (
-                    <th key={h} className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <th
+                      key={h}
+                      className="px-4 py-3 text-left text-xs uppercase tracking-wide text-gray-500"
+                    >
                       {h}
                     </th>
                   ))}
@@ -502,7 +535,9 @@ const CompletedAppraisals = () => {
                   <tr key={r.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
                     {isSupervisor && (
                       <td className="px-4 py-3">
-                        <span className="font-semibold text-gray-900 dark:text-gray-100">{r.employee_name}</span>
+                        <span className="font-semibold text-gray-900 dark:text-gray-100">
+                          {r.employee_name}
+                        </span>
                         <br />
                         <small className="text-gray-400">{r.employee_code}</small>
                       </td>
@@ -529,7 +564,9 @@ const CompletedAppraisals = () => {
                       {r.score_percentage}%
                     </td>
                     {isSupervisor && <td className="px-4 py-3">{r.appraiser_name || '—'}</td>}
-                    <td className="px-4 py-3">{r.submitted_at ? formatAppraisalDate(r.submitted_at) : '—'}</td>
+                    <td className="px-4 py-3">
+                      {r.submitted_at ? formatAppraisalDate(r.submitted_at) : '—'}
+                    </td>
                     <td className="px-4 py-3">
                       <Badge variant={statusVariant(r.status)}>{r.status_label}</Badge>
                     </td>
@@ -537,17 +574,36 @@ const CompletedAppraisals = () => {
                       <div className="flex flex-wrap gap-1">
                         {isSupervisor && (
                           <Button size="sm" variant="outline" onClick={() => openDetail(r)}>
-                            <FileText className="mr-1 h-3.5 w-3.5" />Breakdown
+                            <FileText className="mr-1 h-3.5 w-3.5" />
+                            Breakdown
                           </Button>
                         )}
-                        <Button size="sm" variant="outline" disabled={busy} onClick={() => download(r.id, 'pdf')}>
-                          <Download className="mr-1 h-3.5 w-3.5" />PDF
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => download(r.id, 'pdf')}
+                        >
+                          <Download className="mr-1 h-3.5 w-3.5" />
+                          PDF
                         </Button>
-                        <Button size="sm" variant="outline" disabled={busy} onClick={() => download(r.id, 'word')}>
-                          <Download className="mr-1 h-3.5 w-3.5" />Word
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => download(r.id, 'word')}
+                        >
+                          <Download className="mr-1 h-3.5 w-3.5" />
+                          Word
                         </Button>
-                        <Button size="sm" variant="outline" disabled={busy} onClick={() => print(r.id)}>
-                          <Printer className="mr-1 h-3.5 w-3.5" />Print
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() => print(r.id)}
+                        >
+                          <Printer className="mr-1 h-3.5 w-3.5" />
+                          Print
                         </Button>
                       </div>
                     </td>
@@ -561,13 +617,23 @@ const CompletedAppraisals = () => {
 
       {pages > 1 && (
         <div className="flex items-center justify-between">
-          <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
             Previous
           </Button>
           <span className="text-sm text-gray-500">
             Page {page} of {pages}
           </span>
-          <Button size="sm" variant="outline" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page >= pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
             Next
           </Button>
         </div>
@@ -604,7 +670,10 @@ const CompletedAppraisals = () => {
                 <thead className="bg-gray-50 dark:bg-slate-900">
                   <tr>
                     {['Activity', 'Indicator', 'Set', 'Score', '%', 'Comment'].map((h) => (
-                      <th key={h} className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+                      <th
+                        key={h}
+                        className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500"
+                      >
                         {h}
                       </th>
                     ))}
@@ -624,12 +693,18 @@ const CompletedAppraisals = () => {
                         <tr key={`${line.indicator_name}-${i}`}>
                           <td className="px-3 py-2.5">
                             {line.activity_name}
-                            {line.contract_name && <p className="text-xs text-gray-400">({line.contract_name})</p>}
+                            {line.contract_name && (
+                              <p className="text-xs text-gray-400">({line.contract_name})</p>
+                            )}
                           </td>
                           <td className="px-3 py-2.5">{line.indicator_name}</td>
                           <td className="px-3 py-2.5 text-right">{line.max_score}</td>
-                          <td className={`px-3 py-2.5 text-right font-medium ${scoreBand(pct)}`}>{line.score}</td>
-                          <td className={`px-3 py-2.5 text-right font-medium ${scoreBand(pct)}`}>{pct.toFixed(1)}%</td>
+                          <td className={`px-3 py-2.5 text-right font-medium ${scoreBand(pct)}`}>
+                            {line.score}
+                          </td>
+                          <td className={`px-3 py-2.5 text-right font-medium ${scoreBand(pct)}`}>
+                            {pct.toFixed(1)}%
+                          </td>
                           <td className="px-3 py-2.5 text-gray-600 dark:text-gray-300">
                             {line.appraiser_comment || '—'}
                           </td>
@@ -644,9 +719,13 @@ const CompletedAppraisals = () => {
                       <td className="px-3 py-2.5 font-semibold" colSpan={2}>
                         Total
                       </td>
-                      <td className="px-3 py-2.5 text-right font-semibold">{detail.total_max_score}</td>
+                      <td className="px-3 py-2.5 text-right font-semibold">
+                        {detail.total_max_score}
+                      </td>
                       <td className="px-3 py-2.5 text-right font-semibold">{detail.total_score}</td>
-                      <td className={`px-3 py-2.5 text-right font-semibold ${scoreBand(detail.score_percentage)}`}>
+                      <td
+                        className={`px-3 py-2.5 text-right font-semibold ${scoreBand(detail.score_percentage)}`}
+                      >
                         {detail.score_percentage}%
                       </td>
                       <td />
@@ -659,28 +738,48 @@ const CompletedAppraisals = () => {
             {detail.employee_comment && (
               <div className="rounded-lg border border-gray-200 p-4 text-sm dark:border-slate-700">
                 <h3 className="font-semibold text-gray-900 dark:text-gray-100">Employee comment</h3>
-                <p className="mt-1 whitespace-pre-line text-gray-600 dark:text-gray-300">{detail.employee_comment}</p>
+                <p className="mt-1 whitespace-pre-line text-gray-600 dark:text-gray-300">
+                  {detail.employee_comment}
+                </p>
                 {detail.employee_comment_date && (
-                  <small className="mt-2 block text-gray-400">{formatAppraisalDate(detail.employee_comment_date)}</small>
+                  <small className="mt-2 block text-gray-400">
+                    {formatAppraisalDate(detail.employee_comment_date)}
+                  </small>
                 )}
               </div>
             )}
             {detail.supervisors_comment && (
               <div className="rounded-lg border border-gray-200 p-4 text-sm dark:border-slate-700">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100">Supervisor comment</h3>
-                <p className="mt-1 whitespace-pre-line text-gray-600 dark:text-gray-300">{detail.supervisors_comment}</p>
+                <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                  Supervisor comment
+                </h3>
+                <p className="mt-1 whitespace-pre-line text-gray-600 dark:text-gray-300">
+                  {detail.supervisors_comment}
+                </p>
                 {detail.supervisors_comment_date && (
-                  <small className="mt-2 block text-gray-400">{formatAppraisalDate(detail.supervisors_comment_date)}</small>
+                  <small className="mt-2 block text-gray-400">
+                    {formatAppraisalDate(detail.supervisors_comment_date)}
+                  </small>
                 )}
               </div>
             )}
 
             <div className="flex flex-wrap justify-end gap-2 border-t pt-4 dark:border-slate-700">
-              <Button variant="outline" disabled={busy} onClick={() => detail && download(detail.id, 'pdf')}>
-                <Download className="mr-1 h-4 w-4" />PDF
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => detail && download(detail.id, 'pdf')}
+              >
+                <Download className="mr-1 h-4 w-4" />
+                PDF
               </Button>
-              <Button variant="outline" disabled={busy} onClick={() => detail && download(detail.id, 'word')}>
-                <Download className="mr-1 h-4 w-4" />Word
+              <Button
+                variant="outline"
+                disabled={busy}
+                onClick={() => detail && download(detail.id, 'word')}
+              >
+                <Download className="mr-1 h-4 w-4" />
+                Word
               </Button>
               <Button onClick={() => setDetail(null)}>Close</Button>
             </div>

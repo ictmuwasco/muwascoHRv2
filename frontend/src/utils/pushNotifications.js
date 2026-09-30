@@ -388,7 +388,8 @@ export async function disablePushForThisDevice() {
   } catch (e) {
     return {
       ok: false,
-      message: 'Disabled on this device, but the server could not be reached to remove the registration.',
+      message:
+        'Disabled on this device, but the server could not be reached to remove the registration.',
     };
   }
 }

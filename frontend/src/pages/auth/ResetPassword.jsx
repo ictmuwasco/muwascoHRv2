@@ -29,7 +29,11 @@ const checkPassword = (value) => {
   if (value.length > 72) return 'Password must be 72 characters or fewer.';
   if (!/[A-Za-z]/.test(value)) return 'Password must contain at least one letter.';
   if (!/\d/.test(value)) return 'Password must contain at least one number.';
-  if (['password', '12345678', 'qwerty123', 'password1', 'letmein1', 'welcome1', 'admin123'].includes(value.toLowerCase())) {
+  if (
+    ['password', '12345678', 'qwerty123', 'password1', 'letmein1', 'welcome1', 'admin123'].includes(
+      value.toLowerCase(),
+    )
+  ) {
     return 'That password is too common. Please choose another.';
   }
   return null;
@@ -334,7 +338,9 @@ const ResetPassword = () => {
                         aria-invalid={!!passwordError}
                         aria-describedby={passwordError ? 'new-password-error' : undefined}
                         className={`w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900 text-sm dark:text-slate-100 rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${
-                          passwordError ? 'border-red-300' : 'border-slate-200 dark:border-slate-600'
+                          passwordError
+                            ? 'border-red-300'
+                            : 'border-slate-200 dark:border-slate-600'
                         }`}
                         placeholder="At least 8 characters"
                       />
@@ -344,11 +350,18 @@ const ResetPassword = () => {
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                         className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
                       >
-                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        {showPassword ? (
+                          <EyeOff className="h-5 w-5" />
+                        ) : (
+                          <Eye className="h-5 w-5" />
+                        )}
                       </button>
                     </div>
                     {passwordError && (
-                      <p id="new-password-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
+                      <p
+                        id="new-password-error"
+                        className="mt-1 text-xs text-red-600 dark:text-red-400"
+                      >
                         {passwordError}
                       </p>
                     )}

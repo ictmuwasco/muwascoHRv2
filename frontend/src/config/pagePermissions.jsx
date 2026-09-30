@@ -88,7 +88,10 @@ export const PAGE_PERMISSIONS = {
   '/appraisal': { id: 'appraisal', permission: 'performance:view' },
   '/appraisal/my': { id: 'appraisal_my', permission: 'performance:feedback' },
   '/appraisal/completed': { id: 'appraisal_completed', permission: 'performance:feedback' },
-  '/strategy/performance-appraisals': { id: 'performance_appraisals', permission: 'performance:supervise' },
+  '/strategy/performance-appraisals': {
+    id: 'performance_appraisals',
+    permission: 'performance:supervise',
+  },
 
   // --- Strategy & performance --------------------------------------------------
   '/strategy/strategic-plan': { id: 'strategic_plan', permission: 'strategic_plan:view' },
