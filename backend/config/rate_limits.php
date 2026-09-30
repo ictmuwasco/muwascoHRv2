@@ -152,4 +152,25 @@ return [
         'DELETE /hr-policies/bookmarks/{sectionId}',
         'POST /hr-policies/{id}/acknowledge',
     ],
+
+    /**
+     * Private Vault (migration 105). The sensitive ones:
+     *
+     *   POST /vault/setup     - one-time, but it mints a keypair and wraps the
+     *                           data key twice; 5 per 15 min stops a script
+     *                           hammering PBKDF2 at 600k iterations, which is
+     *                           CPU-expensive enough to be a DoS vector.
+     *   POST /vault/grants    - minting a grant is the highest-value write in
+     *                           the system. Bounded tightly.
+     *   POST /vault/requests  - an HR user spamming requests at employees.
+     *
+     * Reads carry no governance entry: they are indexed single-row lookups
+     * guarded by a grant, so throttling would only add friction to a
+     * legitimate reviewer without protecting anything.
+     */
+    'vault_access' => [
+        'POST /vault/setup',
+        'POST /vault/grants',
+        'POST /vault/requests',
+    ],
 ];
