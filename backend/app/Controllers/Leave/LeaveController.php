@@ -976,7 +976,11 @@ class LeaveController extends BaseController
         $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
         $raw = file_get_contents('php://input') ?: '';
         if (stripos($contentType, 'application/json') !== false && $raw !== '') {
-            $decoded = json_decode($raw, true);
+            // A malformed body is a client error, not an empty request: the
+            // previous bare decode() returned null and the reason was then
+            // silently dropped, so a rejection could be recorded with an empty
+            // reason. decodeRequest() surfaces it as a 400 instead.
+            $decoded = \App\Helpers\Json::decodeRequest($raw, null, 'leave.rejection_reason');
             if (is_array($decoded) && isset($decoded['reason'])) {
                 return trim((string) $decoded['reason']);
             }

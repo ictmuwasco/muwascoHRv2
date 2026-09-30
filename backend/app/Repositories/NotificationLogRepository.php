@@ -155,11 +155,10 @@ class NotificationLogRepository implements NotificationLogRepositoryInterface
      */
     public static function decodePayload(?string $json): array
     {
-        if ($json === null || trim($json) === '') {
-            return [];
-        }
-        $decoded = json_decode($json, true);
-        return is_array($decoded) ? $decoded : [];
+        // A malformed payload is a stored-data problem, not a caller error, so
+        // it must not throw: the delivery worker would otherwise retry a
+        // permanently broken row forever. It is logged and skipped instead.
+        return \App\Helpers\Json::decodeStoredArray($json, 'notification_logs.payload');
     }
 
     /**

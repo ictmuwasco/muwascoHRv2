@@ -932,17 +932,24 @@ class WorkplanController extends BaseController
 
         $deps = [];
         if (!empty($row['dependencies'])) {
-            $decoded = json_decode($row['dependencies'], true);
-            if (is_array($decoded)) {
-                foreach ($decoded as $link) {
-                    $targetId = (int) ($link['workplan_objective_id'] ?? 0);
-                    $deps[] = [
-                        'workplan_objective_id' => $targetId,
-                        'type'     => $link['type'] ?? 'dependency',
-                        'description' => $link['description'] ?? '',
-                        'resolved' => $targetId > 0 ? $this->workplans->objectiveLabel($targetId) : null,
-                    ];
+            // Stored TEXT column. A corrupt value must not break the workplan
+            // view, so it is logged and treated as "no dependencies" instead
+            // of silently decoding to null.
+            $decoded = \App\Helpers\Json::decodeStoredArray(
+                (string) $row['dependencies'],
+                'workplan_objectives.dependencies'
+            );
+            foreach ($decoded as $link) {
+                if (!is_array($link)) {
+                    continue;
                 }
+                $targetId = (int) ($link['workplan_objective_id'] ?? 0);
+                $deps[] = [
+                    'workplan_objective_id' => $targetId,
+                    'type'     => $link['type'] ?? 'dependency',
+                    'description' => $link['description'] ?? '',
+                    'resolved' => $targetId > 0 ? $this->workplans->objectiveLabel($targetId) : null,
+                ];
             }
         }
 

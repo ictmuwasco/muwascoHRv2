@@ -1897,8 +1897,15 @@ class DelegationService
     /** Decode JSON permissions + derived display fields on a raw row. */
     private function hydrate(array $row): array
     {
-        $decoded = json_decode((string) ($row['permissions'] ?? '[]'), true);
-        $row['permissions'] = is_array($decoded) ? array_values($decoded) : [];
+        // A corrupt permissions value must NOT silently become an empty list:
+        // that would strip a delegation of its scope and quietly widen or
+        // narrow what the delegate may do. decodeStored() logs the malformed
+        // value and returns the safe default instead of failing silently.
+        $decoded = \App\Helpers\Json::decodeStoredArray(
+            isset($row['permissions']) ? (string) $row['permissions'] : '[]',
+            'delegations.permissions'
+        );
+        $row['permissions'] = array_values($decoded);
         $row['delegator_name'] = trim(($row['delegator_first_name'] ?? '') . ' ' . ($row['delegator_last_name'] ?? ''));
         $row['delegate_name']  = trim(($row['delegate_first_name'] ?? '') . ' ' . ($row['delegate_last_name'] ?? ''));
         $row['scope_label']    = $this->scopeLabel((string) ($row['scope_type'] ?? ''), (int) ($row['scope_id'] ?? 0));

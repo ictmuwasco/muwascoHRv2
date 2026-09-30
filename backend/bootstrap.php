@@ -116,6 +116,33 @@ set_error_handler(function ($severity, $message, $file, $line) {
 });
 
 set_exception_handler(function (\Throwable $e) {
+    // ---- 0. Malformed JSON is a CLIENT error, not a server fault.
+    //
+    // App\Helpers\Json::decodeRequest() throws JsonException on a body it
+    // cannot parse, and the employee write path throws when next_of_kin /
+    // dependants carry invalid JSON. Without this branch those reached the
+    // generic handler below and were answered 500, which tells the client the
+    // server broke when in fact it sent bad data - and it files a spurious
+    // error-monitor event for every one of them.
+    //
+    // Handled first, before error capture, because a malformed body is not an
+    // application fault and should not page anyone.
+    if ($e instanceof \JsonException) {
+        try {
+            \App\Helpers\ApiResponse::error(
+                'Malformed JSON in request: ' . $e->getMessage(),
+                'INVALID_JSON',
+                [],
+                400
+            );
+        } catch (\Throwable) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo '{"success":false,"message":"Malformed JSON in request","error":{"code":"INVALID_JSON"}}';
+        }
+        return;
+    }
+
     // ---- 1. Centralized capture (fail-safe §28): tracker failures never
     //         prevent the original error from being handled/logged.
     $reference = null;

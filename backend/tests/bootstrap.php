@@ -90,3 +90,14 @@ if (!function_exists('env')) {
         return $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key) ?: $default;
     }
 }
+
+if (!function_exists('logger')) {
+    function logger(): \App\Helpers\Logger
+    {
+        static $logger = null;
+        if ($logger === null) {
+            $logger = new \App\Helpers\Logger();
+        }
+        return $logger;
+    }
+}
