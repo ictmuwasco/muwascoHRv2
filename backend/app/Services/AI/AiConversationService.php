@@ -520,8 +520,11 @@ TXT;
         if (!is_string($raw) || $raw === '') {
             return [];
         }
-        $decoded = json_decode($raw, true);
-        return is_array($decoded) ? $decoded : [];
+        // Stored column (AI source/tool metadata). decodeStored() logs and
+        // returns [] rather than silently producing null, so a corrupt
+        // metadata field is visible in the log instead of quietly
+        // disappearing from the AI context.
+        return \App\Helpers\Json::decodeStoredArray($raw, 'ai.source_metadata');
     }
 
     /** Module-fixed audit write (never throws, ids/counts only). */
