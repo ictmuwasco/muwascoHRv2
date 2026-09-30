@@ -326,18 +326,27 @@ jobs:
 
           echo "Running PHPUnit with $CONFIG"
           # `set -o pipefail` plus `| tee` already propagates PHPUnit's exit
-          # code, but the output is only visible in the log stream. Echo the
-          # captured log on failure so the cause appears inline in the step
-          # summary, where it can be read without admin rights to the raw job
-          # log. The previous version gave no indication of WHY the run
-          # stopped, which is what made this hard to diagnose.
-          if ! vendor/bin/phpunit -c "$CONFIG" --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log; then
-            echo "::error::PHPUnit failed. Captured output follows:"
+          # code, but the output only lives in the log stream, which needs
+          # admin rights to read through the API. On failure the captured log
+          # is therefore (a) echoed into the step and (b) uploaded as a job
+          # artifact, so the cause is readable either way. Previously the step
+          # gave no indication of WHY it stopped, which is what made this
+          # undiagnosable without log access.
+          RC=0
+          vendor/bin/phpunit -c "$CONFIG" --no-coverage --do-not-cache-result 2>&1 | tee /tmp/phpunit_full.log || RC=${PIPESTATUS[0]}
+
+          # Always upload, pass or fail: a green run's output is the evidence
+          # that the suite really executed rather than silently skipping.
+          cp /tmp/phpunit_full.log backend/phpunit_output.log 2>/dev/null || true
+          echo "--- environment actually visible to PHP ---"
+          php -r 'foreach (["DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","APP_ENV","CI","GITHUB_ACTIONS"] as $k) { printf("%s=%s\n", $k, var_export(getenv($k), true)); }'
+
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::PHPUnit exited $RC. Full output follows (also saved as the phpunit-output artifact)."
             cat /tmp/phpunit_full.log || true
-            echo "--- environment actually visible to PHP ---"
-            php -r 'foreach (["DB_HOST","DB_PORT","DB_DATABASE","DB_USERNAME","APP_ENV","CI"] as $k) { printf("%s=%s\n", $k, var_export(getenv($k), true)); }'
             exit 1
           fi
+          echo "PHPUnit passed."
         env:
           # Same ephemeral service container as the migration steps: the
           # credentials live in this workflow's `services:` block, not in
@@ -351,8 +360,23 @@ jobs:
           APP_ENV: testing
           # Must stay STABLE across runs or PHPUnit's per-run token signatures
           # become incomparable. CI-only value, not a production secret.
-          JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
+          # This is a fixed literal, NOT a repository secret: an unset secret
+          # expands to an empty string, App\Config\ConfigValidator rejects a
+          # blank/known-default JWT_SECRET, and the suite dies during
+          # bootstrap. It is an ephemeral test database - the value is never
+          # used to sign a production token - so there is nothing to protect.
+          JWT_SECRET: ci-only-not-a-real-secret-2f7b41c9e8a5
           JWT_ISSUER: muwasco-hr-system
+
+      - name: Upload PHPUnit output
+        # Runs even when the suite fails, so the reason is downloadable
+        # without admin rights to the raw job log.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-output
+          path: backend/phpunit_output.log
+          if-no-files-found: warn
 
       - name: Show phpunit log
         if: always()

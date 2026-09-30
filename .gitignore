@@ -129,3 +129,5 @@ backend/storage/*.out
 backend/storage/*.err
 backend/tests/_phpunit_out.txt
 backend/tests/_suite_out.txt
+# PHPUnit output captured by the CI job and uploaded as a run artifact.
+backend/phpunit_output.log
