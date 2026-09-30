@@ -159,6 +159,52 @@ final class StorageEncryptionTest extends TestCase
         $this->assertSame('', file_get_contents($this->roundTrip($path, 'employee_documents', 9)));
     }
 
+    /**
+     * The nonce must survive a database round trip as HEX TEXT.
+     *
+     * REGRESSION GUARD. wrapKey() returns the IV hex-encoded (24 chars for a
+     * 96-bit IV). The file_encryption.nonce column is therefore varchar(24) and
+     * NOT varbinary(12) - inserting 24 hex chars into varbinary(12) silently
+     * truncates them to 12, which produces a wrong IV, a failed GCM tag and a
+     * permanently undecryptable file. That bug was found by running a rotation
+     * against a scratch database; this test pins the shape so it cannot come
+     * back.
+     */
+    public function testNonceIsHexTextAndSurvivesTheColumnWidth(): void
+    {
+        $wrapped = StorageEncryption::wrapKey(
+            StorageEncryption::generateFileKey(),
+            StorageEncryption::keyAad('employee_documents', 1)
+        );
+
+        // 96-bit IV -> 12 raw bytes -> 24 hex characters.
+        $this->assertSame(24, strlen($wrapped['nonce']), 'a 96-bit IV is 24 hex chars');
+        $this->assertSame(12, strlen((string) hex2bin($wrapped['nonce'])), 'and 12 raw bytes');
+
+        // The value MUST fit the column it is written to. If this ever fails,
+        // file_encryption.nonce has been narrowed back to varbinary(12).
+        $this->assertLessThanOrEqual(
+            24,
+            strlen($wrapped['nonce']),
+            'nonce must fit file_encryption.nonce varchar(24)'
+        );
+
+        // And it must still authenticate after a DB round trip. The column is
+        // varchar, so the DB hands back the SAME hex text; hex2bin inside
+        // unwrapKey() turns it into the 12 raw bytes the cipher needs.
+        $fileKey = StorageEncryption::generateFileKey();
+        $w = StorageEncryption::wrapKey($fileKey, StorageEncryption::keyAad('employee_documents', 2));
+        $this->assertSame(
+            $fileKey,
+            StorageEncryption::unwrapKey(
+                $w['wrapped'],
+                $w['nonce'],
+                StorageEncryption::keyAad('employee_documents', 2),
+                1
+            )
+        );
+    }
+
     public function testMultiChunkFileRoundTrips(): void
     {
         // Force many chunks with a tiny chunk size, so the counter/IV logic is

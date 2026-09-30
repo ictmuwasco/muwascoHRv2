@@ -228,12 +228,25 @@ PREPARE st FROM @sql; EXECUTE st; DEALLOCATE PREPARE st;
 --   file_key_wrapped  base64 AES-256-GCM of the per-file key,
 --                     AAD binds table_name:record_id so a wrapped key cannot
 --                     be replayed against a different row
---   nonce             96-bit IV for that wrap
+--   nonce             96-bit IV for that wrap, stored HEX-encoded
 --   key_version       which master key did the wrapping
 --   plaintext_sha256  sha256 hex of the ORIGINAL plaintext. This is what makes
 --                     the one-time migration script safe: a file is only
 --                     unlinked after it has been decrypted and re-hashed back
 --                     to this exact value.
+--
+-- WHY nonce IS varchar(24) AND NOT varbinary(12)
+--   A 96-bit IV is 12 RAW bytes, but StorageEncryption::wrapKey() returns it
+--   hex-encoded, i.e. 24 characters. Writing 24 hex chars into a VARBINARY(12)
+--   column silently TRUNCATES to 12, producing a wrong IV, a failed
+--   authentication tag, and a file that can never be decrypted again.
+--   Verified on this engine: inserting 24 hex chars into VARBINARY(12) stores
+--   only 12 bytes. varchar(24) holds the hex exactly.
+--
+--   Contrast with vault_keys.salt and vault_items.iv, which stay VARBINARY:
+--   those are written by the application as RAW bytes, so a binary column is
+--   correct there. file_encryption.nonce is written as hex by the CLI scripts,
+--   so it must be a text column.
 -- ---------------------------------------------------------------------------
 SET @sql := IF(
   (SELECT COUNT(*) FROM information_schema.TABLES
@@ -243,7 +256,7 @@ SET @sql := IF(
      `table_name` varchar(64) NOT NULL,
      `record_id` int(11) NOT NULL,
      `file_key_wrapped` text NOT NULL,
-     `nonce` varbinary(12) NOT NULL,
+     `nonce` varchar(24) NOT NULL,
      `key_version` int(11) NOT NULL DEFAULT 1,
      `algorithm` varchar(32) NOT NULL DEFAULT ''AES-256-GCM-CHUNKED'',
      `plaintext_sha256` char(64) NOT NULL,
