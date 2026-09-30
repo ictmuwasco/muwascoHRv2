@@ -4,6 +4,7 @@ const SECURITY_API = '/security';
 
 export const securityService = {
   getOverview: () => apiClient.get(`${SECURITY_API}/overview`),
+  getAppraisalSecurity: () => apiClient.get(`${SECURITY_API}/appraisal`),
   getEvents: (params = {}) => apiClient.get(`${SECURITY_API}/events`, { params }),
   getEvent: (id: number) => apiClient.get(`${SECURITY_API}/events/${id}`),
   getIncidents: (params = {}) => apiClient.get(`${SECURITY_API}/incidents`, { params }),
@@ -25,4 +26,8 @@ export const securityService = {
   investigateIncident: (id: number) =>
     apiClient.post(`${SECURITY_API}/incidents/${id}/investigate`),
   containIncident: (id: number) => apiClient.post(`${SECURITY_API}/incidents/${id}/contain`),
+  getReport: (params = {}) => apiClient.get(`${SECURITY_API}/report`, { params }),
+  exportReport: (params = {}) =>
+    apiClient.get(`${SECURITY_API}/report`, { params: { ...params, format: 'csv' }, responseType: 'blob' }),
 };
+

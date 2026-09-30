@@ -1,9 +1,41 @@
 # ── Environment & Configuration ────────────────────────────────────────────
-# NOTE: .env is ignored (real secrets). .env.example / .env.production.example
-# are intentionally TRACKED — they are safe templates with no real secrets.
+# `.env` holds real secrets and is NEVER committed. `.env.*` is ignored by
+# default so no per-environment variant (`.env.local`, `.env.production`,
+# `.env.staging`, ...) can leak by accident; the two name-only templates are
+# re-included explicitly below.
+#
+# The templates MUST contain variable names and non-secret defaults only. A
+# real credential in a tracked template is a permanent leak - it is why this
+# file is force-purged from history, not just deleted. The blocking CI gate
+# `php scripts/ci/secret_scan.php` enforces this on every push.
 .env
+.env.*
+!.env.example
+!.env.production.example
 config.php
 *.local.php
+
+# ── Keys, certificates and credential stores ───────────────────────────────
+# Never commit key material, even test/dev keys.
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.ppk
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+credentials.json
+secrets.json
+service-account*.json
+gcloud-service-key*.json
+.netrc
+.npmrc
+.dockerenv
+*.token
 
 # ── Database ────────────────────────────────────────────────────────────────
 *.sql
@@ -51,6 +83,11 @@ probe*.php
 probe_out.txt
 facts*.txt
 gather.ps1
+
+# Local data exports (employee names/IDs) emitted by repair tooling.
+# Operational data, not source - never commit.
+tools/*-backup.json
+profile-image-backup.json
 
 # ── Runtime uploads (user content) ───────────────────────────────────────────
 backend/app/public/uploads/

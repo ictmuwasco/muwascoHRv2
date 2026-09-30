@@ -25,6 +25,46 @@ class LeaveRosterController
     private const MANAGER_ROLES = ['hr_manager', 'managing_director', 'super_admin'];
 
     /**
+     * Read the request payload, preferring a JSON body and falling back to POST.
+     *
+     * This controller does not extend BaseController, so the shared
+     * getRequestPayload() helper is not available here; the logic is identical
+     * and deliberately kept in step with it.
+     *
+     * `json_decode(...) ?: $_POST` could not distinguish "client sent a body
+     * that is not JSON" from "client sent no body", so a malformed body was
+     * silently reinterpreted as a form post and flowed into a write path.
+     * An empty body still falls back to $_POST because form posts are
+     * legitimate; a non-empty malformed body is answered 400 here rather
+     * than being silently discarded.
+     *
+     * @return array<string,mixed>
+     */
+    private function readRequestPayload(): array
+    {
+        $raw = file_get_contents('php://input');
+
+        if ($raw === false || trim((string) $raw) === '') {
+            return $_POST;
+        }
+
+        try {
+            $decoded = \App\Helpers\Json::decodeRequest((string) $raw, [], 'request body');
+        } catch (\JsonException $e) {
+            http_response_code(400);
+            header('Content-Type: application/json');
+            echo json_encode([
+                'success' => false,
+                'message' => 'Malformed JSON in request: ' . $e->getMessage(),
+                'error'   => ['code' => 'INVALID_JSON'],
+            ]);
+            exit;
+        }
+
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
      * GET /api/leave/roster
      * List roster entries with filters.
      */
@@ -170,7 +210,7 @@ class LeaveRosterController
             return;
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        $input = $this->readRequestPayload();
         $employeeId = (int) ($input['employee_id'] ?? 0);
         $fyId = (int) ($input['financial_year_id'] ?? 0);
         $month = trim($input['scheduled_month'] ?? '');
@@ -272,7 +312,7 @@ class LeaveRosterController
             return;
         }
 
-        $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+        $input = $this->readRequestPayload();
         $month = trim($input['scheduled_month'] ?? '');
         $notes = trim($input['notes'] ?? '');
 
@@ -454,7 +494,7 @@ class LeaveRosterController
 
     /**
      * GET /api/leave/roster/distribution
-     * Monthly distribution of scheduled leave (July → June).
+     * Monthly distribution of scheduled leave (July â†’ June).
      */
     public function distributionAction(): void
     {
@@ -514,7 +554,7 @@ class LeaveRosterController
             $counts[$row['scheduled_month']] = (int) $row['count'];
         }
 
-        // Build July → June ordered distribution
+        // Build July â†’ June ordered distribution
         $distribution = [];
         foreach (self::FY_MONTHS as $month) {
             $distribution[] = [
@@ -716,7 +756,7 @@ class LeaveRosterController
 
     /**
      * GET /api/leave/roster/matrix
-     * Employee × Month planning matrix data.
+     * Employee Ã— Month planning matrix data.
      */
     public function matrixAction(): void
     {
@@ -818,6 +858,11 @@ class LeaveRosterController
         ob_start();
         $this->indexAction();
         $json = ob_get_clean();
+        // $json is this controller's OWN ApiResponse envelope captured from the
+        // output buffer, not client input, so a decode failure here means our
+        // own serialisation is broken rather than a bad request. The existing
+        // `if (!($data['success'] ?? false))` branch below already turns that
+        // into a 400, so this decode is safe as written.
         $data = json_decode($json, true);
 
         if (!($data['success'] ?? false)) {

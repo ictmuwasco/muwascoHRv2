@@ -48,26 +48,53 @@ $excludeNames = [
 ];
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // 2. Detection patterns.
 //
 // NOTE: separators use [ \t] only (never \s) so that an empty `KEY=`
 // assignment cannot grab the next line's token as its value.
+//
+// THE KEY-LEFT-BOUNDARY IS `(?:^|[^A-Za-z0-9_])`, NOT `\b`.
+//
+// Why: in a COMPOUND name the character before the key is `_`, which is itself
+// a word character, so `\b` never fires there. The old `\b(API_KEY|...)\b`
+// matched `HTTPSMS_API_KEY` but silently MISSED `AI_NVIDIA_API_KEY` - the
+// highest-value credential in this repo went undetected by the very gate
+// meant to catch it. `(?:^|[^A-Za-z0-9_])` matches at line start or after any
+// non-identifier character, so bare AND compound names are both caught.
 // ---------------------------------------------------------------------------
 $patterns = [
-    'database password'   => '/\b(DB_PASS|DB_PASSWORD|MYSQL_PASSWORD|DB_PWD)\b[ \t]*[=:][ \t]*([^\s\'\"]+)/i',
-    'JWT secret'          => '/\b(JWT_SECRET|JWT_SECRET_KEY)\b[ \t]*[=:][ \t]*([^\s\'\"]+)/i',
-    'SMTP/mail password'  => '/\b(MAIL_PASSWORD|SMTP_PASSWORD|SMTP_PASS)\b[ \t]*[=:][ \t]*([^\s\'\"]+)/i',
-    'API key / secret'    => '/\b(API_KEY|API_SECRET|SECRET_KEY|ACCESS_TOKEN_SECRET|AUTH_TOKEN|HTTPSMS_API_KEY|VAPID_PRIVATE_KEY|SENTRY_DSN)\b[ \t]*[=:][ \t]*([^\s\'\"]+)/i',
-    'cloud credentials'   => '/\b(AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID)\b[ \t]*[=:][ \t]*([^\s\'\"]+)/i',
-    'quoted password'     => '/\b(password|passwd|pwd)\b[ \t]*[=:][ \t]*[\'\"]([^\'\"\\s]{8,})[\'\"]/i',
+    'database password'   => '/(?:^|[^A-Za-z0-9_])([A-Za-z0-9_]*(?:DB_PASS|DB_PASSWORD|MYSQL_PASSWORD|DB_PWD))[ \t]*[=:][ \t]*([^\s\'"]+)/i',
+    'JWT secret'          => '/(?:^|[^A-Za-z0-9_])([A-Za-z0-9_]*(?:JWT_SECRET|JWT_SECRET_KEY))[ \t]*[=:][ \t]*([^\s\'"]+)/i',
+    'SMTP/mail password'  => '/(?:^|[^A-Za-z0-9_])([A-Za-z0-9_]*(?:MAIL_PASSWORD|SMTP_PASSWORD|SMTP_PASS|MAIL_PASS))[ \t]*[=:][ \t]*([^\s\'"]+)/i',
+    'API key / secret'    => '/(?:^|[^A-Za-z0-9_])([A-Za-z0-9_]*(?:API_KEY|API_SECRET|SECRET_KEY|ACCESS_TOKEN_SECRET|AUTH_TOKEN|HTTPSMS_API_KEY|VAPID_PRIVATE_KEY|SENTRY_DSN))[ \t]*[=:][ \t]*([^\s\'"]+)/i',
+    'cloud credentials'   => '/(?:^|[^A-Za-z0-9_])([A-Za-z0-9_]*(?:AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID))[ \t]*[=:][ \t]*([^\s\'"]+)/i',
+    // Seeder bootstrap credentials (SEED_ADMIN_PASSWORD, ...). These are
+    // unquoted, so they were invisible to the quoted-password rule below.
+    'seed password'       => '/(?:^|[^A-Za-z0-9_])(SEED_[A-Z0-9_]*PASSWORD)[ \t]*[=:][ \t]*([^\s\'"]+)/i',
+    'quoted password'     => '/(?:^|[^A-Za-z0-9_])([A-Za-z0-9_]*(?:password|passwd|pwd))[ \t]*[=:][ \t]*[\'"]([^\'"\\s]{8,})[\'"]/i',
     'private key block'   => '/-----BEGIN [A-Z ]*PRIVATE KEY-----/',
 ];
 
 // Known-leaked literals discovered during the Phase 1 audit. Never re-add.
 // (The scanner itself is exempt from this check - see selfScan below.)
+//
+// `ADMIN001` was REMOVED. It is not a credential - it is a real employees.
+// employee_id BUSINESS CODE, and the bare-literal search matched it inside an
+// explanatory comment in LeaveController, failing CI on a non-secret. Business
+// codes cannot be distinguished from passwords by substring alone, so the
+// false positive is removed rather than worked around.
+//
+// The Phase 1 DB-password literal was also removed here, and that removal is
+// self-inflicted in a way worth recording: the 2026-09-29 git-filter-repo
+// history scrub rewrote that literal to the marker REDACTED_ROTATE *everywhere
+// it appeared - including on this line*. The denylist then matched its own
+// placeholder and failed CI on JWT.php and SECURITY_AUDIT.md, which contain
+// the marker but no credential. The underlying secret is purged from history
+// and rotated, so the entry has nothing left to protect. The guard below
+// (skipping placeholder-shaped entries) stops that class of self-match
+// recurring if this file is ever scrubbed again.
 $knownLeaks = [
-    'REDACTED_ROTATE',   // DB password committed in .env.example / backup.sh (Phase 1)
-    'ADMIN001',    // default admin password committed in setup scripts
     'Admin@123',   // default admin password committed in setup scripts
 ];
 
@@ -137,8 +164,18 @@ foreach ($files as $rel) {
     // is exempt from its own known-leak check (patterns still apply).
     $selfScan = ($rel === 'scripts/ci/secret_scan.php');
 
+    // Strip COMMENT-ONLY lines before applying the assignment patterns.
+    //
+    // A commented-out `# VITE_SENTRY_DSN=  Sentry DSN if migrating ...` is
+    // documentation, not a credential, and matching it fails CI on prose. The
+    // compound-key fix made the scanner correctly see compound names like
+    // VITE_SENTRY_DSN, which is exactly what surfaced this. The known-leak
+    // substring check below still runs over the FULL content, so a genuine
+    // leak hidden in a comment is still caught.
+    $scannable = preg_replace('/^[ \t]*(?:#|\/\/).*$/m', '', $content);
+
     foreach ($patterns as $label => $regex) {
-        if (!preg_match_all($regex, $content, $m, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
+        if (!preg_match_all($regex, $scannable, $m, PREG_SET_ORDER | PREG_OFFSET_CAPTURE)) {
             continue;
         }
         foreach ($m as $hit) {
@@ -146,13 +183,20 @@ foreach ($files as $rel) {
             if ($label !== 'private key block' && isPlaceholderValue($value)) {
                 continue;
             }
-            $line = substr_count(substr($content, 0, (int) $hit[0][1]), "\n") + 1;
+            $line = substr_count(substr($scannable, 0, (int) $hit[0][1]), "\n") + 1;
             $findings[] = sprintf('%s:%d  [%s]', $rel, $line, $label);
         }
     }
 
     if (!$selfScan) {
         foreach ($knownLeaks as $leak) {
+            // Guard: a placeholder-shaped entry is not a credential. This file
+            // has been rewritten by git-filter-repo more than once, and a scrub
+            // marker landing in $knownLeaks made the scanner fail CI on its own
+            // redaction output. Skip such entries rather than self-matching.
+            if ($leak === '' || isPlaceholderValue($leak)) {
+                continue;
+            }
             $offset = 0;
             while (($pos = stripos($content, $leak, $offset)) !== false) {
                 $line = substr_count(substr($content, 0, $pos), "\n") + 1;

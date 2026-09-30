@@ -1112,10 +1112,21 @@ class EmployeeController extends BaseController
 
     /**
      * POST /api/profile/contracts/{contractId}/renew - Renew a contract for current user.
+     *
+     * Self-service route, but NOT self-service *authority*: renewing mutates the
+     * employment record, so it is reserved for HR/admin exactly like
+     * POST /employees/{id}/contracts/{contractId}/renew. Officers and other staff
+     * may read their contract history here (GET /profile/contracts) but must go
+     * through HR to extend a term. The route is gated on employees:edit; this is
+     * the object-level check that survives any route-table change.
      */
     public function renewProfileContractAction(int $contractId): void
     {
         $this->requirePermission('profile', 'edit');
+
+        if (!\App\Services\Security\EmployeePolicy::canRenewContract($this->getAuthUserId())) {
+            $this->forbidden('Contract renewal is handled by HR. Please contact HR to renew your contract.');
+        }
 
         try {
             $userId = $this->getUserId();

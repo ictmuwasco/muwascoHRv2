@@ -246,7 +246,7 @@ final class Cache
             if ($raw === null) {
                 continue;
             }
-            $decoded = json_decode($raw, true);
+            $decoded = \App\Helpers\Json::decodeStored($raw, null, 'cache.gc');
             if (!is_array($decoded) || self::isExpired($decoded)) {
                 if (self::deleteFile($file)) {
                     $removed++;
@@ -256,6 +256,25 @@ final class Cache
 
         return $removed;
     }
+
+    /**
+     * Decode a cache entry, treating a corrupt file as a miss.
+     *
+     * Json::decodeStored() already logs and returns null rather than
+     * throwing. The caller then deletes the entry and recomputes, which is
+     * the right recovery: cache data is derived, so discarding it is always
+     * safe and always cheaper than failing the request.
+     *
+     * @return array<string,mixed>|null
+     */
+    private static function decodeEntry(?string $raw): ?array
+    {
+        $decoded = Json::decodeStored($raw, null, 'cache.entry');
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+
 // ------------------------------------------------------------------
     // Internals - every filesystem call is failure-isolated
     // ------------------------------------------------------------------
@@ -324,7 +343,7 @@ final class Cache
             return null;
         }
 
-        $decoded = json_decode($raw, true);
+        $decoded = self::decodeEntry($raw);
         if (!is_array($decoded) || !array_key_exists('value', $decoded)) {
             // Corrupt entry - drop it and report a miss.
             self::deleteFile($path);

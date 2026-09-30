@@ -28,6 +28,7 @@ import type { EmployeeProfile } from '../../types';
 // add/edit/delete of next of kin, dependants, documents or contract renewal.
 // The API gates every one of those writes under profile:edit.
 import { CanEdit } from '../../components/ui/PermissionGate';
+import { useAuth } from '../../context/AuthContext';
 
 // Base URL for direct file access (authenticated via httpOnly cookie) —
 // centralized in src/config/api.ts so every consumer shares VITE_API_URL.
@@ -128,6 +129,16 @@ const Profile = () => {
   >([]);
   const [contractCount, setContractCount] = useState(0);
   const [renewingContract, setRenewingContract] = useState(false);
+
+  // Contract renewal is an HR function, NOT self-service. The renewal button is
+  // gated on the `employees` module (employees:edit → hr_manager / managing_director
+  // / super_admin) and NOT on `profile:edit`, which every staff role including
+  // officer holds — gating on profile:edit is what let officers renew themselves.
+  // Mirrors EmployeePolicy::canRenewContract() and the employees:edit route gate on
+  // POST /profile/contracts/{id}/renew. Everyone else sees their contract history
+  // and requests renewal from HR.
+  const { canEdit: canEditModule } = useAuth();
+  const canRenewContract = canEditModule('employees');
 
   // Popup (modal) toggles - opened by the Add buttons in the card headers.
   const [nokModalOpen, setNokModalOpen] = useState(false);
@@ -642,7 +653,9 @@ const Profile = () => {
                   </div>
 
                   <div className="mt-4">
-                    <h4 className="text-sm font-medium text-gray-700 mb-3">Your Contracts</h4>
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">
+                      {canRenewContract ? 'Your Contracts' : 'Contract History'}
+                    </h4>
                     <div className="space-y-3">
                       {contracts.map((contract) => {
                         const endDate = contract.end_date ? new Date(contract.end_date) : null;
@@ -689,9 +702,9 @@ const Profile = () => {
                                 </div>
                               )}
                             </div>
-                            {isActive && (
+                            {isActive && canRenewContract && (
                               <div className="mt-3 flex justify-end">
-                                <CanEdit module="profile">
+                                <CanEdit module="employees">
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -719,19 +732,29 @@ const Profile = () => {
                     </div>
                   </div>
 
-                  {/* Contract Renewal Info */}
+                  {/* Contract Renewal Info — the copy is role-aware because
+                      staff CANNOT renew themselves; only HR can. */}
                   <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-start space-x-3">
                       <RefreshCw className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
                       <div>
                         <p className="text-sm font-medium text-blue-900">About Contract Renewal</p>
-                        <p className="text-sm text-blue-700 mt-1">
-                          When your contract term is about to expire, you can request renewal by
-                          clicking the
-                          <span className="font-medium"> "Renew Contract"</span> button on any
-                          active contract. This will extend your contract end date. Please contact
-                          HR for the new contract terms before renewing.
-                        </p>
+                        {canRenewContract ? (
+                          <p className="text-sm text-blue-700 mt-1">
+                            When your contract term is about to expire, you can renew it by clicking
+                            the
+                            <span className="font-medium"> "Renew Contract"</span> button on any
+                            active contract. This will extend your contract end date. Please contact
+                            HR for the new contract terms before renewing.
+                          </p>
+                        ) : (
+                          <p className="text-sm text-blue-700 mt-1">
+                            This page shows your contract history. When your contract term is about
+                            to expire, contact the HR department to request a renewal — contract
+                            terms are issued and renewed by HR, so they cannot be extended from
+                            here.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -80,6 +80,14 @@ class SecurityMiddleware
         $origin   = $_SERVER['HTTP_ORIGIN'] ?? '';
         $allowed  = (array) \config('cors.allowed_origins', []);
 
+        // The CORS response depends on the request Origin, so it MUST declare
+        // that dependency. Without Vary: Origin a shared proxy/CDN can cache a
+        // response that carries one origin's Access-Control-Allow-Origin and
+        // serve it to a different origin. Sending this unconditionally (even
+        // when the origin is rejected) is what keeps the cached variant keyed
+        // correctly.
+        header('Vary: Origin, Access-Control-Request-Headers, Access-Control-Request-Method', false);
+
         if ($origin !== '' && in_array($origin, $allowed, true)) {
             header('Access-Control-Allow-Origin: ' . $origin);
             if ((bool) \config('cors.allow_credentials', true)) {
@@ -512,7 +520,11 @@ class SecurityMiddleware
         }
 
         $raw = stream_get_contents($fh);
-        $data = json_decode((string) $raw, true);
+        // Corrupt rate-limit state is treated as a fresh window below, which
+        // fails open for that one request. Logging it means a truncated or
+        // half-written lock file is visible instead of silently resetting
+        // counters.
+        $data = \App\Helpers\Json::decodeStored((string) $raw, null, 'rate_limit.' . $action);
         if (!is_array($data) || !isset($data['count'], $data['first']) || ($now - (int) $data['first']) > $windowSeconds) {
             $data = ['count' => 0, 'first' => $now];
         }

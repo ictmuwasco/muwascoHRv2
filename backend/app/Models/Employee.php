@@ -304,7 +304,9 @@ class Employee extends BaseModel
         if (empty($json)) {
             return [];
         }
-        $data = json_decode($json, true);
-        return is_array($data) ? $data : [];
+        // Stored column: a corrupt value must not take down the profile page
+        // that reads it, so it is logged and treated as empty rather than
+        // silently decoding to null.
+        return \App\Helpers\Json::decodeStoredArray($json, 'employees.next_of_kin');
     }
 }

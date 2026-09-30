@@ -14,6 +14,21 @@
 const DENIED_FLAG = 'hr_push_permission_denied';
 const SW_PATH = 'sw.js'; // resolved against document.baseURI at runtime
 
+/**
+ * Local record of which VAPID key created the current browser subscription.
+ *
+ * A PushSubscription's `applicationServerKey` is IMMUTABLE: you cannot re-key an
+ * existing subscription, only throw it away and subscribe again. So if the
+ * server's VAPID keys are ever regenerated, a subscription left in place stays
+ * bound to the OLD key and every single push is rejected by the push service
+ * with 401/403. Nothing server-side can diagnose that, because the stored
+ * endpoint looks perfectly valid.
+ *
+ * Recording the key locally is what lets us detect the mismatch and re-bind,
+ * instead of leaving the employee permanently "enabled" and silently deaf.
+ */
+const VAPID_KEY_RECORD = 'hr_push_vapid_key';
+
 // Lazily-resolved API surface (avoids a static import cycle/graph cost).
 let apiPromise = null;
 function api() {
@@ -178,6 +193,65 @@ export async function getExistingEndpoint() {
   }
 }
 
+/** The VAPID public key that created the current subscription, if recorded. */
+export function getRecordedVapidKey() {
+  try {
+    return localStorage.getItem(VAPID_KEY_RECORD);
+  } catch {
+    return null;
+  }
+}
+
+function recordVapidKey(key) {
+  try {
+    localStorage.setItem(VAPID_KEY_RECORD, key);
+  } catch {
+    /* storage unavailable - detection degrades, but nothing breaks */
+  }
+}
+
+function forgetVapidKey() {
+  try {
+    localStorage.removeItem(VAPID_KEY_RECORD);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/**
+ * The current browser subscription, but ONLY if it was created with the VAPID
+ * key the server is currently using.
+ *
+ * Returns the subscription when it is genuinely usable, or null when there is
+ * none OR when the recorded key disagrees with the server's - in which case the
+ * caller must re-subscribe rather than reuse a subscription the push service
+ * will reject.
+ *
+ * @param {string} currentVapidKey
+ * @returns {Promise<PushSubscription|null>}
+ */
+export async function getUsableSubscription(currentVapidKey) {
+  if (!isPushSupported()) return null;
+  let subscription = null;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    subscription = (await registration?.pushManager.getSubscription()) ?? null;
+  } catch {
+    return null;
+  }
+  if (!subscription) return null;
+
+  const recorded = getRecordedVapidKey();
+  if (recorded === null) {
+    // No record: a subscription predates this feature, or storage was cleared.
+    // Optimistically adopt the current key so the next rotation is detectable.
+    recordVapidKey(currentVapidKey);
+    return subscription;
+  }
+  if (recorded !== currentVapidKey) return null; // stale binding - re-subscribe
+  return subscription;
+}
+
 /**
  * @typedef {{ok: boolean, message: string}} SubscribeOutcome
  */
@@ -214,33 +288,70 @@ export async function enablePushForThisDevice(deviceName) {
 
   const registration = await ensureServiceWorkerRegistered();
 
-  // Reuse an existing subscription when present; subscribing again with a
-  // different applicationServerKey throws on some browsers.
-  let subscription = await registration.pushManager.getSubscription();
+  // Reuse an existing subscription ONLY when it was created with the key the
+  // server is using right now. A subscription bound to a rotated-out key can
+  // never be repaired in place (applicationServerKey is immutable), so it is
+  // discarded and replaced rather than silently reused into permanent 401/403s.
+  let subscription = await getUsableSubscription(vapidKey);
+  let rebound = false;
   if (!subscription) {
-    subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidKey),
-    });
+    // Clear any stale subscription first; subscribe() throws if one exists on
+    // some browsers when the applicationServerKey differs.
+    try {
+      const registration2 = await navigator.serviceWorker.getRegistration();
+      const stale = await registration2?.pushManager.getSubscription();
+      if (stale) await stale.unsubscribe();
+      rebound = getRecordedVapidKey() !== null;
+    } catch {
+      /* best effort */
+    }
+
+    try {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      });
+    } catch (e) {
+      return { ok: false, message: 'This browser refused to create a push subscription.' };
+    }
+    recordVapidKey(vapidKey);
   }
 
   const json = subscription.toJSON();
   const service = await api();
-  const response = await service.subscribe({
-    endpoint: json.endpoint,
-    keys: {
-      p256dh: json.keys?.p256dh ?? '',
-      auth: json.keys?.auth ?? '',
-    },
-    device_name: deviceName ?? guessDeviceName(),
-    platform: navigator.platform || undefined,
-  });
+  let response;
+  try {
+    response = await service.subscribe({
+      endpoint: json.endpoint,
+      keys: {
+        p256dh: json.keys?.p256dh ?? '',
+        auth: json.keys?.auth ?? '',
+      },
+      device_name: deviceName ?? guessDeviceName(),
+      platform: navigator.platform || undefined,
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      message: 'The browser is ready, but the server did not accept the subscription.',
+    };
+  }
+
+  if (!response.success) {
+    return {
+      ok: false,
+      message: response.message || 'The server did not accept the subscription.',
+    };
+  }
 
   return {
-    ok: response.success,
-    message:
-      response.message ||
-      (response.success ? 'Notifications enabled.' : 'Could not save the subscription.'),
+    ok: true,
+    // Say WHY it worked when it had to re-bind, so the employee is not left
+    // wondering why the button was already "on".
+    message: rebound
+      ? 'Notifications enabled. The previous subscription used an outdated server key and was replaced.'
+      : response.message || 'Notifications enabled.',
+    rebound,
   };
 }
 
@@ -250,14 +361,36 @@ export async function disablePushForThisDevice() {
 
   const registration = await navigator.serviceWorker.getRegistration();
   const subscription = await registration?.pushManager.getSubscription();
-  if (!subscription) return { ok: true, message: 'Already disabled on this device.' };
+  if (!subscription) {
+    // Nothing on this browser, but a stale server row may still exist from a
+    // previous session. Forget the local binding so the UI stops claiming the
+    // device is enabled.
+    forgetVapidKey();
+    return { ok: true, message: 'Already disabled on this device.' };
+  }
 
   const endpoint = subscription.endpoint;
   await subscription.unsubscribe();
+  forgetVapidKey();
 
+  // Tell the server to revoke it too. A failure here leaves an orphan row that
+  // would keep receiving pushes the browser can no longer display, so it is
+  // reported rather than swallowed.
   const service = await api();
-  const response = await service.unsubscribe(endpoint);
-  return { ok: response.success, message: response.message || 'Notifications disabled.' };
+  try {
+    const response = await service.unsubscribe(endpoint);
+    return {
+      ok: response.success,
+      message: response.success
+        ? response.message || 'Notifications disabled.'
+        : 'Disabled on this device, but the server could not remove the registration.',
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      message: 'Disabled on this device, but the server could not be reached to remove the registration.',
+    };
+  }
 }
 
 function guessDeviceName() {
