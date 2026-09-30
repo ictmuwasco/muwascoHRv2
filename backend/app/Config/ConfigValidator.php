@@ -66,6 +66,144 @@ class ConfigValidator
         self::validateProductionSecurityPosture();
         self::validateJwtSecret();
         self::validateDatabaseConfig();
+        self::validateStorageEncryptionKey();
+    }
+
+    /**
+     * Validate STORAGE_ENCRYPTION_KEY (PART B: encrypted file storage).
+     *
+     * WHY THIS IS STRICTER THAN THE OTHER CHECKS
+     *   A missing or weak JWT_SECRET degrades one subsystem. A missing
+     *   STORAGE_ENCRYPTION_KEY degrades EVERYTHING the moment the feature is
+     *   switched on: the application either writes files nobody can ever read
+     *   back, or (worse, if the failure were swallowed) it silently falls back
+     *   to plaintext while the security documentation claims at-rest
+     *   encryption. Losing this key later is irreversible — every encrypted
+     *   document under backend/storage and backend/public/uploads becomes
+     *   unrecoverable.
+     *
+     * PRODUCTION ONLY. Local development and CI legitimately have no key; the
+     * feature is simply not exercised there.
+     *
+     * Rejects:
+     *   - missing / blank
+     *   - shorter than 32 bytes (too little entropy to protect file keys)
+     *   - any value that appears verbatim in either committed example file,
+     *     which is how a placeholder becomes a real production key by accident
+     *   - equality with JWT_SECRET: the two protect different things (session
+     *     tokens vs. every stored file) and must not be the same secret, so a
+     *     single stolen env file does not yield both.
+     */
+    private static function validateStorageEncryptionKey(): void
+    {
+        if (!self::isProduction()) {
+            return;
+        }
+
+        $errors = [];
+        $value = trim((string) env('STORAGE_ENCRYPTION_KEY', ''));
+
+        if ($value === '') {
+            $errors[] = 'STORAGE_ENCRYPTION_KEY is required in production '
+                . '(generate one with: php -r "echo bin2hex(random_bytes(32));"). '
+                . 'Without it every encrypted file is permanently unrecoverable.';
+        } elseif (strlen($value) < 32) {
+            $errors[] = 'STORAGE_ENCRYPTION_KEY must be at least 32 characters; got '
+                . strlen($value) . '.';
+        } else {
+            // Placeholder values copied straight out of the committed example
+            // files. Compared case-insensitively and with surrounding
+            // whitespace removed, so "<generate-with-the-command-above>"
+            // and "<your-storage-key>" are both caught.
+            foreach (self::exampleKeyPlaceholders() as $placeholder) {
+                if (strcasecmp($value, $placeholder) === 0) {
+                    $errors[] = 'STORAGE_ENCRYPTION_KEY is still an example value '
+                        . '("' . $placeholder . '"). Generate a real one.';
+                    break;
+                }
+            }
+        }
+
+        $jwt = trim((string) env('JWT_SECRET', ''));
+        if ($value !== '' && $jwt !== '' && hash_equals($value, $jwt)) {
+            $errors[] = 'STORAGE_ENCRYPTION_KEY must differ from JWT_SECRET; '
+                . 'one stolen value must not unlock both session tokens and every stored file.';
+        }
+
+        if (!empty($errors)) {
+            throw new \RuntimeException(
+                'Storage encryption configuration invalid - ' . implode('; ', $errors)
+            );
+        }
+    }
+
+    /**
+     * True when the supplied key matches a value present in the committed
+     * .env.example / .env.production.example templates.
+     *
+     * @return bool
+     */
+    private static function isExampleKey(string $value): bool
+    {
+        foreach (self::exampleKeyPlaceholders() as $placeholder) {
+            if (strcasecmp($value, $placeholder) === 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Every STORAGE_ENCRYPTION_KEY value that appears in a committed template.
+     *
+     * Read from disk rather than hardcoded, so a template edit cannot leave a
+     * stale banned list behind. Missing templates are treated as "no
+     * placeholders known" rather than a failure: the length and JWT-distinct
+     * checks still apply.
+     *
+     * @return string[]
+     */
+    private static function exampleKeyPlaceholders(): array
+    {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        $cache = [];
+
+        if (!defined('BASE_PATH')) {
+            return $cache;
+        }
+
+        $templates = [
+            BASE_PATH . '/.env.example',
+            BASE_PATH . '/.env.production.example',
+        ];
+
+        foreach ($templates as $template) {
+            if (!is_readable($template)) {
+                continue;
+            }
+            $lines = file($template, FILE_IGNORE_NEW_LINES);
+            if ($lines === false) {
+                continue;
+            }
+            foreach ($lines as $line) {
+                if (preg_match('/^\s*STORAGE_ENCRYPTION_KEY\s*=\s*(.*)$/', $line, $m) !== 1) {
+                    continue;
+                }
+                $candidate = trim($m[1]);
+                // Strip matched surrounding quotes and an inline comment.
+                $candidate = trim((string) preg_replace('/\s+#.*$/', '', $candidate));
+                $candidate = trim($candidate, "\"'");
+                if ($candidate !== '') {
+                    $cache[] = $candidate;
+                }
+            }
+        }
+
+        return $cache;
     }
 
     /**
