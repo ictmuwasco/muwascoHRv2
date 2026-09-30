@@ -170,30 +170,32 @@ jobs:
       - name: Dump optimized autoloader (CI classmap refresh)
         run: composer dump-autoload --optimize --strict-psr --no-interaction
 
+      - name: Install MariaDB client
+        run: |
+          set -euo pipefail
+          # The runner image ships NO mysql/mariadb client. The apt package list
+          # for ubuntu-24.04 contains sqlite3 and netcat but neither
+          # mysql-client nor mariadb-client, so `mariadb-admin ping` (and the
+          # equally absent `mysqladmin`) both fail with "command not found".
+          # The service health check and this wait step then fail even when the
+          # container is perfectly healthy.
+          #
+          # Evidence: the "Wait for MariaDB to be ready" step started and
+          # completed within the same second, which is only possible via the
+          # `command -v mariadb-admin` guard, never via the 120s poll loop.
+          #
+          # Pin an exact version so a runner image change cannot silently
+          # alter the client under us.
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            mariadb-client=1:10.11.14-0ubuntu0.24.04.1 || \
+          sudo apt-get install -y --no-install-recommends mariadb-client
+          command -v mariadb-admin
+          mariadb-admin --version
+
       - name: Wait for MariaDB to be ready
         run: |
           set -uo pipefail
-          # Diagnostic first. The previous version only ever printed
-          # "Waiting for MariaDB... (N/30)" and then exited 1, so a missing
-          # client binary, a wrong port mapping and a genuinely slow container
-          # were indistinguishable. If the admin client is not on PATH the
-          # loop can never succeed no matter how long it waits.
-          if ! command -v mariadb-admin >/dev/null 2>&1; then
-            echo "::error::mariadb-admin is not on PATH on this runner image."
-            ls /usr/bin | grep -iE '^(mysql|mariadb)' || echo "(no mysql/mariadb client binaries found in /usr/bin)"
-            exit 1
-          fi
-          echo "Using client: $(command -v mariadb-admin)"
-
-          # Which port is actually listening? The service maps 3306, but a
-          # host runner may already have something bound there.
-          (command -v ss >/dev/null 2>&1 && ss -ltn | grep -E ':(3306|33060)\b') || true
-
-          # The container health gate above already blocks until the service
-          # is healthy, so reaching this step means the service was declared
-          # unhealthy or never became healthy. Poll generously anyway: a
-          # container that is merely slow to accept TCP should not fail the
-          # job while it is still coming up.
           for i in $(seq 1 60); do
             if mariadb-admin ping -h 127.0.0.1 -P 3306 -u root -proot --silent 2>/dev/null; then
               echo "MariaDB is ready after ${i} attempt(s)"
