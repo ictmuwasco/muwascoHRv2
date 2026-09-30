@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 use App\Controllers\Auth\AuthController;
 use App\Controllers\Auth\PasswordResetController;
 use App\Controllers\Employee\EmployeeController;
+use App\Controllers\Employee\VaultController;
 use App\Controllers\HR\DepartmentController;
 use App\Controllers\Leave\LeaveController;
 use App\Controllers\Leave\LeaveRosterController;
@@ -766,6 +767,36 @@ $router->add('GET', '/employees/{id}/profile-image', EmployeeController::class, 
 $router->add('GET', '/employees/{id}/contracts', EmployeeController::class, 'getEmployeeContracts', 'employees:view');
 $router->add('POST', '/employees/{id}/contracts/{contractId}/renew', EmployeeController::class, 'renewEmployeeContract', 'employees:edit', '20:300');
 $router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController::class, 'convertToPermanent', 'employees:edit', '20:300');
+
+// ===========================================================================
+// Private Vault (PART A) — zero-knowledge, client-side encryption.
+//
+// The browser performs ALL cryptography. These routes move ciphertext, wrapped
+// keys and access decisions only; the server never receives a passphrase, an
+// unwrapped data key, or a decrypted value.
+//
+// PERMISSION NOTES (each choice is deliberate):
+//   * setup / status / item writes are `profile:*` because the target is
+//     ALWAYS the caller's own employee, resolved server-side from the session.
+//     No route takes an employee id for a write, so "non-owner write" is
+//     impossible by construction rather than by a check.
+//   * reads of ANOTHER employee are `employees:view`, matching the directory,
+//     and the service re-checks EmployeePolicy so a grant cannot become a side
+//     door around RBAC.
+//   * throttle: setup/unlock writes and grant minting are expensive and
+//     security-relevant, so they carry the vault_access budget in
+//     backend/config/rate_limits.php.
+// ===========================================================================
+$router->add('GET',  '/vault/status',              VaultController::class, 'statusAction',        'profile:view');
+$router->add('POST', '/vault/setup',               VaultController::class, 'setupAction',         'profile:edit', '5:900');
+$router->add('PUT',  '/vault/items/{group}',       VaultController::class, 'writeItemAction',     'profile:edit', '30:300');
+$router->add('GET',  '/vault/items/{employeeId}',  VaultController::class, 'readItemsAction',     'employees:view');
+$router->add('GET',  '/vault/lock-state/{employeeId}', VaultController::class, 'lockStateAction', 'employees:view');
+$router->add('POST', '/vault/requests',            VaultController::class, 'requestAccessAction', 'employees:view', '10:300');
+$router->add('PUT',  '/vault/requests/{id}',       VaultController::class, 'decideRequestAction', 'profile:edit',  '20:300');
+$router->add('POST', '/vault/grants',              VaultController::class, 'createGrantAction',   'profile:edit',  '10:300');
+$router->add('DELETE', '/vault/grants/{id}',       VaultController::class, 'revokeGrantAction',   'profile:edit',  '20:300');
+
 
 // Permission routes - plain method names (permission administration itself
 // is protected by permission_overrides:view / permission_overrides:manage)

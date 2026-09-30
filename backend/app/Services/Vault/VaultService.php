@@ -225,7 +225,11 @@ final class VaultService
         $kdfJson     = (string) json_encode($kdfParams);
         $saltBin     = (string) hex2bin($salt);
 
-        $stmt->bind_param('isssssbs', $userId, $publicKey, $wrappedPriv, $wrappedPass, $wrappedRec, $kdfJson, $saltBin);
+        // Type string must have exactly one character per placeholder:
+        // i(user_id) s(public_key) s(wrapped_private_key)
+        // s(wrapped_data_key_passphrase) s(wrapped_data_key_recovery)
+        // s(kdf_params) b(salt) = 7 characters for 7 placeholders.
+        $stmt->bind_param('isssssb', $userId, $publicKey, $wrappedPriv, $wrappedPass, $wrappedRec, $kdfJson, $saltBin);
         $ok  = $stmt->execute();
         $err = $stmt->error;
         $stmt->close();
@@ -319,7 +323,11 @@ final class VaultService
                 'INSERT INTO vault_items (employee_id, field_group, ciphertext, iv, aad, version)
                  VALUES (?,?,?,?,?,?)'
             );
-            $insert->bind_param('isssbi', $employeeId, $group, $ciphertext, (string) hex2bin($ivHex), $aad, $nextVersion);
+            // bind_param() takes arguments BY REFERENCE, so every value needs
+            // its own variable - an inline (string) hex2bin(...) is an
+            // expression and PHP rejects it.
+            $ivBin = (string) hex2bin($ivHex);
+            $insert->bind_param('isssbi', $employeeId, $group, $ciphertext, $ivBin, $aad, $nextVersion);
             $ok  = $insert->execute();
             $err = $insert->error;
             $insert->close();
@@ -332,12 +340,17 @@ final class VaultService
                     SET ciphertext = ?, iv = ?, aad = ?, version = ?
                   WHERE id = ? AND version = ?'
             );
-            $id  = (int) $row['id'];
-            $update->bind_param('ssbiii', $ciphertext, (string) hex2bin($ivHex), $aad, $nextVersion, $id, $storedVersion);
-            $ok  = $update->execute();
-            $err = $update->error;
+            $id    = (int) $row['id'];
+            $ivBin = (string) hex2bin($ivHex);
+            $update->bind_param('ssbiii', $ciphertext, $ivBin, $aad, $nextVersion, $id, $storedVersion);
+            $ok        = $update->execute();
+            $err       = $update->error;
+            // Read affected_rows BEFORE close(): the property is not valid
+            // afterwards, and a zero here means another writer won the race.
+            $affected  = $update->affected_rows;
             $update->close();
-            if (!$ok || $update->affected_rows === 0) {
+
+            if (!$ok || $affected === 0) {
                 throw new VaultException(
                     'This field was changed in another session. Reload and try again.',
                     VaultException::CONFLICT
