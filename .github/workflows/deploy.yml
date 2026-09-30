@@ -455,9 +455,23 @@ jobs:
         # frontend/scripts/clean-assets.mjs prunes them from the runner before
         # this step uploads.
         #
-        # DEPLOY_PATH must be the vhost document root. Plesk's default for a
-        # domain is /var/www/vhosts/<domain>/httpdocs - confirm with:
-        #   grep DocumentRoot /var/www/vhosts/muwascoerp.co.ke/conf/httpd.conf
+        # DEPLOY_PATH must be the document root of the app.muwascoerp.co.ke
+        # vhost - a DEDICATED subdomain, not the apex:
+        #
+        #   /var/www/vhosts/muwascoerp.co.ke/httpdocs/
+        #       ^^^^^^^^^^^^^^^^^^ the LEGACY procedural PHP app (admin.php,
+        #                          apply.php, config.php, ...). None of those
+        #                          files exist in this repository. Deploying this
+        #                          repo there would overwrite live production.
+        #   /var/www/vhosts/app.muwascoerp.co.ke/httpdocs/   <-- this one
+        #
+        # Confirm after creating the subdomain with:
+        #   plesk domain --info app.muwascoerp.co.ke | grep -i document-root
+        #   grep -rn DocumentRoot /etc/apache2/sites-enabled/ | grep app
+        #
+        # Keeping the SPA on its own subdomain is what makes this safe: rsync
+        # cannot reach the legacy app, so the separation is enforced by DNS
+        # rather than by remembering not to set the wrong path.
         uses: appleboy/rsync-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
