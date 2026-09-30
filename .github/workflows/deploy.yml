@@ -149,10 +149,10 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mariadb-admin ping"
+          --health-cmd="mariadb-admin ping -h 127.0.0.1 -u root -proot"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=3
+          --health-retries=5
 
     steps:
       - uses: actions/checkout@v4
@@ -189,18 +189,23 @@ jobs:
           # host runner may already have something bound there.
           (command -v ss >/dev/null 2>&1 && ss -ltn | grep -E ':(3306|33060)\b') || true
 
-          for i in $(seq 1 30); do
+          # The container health gate above already blocks until the service
+          # is healthy, so reaching this step means the service was declared
+          # unhealthy or never became healthy. Poll generously anyway: a
+          # container that is merely slow to accept TCP should not fail the
+          # job while it is still coming up.
+          for i in $(seq 1 60); do
             if mariadb-admin ping -h 127.0.0.1 -P 3306 -u root -proot --silent 2>/dev/null; then
               echo "MariaDB is ready after ${i} attempt(s)"
               break
             fi
-            if [ "$i" = "30" ]; then
-              echo "::error::MariaDB never became ready after 30 attempts."
+            if [ "$i" = "60" ]; then
+              echo "::error::MariaDB never became ready after 60 attempts (120s)."
               echo "--- last ping attempt, stderr shown:"
               mariadb-admin ping -h 127.0.0.1 -P 3306 -u root -proot 2>&1 || true
               exit 1
             fi
-            echo "Waiting for MariaDB... ($i/30)"
+            echo "Waiting for MariaDB... ($i/60)"
             sleep 2
           done
 
