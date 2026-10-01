@@ -301,15 +301,28 @@ final class StorageEncryption
     // -----------------------------------------------------------------------
 
     /**
-     * Encrypt a file, streaming, and return its wrapping metadata.
+     * Encrypt a file to a SIBLING STAGING FILE and leave the plaintext alone.
      *
-     * The plaintext is never held in memory in full and never written to a
-     * second location: chunks are read, encrypted and appended one at a time.
+     * THIS is the safe entry point for migrating files that already exist.
+     * It differs from encryptFile() in the one way that matters for data
+     * safety: the source file is NOT touched. The ciphertext lands on a
+     * temporary path beside it, and the caller decides when - and whether -
+     * to overwrite the original, by calling commitStagedFile().
      *
-     * @return array{wrapped:string,nonce:string,key_version:int,
-     *               sha256:string,bytes:int,chunk_size:int}
+     * The caller is expected to:
+     *   1. decrypt $staged_path and compare the hash against $meta['sha256']
+     *   2. persist $meta as the key row
+     *   3. only then commitStagedFile($staged_path, $sourcePath)
+     *   4. discardStagedFile() on ANY failure, so the plaintext survives
+     *
+     * Skipping to step 3 before 1 and 2 is what turns an encryption bug into
+     * data loss: encryptFile() replaces the plaintext immediately, so a round
+     * trip that cannot be proven leaves nothing readable behind.
+     *
+     * @return array{staged_path:string,wrapped:string,nonce:string,
+     *               key_version:int,sha256:string,bytes:int,chunk_size:int}
      */
-    public static function encryptFile(
+    public static function encryptFileStaged(
         string $sourcePath,
         string $tableName,
         int $recordId,
@@ -320,6 +333,102 @@ final class StorageEncryption
         if (!is_file($sourcePath) || !is_readable($sourcePath)) {
             throw new \RuntimeException('Cannot encrypt: source file is not readable.');
         }
+
+        // A sibling path (not sys_get_temp_dir) so the eventual rename() is
+        // within one filesystem and therefore atomic. A cross-device rename
+        // silently degrades to copy+unlink, which is not atomic and could
+        // leave neither file.
+        $stagedPath = $sourcePath . '.staged.' . bin2hex(random_bytes(6));
+
+        $meta = self::encryptInto($sourcePath, $stagedPath, $tableName, $recordId, $chunkSize);
+
+        return ['staged_path' => $stagedPath] + $meta;
+    }
+
+    /**
+     * Atomically replace $targetPath with an already-verified staging file.
+     *
+     * @throws \RuntimeException if the rename fails, leaving BOTH files
+     *                          intact: the staging copy is not deleted here, so
+     *                          the caller can retry or recover from it.
+     */
+    public static function commitStagedFile(string $stagedPath, string $targetPath): void
+    {
+        if (!is_file($stagedPath)) {
+            throw new \RuntimeException('Cannot commit: staging file is missing.');
+        }
+        if (!@rename($stagedPath, $targetPath)) {
+            throw new \RuntimeException(
+                'Encryption was verified but the file could not be replaced. '
+                . 'The staging copy has been kept for recovery.'
+            );
+        }
+    }
+
+    /**
+     * Remove a staging file after a failed or abandoned attempt.
+     *
+     * Safe to call on a path that no longer exists.
+     */
+    public static function discardStagedFile(?string $stagedPath): void
+    {
+        if ($stagedPath !== null && $stagedPath !== '' && is_file($stagedPath)) {
+            @unlink($stagedPath);
+        }
+    }
+
+    /**
+     * Encrypt a file IN PLACE, streaming, and return its wrapping metadata.
+     *
+     * Use this only where there is no existing plaintext to protect - a fresh
+     * upload, for example. For files already on disk use encryptFileStaged(),
+     * which does not destroy the original before the ciphertext is proven.
+     *
+     * @return array{wrapped:string,nonce:string,key_version:int,
+     *               sha256:string,bytes:int,chunk_size:int}
+     */
+    public static function encryptFile(
+        string $sourcePath,
+        string $tableName,
+        int $recordId,
+        ?int $chunkSize = null
+    ): array {
+        $result   = self::encryptFileStaged($sourcePath, $tableName, $recordId, $chunkSize);
+        $staged   = $result['staged_path'];
+        $metadata = $result;
+
+        try {
+            self::commitStagedFile($staged, $sourcePath);
+        } catch (\Throwable $e) {
+            self::discardStagedFile($staged);
+            throw $e;
+        }
+
+        unset($metadata['staged_path']);
+        return $metadata;
+    }
+
+    /**
+     * The shared streaming encryption core: read $sourcePath, write ciphertext
+     * to $destPath, and return the key metadata.
+     *
+     * $destPath is NOT renamed over $sourcePath - the caller owns the final
+     * placement, which is what makes the staged workflow possible.
+     *
+     * The plaintext is never held in memory in full: chunks are read,
+     * encrypted and appended one at a time.
+     *
+     * @return array{wrapped:string,nonce:string,key_version:int,
+     *               sha256:string,bytes:int,chunk_size:int}
+     */
+    private static function encryptInto(
+        string $sourcePath,
+        string $destPath,
+        string $tableName,
+        int $recordId,
+        ?int $chunkSize = null
+    ): array {
+        self::requireAvailable();
 
         $chunkSize = $chunkSize ?? self::DEFAULT_CHUNK_SIZE;
         $in = fopen($sourcePath, 'rb');
@@ -333,13 +442,11 @@ final class StorageEncryption
         $plainHash = hash_init('sha256');
         $total     = 0;
 
-        $tmpPath = $sourcePath . '.enc.' . bin2hex(random_bytes(6));
-        $out = fopen($tmpPath, 'wb');
+        $out = fopen($destPath, 'wb');
         if ($out === false) {
             fclose($in);
             throw new \RuntimeException('Cannot encrypt: unable to create temporary output.');
         }
-
         try {
             // Header precedes any ciphertext so a truncated file is detectable:
             // a reader that cannot find the magic refuses outright.
@@ -384,19 +491,16 @@ final class StorageEncryption
         } catch (\Throwable $e) {
             @fclose($out);
             @fclose($in);
-            @unlink($tmpPath);
+            // Remove the PARTIAL destination only. $sourcePath is never touched
+            // here, which is the whole point of this function.
+            @unlink($destPath);
             throw $e;
         }
 
-        // Replace the original atomically, then hand back the metadata the
-        // caller MUST persist. A crash in between leaves an unreferenced
-        // ciphertext (detectable by the migration script) rather than a
-        // plaintext file with no key record.
-        if (!@rename($tmpPath, $sourcePath)) {
-            @unlink($tmpPath);
-            throw new \RuntimeException('Encryption succeeded but the file could not be replaced.');
-        }
-
+        // No rename. The caller verifies the ciphertext, persists the key row,
+        // and only then calls commitStagedFile() to put it in place. Doing the
+        // rename here would destroy the plaintext before anything has proved
+        // the ciphertext can be read back.
         $wrapped = self::wrapKey($fileKey, self::keyAad($tableName, $recordId));
 
         return [
