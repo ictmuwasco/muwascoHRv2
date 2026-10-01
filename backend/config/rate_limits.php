@@ -173,4 +173,26 @@ return [
         'POST /vault/grants',
         'POST /vault/requests',
     ],
+
+    /**
+     * Encrypted document access (migration 106). The route already carries
+     * throttles, which is what actually fires; these entries exist so the
+     * security dashboard can enumerate the surface.
+     *
+     *   POST .../request-access  - sends MAIL to the document owner. The most
+     *                               expensive of the three, and the one a spam
+     *                               loop would target to flood an inbox.
+     *   POST .../verify          - a 6-digit code is only meaningfully
+     *                               rate-limited if BOTH the row-level attempt
+     *                               counter and this exist. The counter stops
+     *                               one approval being ground down; this stops
+     *                               many approvals being cycled.
+     *   GET  .../open            - decrypts and streams, so it is the
+     *                               expensive path and is bounded accordingly.
+     */
+    'document_otp' => [
+        'POST /profile/documents/{id}/request-access',
+        'POST /profile/documents/{id}/verify',
+        'GET /profile/documents/{id}/open',
+    ],
 ];
