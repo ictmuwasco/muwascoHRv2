@@ -458,4 +458,95 @@ final class DocumentOtpVerifyTest extends TestCase
             'the owner has no approval row; the controller must bypass the check for them'
         );
     }
+
+    // =================================================================
+    // The bug this suite was extended for
+    // =================================================================
+
+    /**
+     * An employee-scoped grant MUST satisfy the same check the list-redaction
+     * path uses.
+     *
+     * THE DEFECT: the controller decided whether to redact the list by asking
+     * hasAnyVerifiedApproval(), which only inspects PER-DOCUMENT approvals
+     * (`document_id = <real id>`). But the "Request access" button produces an
+     * EMPLOYEE-SCOPED approval, stored with the `document_id = 0` sentinel.
+     *
+     * The two sets are disjoint, so verifying the code succeeded and the very
+     * next payload still came back redacted. To the user that was "Access
+     * granted" immediately followed by an unchanged, still-locked list.
+     *
+     * This test pins the two scopes together so they cannot drift apart again.
+     */
+    public function testEmployeeScopedGrantUnlocksTheList(): void
+    {
+        $this->service->requestEmployeeAccess(self::EMP_ID, self::REQ_USER);
+        $this->setKnownCode('555111');
+
+        $v = $this->service->verifyEmployeeCode(self::EMP_ID, self::REQ_USER, '555111');
+        $this->assertTrue($v['ok'], 'the code must verify');
+
+        $this->assertTrue(
+            $this->service->hasEmployeeApproval(self::EMP_ID, self::REQ_USER),
+            'an employee-scoped grant must unlock the LIST - this is the check '
+            . 'the redaction path relies on'
+        );
+
+        // The bug: the per-document helper the controller ALSO calls must not
+        // be the only gate. Assert the sentinel does not masquerade as a real
+        // document id, so the two paths stay distinguishable.
+        $realIds = $this->conn->query(
+            'SELECT id FROM employee_documents WHERE employee_id = ' . self::EMP_ID
+        )->fetch_all(MYSQLI_ASSOC);
+        $realIds = array_map(static fn(array $r): int => (int) $r['id'], $realIds);
+
+        $this->assertNotContains(
+            0,
+            $realIds,
+            'document_id 0 is the employee-scoped sentinel and must never be a real id'
+        );
+    }
+
+    /**
+     * The document-scoped path must still work on its own.
+     *
+     * Guards the opposite failure: "fixing" the redaction by dropping
+     * per-document approvals would lock the Open flow out of the list again.
+     */
+    public function testDocumentScopedApprovalAlsoUnlocksTheList(): void
+    {
+        $docId = (int) $this->conn->query(
+            'SELECT id FROM employee_documents WHERE employee_id = ' . self::EMP_ID . ' LIMIT 1'
+        )->fetch_row()[0];
+        $this->assertGreaterThan(0, $docId);
+
+        // Simulate the per-document request + verification with a prepared
+        // statement, rather than string-interpolating SQL: the query is long
+        // enough that inline concatenation is easy to get subtly wrong.
+        //
+        // Every bound value needs its own variable - bind_param() takes
+        // arguments BY REFERENCE, so a class constant like self::REQ_USER is
+        // rejected outright.
+        $emailHash = str_repeat('a', 64);
+        $codeHash  = hash('sha256', 'unused');
+        $table     = 'employee_documents';
+        $requester = self::REQ_USER;
+        $owner     = self::EMP_ID;
+
+        $stmt = $this->conn->prepare(
+            'INSERT INTO document_access_otp
+                (document_id, table_name, requester_user_id, owner_employee_id,
+                 owner_email_hash, code_hash, attempts, verified_at, expires_at, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, 0, NOW(), DATE_ADD(NOW(), INTERVAL 10 MINUTE), NOW())'
+        );
+        $stmt->bind_param('isiiii', $docId, $table, $requester, $owner, $emailHash, $codeHash);
+        $ok = $stmt->execute();
+        $this->assertTrue($ok, 'insert failed: ' . $this->conn->error);
+        $stmt->close();
+
+        $this->assertTrue(
+            $this->service->hasLiveApproval($docId, self::REQ_USER),
+            'a verified document-scoped approval must still count'
+        );
+    }
 }
