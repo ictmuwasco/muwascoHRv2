@@ -747,6 +747,34 @@ $router->add('PUT', '/profile', EmployeeController::class, 'updateProfile', 'pro
 $router->add('POST', '/profile/documents', EmployeeController::class, 'uploadProfileDocument', 'profile:edit', '20:300');
 $router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewProfileDocument');
 $router->add('GET', '/profile/documents/{id}/view', EmployeeController::class, 'viewProfileDocument');
+// ===========================================================================
+// Encrypted document access — the two-step OTP gate (migration 106).
+//
+// WHY THIS IS SEPARATE FROM THE EXISTING /documents/{id} VIEW ROUTE
+//   GET /profile/documents/{id} still exists and still serves LEGACY
+//   plaintext documents for anyone with profile:view / employees:view. It is
+//   left in place deliberately: without it, every un-migrated document becomes
+//   unreadable the moment this feature is switched on.
+//
+//   Once encrypt_existing_files.php has run, set DOCUMENT_OTP_REQUIRED=true and
+//   retire that route, at which point /open is the only path to a document.
+//
+// PERMISSION NOTES
+//   * All three are `profile:view`, NOT `profile:edit`. Reading a document you
+//     already have permission to see is not a mutation, and gating it on edit
+//     would make the OTP flow inaccessible to exactly the HR staff who need it.
+//   * The per-document authorization (owner OR employees:view) is enforced in
+//     the controller's mayAccessDocument(), not by the route, because it needs
+//     the document's employee_id.
+//   * Throttles: requesting a code sends MAIL, so it is tightly bounded.
+//     Verifying and opening are bounded too, because a 6-digit code with an
+//     unlimited verify endpoint is brute-forceable regardless of the row-level
+//     attempt counter.
+// ===========================================================================
+$router->add('POST', '/profile/documents/{id}/request-access', EmployeeController::class, 'requestDocumentAccessAction', 'profile:view', '5:300');
+$router->add('POST', '/profile/documents/{id}/verify',        EmployeeController::class, 'verifyDocumentAccessAction',   'profile:view', '10:300');
+$router->add('GET',  '/profile/documents/{id}/open',           EmployeeController::class, 'openDocumentAction',          'profile:view', '20:300');
+
 $router->add('DELETE', '/profile/documents/{id}', EmployeeController::class, 'deleteProfileDocument', 'profile:edit');
 
 // Profile contracts routes — self-service.

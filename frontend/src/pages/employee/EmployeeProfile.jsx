@@ -105,6 +105,25 @@ const EmployeeProfile = () => {
     file: null,
   });
 
+  // Encrypted-document OTP gate (migration 106).
+  //
+  // FLOW, three steps, deliberately sequential:
+  //   1. requestAccess  -> emails a 6-digit code to the DOCUMENT OWNER
+  //   2. verifyCode     -> the owner types it; marks the approval verified
+  //   3. openDocument   -> spends the approval and streams the plaintext
+  //
+  // Splitting verify from open is what makes the approval single-use: a correct
+  // code cannot be replayed for a second download, because the file is only
+  // ever returned by the call that consumes the approval.
+  //
+  // The code is never stored in component state beyond the moment of
+  // submission, and `setOtpCode('')` clears it as soon as verification
+  // succeeds, so it does not linger in a re-render or a React DevTools dump.
+  const [otpDoc, setOtpDoc] = useState(null); // { docId, name, step, maskedEmail }
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [otpBusy, setOtpBusy] = useState(false);
+
   // Profile picture state
   const [profileImageUrl, setProfileImageUrl] = useState(null);
   const [profileImageUploading, setProfileImageUploading] = useState(false);
@@ -374,6 +393,139 @@ const EmployeeProfile = () => {
       setError('Failed to delete document');
       console.error('Failed to delete document:', err);
     }
+  };
+
+  // ---- Encrypted document OTP flow ---------------------------------------
+  // The code is emailed to the EMPLOYEE WHO OWNS the document, not to whoever
+  // clicked Download. If you are HR opening somebody's national ID, that
+  // employee has to approve it, and the wording here says so up front rather
+  // than surprising them with a code that never arrives.
+
+  const requestDocumentAccess = async (doc) => {
+    setOtpBusy(true);
+    setOtpError('');
+    setOtpCode('');
+    setOtpDoc({
+      docId: doc.id,
+      name: doc.name || doc.document_name || 'this document',
+      step: 'requested',
+      maskedEmail: null,
+    });
+
+    try {
+      const res = await api.post(`/profile/documents/${doc.id}/request-access`);
+      const data = res.data?.data || res.data || {};
+      setOtpDoc((prev) => ({
+        ...prev,
+        step: 'awaiting_code',
+        maskedEmail: data.masked_email || null,
+        ttlMinutes: data.ttl_minutes || 10,
+      }));
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message ||
+        'Could not request access to this document.';
+      setOtpError(msg);
+      setOtpDoc(null);
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  const submitOtpCode = async (e) => {
+    e.preventDefault();
+    if (!otpDoc) return;
+
+    const digits = otpCode.replace(/\D/g, '');
+    if (digits.length !== 6) {
+      setOtpError('Enter the 6-digit code from the email.');
+      return;
+    }
+
+    setOtpBusy(true);
+    setOtpError('');
+
+    try {
+      await api.post(`/profile/documents/${otpDoc.docId}/verify`, {
+        code: digits,
+      });
+
+      // Clear the code the instant it is no longer needed, before the file
+      // request, so it is not sitting in state if that request fails.
+      setOtpCode('');
+      setOtpDoc((prev) => ({ ...prev, step: 'opening' }));
+
+      await openVerifiedDocument(otpDoc.docId, otpDoc.name);
+    } catch (err) {
+      const msg =
+        err?.response?.data?.message || 'That code could not be verified.';
+      setOtpError(msg);
+      setOtpCode('');
+      setOtpDoc((prev) => ({ ...prev, step: 'awaiting_code' }));
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  /**
+   * Fetch the plaintext through the approval-spending endpoint and save it.
+   *
+   * Uses fetch rather than api.get so the response can be read as a Blob:
+   * api.get would try to parse a PDF as JSON and fail. credentials:'include'
+   * is required because auth rides on the httpOnly session cookie.
+   *
+   * The approval is consumed by this request. A failed download therefore needs
+   * a new code, which is the intended trade - a spent code is much cheaper than
+   * a reusable one.
+   */
+  const openVerifiedDocument = async (docId, docName) => {
+    const response = await fetch(
+      `${API_BASE}/profile/documents/${docId}/open?download=1`,
+      {
+        method: 'GET',
+        credentials: 'include',
+        headers: { Accept: 'application/octet-stream' },
+      },
+    );
+
+    if (!response.ok) {
+      let message = 'This document could not be opened.';
+      try {
+        const payload = await response.json();
+        if (payload?.message) message = payload.message;
+      } catch {
+        /* a non-JSON body is expected on some error paths */
+      }
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+
+    // Prefer the filename the server sent; fall back to the record's name.
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const fileName = match ? match[1] : docName || 'document';
+
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    // Revoke on the next tick: revoking synchronously can cancel the download
+    // in some browsers before it has started reading the blob.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+    setOtpDoc(null);
+    setOtpError('');
+    setSuccess(`Downloaded ${fileName}`);
+  };
+
+  const cancelOtp = () => {
+    setOtpDoc(null);
+    setOtpCode('');
+    setOtpError('');
   };
 
   // Contract renewal — open the small renewal form pre-filled from the
@@ -853,9 +1005,20 @@ const EmployeeProfile = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-1" />
-                        Download
+                      {/* Opening a document requires the OWNER's emailed code.
+                          The button says so rather than failing silently. */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => requestDocumentAccess(doc)}
+                        disabled={otpBusy}
+                      >
+                        {otpBusy ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4 mr-1" />
+                        )}
+                        Open
                       </Button>
                       <CanEdit module="employees">
                         <Button
@@ -1481,6 +1644,106 @@ const EmployeeProfile = () => {
           </Card>
         </div>
       )}
+      {/* Encrypted-document approval — the owner's emailed code.
+          Rendered once, outside the tab panels, because the modal has to
+          survive a tab switch while the user goes to their inbox. */}
+      <Modal
+        isOpen={!!otpDoc}
+        onClose={() => {
+          if (!otpBusy) cancelOtp();
+        }}
+        title="Document approval required"
+        size="sm"
+      >
+        {otpDoc && (
+          <form onSubmit={submitOtpCode} className="space-y-4">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <p className="text-xs text-gray-600">
+                <span className="font-medium">Document:</span> {otpDoc.name}
+              </p>
+            </div>
+
+            {otpDoc.step === 'requested' && (
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Sending a code to the document owner…</span>
+              </div>
+            )}
+
+            {otpDoc.step === 'opening' && (
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Code accepted. Opening the document…</span>
+              </div>
+            )}
+
+            {otpDoc.step === 'awaiting_code' && (
+              <>
+                <p className="text-sm text-gray-700">
+                  A 6-digit code was emailed to{' '}
+                  <span className="font-medium">{otpDoc.maskedEmail || 'the document owner'}</span>
+                  {otpDoc.ttlMinutes ? ` and expires in ${otpDoc.ttlMinutes} minutes` : ''}.
+                </p>
+
+                <p className="text-xs text-gray-500">
+                  The code goes to the employee who owns this document, so you may need to ask
+                  them for it. It can be used once.
+                </p>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    6-digit code
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) => {
+                      setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      setOtpError('');
+                    }}
+                    disabled={otpBusy}
+                    autoFocus
+                    placeholder="000000"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 text-center text-lg tracking-widest font-mono"
+                  />
+                </div>
+              </>
+            )}
+
+            {otpError && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                {otpError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={cancelOtp}
+                disabled={otpBusy}
+              >
+                Cancel
+              </Button>
+              {otpDoc.step === 'awaiting_code' && (
+                <Button type="submit" disabled={otpBusy || otpCode.length !== 6}>
+                  {otpBusy ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    'Verify and open'
+                  )}
+                </Button>
+              )}
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 };

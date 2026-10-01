@@ -271,6 +271,275 @@ class EmployeeController extends BaseController
      */
 
     /**
+     * POST /api/profile/documents/{documentId}/request-access
+     *
+     * Step 1 of opening a document: email the OWNER a 6-digit code.
+     *
+     * The code goes to the employee the document belongs to, not to whoever is
+     * asking. A code sent to the requester would prove nothing the session
+     * cookie does not already prove; sending it to the data subject is what
+     * makes it an actual consent step.
+     *
+     * The response deliberately does not vary in SHAPE depending on whether the
+     * owner has a usable email - `masked_email` is simply null when no code was
+     * sent. A difference would let a caller probe which employee ids belong to
+     * real, reachable people.
+     */
+    public function requestDocumentAccessAction(int $documentId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        try {
+            // Authorization is decided BEFORE anything is emailed, using the
+            // same rule as viewing: owner, or holder of employees:view. A
+            // request that cannot lead to a download must not generate mail.
+            if (!$this->mayAccessDocument($documentId, $userId)) {
+                $this->forbidden('You do not have permission to request this document');
+                return;
+            }
+
+            $service = new \App\Services\Security\DocumentAccessService();
+            $result = $service->requestApproval($documentId, $userId);
+
+            if ($result['reason'] === 'document_not_found') {
+                $this->notFound('Document not found');
+                return;
+            }
+            if ($result['reason'] === 'rate_limited') {
+                $this->error('Too many requests. Please wait a minute and try again.', 429, 'RATE_LIMITED');
+                return;
+            }
+            if (!$result['ok']) {
+                // "owner_unreachable" is reported generically: the requester
+                // learns the request could not be delivered, not whether the
+                // employee exists or has an email on file.
+                $this->error(
+                    'This document cannot be shared right now. Please contact HR.',
+                    409,
+                    'DOCUMENT_UNAVAILABLE'
+                );
+                return;
+            }
+
+            $this->success([
+                'sent'            => true,
+                'masked_email'    => $result['masked_email'],
+                'ttl_minutes'     => \App\Services\Security\DocumentAccessService::TTL_MINUTES,
+                'already_pending' => $result['reason'] === 'already_pending',
+            ], 'A code has been emailed to the document owner.');
+
+        } catch (\Throwable $e) {
+            \logger()->error('Document access request failed', [
+                'error' => $e->getMessage(),
+                'document_id' => $documentId,
+            ]);
+            $this->error('Could not start document access. Please try again.', 500);
+        }
+    }
+
+    /**
+     * POST /api/profile/documents/{documentId}/verify
+     *
+     * Step 2: the owner types the code they received.
+     *
+     * Success marks the approval verified but does NOT download anything; the
+     * file is fetched by the next call, which spends the approval. Keeping the
+     * two apart is what makes a correct code non-replayable for a second
+     * download.
+     */
+    public function verifyDocumentAccessAction(int $documentId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        try {
+            if (!$this->mayAccessDocument($documentId, $userId)) {
+                $this->forbidden('You do not have permission to access this document');
+                return;
+            }
+
+            $body = $this->getJsonBody();
+            $code = (string) ($body['code'] ?? '');
+
+            $service = new \App\Services\Security\DocumentAccessService();
+            $result = $service->verifyCode($documentId, $userId, $code);
+
+            if ($result['ok']) {
+                $this->success(['verified' => true], 'Code accepted.');
+                return;
+            }
+
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\Security\DocumentAccessService::ACTION_DENIED,
+                'Document access code verification failed',
+                [
+                    'target_type' => 'Document',
+                    'target_id'   => $documentId,
+                    'status'      => 'FAILED',
+                    // The reason is a fixed enum. The code itself is NEVER
+                    // logged, not even hashed, in case it is still live.
+                    'metadata'    => ['reason' => $result['reason'], 'user_id' => $userId],
+                ]
+            );
+
+            // Reported differently per reason because this endpoint is only
+            // reachable after the permission check, so it is not an oracle for
+            // which documents exist.
+            $message = $result['reason'] === 'incorrect_code'
+                ? 'That code is not correct. Check the email and try again.'
+                : 'There is no pending request for this document. Request a new code.';
+
+            $status = $result['reason'] === 'incorrect_code' ? 400 : 409;
+
+            $this->error($message, $status, 'DOCUMENT_CODE_INVALID');
+
+        } catch (\Throwable $e) {
+            \logger()->error('Document access verification failed', [
+                'error' => $e->getMessage(),
+                'document_id' => $documentId,
+            ]);
+            $this->error('Could not verify the code. Please try again.', 500);
+        }
+    }
+
+    /**
+     * May this user request or open this document at all?
+     *
+     * Same rule as viewing: the document owner, or a holder of employees:view.
+     * A missing document returns false, so this cannot be used to enumerate
+     * document ids via the difference between 403 and 404.
+     */
+    private function mayAccessDocument(int $documentId, int $userId): bool
+    {
+        $document = $this->employeeService->getDocumentById($documentId);
+        if (!$document) {
+            return false;
+        }
+
+        $employee = $this->employeeService->getEmployeeByUserId($userId);
+        $isOwner = $employee && ((int) $document['employee_id'] === (int) $employee['id']);
+
+        return $isOwner || $this->hasPermission('employees', 'view');
+    }
+
+    /**
+     * GET /api/profile/documents/{documentId}/open
+     *
+     * Step 3: spend the verified approval and stream the plaintext.
+     *
+     * The approval is consumed BEFORE any bytes are served, and only if the
+     * consume actually claimed a row. That ordering is what makes it single-use
+     * under concurrency: exactly one caller wins the UPDATE and every other is
+     * refused rather than receiving a second copy.
+     *
+     * ?download=1 forces a save rather than an inline preview, for the
+     * formats applyStreamHeaders() would otherwise render in the browser.
+     */
+    public function openDocumentAction(int $documentId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        $tempPath = null;
+        $isTemporary = false;
+
+        try {
+            if (!$this->mayAccessDocument($documentId, $userId)) {
+                $this->forbidden('You do not have permission to access this document');
+                return;
+            }
+
+            $document = $this->employeeService->getDocumentById($documentId);
+            if (!$document) {
+                $this->notFound('Document not found');
+                return;
+            }
+
+            $service = new \App\Services\Security\DocumentAccessService();
+
+            // No live approval means no file, whatever the RBAC check allowed.
+            if (!$service->hasLiveApproval($documentId, $userId)) {
+                $this->error(
+                    'You need a verified code from the document owner to open this. '
+                    . 'Request access first.',
+                    403,
+                    'DOCUMENT_OTP_REQUIRED'
+                );
+                return;
+            }
+
+            // Claim the approval BEFORE decrypting. If decryption then fails the
+            // approval is spent and the user must request again, which is the
+            // right trade: a spent code is far cheaper than a reusable one.
+            if (!$service->consumeApproval($documentId, $userId)) {
+                $this->error(
+                    'That approval has already been used or has expired. Request a new code.',
+                    403,
+                    'DOCUMENT_OTP_CONSUMED'
+                );
+                return;
+            }
+
+            $file = $service->decryptToTempFile($document);
+            $tempPath = $file['path'];
+            $isTemporary = (bool) $file['temporary'];
+
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\Security\DocumentAccessService::ACTION_OPENED,
+                'Document opened after owner verification',
+                [
+                    'target_type' => 'Document',
+                    'target_id'   => $documentId,
+                    'target_name' => (string) ($document['document_name'] ?? ''),
+                    'metadata'    => [
+                        'user_id'       => $userId,
+                        'was_encrypted' => (int) ($document['is_encrypted'] ?? 0) === 1,
+                        'bytes'         => $file['bytes'],
+                    ],
+                ]
+            );
+
+            \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+                $file['mime'],
+                (string) ($document['document_name'] ?? 'document'),
+                (string) ($_GET['download'] ?? '') === '1'
+            );
+            header('Content-Length: ' . $file['bytes']);
+
+            readfile($file['path']);
+
+            // A legacy plaintext document is the ORIGINAL file and must
+            // survive; only the decrypted temp copy is removed.
+            if ($isTemporary) {
+                @unlink($file['path']);
+            }
+            exit();
+
+        } catch (\Throwable $e) {
+            if ($tempPath !== null && $isTemporary) {
+                @unlink($tempPath);
+            }
+            \logger()->error('Document open failed', [
+                'error' => $e->getMessage(),
+                'document_id' => $documentId,
+            ]);
+            $this->error('This document could not be opened. Please contact IT.', 500);
+        }
+    }
+
+    /**
      * DELETE /api/employees/documents/{id} - Delete an employee document.
      */
     public function deleteDocumentAction(int $id): void
