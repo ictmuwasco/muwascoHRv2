@@ -515,6 +515,148 @@ class EmployeeController extends BaseController
     }
 
     /**
+     * POST /api/profile/employees/{employeeId}/documents/request-access
+     *
+     * The EMPLOYEE-SCOPED request, used when the document list is still locked.
+     *
+     * This exists because redacted placeholders carry no document id, and a
+     * per-document request would require the caller to already know which
+     * document they want - which is precisely what redaction prevents. The
+     * owner receives ONE email covering their documents, rather than being
+     * flooded by someone probing each one separately.
+     *
+     * On approval the list unlocks; each individual document open is still
+     * separately gated by the per-document flow.
+     */
+    public function requestEmployeeDocumentsAccessAction(int $employeeId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        try {
+            $employee = $this->employeeService->getEmployeeById($employeeId);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+                return;
+            }
+
+            // Same authorization as viewing the profile itself. Requesting
+            // access must not be a way to probe employees you cannot see.
+            if (!\App\Services\Security\EmployeePolicy::canView($userId, $employee)) {
+                $this->forbidden('You do not have permission to view this employee');
+                return;
+            }
+
+            $service = new \App\Services\Security\DocumentAccessService();
+            $result = $service->requestEmployeeAccess($employeeId, $userId);
+
+            if ($result['reason'] === 'no_documents') {
+                $this->notFound('This employee has no documents');
+                return;
+            }
+            if ($result['reason'] === 'rate_limited') {
+                $this->error('Too many requests. Please wait a minute and try again.', 429, 'RATE_LIMITED');
+                return;
+            }
+            if (!$result['ok']) {
+                $this->error(
+                    'These documents cannot be shared right now. Please contact HR.',
+                    409,
+                    'DOCUMENT_UNAVAILABLE'
+                );
+                return;
+            }
+
+            $this->success([
+                'sent'            => true,
+                'masked_email'    => $result['masked_email'],
+                'ttl_minutes'     => \App\Services\Security\DocumentAccessService::TTL_MINUTES,
+                'already_pending' => $result['reason'] === 'already_pending',
+            ], 'A code has been emailed to the document owner.');
+
+        } catch (\Throwable $e) {
+            \logger()->error('Employee document access request failed', [
+                'error' => $e->getMessage(),
+                'employee_id' => $employeeId,
+            ]);
+            $this->error('Could not start document access. Please try again.', 500);
+        }
+    }
+
+    /**
+     * POST /api/profile/employees/{employeeId}/documents/verify
+     *
+     * Verifies the owner's code for an employee-scoped approval, unlocking the
+     * document LIST. Opening an individual file still requires the per-document
+     * approval, so this does not hand out a blanket decryption capability.
+     */
+    public function verifyEmployeeDocumentsAccessAction(int $employeeId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        try {
+            $employee = $this->employeeService->getEmployeeById($employeeId);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+                return;
+            }
+            if (!\App\Services\Security\EmployeePolicy::canView($userId, $employee)) {
+                $this->forbidden('You do not have permission to view this employee');
+                return;
+            }
+
+            $body = $this->getJsonBody();
+            $code = (string) ($body['code'] ?? '');
+
+            $service = new \App\Services\Security\DocumentAccessService();
+            $result = $service->verifyEmployeeCode($employeeId, $userId, $code);
+
+            if ($result['ok']) {
+                $this->success(['verified' => true], 'Code accepted.');
+                return;
+            }
+
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\Security\DocumentAccessService::ACTION_DENIED,
+                'Employee document access code verification failed',
+                [
+                    'target_type' => 'Employee',
+                    'target_id'   => $employeeId,
+                    'status'      => 'FAILED',
+                    // The reason is a fixed enum. The code is never logged, not
+                    // even hashed, in case it is still live.
+                    'metadata'    => ['reason' => $result['reason'], 'user_id' => $userId],
+                ]
+            );
+
+            $message = $result['reason'] === 'incorrect_code'
+                ? 'That code is not correct. Check the email and try again.'
+                : 'There is no pending request for these documents. Request access again.';
+
+            $this->error(
+                $message,
+                $result['reason'] === 'incorrect_code' ? 400 : 409,
+                'DOCUMENT_CODE_INVALID'
+            );
+
+        } catch (\Throwable $e) {
+            \logger()->error('Employee document verify failed', [
+                'error' => $e->getMessage(),
+                'employee_id' => $employeeId,
+            ]);
+            $this->error('Could not verify the code. Please try again.', 500);
+        }
+    }
+
+    /**
      * May this user request or open this document at all?
      *
      * Same rule as viewing: the document owner, or a holder of employees:view.
