@@ -339,14 +339,22 @@ foreach ($work as $item) {
 
 
     // -----------------------------------------------------------------------
-    // Execute: encrypt, prove it by decrypting, and only then trust it
+    // Execute: encrypt to a STAGING file, prove it by decrypting, record the
+    // key, and only then replace the plaintext.
+    //
+    // The ordering is the safety property, so it is spelled out rather than
+    // collapsed: at no point before the final commit does the original file
+    // change. A failure at ANY step leaves the plaintext exactly as it was,
+    // which is what makes this safe to run against real documents.
     // -----------------------------------------------------------------------
+    $staged    = null;
     $tmpVerify = null;
     try {
-        // 1+2. Encrypt in place. Returns the plaintext SHA-256 + key metadata.
-        $meta = StorageEncryption::encryptFile($path, $item['table'], $item['id']);
+        // 1+2. Encrypt to a sibling temp. The source is NOT touched.
+        $meta = StorageEncryption::encryptFileStaged($path, $item['table'], $item['id']);
+        $staged = $meta['staged_path'];
 
-        // 3. Decrypt it straight back out.
+        // 3. Decrypt the STAGED file back out and hash it.
         $fileKey = StorageEncryption::unwrapKey(
             $meta['wrapped'],
             $meta['nonce'],
@@ -355,7 +363,7 @@ foreach ($work as $item) {
         );
 
         $tmpVerify = $path . '.verify.' . bin2hex(random_bytes(4));
-        StorageEncryption::decryptFile($path, $tmpVerify, $fileKey);
+        StorageEncryption::decryptFile($staged, $tmpVerify, $fileKey);
 
         // 4. Compare. Any mismatch means the ciphertext must not be trusted.
         $verifyHash = hash_file('sha256', $tmpVerify);
@@ -363,12 +371,16 @@ foreach ($work as $item) {
         $tmpVerify = null;
 
         if (!hash_equals($meta['sha256'], (string) $verifyHash)) {
+            // Plaintext untouched; the staging copy is discarded below.
             throw new \RuntimeException(
-                'round-trip hash mismatch - plaintext retained, file left encrypted and UNRECORDED'
+                'round-trip hash mismatch - PLAINTEXT RETAINED, file left untouched and unrecorded'
             );
         }
 
-        // 5. Only now is it safe to record the key.
+        // 5. Persist the key BEFORE the swap. If the commit then fails, the
+        //    file on disk is still the original plaintext and the key row is
+        //    simply orphaned - harmless, and re-runnable. The reverse order
+        //    would leave undecryptable ciphertext with no key.
         if ($insert !== null) {
             $tn = $item['table'];
             $rid = $item['id'];
@@ -382,6 +394,10 @@ foreach ($work as $item) {
                 throw new \RuntimeException('could not record the key: ' . $insert->error);
             }
         }
+
+        // 6. Only now is it safe to put the ciphertext in place.
+        StorageEncryption::commitStagedFile($staged, $path);
+        $staged = null;
 
         $state['done'] = array_values(array_unique(array_merge($state['done'], [$key])));
         $state['failed'] = array_values(array_diff($state['failed'], [$key]));
@@ -402,6 +418,10 @@ foreach ($work as $item) {
         if ($tmpVerify !== null) {
             @unlink($tmpVerify);
         }
+        // The whole point of staging: on ANY failure the original file is
+        // still exactly as it was, and the staging copy is thrown away.
+        // There is no branch here that can lose a plaintext document.
+        StorageEncryption::discardStagedFile($staged);
         $failed++;
         $state['failed'] = array_values(array_unique(array_merge($state['failed'], [$key])));
         // Never echoes plaintext, key material or ciphertext.
