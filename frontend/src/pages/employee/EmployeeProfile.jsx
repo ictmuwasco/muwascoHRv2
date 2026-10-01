@@ -193,19 +193,24 @@ const EmployeeProfile = () => {
   const requestedTab = searchParams.get('tab');
 
   // Apply a valid ?tab= deep link (e.g. ?tab=contracts from the HR Insights
-  // "Expired Contracts" dashboard card). Validated against PROFILE_TABS — a
-  // module-level constant, NOT the component `tabs` reference below: during
-  // the loading early-return `tabs` is still uninitialised and an effect
-  // touching it throws "Cannot access 'tabs' before initialization".
+  // "Expired Contracts" dashboard card).
+  //
+  // Validated against the RENDERED `tabs`, not PROFILE_TABS. This matters for
+  // the documents tab: PROFILE_TABS always contains it, so validating against
+  // that would set activeTab='documents' even when the tab is filtered out for
+  // a locked viewer. That then trips the redirect effect below, which resets it
+  // to 'details', which writes 'details' back to the URL - and the two effects
+  // ping-pong on every render. Validating against what is actually shown makes
+  // the deep link simply not apply.
   useEffect(() => {
     if (
       requestedTab &&
-      PROFILE_TABS.some((t) => t.id === requestedTab) &&
+      tabs.some((t) => t.id === requestedTab) &&
       requestedTab !== activeTab
     ) {
       setActiveTab(requestedTab);
     }
-  }, [requestedTab]);
+  }, [requestedTab, tabs]);
 
   // Mirror tab changes into the URL so refresh/back behave predictably.
   useEffect(() => {
@@ -491,6 +496,13 @@ const EmployeeProfile = () => {
         // Employee-scoped approval unlocks the LIST. Re-fetch so the real names
         // and ids arrive from the server - they are never assembled client-side.
         await fetchEmployee();
+
+        // Land on the tab the user just paid for. Without this they are left on
+        // whichever tab they were on, the Documents tab silently appears in the
+        // nav, and "Access granted" is followed by no visible change - which
+        // reads as the grant having failed.
+        setActiveTab('documents');
+
         setOtpDoc(null);
         setOtpError('');
         setSuccess('Access granted. Documents are now visible.');

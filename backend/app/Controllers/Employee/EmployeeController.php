@@ -139,12 +139,27 @@ class EmployeeController extends BaseController
             }
         }
 
-        // Non-owner with a verified, unspent, unexpired approval for at least one
-        // of these documents: the real list is legitimate at this point, and each
-        // individual open still consumes its own approval.
+        // Two independent approval scopes, and BOTH must be honoured.
+        //
+        //   employee-scoped  a verified `document_id = 0` request, which is what
+        //                     the "Request access" button produces while the list
+        //                     is redacted. It unlocks the WHOLE list.
+        //   document-scoped  a verified approval for one specific document, which
+        //                     is what the per-document Open flow produces. It
+        //                     unlocks the list too, because at that point the
+        //                     caller has demonstrably seen the document names.
+        //
+        // Checking only one of these is a silent lockout: the employee-scoped
+        // flow verifies successfully and then still receives placeholders,
+        // which reads to the user as "access granted" followed by nothing
+        // happening.
         try {
             $service = new \App\Services\Security\DocumentAccessService();
-            if ($this->hasAnyVerifiedApproval($service, $documents, $viewerId)) {
+
+            $unlocked = $service->hasEmployeeApproval($employeeId, $viewerId)
+                || $this->hasAnyVerifiedApproval($service, $documents, $viewerId);
+
+            if ($unlocked) {
                 $employee['documents_access'] = 'granted';
                 return;
             }
