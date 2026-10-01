@@ -194,5 +194,7 @@ return [
         'POST /profile/documents/{id}/request-access',
         'POST /profile/documents/{id}/verify',
         'GET /profile/documents/{id}/open',
+        'POST /profile/employees/{employeeId}/documents/request-access',
+        'POST /profile/employees/{employeeId}/documents/verify',
     ],
 ];

@@ -55,6 +55,17 @@ const PROFILE_TABS = [
   { id: 'dependants', name: 'Dependants', icon: <Heart className="h-4 w-4" /> },
 ];
 
+// Encrypted-document OTP gate (migration 106). The browser does no
+// cryptography here: the SERVER gates the metadata, and this UI reflects the
+// state it reports. `locked` means the names and categories were never sent, so
+// hiding the tab is genuine rather than cosmetic.
+const DOCUMENT_ACCESS_STATES = {
+  NONE: 'none',
+  OWNER: 'owner',
+  GRANTED: 'granted',
+  LOCKED: 'locked',
+};
+
 /** Format a Date as YYYY-MM-DD (local time) for date inputs and the API. */
 const toYMD = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -106,6 +117,13 @@ const EmployeeProfile = () => {
   });
 
   // Encrypted-document OTP gate (migration 106).
+  //
+  // SERVER-SIDE, NOT JUST VISUAL: for a viewer who is neither the owner nor
+  // holds a verified approval, the API returns document PLACEHOLDERS with no
+  // name, no category, no id and no filename - only the count. So the tab is
+  // hidden because there is genuinely nothing to show, not because the markup
+  // is conditionally rendered around data the browser already received.
+  const [documentsAccess, setDocumentsAccess] = useState(DOCUMENT_ACCESS_STATES.NONE);
   //
   // FLOW, three steps, deliberately sequential:
   //   1. requestAccess  -> emails a 6-digit code to the DOCUMENT OWNER
@@ -218,7 +236,16 @@ const EmployeeProfile = () => {
       const parsedDependants = data.dependants_data || safeParse(data.dependants);
       setDependants(parsedDependants);
 
-      // Parse documents
+      // Parse documents.
+      //
+      // `documents_access` is the server's verdict, not a client guess:
+      //   owner   - these are the caller's own documents
+      //   granted - a verified approval is live for at least one of them
+      //   locked  - placeholders only; no name/category/id was ever sent
+      //   none    - the employee has no documents at all
+      setDocumentsAccess(
+        data.documents_access || DOCUMENT_ACCESS_STATES.NONE,
+      );
       const parsedDocuments = safeParse(data.documents);
       setDocuments(parsedDocuments);
 
@@ -446,14 +473,29 @@ const EmployeeProfile = () => {
     setOtpError('');
 
     try {
-      await api.post(`/profile/documents/${otpDoc.docId}/verify`, {
-        code: digits,
-      });
+      // Employee-scoped and document-scoped approvals use different verify
+      // endpoints: the first unlocks the whole list, the second marks a single
+      // document ready to open.
+      const verifyUrl = otpDoc.employeeScoped
+        ? `/profile/employees/${id}/documents/verify`
+        : `/profile/documents/${otpDoc.docId}/verify`;
 
-      // Clear the code the instant it is no longer needed, before the file
+      await api.post(verifyUrl, { code: digits });
+
+      // Clear the code the instant it is no longer needed, before the follow-up
       // request, so it is not sitting in state if that request fails.
       setOtpCode('');
       setOtpDoc((prev) => ({ ...prev, step: 'opening' }));
+
+      if (otpDoc.employeeScoped) {
+        // Employee-scoped approval unlocks the LIST. Re-fetch so the real names
+        // and ids arrive from the server - they are never assembled client-side.
+        await fetchEmployee();
+        setOtpDoc(null);
+        setOtpError('');
+        setSuccess('Access granted. Documents are now visible.');
+        return;
+      }
 
       await openVerifiedDocument(otpDoc.docId, otpDoc.name);
     } catch (err) {
@@ -526,6 +568,50 @@ const EmployeeProfile = () => {
     setOtpDoc(null);
     setOtpCode('');
     setOtpError('');
+  };
+
+  /**
+   * Start a request when the document list is still locked.
+   *
+   * The placeholders deliberately carry NO id, so there is nothing to address a
+   * per-document request with - and that is deliberate: naming a document in a
+   * request would require already knowing its name, which is the thing being
+   * protected.
+   *
+   * This asks the employee to unlock their documents for this session. The
+   * server emails the owner a code; once approved the list is re-fetched and
+   * the real names and ids appear. One request rather than one per document
+   * also means the owner receives a single email instead of being flooded by
+   * someone probing five separate documents.
+   */
+  const requestFirstDocumentAccess = async () => {
+    setOtpBusy(true);
+    setOtpError('');
+    setOtpCode('');
+
+    try {
+      const res = await api.post(`/profile/employees/${id}/documents/request-access`);
+      const data = res.data?.data || res.data || {};
+
+      const ownerName =
+        `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim();
+
+      setOtpDoc({
+        docId: null, // employee-scoped: no single document chosen yet
+        name: ownerName ? `${ownerName}'s documents` : "this employee's documents",
+        step: 'awaiting_code',
+        maskedEmail: data.masked_email || null,
+        ttlMinutes: data.ttl_minutes || 10,
+        employeeScoped: true,
+      });
+    } catch (err) {
+      setOtpError(
+        err?.response?.data?.message ||
+          'Could not request access to these documents.',
+      );
+    } finally {
+      setOtpBusy(false);
+    }
   };
 
   // Contract renewal — open the small renewal form pre-filled from the
@@ -674,6 +760,41 @@ const EmployeeProfile = () => {
     }
   };
 
+  // ---- Document-tab visibility (server-driven) ---------------------------
+  //
+  // These are HOOKS and must sit above the loading / not-found early returns
+  // below. React requires the same hooks in the same order on every render, so
+  // a useMemo placed after an early return would only be reached on some
+  // renders and crash with "Rendered fewer hooks than expected".
+  //
+  // `none` hides the tab as well: an employee with no documents has nothing to
+  // gate, and a tab that only ever renders an empty state is noise.
+  //
+  // `locked` removes the entry from the nav ENTIRELY rather than showing a
+  // disabled tab. A tab that is present but un-clickable still tells the viewer
+  // that documents exist, which is the very thing being protected. The
+  // affordance to ask for access is a separate, explicit card instead.
+  const documentsVisible =
+    documentsAccess === DOCUMENT_ACCESS_STATES.OWNER ||
+    documentsAccess === DOCUMENT_ACCESS_STATES.GRANTED ||
+    documentsAccess === DOCUMENT_ACCESS_STATES.NONE;
+
+  // Tabs actually rendered. PROFILE_TABS stays the module-level source of truth
+  // for names/icons; this only filters it.
+  const tabs = useMemo(
+    () => PROFILE_TABS.filter((tab) => tab.id !== 'documents' || documentsVisible),
+    [documentsVisible],
+  );
+
+  // A deep link to ?tab=documents must not strand someone on a tab that does
+  // not exist, which is what would otherwise happen once the tab is filtered
+  // out. Falling back to 'details' keeps the URL and the view consistent.
+  useEffect(() => {
+    if (activeTab === 'documents' && !documentsVisible) {
+      setActiveTab('details');
+    }
+  }, [activeTab, documentsVisible]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -698,8 +819,6 @@ const EmployeeProfile = () => {
       </div>
     );
   }
-
-  const tabs = PROFILE_TABS;
 
   const nextOfKin = employee.next_of_kin_data || safeParse(employee.next_of_kin);
   const dependantsList = employee.dependants_data || dependants;
@@ -923,6 +1042,60 @@ const EmployeeProfile = () => {
             </div>
           </Card>
         </div>
+      )}
+
+      {/* Documents are LOCKED for this viewer.
+          Shown instead of the Documents tab, which is filtered out of the nav
+          above. The server sent placeholders only - no name, no category, no id -
+          so this card can say how MANY documents exist without saying what they
+          are. A viewer must be able to discover that access is requestable,
+          otherwise the control is indistinguishable from "this employee has no
+          documents" and nobody would ever ask. */}
+      {documentsAccess === DOCUMENT_ACCESS_STATES.LOCKED && (
+        <Card className="border-amber-200 bg-amber-50">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-shrink-0">
+              <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-amber-700" />
+              </div>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-amber-900">
+                Encrypted documents
+              </h3>
+              <p className="text-sm text-amber-800 mt-1">
+                {documents.length > 0 ? (
+                  <>
+                    This employee has{' '}
+                    <span className="font-medium">{documents.length}</span> encrypted
+                    document{documents.length === 1 ? '' : 's'}. Their contents and
+                    filenames are hidden.
+                  </>
+                ) : (
+                  'This employee has encrypted documents, hidden pending approval.'
+                )}
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Opening one sends a 6-digit code to the employee's own email address.
+                They must approve it before anything becomes visible — you cannot
+                see what you are requesting.
+              </p>
+            </div>
+            <div className="flex-shrink-0">
+              <Button
+                onClick={requestFirstDocumentAccess}
+                disabled={otpBusy}
+              >
+                {otpBusy ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 mr-2" />
+                )}
+                Request access
+              </Button>
+            </div>
+          </div>
+        </Card>
       )}
 
       {activeTab === 'documents' && (

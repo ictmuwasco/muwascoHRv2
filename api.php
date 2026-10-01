@@ -775,6 +775,21 @@ $router->add('POST', '/profile/documents/{id}/request-access', EmployeeControlle
 $router->add('POST', '/profile/documents/{id}/verify',        EmployeeController::class, 'verifyDocumentAccessAction',   'profile:view', '10:300');
 $router->add('GET',  '/profile/documents/{id}/open',           EmployeeController::class, 'openDocumentAction',          'profile:view', '20:300');
 
+// Employee-scoped variants, used while the document LIST is still redacted.
+//
+// These MUST come after the document-scoped routes above. The router builds its
+// pattern with an anchored `([^/]+)` per placeholder, so `/profile/documents/{id}`
+// cannot match a two-segment path and the two groups cannot shadow each other
+// — but registering the more specific pair first keeps the intent obvious to
+// whoever reads the file next.
+//
+// Requesting is `employees:view` because the whole point is that someone who
+// legitimately sees the profile may ask the owner to unlock the documents. The
+// controller still re-checks EmployeePolicy::canView for this specific employee,
+// so the route permission is necessary but not sufficient.
+$router->add('POST', '/profile/employees/{employeeId}/documents/request-access', EmployeeController::class, 'requestEmployeeDocumentsAccessAction', 'employees:view', '5:300');
+$router->add('POST', '/profile/employees/{employeeId}/documents/verify',        EmployeeController::class, 'verifyEmployeeDocumentsAccessAction',   'employees:view', '10:300');
+
 $router->add('DELETE', '/profile/documents/{id}', EmployeeController::class, 'deleteProfileDocument', 'profile:edit');
 
 // Profile contracts routes — self-service.

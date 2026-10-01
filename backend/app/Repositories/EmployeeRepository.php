@@ -575,6 +575,14 @@ class EmployeeRepository implements EmployeeRepositoryInterface
 
     /**
      * Get documents for an employee.
+     *
+     * The returned rows carry NAME and CATEGORY, which are themselves
+     * sensitive: "Certified Certificate SPU.pdf / undergraduate" discloses an
+     * employee's qualification, and a national ID filename discloses that they
+     * have one. Gating only the file bytes would leave the more telling part
+     * readable, so callers must decide whether the viewer may see this at all.
+     *
+     * Use redactDocumentsFor() for unverified viewers.
      */
     private function getDocumentsForEmployee(int $employeeId): array
     {
@@ -591,6 +599,35 @@ class EmployeeRepository implements EmployeeRepositoryInterface
         $stmt->close();
 
         return $documents;
+    }
+
+    /**
+     * Document metadata with every identifying field stripped.
+     *
+     * An unverified viewer learns only THAT the employee has N documents - no
+     * name, no category, no file_name, no timestamp, and no per-document id.
+     * The count is retained deliberately: a locked list rendering as "no
+     * documents" would be indistinguishable from an employee who has none, and
+     * the viewer would never learn that access was requestable at all.
+     *
+     * The absence of a per-document id is the load-bearing part. With ids in
+     * hand a caller could feed each one to /documents/{id}/open and discover the
+     * list by brute force, so the whole redaction would collapse. The id is
+     * therefore null rather than merely hidden.
+     *
+     * @return array<int, array{id:null, locked:true}>
+     */
+    public function redactDocumentsFor(int $employeeId): array
+    {
+        $count = (int) $this->conn->query(
+            'SELECT COUNT(*) AS c FROM employee_documents WHERE employee_id = ' . (int) $employeeId
+        )->fetch_assoc()['c'];
+
+        $out = [];
+        for ($i = 0; $i < $count; $i++) {
+            $out[] = ['id' => null, 'locked' => true];
+        }
+        return $out;
     }
 
     public function getOrganizationHierarchy(): array
