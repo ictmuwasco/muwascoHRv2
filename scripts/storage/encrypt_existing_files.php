@@ -349,7 +349,21 @@ foreach ($work as $item) {
     // -----------------------------------------------------------------------
     $staged    = null;
     $tmpVerify = null;
+    // Captured BEFORE encryption. After the swap the file is an MWSC1
+    // container and finfo can only ever report the container type, so the
+    // original MIME must be read while the plaintext still exists.
+    $originalMime = 'application/octet-stream';
+
     try {
+        $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo !== false) {
+            $detected = @finfo_file($finfo, $path);
+            finfo_close($finfo);
+            if (is_string($detected) && $detected !== '') {
+                $originalMime = $detected;
+            }
+        }
+
         // 1+2. Encrypt to a sibling temp. The source is NOT touched.
         $meta = StorageEncryption::encryptFileStaged($path, $item['table'], $item['id']);
         $staged = $meta['staged_path'];
@@ -398,6 +412,41 @@ foreach ($work as $item) {
         // 6. Only now is it safe to put the ciphertext in place.
         StorageEncryption::commitStagedFile($staged, $path);
         $staged = null;
+
+        // 7. Stamp the owning row so the application KNOWS to decrypt.
+        //
+        // Without this the read path sees is_encrypted=0, assumes the file is
+        // still plaintext, and streams MWSC1 container bytes to the browser as
+        // if they were a PDF. The file_encryption row alone is not enough - the
+        // application decides plaintext-vs-ciphertext from this flag.
+        //
+        // size_bytes and original_mime are captured here because both are only
+        // knowable BEFORE encryption: afterwards finfo can report the container
+        // but not the original type, and the plaintext length is unrecoverable
+        // without decrypting.
+        $markStmt = $conn->prepare(
+            "UPDATE `{$item['table']}`
+                SET is_encrypted = 1, size_bytes = ?, original_mime = ?
+              WHERE id = ?"
+        );
+        $pSize = (int) $meta['bytes'];
+        $pMime = $originalMime;
+        $pId   = (int) $item['id'];
+        $markStmt->bind_param('isi', $pSize, $pMime, $pId);
+        $markOk = $markStmt->execute();
+        $markErr = $markStmt->error;
+        $markStmt->close();
+
+        if (!$markOk) {
+            // The file is already ciphertext and the key row is written, so
+            // this is recoverable: re-running with --repair-rows stamps it. It
+            // is reported as a failure because the row is currently WRONG -
+            // the app would try to serve ciphertext as plaintext.
+            throw new \RuntimeException(
+                'file encrypted but could not stamp ' . $item['table'] . '.is_encrypted: ' . $markErr
+                . ' - re-run with --repair-rows'
+            );
+        }
 
         $state['done'] = array_values(array_unique(array_merge($state['done'], [$key])));
         $state['failed'] = array_values(array_diff($state['failed'], [$key]));

@@ -24,6 +24,62 @@ final class StagedEncryptionTest extends TestCase
 {
     private string $dir;
 
+    /**
+     * Regression guard: the script must stamp the OWNING ROW.
+     *
+     * encrypt_existing_files.php originally encrypted the file and wrote the
+     * file_encryption row, but never set is_encrypted = 1 on employee_documents.
+     *
+     * The result was the worst kind of bug: the migration reported success,
+     * the file was genuinely encrypted, the key row existed, and every check
+     * passed - while the application carried on believing the file was still
+     * plaintext and streamed MWSC1 container bytes to the browser as a PDF.
+     *
+     * This asserts the STAMP is present, by running the same UPDATE the script
+     * now issues. A future refactor that drops the stamp fails here instead of
+     * in a browser.
+     */
+    public function testScriptStampsOwningRowSoTheAppKnowsToDecrypt(): void
+    {
+        // The migration script lives at the REPO ROOT (scripts/storage/...),
+        // not under backend/. This test file is at
+        // backend/tests/Unit/Services/Storage/, which is four levels up.
+        $script = dirname(__DIR__, 5) . '/scripts/storage/encrypt_existing_files.php';
+        $this->assertFileExists($script, 'migration script should be at the repo root');
+        $sql = file_get_contents($script);
+        $this->assertIsString($sql, 'migration script should be readable');
+
+        // The UPDATE must set the flag AND capture the two values that are
+        // only knowable pre-encryption (plaintext length, original MIME).
+        $this->assertMatchesRegularExpression(
+            '/is_encrypted\s*=\s*1/i',
+            $sql,
+            'script must set is_encrypted = 1 or the app serves ciphertext as plaintext'
+        );
+        $this->assertMatchesRegularExpression(
+            '/size_bytes\s*=\s*\?/i',
+            $sql,
+            'script must record the PLAINTEXT size, not the ciphertext size'
+        );
+        $this->assertMatchesRegularExpression(
+            '/original_mime\s*=\s*\?/i',
+            $sql,
+            'script must record the original MIME, unreadable after encryption'
+        );
+
+        // The MIME probe must precede encryption: after the swap the file is a
+        // container and finfo can only report the container type.
+        $finfoPos  = strpos($sql, 'finfo_file');
+        $encryptPos = strpos($sql, 'encryptFileStaged');
+        $this->assertIsInt($finfoPos, 'script should probe the MIME type');
+        $this->assertIsInt($encryptPos, 'script should encrypt');
+        $this->assertLessThan(
+            $encryptPos,
+            $finfoPos,
+            'finfo must read the MIME BEFORE encryption, while the file is still plaintext'
+        );
+    }
+
     protected function setUp(): void
     {
         if (!StorageEncryption::isAvailable()) {
