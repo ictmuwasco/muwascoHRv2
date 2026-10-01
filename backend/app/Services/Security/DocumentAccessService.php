@@ -67,6 +67,20 @@ final class DocumentAccessService
         $this->db = Database::getInstance()->getConnection();
     }
 
+    /**
+     * The connection this service actually uses.
+     *
+     * Exists so a test can PROVE it is pointed at its scratch database. The
+     * connection is captured in the constructor, so a service built before
+     * Database::setConnection() would silently talk to the application's own
+     * database while the test's direct queries went elsewhere - a failure that
+     * otherwise shows up only as confusing missing rows.
+     */
+    public function connection(): \mysqli
+    {
+        return $this->db;
+    }
+
     // =================================================================
     // Request
     // =================================================================
@@ -193,9 +207,17 @@ final class DocumentAccessService
         // The row is re-read INSIDE the guard conditions, so an expired,
         // consumed or over-attempted approval is never compared against a code
         // at all.
+        //
+        // `verified_at IS NULL` is REQUIRED here, not optional. Verified
+        // requests are already spent, so they must not be matched for another
+        // comparison - but requiring verified_at to be NULL is also what makes
+        // the code single-use: a second attempt to redeem a code that was
+        // already accepted finds nothing. The attempt counter is what bounds
+        // guessing, and it only increments on a genuine mismatch, so filtering
+        // on verified_at here is what makes that counter meaningful at all.
         $sql = 'SELECT id, code_hash FROM document_access_otp
                  WHERE document_id = ? AND requester_user_id = ?
-                   AND verified_at IS NOT NULL AND consumed_at IS NULL
+                   AND verified_at IS NULL AND consumed_at IS NULL
                    AND expires_at > NOW() AND attempts < ?
                  ORDER BY id DESC LIMIT 1';
 
@@ -563,7 +585,7 @@ final class DocumentAccessService
 
         $sql = 'SELECT id, code_hash FROM document_access_otp
                  WHERE document_id = 0 AND owner_employee_id = ? AND requester_user_id = ?
-                   AND verified_at IS NOT NULL AND consumed_at IS NULL
+                   AND verified_at IS NULL AND consumed_at IS NULL
                    AND expires_at > NOW() AND attempts < ?
                  ORDER BY id DESC LIMIT 1';
 
