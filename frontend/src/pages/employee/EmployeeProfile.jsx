@@ -40,6 +40,15 @@ import {
 // centralized in src/config/api.ts so every consumer shares VITE_API_URL.
 import { API_BASE_URL as API_BASE } from '../../config/api';
 
+// Tab-visibility rules live in their own module so they can be unit tested
+// without mounting this component. The comment there explains why that matters:
+// the rule previously lived here as a useMemo consumed by an effect declared
+// above it, which is a temporal dead zone crash at load time.
+import {
+  DOCUMENT_ACCESS_STATES,
+  filterVisibleTabs,
+} from './visibleTabs';
+
 // Tab definitions for the EmployeeProfile tab navigation, declared at MODULE
 // level (single source of truth). This is required because the ?tab=
 // deep-link effect below must validate the query parameter even during the
@@ -54,17 +63,6 @@ const PROFILE_TABS = [
   { id: 'nextofkin', name: 'Next of Kin', icon: <Users className="h-4 w-4" /> },
   { id: 'dependants', name: 'Dependants', icon: <Heart className="h-4 w-4" /> },
 ];
-
-// Encrypted-document OTP gate (migration 106). The browser does no
-// cryptography here: the SERVER gates the metadata, and this UI reflects the
-// state it reports. `locked` means the names and categories were never sent, so
-// hiding the tab is genuine rather than cosmetic.
-const DOCUMENT_ACCESS_STATES = {
-  NONE: 'none',
-  OWNER: 'owner',
-  GRANTED: 'granted',
-  LOCKED: 'locked',
-};
 
 /** Format a Date as YYYY-MM-DD (local time) for date inputs and the API. */
 const toYMD = (d) =>
@@ -192,6 +190,31 @@ const EmployeeProfile = () => {
 
   const requestedTab = searchParams.get('tab');
 
+  // ---- Which tabs exist ----------------------------------------------------
+  //
+  // DECLARED HERE, NOT LATER, AND THAT IS LOAD-BEARING.
+  //
+  // The deep-link and redirect effects below both close over `tabs` and
+  // `documentsVisible`. A hook's dependency array is evaluated DURING render,
+  // at the point the useEffect call is reached - so referencing a `const`
+  // declared further down the function body throws
+  //
+  //   ReferenceError: Cannot access 'tabs' before initialization
+  //
+  // because the binding is still in its temporal dead zone. React evaluates
+  // every hook in order, so the value must be computed before the first effect
+  // that needs it, not merely before the JSX that renders it.
+  //
+  // Tabs actually rendered. The rule lives in visibleTabs.js so it can be unit
+  // tested without mounting this component - see the note there about the
+  // temporal dead zone this replaces.
+  const tabs = useMemo(
+    () => filterVisibleTabs(PROFILE_TABS, documentsAccess),
+    [documentsAccess],
+  );
+
+  const documentsVisible = tabs.some((t) => t.id === 'documents');
+
   // Apply a valid ?tab= deep link (e.g. ?tab=contracts from the HR Insights
   // "Expired Contracts" dashboard card).
   //
@@ -211,6 +234,15 @@ const EmployeeProfile = () => {
       setActiveTab(requestedTab);
     }
   }, [requestedTab, tabs]);
+
+  // A deep link to ?tab=documents must not strand someone on a tab that does
+  // not exist, which is what would otherwise happen once the tab is filtered
+  // out. Falling back to 'details' keeps the URL and the view consistent.
+  useEffect(() => {
+    if (activeTab === 'documents' && !documentsVisible) {
+      setActiveTab('details');
+    }
+  }, [activeTab, documentsVisible]);
 
   // Mirror tab changes into the URL so refresh/back behave predictably.
   useEffect(() => {
@@ -771,41 +803,6 @@ const EmployeeProfile = () => {
       e.target.value = '';
     }
   };
-
-  // ---- Document-tab visibility (server-driven) ---------------------------
-  //
-  // These are HOOKS and must sit above the loading / not-found early returns
-  // below. React requires the same hooks in the same order on every render, so
-  // a useMemo placed after an early return would only be reached on some
-  // renders and crash with "Rendered fewer hooks than expected".
-  //
-  // `none` hides the tab as well: an employee with no documents has nothing to
-  // gate, and a tab that only ever renders an empty state is noise.
-  //
-  // `locked` removes the entry from the nav ENTIRELY rather than showing a
-  // disabled tab. A tab that is present but un-clickable still tells the viewer
-  // that documents exist, which is the very thing being protected. The
-  // affordance to ask for access is a separate, explicit card instead.
-  const documentsVisible =
-    documentsAccess === DOCUMENT_ACCESS_STATES.OWNER ||
-    documentsAccess === DOCUMENT_ACCESS_STATES.GRANTED ||
-    documentsAccess === DOCUMENT_ACCESS_STATES.NONE;
-
-  // Tabs actually rendered. PROFILE_TABS stays the module-level source of truth
-  // for names/icons; this only filters it.
-  const tabs = useMemo(
-    () => PROFILE_TABS.filter((tab) => tab.id !== 'documents' || documentsVisible),
-    [documentsVisible],
-  );
-
-  // A deep link to ?tab=documents must not strand someone on a tab that does
-  // not exist, which is what would otherwise happen once the tab is filtered
-  // out. Falling back to 'details' keeps the URL and the view consistent.
-  useEffect(() => {
-    if (activeTab === 'documents' && !documentsVisible) {
-      setActiveTab('details');
-    }
-  }, [activeTab, documentsVisible]);
 
   if (loading) {
     return (
