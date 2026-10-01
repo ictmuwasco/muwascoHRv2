@@ -87,6 +87,19 @@ class EmployeeController extends BaseController
                 $this->forbidden('You are not authorized to view this employee');
             }
 
+            // DOCUMENT METADATA REDACTION (migration 106)
+            //
+            // The repository attaches every document's NAME and CATEGORY to the
+            // employee payload. Those are themselves sensitive - "Certified
+            // Certificate SPU.pdf / undergraduate" discloses a qualification, and
+            // a national-ID filename discloses that they have one - so gating
+            // only the file bytes would leave the more telling part readable.
+            //
+            // The owner always sees their own list. Anyone else sees placeholders
+            // unless they hold a live, verified OTP approval. Hiding this in the
+            // frontend would be cosmetic: the data has already left the server.
+            $this->redactDocumentsForViewer($employee);
+
             $this->success($employee);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -94,6 +107,97 @@ class EmployeeController extends BaseController
             \logger()->error('Employee retrieval error', ['error' => $e->getMessage(), 'id' => $id]);
             $this->error('Failed to retrieve employee. Please try again.', 500);
         }
+    }
+
+    /**
+     * Replace an employee's document list with placeholders unless the viewer is
+     * the owner or holds a live, verified approval.
+     *
+     * Mutates $employee in place and records the resolved state under
+     * `documents_access` so the UI can render a "Request access" affordance
+     * without a second round trip.
+     *
+     * @param array<string,mixed> $employee
+     */
+    private function redactDocumentsForViewer(array &$employee): void
+    {
+        $documents = is_array($employee['documents'] ?? null) ? $employee['documents'] : [];
+        $employeeId = (int) ($employee['id'] ?? 0);
+        $viewerId = $this->getAuthUserId();
+
+        if ($documents === []) {
+            $employee['documents'] = [];
+            $employee['documents_access'] = 'none';
+            return;
+        }
+
+        // Owner: always full access, no approval needed.
+        if ($employeeIdForViewer = $this->viewerOwnEmployeeId()) {
+            if ($employeeIdForViewer === $employeeId) {
+                $employee['documents_access'] = 'owner';
+                return;
+            }
+        }
+
+        // Non-owner with a verified, unspent, unexpired approval for at least one
+        // of these documents: the real list is legitimate at this point, and each
+        // individual open still consumes its own approval.
+        try {
+            $service = new \App\Services\Security\DocumentAccessService();
+            if ($this->hasAnyVerifiedApproval($service, $documents, $viewerId)) {
+                $employee['documents_access'] = 'granted';
+                return;
+            }
+        } catch (\Throwable $e) {
+            // Fail CLOSED: if the check cannot be performed, treat the viewer as
+            // unverified rather than falling back to the full list.
+            \logger()->error('Document access check failed; redacting', [
+                'error' => $e->getMessage(),
+                'employee_id' => $employeeId,
+            ]);
+        }
+
+        // Resolved inline rather than injected: EmployeeServiceInterface has no
+        // redaction method, and widening the application's service contract to
+        // expose one presentational helper would be the wrong trade for a single
+        // call site. Instantiated lazily so the cost is only paid when someone
+        // actually hits the locked path.
+        $repository = new \App\Repositories\EmployeeRepository();
+        $employee['documents'] = $repository->redactDocumentsFor($employeeId);
+        $employee['documents_access'] = 'locked';
+    }
+
+    /**
+     * The caller's own employees.id, or null.
+     */
+    private function viewerOwnEmployeeId(): ?int
+    {
+        try {
+            $me = $this->employeeService->getEmployeeByUserId($this->getAuthUserId());
+            $id = $me ? (int) ($me['id'] ?? 0) : 0;
+            return $id > 0 ? $id : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Does the viewer hold a live approval for ANY of these documents?
+     *
+     * @param array<int,array<string,mixed>> $documents
+     */
+    private function hasAnyVerifiedApproval(
+        \App\Services\Security\DocumentAccessService $service,
+        array $documents,
+        int $viewerId
+    ): bool {
+        foreach ($documents as $doc) {
+            $docId = (int) ($doc['id'] ?? 0);
+            if ($docId > 0 && $service->hasLiveApproval($docId, $viewerId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

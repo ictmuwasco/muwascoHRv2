@@ -460,8 +460,175 @@ final class DocumentAccessService
     }
 
     // =================================================================
-    // Private helpers
+    // Employee-scoped access (the locked list)
     // =================================================================
+
+    /**
+     * Ask an employee to unlock their whole document list for this viewer.
+     *
+     * This is the request used while the list is still redacted. It has to be
+     * employee-scoped: the placeholders the viewer receives carry no document
+     * id, so a per-document request would require the caller to already know
+     * which document they want - exactly the knowledge redaction withholds.
+     *
+     * It also means the owner gets ONE email, rather than a caller being able to
+     * generate one per document to flood their inbox.
+     *
+     * @return array{ok:bool, reason:string, masked_email:?string}
+     */
+    public function requestEmployeeAccess(int $employeeId, int $requesterUserId): array
+    {
+        $documents = $this->documentsFor($employeeId);
+        if ($documents === []) {
+            return ['ok' => false, 'reason' => 'no_documents', 'masked_email' => null];
+        }
+
+        $owner = $this->loadOwner($employeeId);
+        if ($owner === null || (string) $owner['email'] === '') {
+            return ['ok' => false, 'reason' => 'owner_unreachable', 'masked_email' => null];
+        }
+
+        if ($this->recentRequestCount($requesterUserId) >= self::RATE_LIMIT_PER_MINUTE) {
+            return ['ok' => false, 'reason' => 'rate_limited', 'masked_email' => null];
+        }
+
+        // Reuse a live request rather than stacking new codes for one employee.
+        if ($this->findLiveEmployeeApproval($employeeId, $requesterUserId) !== null) {
+            return [
+                'ok'           => true,
+                'reason'       => 'already_pending',
+                'masked_email' => $this->maskEmail((string) $owner['email']),
+            ];
+        }
+
+        $code      = $this->generateCode();
+        $expiresAt = date('Y-m-d H:i:s', time() + (self::TTL_MINUTES * 60));
+        $now       = date('Y-m-d H:i:s');
+
+        // document_id 0 is the sentinel for "the whole list". A real id can
+        // never be 0, so it cannot collide with a genuine document row.
+        if (!$this->insertEmployeeApproval(
+            $employeeId,
+            $requesterUserId,
+            hash('sha256', strtolower((string) $owner['email'])),
+            hash('sha256', $code),
+            $expiresAt,
+            $now
+        )) {
+            return ['ok' => false, 'reason' => 'storage_failed', 'masked_email' => null];
+        }
+
+        $this->emailEmployeeCode(
+            (string) $owner['email'],
+            (string) ($owner['first_name'] ?: 'there'),
+            $code,
+            count($documents),
+            $employeeId,
+            $requesterUserId
+        );
+
+        AuditService::getInstance()->log(
+            AuditService::MODULE_EMPLOYEES,
+            self::ACTION_REQUESTED,
+            'Employee document access requested; a code was emailed to the owner',
+            [
+                'target_type' => 'Employee',
+                'target_id'   => $employeeId,
+                'metadata'    => [
+                    'requester_user_id' => $requesterUserId,
+                    'document_count'    => count($documents),
+                    'expires_at'        => $expiresAt,
+                ],
+            ]
+        );
+
+        return [
+            'ok'           => true,
+            'reason'       => 'code_sent',
+            'masked_email' => $this->maskEmail((string) $owner['email']),
+        ];
+    }
+
+    /**
+     * Verify the owner's code for an employee-scoped request.
+     *
+     * @return array{ok:bool, reason:string}
+     */
+    public function verifyEmployeeCode(int $employeeId, int $requesterUserId, string $code): array
+    {
+        $given = $this->normaliseCode($code);
+        if ($given === null) {
+            return ['ok' => false, 'reason' => 'malformed_code'];
+        }
+
+        $sql = 'SELECT id, code_hash FROM document_access_otp
+                 WHERE document_id = 0 AND owner_employee_id = ? AND requester_user_id = ?
+                   AND verified_at IS NOT NULL AND consumed_at IS NULL
+                   AND expires_at > NOW() AND attempts < ?
+                 ORDER BY id DESC LIMIT 1';
+
+        $stmt = $this->db->prepare($sql);
+        $pEmp = $employeeId;
+        $pUsr = $requesterUserId;
+        $pMax = self::MAX_ATTEMPTS;
+        $stmt->bind_param('iii', $pEmp, $pUsr, $pMax);
+        $ok = $stmt->execute();
+        $row = $ok ? $stmt->get_result()->fetch_assoc() : null;
+        $stmt->close();
+
+        if ($row === null) {
+            return ['ok' => false, 'reason' => 'no_live_approval'];
+        }
+
+        // Constant-time, as everywhere else.
+        if (!hash_equals((string) $row['code_hash'], hash('sha256', $given))) {
+            $this->incrementAttempts((int) $row['id']);
+            return ['ok' => false, 'reason' => 'incorrect_code'];
+        }
+
+        $this->markVerified((int) $row['id']);
+
+        AuditService::getInstance()->log(
+            AuditService::MODULE_EMPLOYEES,
+            self::ACTION_APPROVED,
+            'Employee document owner verified the emailed access code',
+            [
+                'target_type' => 'Employee',
+                'target_id'   => $employeeId,
+                'metadata'    => ['requester_user_id' => $requesterUserId],
+            ]
+        );
+
+        return ['ok' => true, 'reason' => 'ok'];
+    }
+
+    /**
+     * Is the document LIST unlocked for this viewer?
+     *
+     * Distinct from hasLiveApproval(), which is per-document. This decides
+     * whether names and categories may be sent at all; opening an individual
+     * file still requires that separate, per-document approval.
+     */
+    public function hasEmployeeApproval(int $employeeId, int $requesterUserId): bool
+    {
+        $sql = 'SELECT id FROM document_access_otp
+                 WHERE document_id = 0 AND owner_employee_id = ? AND requester_user_id = ?
+                   AND verified_at IS NOT NULL AND consumed_at IS NULL
+                   AND expires_at > NOW() AND attempts < ?
+                 LIMIT 1';
+
+        $stmt = $this->db->prepare($sql);
+        $pEmp = $employeeId;
+        $pUsr = $requesterUserId;
+        $pMax = self::MAX_ATTEMPTS;
+        $stmt->bind_param('iii', $pEmp, $pUsr, $pMax);
+        $ok = $stmt->execute();
+        $row = $ok ? $stmt->get_result()->fetch_assoc() : null;
+        $stmt->close();
+
+        return $row !== null;
+    }
+
 
     private function loadDocument(int $documentId): ?array
     {
@@ -477,6 +644,78 @@ final class DocumentAccessService
         $stmt->close();
 
         return $row ?: null;
+    }
+
+    /**
+     * An employee's document ids, used only to decide whether a list exists and
+     * how many items it holds. Ids alone disclose nothing about content, and the
+     * count is what the owner is told in the email.
+     *
+     * @return array<int,int>
+     */
+    private function documentsFor(int $employeeId): array
+    {
+        $stmt = $this->db->prepare(
+            'SELECT id FROM ' . self::TABLE . ' WHERE employee_id = ? ORDER BY id'
+        );
+        $pEmp = $employeeId;
+        $stmt->bind_param('i', $pEmp);
+        $ok = $stmt->execute();
+        $rows = $ok ? $stmt->get_result()->fetch_all(MYSQLI_ASSOC) : [];
+        $stmt->close();
+
+        return array_map(static fn(array $r): int => (int) $r['id'], $rows ?: []);
+    }
+
+    private function findLiveEmployeeApproval(int $employeeId, int $requesterUserId): ?array
+    {
+        $sql = 'SELECT id FROM document_access_otp
+                WHERE document_id = 0 AND owner_employee_id = ? AND requester_user_id = ?
+                  AND consumed_at IS NULL AND expires_at > NOW()
+                ORDER BY id DESC LIMIT 1';
+
+        $stmt = $this->db->prepare($sql);
+        $pEmp = $employeeId;
+        $pUsr = $requesterUserId;
+        $stmt->bind_param('ii', $pEmp, $pUsr);
+        $ok = $stmt->execute();
+        $row = $ok ? $stmt->get_result()->fetch_assoc() : null;
+        $stmt->close();
+
+        return $row ?: null;
+    }
+
+    private function insertEmployeeApproval(
+        int $employeeId,
+        int $requesterUserId,
+        string $emailHash,
+        string $codeHash,
+        string $expiresAt,
+        string $now
+    ): bool {
+        $sql = 'INSERT INTO document_access_otp
+                    (document_id, table_name, requester_user_id, owner_employee_id,
+                     owner_email_hash, code_hash, attempts, expires_at, created_at)
+                VALUES (0, ?, ?, ?, ?, ?, 0, ?, ?)';
+
+        $stmt = $this->db->prepare($sql);
+        $pTbl   = self::TABLE;
+        $pUsr   = $requesterUserId;
+        $pOwner = $employeeId;
+        $pEmail = $emailHash;
+        $pCode  = $codeHash;
+        $pExp   = $expiresAt;
+        $pNow   = $now;
+
+        $stmt->bind_param('issssss', $pTbl, $pUsr, $pOwner, $pEmail, $pCode, $pExp, $pNow);
+        $ok = $stmt->execute();
+        $err = $stmt->error;
+        $stmt->close();
+
+        if (!$ok) {
+            error_log('[DocumentAccessService] employee approval insert failed: ' . $err);
+        }
+        return $ok;
     }
 
     /**
@@ -636,6 +875,68 @@ final class DocumentAccessService
         $tail = strlen($local) > 2 ? substr($local, -1) : '';
 
         return $head . str_repeat('*', max(2, strlen($local) - 2)) . $tail . '@' . $domain;
+    }
+
+    /**
+     * Email the code for an employee-scoped (whole list) request.
+     *
+     * Says HOW MANY documents, never which ones. A per-document request has to
+     * name the document, because the requester can see it; a list-scoped request
+     * must not, because the requester is precisely the party who cannot. Naming
+     * them here would hand back the metadata the redaction just withheld.
+     */
+    private function emailEmployeeCode(
+        string $to,
+        string $firstName,
+        string $code,
+        int $documentCount,
+        int $employeeId,
+        int $requesterUserId
+    ): void {
+        try {
+            $requesterName = (string) \db()->fetchValue(
+                "SELECT CONCAT_WS(' ', first_name, last_name) FROM users WHERE id = ? LIMIT 1",
+                'i',
+                [$requesterUserId]
+            );
+            $requesterLabel = trim($requesterName) !== '' ? trim($requesterName) : 'A colleague';
+
+            $safeName      = htmlspecialchars($firstName, ENT_QUOTES, 'UTF-8');
+            $safeRequester = htmlspecialchars($requesterLabel, ENT_QUOTES, 'UTF-8');
+            $countLabel = $documentCount . ' document' . ($documentCount === 1 ? '' : 's');
+
+            $body = "
+                <h2>Document access request</h2>
+                <p>Hello {$safeName},</p>
+                <p><strong>{$safeRequester}</strong> has asked to view your
+                   {$countLabel}, which are encrypted.</p>
+                <p>To approve this, enter the code below in the MUWASCO HR System where the
+                   request was made. There is deliberately no link: approval has to happen
+                   in the session that asked.</p>
+                <p style='font-size:28px;letter-spacing:6px;font-weight:bold;
+                          text-align:center;margin:20px 0'>{$code}</p>
+                <p>This code expires in " . self::TTL_MINUTES . " minutes and can be used once.</p>
+                <p>If you were not expecting this, do nothing - nobody can view your documents
+                   without this code. Consider reporting it to HR.</p>
+            ";
+
+            $sent = NotificationService::getInstance()->sendEmail(
+                $to,
+                'Your approval is needed to view your documents',
+                $body
+            );
+
+            if (!$sent) {
+                error_log(
+                    '[DocumentAccessService] employee code email failed; employee_id='
+                    . $employeeId
+                );
+            }
+        } catch (\Throwable $e) {
+            // Fail closed: the approval row exists but no code was delivered,
+            // so nobody can use it. The requester simply never gets in.
+            error_log('[DocumentAccessService] emailEmployeeCode failed: ' . $e->getMessage());
+        }
     }
 
     /**
