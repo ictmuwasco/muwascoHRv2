@@ -163,6 +163,12 @@ System Volume Information/
 # Runtime security counters (rate limiting buckets)
 backend/storage/cache/rate-limits/
 
+# Resumable-migration state for encrypt_existing_files.php.
+# This records WHICH files are already done, so committing it would carry one
+# machine's progress into another checkout and make the migration skip files
+# the next developer has never encrypted. Runtime state, never source.
+backend/storage/cache/storage_encryption_state.json
+
 # E2E / scratch probe artifacts (never commit runtime outputs)
 backend/storage/*.out
 backend/storage/*.err
