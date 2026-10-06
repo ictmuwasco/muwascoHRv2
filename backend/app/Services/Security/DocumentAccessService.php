@@ -409,8 +409,12 @@ final class DocumentAccessService
 
     /**
      * Unwrap the file key for a record from file_encryption (migration 105).
+     *
+     * Public so other document tables that share the side table (currently
+     * leave_application_documents) can unwrap their keys without re-implementing
+     * the AAD / key-version rules — one implementation, one place to get right.
      */
-    private function loadFileKey(string $tableName, int $recordId): ?string
+    public function loadFileKey(string $tableName, int $recordId): ?string
     {
         $sql = 'SELECT file_key_wrapped, nonce, key_version
                 FROM file_encryption
@@ -444,30 +448,18 @@ final class DocumentAccessService
 
     /**
      * Locate a document on disk, preferring private storage over the legacy
-     * webroot location.
+     * webroot locations.
      *
-     * basename() is not cosmetic: a file_name coming from the database must
-     * never be able to traverse out of the upload directory.
+     * The candidate list is owned by FileLocator so it cannot drift from the
+     * one used by the streaming endpoints. safeBasename() inside that helper
+     * is what stops a database file_name from traversing out of the upload
+     * directory; this method deliberately does not re-implement the check.
      */
     private function resolveDocumentPath(string $fileName): ?string
     {
-        $safe = basename($fileName);
-        if ($safe === '' || $safe !== $fileName) {
-            return null;
-        }
-
-        $candidates = [
-            STORAGE_PATH . '/uploads/documents/' . $safe,
-            __DIR__ . '/../../public/uploads/employee_documents/' . $safe,
-        ];
-
-        foreach ($candidates as $candidate) {
-            if (is_file($candidate)) {
-                return $candidate;
-            }
-        }
-
-        return null;
+        return \App\Helpers\FileLocator::resolve(
+            \App\Helpers\FileLocator::documentCandidates($fileName)
+        );
     }
 
     private function detectMime(string $path): ?string

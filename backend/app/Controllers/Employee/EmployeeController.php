@@ -982,32 +982,81 @@ class EmployeeController extends BaseController
             return;
         }
 
-        $filePath = STORAGE_PATH . '/uploads/documents/' . $document['file_name'];
-        if (!file_exists($filePath)) {
-            // Check legacy path fallback
-            $legacyPath = __DIR__ . '/../../public/uploads/employee_documents/' . $document['file_name'];
-            if (file_exists($legacyPath)) {
-                $filePath = $legacyPath;
-            } else {
-                $this->notFound('File not found on server');
-                return;
-            }
+        // Candidate list is owned by FileLocator (canonical storage first,
+        // then the legacy webroot roots). It also performs the basename
+        // guard, so a file_name from the database cannot traverse upward.
+        $filePath = \App\Helpers\FileLocator::resolve(
+            \App\Helpers\FileLocator::documentCandidates((string) ($document['file_name'] ?? ''))
+        );
+        if ($filePath === null) {
+            $this->notFound('File not found on server');
+            return;
         }
 
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mimeType = finfo_file($finfo, $filePath) ?: 'application/octet-stream';
-        finfo_close($finfo);
+        $encrypted = (int) ($document['is_encrypted'] ?? 0) === 1;
 
-        // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
-        // PDF/images (business in-browser preview), attachment otherwise.
-        \App\Middleware\SecurityMiddleware::applyStreamHeaders(
-            $mimeType,
-            $document['document_name'] ?? 'document'
-        );
-        header('Content-Length: ' . filesize($filePath));
+        // Retire switch for this legacy route, as documented next to the route
+        // registrations in api.php. Once encrypt_existing_files.php has run and
+        // the frontend uses the /open flow everywhere, setting
+        // DOCUMENT_OTP_REQUIRED=true makes encrypted files refuse HERE rather
+        // than being released to a caller who never satisfied the owner's
+        // consent gate. Default false: a plaintext legacy document, or an
+        // encrypted one before the switch is flipped, must stay readable.
+        if (
+            $encrypted
+            && filter_var((string) \env('DOCUMENT_OTP_REQUIRED', 'false'), FILTER_VALIDATE_BOOLEAN)
+        ) {
+            $this->error(
+                'You need a verified code from the document owner to open this. '
+                . 'Request access first.',
+                403,
+                'DOCUMENT_OTP_REQUIRED'
+            );
+            return;
+        }
 
-        readfile($filePath);
-        exit();
+        // The bytes on disk are an MWSC1 container once encryption has run, not
+        // the document - handing them to finfo and streaming them returned raw
+        // ciphertext. decryptToTempFile() is the same read path /open uses: it
+        // returns the ORIGINAL file for a legacy plaintext row and a decrypted
+        // temp copy for an encrypted one, so the browser always receives the
+        // real PDF/DOCX. The caller owns any temporary file and must unlink it.
+        $service = new \App\Services\Security\DocumentAccessService();
+        $tempPath = null;
+
+        try {
+            $file = $service->decryptToTempFile($document);
+            if ($file['temporary']) {
+                $tempPath = $file['path'];
+            }
+
+            // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
+            // PDF/images (business in-browser preview), attachment otherwise.
+            \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+                $file['mime'],
+                (string) ($document['document_name'] ?? 'document')
+            );
+            header('Content-Length: ' . $file['bytes']);
+
+            readfile($file['path']);
+
+            // Only the decrypted copy goes; a plaintext document is the
+            // original file on disk and must survive.
+            if ($tempPath !== null) {
+                @unlink($tempPath);
+            }
+            exit();
+        } catch (\Throwable $e) {
+            if ($tempPath !== null) {
+                @unlink($tempPath);
+            }
+            \logger()->error('Profile document view failed', [
+                'error'      => $e->getMessage(),
+                'document_id' => $documentId,
+                'encrypted'   => $encrypted,
+            ]);
+            $this->error('This document could not be opened. Please contact IT.', 500);
+        }
     }
 
     /**
@@ -1186,10 +1235,14 @@ class EmployeeController extends BaseController
             return;
         }
 
-        // Create upload directory in public webroot so images are accessible via URL
-        $uploadDir = __DIR__ . '/../../public/uploads/profile_images/';
+        // Write to the canonical private storage tree, NOT into the application
+        // tree. The previous location (__DIR__ . '/../../public/') resolved to
+        // backend/app/public - inside the codebase, not the webroot - which is
+        // why 8 orphaned images had accumulated there. 0750 rather than 0777:
+        // the web server only ever reads these through the API endpoint.
+        $uploadDir = \App\Helpers\FileLocator::profileImagesDir() . '/';
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
+            mkdir($uploadDir, 0750, true);
         }
 
         // Generate unique filename
@@ -1212,8 +1265,12 @@ class EmployeeController extends BaseController
         $stmt->close();
 
         if ($old && !empty($old['profile_image_url'])) {
-            $oldPath = __DIR__ . '/../../public/' . $old['profile_image_url'];
-            if (file_exists($oldPath)) {
+            // Resolve through FileLocator rather than concatenating: the old
+            // copy may live in canonical storage or in either legacy root.
+            $oldPath = \App\Helpers\FileLocator::resolve(
+                \App\Helpers\FileLocator::profileImageCandidates((string) $old['profile_image_url'])
+            );
+            if ($oldPath !== null) {
                 @unlink($oldPath);
             }
         }
@@ -1328,15 +1385,14 @@ class EmployeeController extends BaseController
             \App\Helpers\ApiResponse::error('Profile picture not found', 'NOT_FOUND', [], 404);
         }
 
-        // Support both public-webroot path and storage-relative path
-        $filePath = __DIR__ . '/../../public/' . $employee['profile_image_url'];
-        if (!file_exists($filePath)) {
-            $storagePath = STORAGE_PATH . '/' . $employee['profile_image_url'];
-            if (file_exists($storagePath)) {
-                $filePath = $storagePath;
-            } else {
-                \App\Helpers\ApiResponse::error('Profile picture file not found on server', 'NOT_FOUND', [], 404);
-            }
+        // Resolve against the canonical storage tree first, then the legacy
+        // roots. The previous code rebuilt the same list by hand and had
+        // already drifted from DocumentAccessService; FileLocator owns it.
+        $filePath = \App\Helpers\FileLocator::resolve(
+            \App\Helpers\FileLocator::profileImageCandidates((string) $employee['profile_image_url'])
+        );
+        if ($filePath === null) {
+            \App\Helpers\ApiResponse::error('Profile picture file not found on server', 'NOT_FOUND', [], 404);
         }
 
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
