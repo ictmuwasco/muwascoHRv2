@@ -3,7 +3,7 @@ import api from '../../utils/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import { Can } from '../../components/ui/PermissionGate';
-import { CheckCircle, XCircle, FileX, Inbox } from 'lucide-react';
+import { CheckCircle, XCircle, FileX, Inbox, FileText } from 'lucide-react';
 import {
   badgeClass,
   formatDate,
@@ -12,6 +12,7 @@ import {
   Pagination,
 } from './leaveManageShared.jsx';
 import { useManageContext } from './ManageLeaveLayout.jsx';
+import LeaveDocuments, { leaveSupportsDocuments } from './LeaveDocuments.jsx';
 
 const PendingTab = () => {
   const { refreshCounts } = useManageContext();
@@ -132,6 +133,13 @@ const PendingTab = () => {
                 route gate) does NOT imply approve/reject/invalidate; the API
                 enforces the same per-action gates (api.php). */}
             <div className="flex flex-wrap gap-2">
+              {/* Docs only for Sick / Study leave (the only types that carry
+                  supporting documents per LeaveTypePolicy). */}
+              {leaveSupportsDocuments(row) && (
+                <Button size="sm" variant="outline" onClick={() => openModal('docs', row)}>
+                  <FileText className="h-3 w-3 mr-1" /> Docs
+                </Button>
+              )}
               <Can module="leave" action="approve">
                 <Button size="sm" variant="success" onClick={() => openModal('approve', row)}>
                   <CheckCircle className="h-3 w-3 mr-1" /> Approve
@@ -201,6 +209,7 @@ const PendingTab = () => {
               {modal.action === 'approve' && 'Approve Leave'}
               {modal.action === 'reject' && 'Reject Leave'}
               {modal.action === 'invalidate' && 'Invalidate Leave'}
+              {modal.action === 'docs' && 'Supporting Documents'}
             </h3>
             {modal.row && (
               <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
@@ -211,6 +220,15 @@ const PendingTab = () => {
                 <br />
                 {formatDate(modal.row.start_date)} → {formatDate(modal.row.end_date)}
               </p>
+            )}
+            {modal.row && modal.action === 'docs' && (
+              <div className="mb-4">
+                <LeaveDocuments
+                  applicationId={modal.row.id}
+                  leaveTypeId={modal.row.leave_type_id}
+                  leaveTypeName={modal.row.leave_type_name}
+                />
+              </div>
             )}
             {(modal.action === 'reject' || modal.action === 'invalidate') && (
               <div className="mb-4">
@@ -233,25 +251,42 @@ const PendingTab = () => {
                 it fully approved if this is the final stage).
               </p>
             )}
+            {(modal.action === 'approve' || modal.action === 'reject') &&
+              modal.row &&
+              leaveSupportsDocuments(modal.row) && (
+                <div className="mb-4">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Review the supporting documents before deciding:
+                  </p>
+                  <LeaveDocuments
+                    applicationId={modal.row.id}
+                    leaveTypeId={modal.row.leave_type_id}
+                    leaveTypeName={modal.row.leave_type_name}
+                    compact
+                  />
+                </div>
+              )}
             <div className="flex justify-end space-x-2">
               <Button variant="outline" onClick={closeModal}>
-                Cancel
+                {modal.action === 'docs' ? 'Close' : 'Cancel'}
               </Button>
-              <Button
-                variant={
-                  modal.action === 'approve'
-                    ? 'success'
-                    : modal.action === 'reject'
-                      ? 'danger'
-                      : 'secondary'
-                }
-                onClick={submitModal}
-                disabled={loading}
-              >
-                {modal.action === 'approve' && 'Approve'}
-                {modal.action === 'reject' && 'Reject'}
-                {modal.action === 'invalidate' && 'Invalidate'}
-              </Button>
+              {modal.action !== 'docs' && (
+                <Button
+                  variant={
+                    modal.action === 'approve'
+                      ? 'success'
+                      : modal.action === 'reject'
+                        ? 'danger'
+                        : 'secondary'
+                  }
+                  onClick={submitModal}
+                  disabled={loading}
+                >
+                  {modal.action === 'approve' && 'Approve'}
+                  {modal.action === 'reject' && 'Reject'}
+                  {modal.action === 'invalidate' && 'Invalidate'}
+                </Button>
+              )}
             </div>
           </div>
         </div>

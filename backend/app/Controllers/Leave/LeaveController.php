@@ -231,6 +231,21 @@ class LeaveController extends BaseController
             return;
         }
 
+        // Scope: applicant / profile scope / authorised approver. The route is
+        // authenticated-only by design (config/authz_allowlist.php), so the
+        // per-record gate lives here — without it any signed-in user could
+        // enumerate any application's supporting documents.
+        if (!$this->documentService->canViewDocuments($applicationId, $userId)) {
+            http_response_code(403);
+            \App\Helpers\ApiResponse::error(
+                'You are not authorised to view documents for this leave application.',
+                'ACCESS_DENIED',
+                [],
+                403
+            );
+            return;
+        }
+
         $documents = $this->documentService->getDocuments($applicationId);
         
         \App\Helpers\ApiResponse::success($documents);
@@ -250,9 +265,13 @@ class LeaveController extends BaseController
             return;
         }
 
+        // getDocument() applies the same scope as the list endpoint
+        // (applicant / profile scope / authorised approver). The
+        // application-id match additionally stops a known document id from
+        // being fetched under any other application's URL.
         $document = $this->documentService->getDocument($documentId, $userId);
-        
-        if (!$document) {
+
+        if (!$document || (int) $document['leave_application_id'] !== $applicationId) {
             http_response_code(404);
             \App\Helpers\ApiResponse::error('Document not found or access denied.', 'NOT_FOUND', [], 404);
             return;
@@ -265,15 +284,38 @@ class LeaveController extends BaseController
             return;
         }
 
+        // The bytes on disk may be an MWSC1 container (storage encryption also
+        // covers leave documents, and this table has no is_encrypted stamp) —
+        // raw readfile() would hand the browser ciphertext it cannot render.
+        // resolveReadableFile() decrypts to a temp file the caller unlinks.
+        try {
+            $readable = $this->documentService->resolveReadableFile($document);
+        } catch (\Throwable $e) {
+            \logger()->error('Leave document read failed', [
+                'leave_application_id' => $applicationId,
+                'document_id'          => $documentId,
+                'error'                => $e->getMessage(),
+            ]);
+            http_response_code(500);
+            \App\Helpers\ApiResponse::error('The document could not be opened.', 'DOCUMENT_READ_FAILED', [], 500);
+            return;
+        }
+
         // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
         // PDF/images (business in-browser preview), attachment otherwise.
         \App\Middleware\SecurityMiddleware::applyStreamHeaders(
-            $document['mime_type'] ?? 'application/octet-stream',
+            $readable['mime'],
             $document['original_filename'] ?? 'document'
         );
-        header('Content-Length: ' . filesize($filePath));
+        header('Content-Length: ' . $readable['bytes']);
 
-        readfile($filePath);
+        try {
+            readfile($readable['path']);
+        } finally {
+            if ($readable['temporary']) {
+                @unlink($readable['path']);
+            }
+        }
         exit;
     }
 
