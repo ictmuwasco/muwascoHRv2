@@ -7,7 +7,8 @@ import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import { PermButton } from '../../components/ui/PermissionGate';
 import EmployeeTabs from '../../components/EmployeeTabs';
-import { Plus, Search, Eye, Pencil, ChevronLeft, ChevronRight } from 'lucide-react';
+import ShiftDepartmentModal from './ShiftDepartmentModal';
+import { Plus, Search, Eye, Pencil, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
 
 const PER_PAGE = 50;
 
@@ -21,6 +22,10 @@ const Employees = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const requestIdRef = useRef(0);
+  // Employee currently open in the "Shift Department" modal (null = closed).
+  const [shiftEmployee, setShiftEmployee] = useState(null);
+  // Bumped after a successful shift so the table refetches in place.
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     const requestId = ++requestIdRef.current;
@@ -61,7 +66,7 @@ const Employees = () => {
     };
 
     fetchEmployees();
-  }, [page, searchTerm]);
+  }, [page, searchTerm, refreshTick]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -117,6 +122,17 @@ const Employees = () => {
           >
             <Pencil className="h-3 w-3 mr-1" />
             Edit
+          </PermButton>
+          <PermButton
+            module="employees"
+            require="edit"
+            variant="outline"
+            size="sm"
+            onClick={() => setShiftEmployee(row)}
+            title="Shift department, section & subsection"
+          >
+            <ArrowRightLeft className="h-3 w-3 mr-1" />
+            Shift Dept
           </PermButton>
         </div>
       ),
@@ -208,6 +224,17 @@ const Employees = () => {
           </div>
         </div>
       </Card>
+
+      {/* Shift-department dialog: opens from an Actions cell, updates the
+          department/section/subsection trio and refetches the table. Keyed
+          by employee so every open starts from fresh state. */}
+      <ShiftDepartmentModal
+        key={shiftEmployee?.id ?? 'none'}
+        employee={shiftEmployee}
+        isOpen={Boolean(shiftEmployee)}
+        onClose={() => setShiftEmployee(null)}
+        onUpdated={() => setRefreshTick((tick) => tick + 1)}
+      />
     </div>
   );
 };
