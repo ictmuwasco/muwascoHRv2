@@ -5,7 +5,6 @@ import {
   FileText,
   Users,
   ListChecks,
-  Gavel,
   ClipboardList,
   CheckCircle2,
   Loader2,
@@ -13,8 +12,6 @@ import {
   Send,
   RotateCcw,
   Plus,
-  ArrowUp,
-  ArrowDown,
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
@@ -346,30 +343,18 @@ const MeetingMinutesModal = ({
     }));
   };
 
-  const moveItem = (list: ItemList, from: number, to: number) => {
-    if (to < 0 || to >= form[list].length) return;
-    const items = [...form[list]];
-    const [moved] = items.splice(from, 1);
-    items.splice(to, 0, { ...moved, position: to + 1 });
-    items.forEach((item: any, i: number) => {
-      item.position = i + 1;
-    });
-    setForm((f) => ({ ...f, [list]: items }));
-  };
-
   const buildPayload = (opts: { publish?: boolean } = {}): MinutesPayload => {
     // The backend 422s on blank rows (agenda title required, action text
     // required, AOB item required…). Template placeholder rows the user
     // never filled are dropped here so saving "just works".
     const cleanAgenda = form.agenda_items.filter(
-      (a) => String(a.title ?? '').trim() !== '' || String(a.discussion ?? '').trim() !== '' || String(a.decision ?? '').trim() !== '',
+      (a) =>
+        String(a.title ?? '').trim() !== '' ||
+        String(a.discussion ?? '').trim() !== '' ||
+        String(a.decision ?? '').trim() !== '',
     );
-    const cleanDecisions = form.decisions.filter(
-      (d) => String(d.resolution ?? '').trim() !== '',
-    );
-    const cleanActions = form.action_items.filter(
-      (a) => String(a.action ?? '').trim() !== '',
-    );
+    const cleanDecisions = form.decisions.filter((d) => String(d.resolution ?? '').trim() !== '');
+    const cleanActions = form.action_items.filter((a) => String(a.action ?? '').trim() !== '');
     const cleanAob = form.aob_items.filter(
       (a) =>
         String(a.item ?? '').trim() !== '' ||
@@ -632,122 +617,6 @@ const MeetingMinutesModal = ({
     );
   };
 
-  const renderItemForm = (
-    list: ItemList,
-    title: string,
-    fields: Array<{
-      key: string;
-      label: string;
-      type?: string;
-      wide?: boolean;
-      options?: { id: number | string; name: string }[];
-    }>,
-    template: (pos: number) => any,
-  ) => {
-    const items = form[list] as any[];
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            {title} ({items.length})
-          </h4>
-          {!isViewOnly && (
-            <Button variant="outline" size="sm" onClick={() => addItem(list, template)}>
-              <Plus className="h-3 w-3 mr-1" /> Add
-            </Button>
-          )}
-        </div>
-        {items.map((item, i) => (
-          <div
-            key={item.id || i}
-            className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 space-y-3"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Item {i + 1}</span>
-              {!isViewOnly && items.length > 1 && (
-                <div className="flex space-x-1">
-                  <button
-                    type="button"
-                    onClick={() => moveItem(list, i, i - 1)}
-                    className="p-0.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    title="Move up"
-                  >
-                    <ArrowUp className="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveItem(list, i, i + 1)}
-                    className="p-0.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    title="Move down"
-                  >
-                    <ArrowDown className="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(list, i)}
-                    className="p-0.5 text-red-500 hover:text-red-700"
-                    title="Remove"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-            </div>
-            {fields.map((f) => {
-              const val = item[f.key] ?? '';
-              const gridSpan = f.wide ? 'md:col-span-2' : '';
-              if (f.type === 'textarea') {
-                return (
-                  <div key={f.key} className={gridSpan}>
-                    <label className="label text-gray-700 dark:text-gray-300">{f.label}</label>
-                    <textarea
-                      className={textareaCls}
-                      value={String(val)}
-                      onChange={(e) => updateItem(list, i, f.key, e.target.value)}
-                      disabled={isViewOnly}
-                      rows={2}
-                    />
-                  </div>
-                );
-              }
-              if (f.options) {
-                return (
-                  <div key={f.key} className={gridSpan}>
-                    <label className="label text-gray-700 dark:text-gray-300">{f.label}</label>
-                    <select
-                      className={selectCls}
-                      value={String(val)}
-                      onChange={(e) => updateItem(list, i, f.key, e.target.value)}
-                      disabled={isViewOnly}
-                    >
-                      {f.options.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              }
-              return (
-                <div key={f.key} className={gridSpan}>
-                  <label className="label text-gray-700 dark:text-gray-300">{f.label}</label>
-                  <input
-                    type={f.type || 'text'}
-                    className={selectCls}
-                    value={String(val)}
-                    onChange={(e) => updateItem(list, i, f.key, e.target.value)}
-                    disabled={isViewOnly}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-    );
-  };
-
   const renderAgenda = () => (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -760,40 +629,68 @@ const MeetingMinutesModal = ({
           </p>
         </div>
         {!isViewOnly && (
-          <Button variant="outline" size="sm" onClick={() => addItem('agenda_items', (pos) => emptyAgenda(pos))}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => addItem('agenda_items', (pos) => emptyAgenda(pos))}
+          >
             <Plus className="h-3 w-3 mr-1" /> Add Item
           </Button>
         )}
       </div>
       {form.agenda_items.map((item, i) => (
-        <div key={(item as { id?: string | number }).id ?? i} className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 space-y-3">
+        <div
+          key={(item as { id?: string | number }).id ?? i}
+          className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 space-y-3"
+        >
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
               Agenda {item.agenda_number || `${i + 1}.0`}
             </span>
             {!isViewOnly && form.agenda_items.length > 1 && (
-              <button type="button" onClick={() => removeItem('agenda_items', i)} className="p-0.5 text-red-500 hover:text-red-700" title="Remove">
+              <button
+                type="button"
+                onClick={() => removeItem('agenda_items', i)}
+                className="p-0.5 text-red-500 hover:text-red-700"
+                title="Remove"
+              >
                 <Trash2 className="h-3 w-3" />
               </button>
             )}
           </div>
           <div>
             <label className="label text-gray-700 dark:text-gray-300">Title *</label>
-            <input className={selectCls} value={String(item.title ?? '')}
+            <input
+              className={selectCls}
+              value={String(item.title ?? '')}
               onChange={(e) => updateItem('agenda_items', i, 'title', e.target.value)}
-              disabled={isViewOnly} placeholder="e.g. Non-revenue water reduction — Zone 3" />
+              disabled={isViewOnly}
+              placeholder="e.g. Non-revenue water reduction — Zone 3"
+            />
           </div>
           <div>
-            <label className="label text-gray-700 dark:text-gray-300">Discussion / Deliberation</label>
-            <textarea className={textareaCls} value={String(item.discussion ?? '')}
+            <label className="label text-gray-700 dark:text-gray-300">
+              Discussion / Deliberation
+            </label>
+            <textarea
+              className={textareaCls}
+              value={String(item.discussion ?? '')}
               onChange={(e) => updateItem('agenda_items', i, 'discussion', e.target.value)}
-              disabled={isViewOnly} rows={3} placeholder="Key points raised, reports tabled…" />
+              disabled={isViewOnly}
+              rows={3}
+              placeholder="Key points raised, reports tabled…"
+            />
           </div>
           <div>
             <label className="label text-gray-700 dark:text-gray-300">Resolution / Agreement</label>
-            <textarea className={textareaCls} value={String(item.decision ?? '')}
+            <textarea
+              className={textareaCls}
+              value={String(item.decision ?? '')}
               onChange={(e) => updateItem('agenda_items', i, 'decision', e.target.value)}
-              disabled={isViewOnly} rows={2} placeholder="What was agreed…" />
+              disabled={isViewOnly}
+              rows={2}
+              placeholder="What was agreed…"
+            />
           </div>
         </div>
       ))}
@@ -816,49 +713,85 @@ const MeetingMinutesModal = ({
           </p>
         </div>
         {!isViewOnly && (
-          <Button variant="outline" size="sm" onClick={() => addItem('action_items', () => emptyAction())}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => addItem('action_items', () => emptyAction())}
+          >
             <Plus className="h-3 w-3 mr-1" /> Add Action
           </Button>
         )}
       </div>
       {form.action_items.map((item, i) => (
-        <div key={(item as { id?: string | number }).id ?? i} className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 space-y-3">
+        <div
+          key={(item as { id?: string | number }).id ?? i}
+          className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 space-y-3"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Action {i + 1}</span>
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              Action {i + 1}
+            </span>
             {!isViewOnly && form.action_items.length > 1 && (
-              <button type="button" onClick={() => removeItem('action_items', i)} className="p-0.5 text-red-500 hover:text-red-700" title="Remove">
+              <button
+                type="button"
+                onClick={() => removeItem('action_items', i)}
+                className="p-0.5 text-red-500 hover:text-red-700"
+                title="Remove"
+              >
                 <Trash2 className="h-3 w-3" />
               </button>
             )}
           </div>
           <div>
             <label className="label text-gray-700 dark:text-gray-300">Resolution / Action *</label>
-            <textarea className={textareaCls} value={String(item.action ?? '')}
+            <textarea
+              className={textareaCls}
+              value={String(item.action ?? '')}
               onChange={(e) => updateItem('action_items', i, 'action', e.target.value)}
-              disabled={isViewOnly} rows={2} placeholder="e.g. Repair the burst main on Kenyatta Road" />
+              disabled={isViewOnly}
+              rows={2}
+              placeholder="e.g. Repair the burst main on Kenyatta Road"
+            />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="label text-gray-700 dark:text-gray-300">Responsible Person</label>
-              <select className={selectCls} value={String(item.assigned_to ?? '')}
-                onChange={(e) => updateItem('action_items', i, 'assigned_to', e.target.value)} disabled={isViewOnly}>
+              <select
+                className={selectCls}
+                value={String(item.assigned_to ?? '')}
+                onChange={(e) => updateItem('action_items', i, 'assigned_to', e.target.value)}
+                disabled={isViewOnly}
+              >
                 <option value="">— Select —</option>
                 {options.employees.map((e) => (
-                  <option key={e.id} value={e.id}>{e.first_name} {e.last_name}</option>
+                  <option key={e.id} value={e.id}>
+                    {e.first_name} {e.last_name}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
               <label className="label text-gray-700 dark:text-gray-300">Due Date</label>
-              <input type="date" className={selectCls} value={String(item.due_date ?? '')}
-                onChange={(e) => updateItem('action_items', i, 'due_date', e.target.value)} disabled={isViewOnly} />
+              <input
+                type="date"
+                className={selectCls}
+                value={String(item.due_date ?? '')}
+                onChange={(e) => updateItem('action_items', i, 'due_date', e.target.value)}
+                disabled={isViewOnly}
+              />
             </div>
             <div>
               <label className="label text-gray-700 dark:text-gray-300">Status</label>
-              <select className={selectCls} value={String(item.status ?? 'pending')}
-                onChange={(e) => updateItem('action_items', i, 'status', e.target.value)} disabled={isViewOnly}>
+              <select
+                className={selectCls}
+                value={String(item.status ?? 'pending')}
+                onChange={(e) => updateItem('action_items', i, 'status', e.target.value)}
+                disabled={isViewOnly}
+              >
                 {['pending', 'in_progress', 'completed', 'deferred'].map((s) => (
-                  <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                  <option key={s} value={s}>
+                    {s.replace('_', ' ')}
+                  </option>
                 ))}
               </select>
             </div>
@@ -1035,9 +968,7 @@ const MeetingMinutesModal = ({
           </>
         )}
       </div>
-      {showPrint && (
-        <MeetingMinutesPrint meeting={meeting} onClose={() => setShowPrint(false)} />
-      )}
+      {showPrint && <MeetingMinutesPrint meeting={meeting} onClose={() => setShowPrint(false)} />}
     </Modal>
   );
 };
