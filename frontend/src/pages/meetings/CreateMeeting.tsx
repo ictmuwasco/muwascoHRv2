@@ -64,14 +64,6 @@ interface MeetingFormState {
   location: string;
 }
 
-interface MeetingsEnvelope {
-  data: Meeting[];
-  total: number;
-  per_page: number;
-  current_page: number;
-  last_page: number;
-}
-
 interface MeetingDetailPayload {
   id: number;
   title: string;
@@ -122,15 +114,21 @@ const CreateMeeting = () => {
     setError('');
     try {
       const params: Record<string, any> = { page, per_page: pagination.per_page };
-      const response = await api.get<MeetingsEnvelope>('/meetings', { params });
-      const envelope = response.data?.data;
+      const response = await api.get<any>('/meetings', { params });
+      // indexAction() returns a FLAT envelope: { success, message, data: [...],
+      // total, per_page, current_page, last_page } — NOT { data: { data } }.
+      // The old code read response.data?.data?.data and always got undefined,
+      // so the table permanently showed "No meetings found".
+      // Typed as `any` because ApiResponse<T> does not declare the pagination
+      // fields (per_page/last_page) that the flat envelope includes.
+      const envelope: any = response.data ?? {};
       const list = envelope?.data;
       setMeetings(Array.isArray(list) ? list : []);
       setPagination({
-        total: envelope?.total || 0,
-        per_page: envelope?.per_page || 20,
-        current_page: envelope?.current_page || 1,
-        last_page: envelope?.last_page || 1,
+        total: envelope?.total ?? 0,
+        per_page: envelope?.per_page ?? 20,
+        current_page: envelope?.current_page ?? 1,
+        last_page: envelope?.last_page ?? 1,
       });
     } catch (err: any) {
       const msg =
@@ -537,12 +535,14 @@ const CreateMeeting = () => {
         )}
       </Card>
 
-      {/* Create / Edit Meeting Modal */}
+      {/* Create / Edit Meeting Modal — persistent: backdrop clicks and
+          Escape never discard the form; only Cancel / the X / submit close it. */}
       <Modal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         title={editingId ? 'Edit Meeting' : 'Create Meeting'}
         size="2xl"
+        persistent
       >
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -160,7 +160,12 @@ const Combobox = ({
             onKeyDown={onKeyDown}
             className="w-full bg-transparent px-2 py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400 disabled:cursor-not-allowed dark:text-gray-100"
           />
-          {loading && <span className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600" aria-hidden="true" />}
+          {loading && (
+            <span
+              className="mr-2 h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
+              aria-hidden="true"
+            />
+          )}
           {!loading && selected && !disabled && (
             <button
               type="button"
@@ -193,7 +198,9 @@ const Combobox = ({
             className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800"
           >
             {loading && <li className="px-3 py-2 text-sm text-gray-500">Loading…</li>}
-            {!loading && !hasOptions && <li className="px-3 py-2 text-sm text-gray-500">{noOptionsMessage}</li>}
+            {!loading && !hasOptions && (
+              <li className="px-3 py-2 text-sm text-gray-500">{noOptionsMessage}</li>
+            )}
             {!loading && hasOptions && !filtered.length && (
               <li className="px-3 py-2 text-sm text-gray-500">{emptyMessage}</li>
             )}
@@ -210,12 +217,20 @@ const Combobox = ({
                   className={`cursor-pointer px-3 py-2 text-sm ${index === active ? 'bg-primary-50 dark:bg-slate-700' : ''}`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className={isSelected ? 'font-semibold text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-gray-100'}>
+                    <span
+                      className={
+                        isSelected
+                          ? 'font-semibold text-primary-700 dark:text-primary-300'
+                          : 'text-gray-900 dark:text-gray-100'
+                      }
+                    >
                       {option.label}
                     </span>
                     {isSelected && <Check className="h-4 w-4 shrink-0 text-primary-600" />}
                   </div>
-                  {option.description && <p className="mt-0.5 text-xs text-gray-500">{option.description}</p>}
+                  {option.description && (
+                    <p className="mt-0.5 text-xs text-gray-500">{option.description}</p>
+                  )}
                 </li>
               );
             })}
@@ -228,4 +243,3 @@ const Combobox = ({
 };
 
 export default Combobox;
-

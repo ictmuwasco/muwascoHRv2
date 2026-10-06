@@ -154,3 +154,49 @@
     @apply text-primary-600 dark:text-primary-400 underline underline-offset-2 hover:text-primary-700 dark:hover:text-primary-300;
   }
 }
+
+/* ===========================================================================
+ * Dashboard notification slideshow (components/NotificationSlideshow.tsx)
+ *
+ * Each summary slides IN FROM THE RIGHT so the banner reads as a left-moving
+ * ticker; the progress bar mirrors the 5s auto-advance timer and is frozen
+ * via inline animation-play-state while the banner is hovered or focused.
+ * Both animations are switched off under prefers-reduced-motion.
+ * =========================================================================== */
+@keyframes notification-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.notification-slide-in {
+  animation: notification-slide-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes notification-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.notification-progress {
+  transform-origin: left center;
+  animation-name: notification-progress;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-slide-in,
+  .notification-progress {
+    animation: none;
+  }
+}

@@ -133,13 +133,11 @@ const SafeFallback = () => {
 
 const AppraisalIndexRedirect = () => {
   const { can, user } = useAuth();
-  const supervisor = can('performance', 'supervise')
-    && !['officer', 'employee', 'bod_chairman'].includes(String(user?.role || '').toLowerCase());
+  const supervisor =
+    can('performance', 'supervise') &&
+    !['officer', 'employee', 'bod_chairman'].includes(String(user?.role || '').toLowerCase());
   return (
-    <Navigate
-      to={supervisor ? '/strategy/performance-appraisals' : '/appraisal/my'}
-      replace
-    />
+    <Navigate to={supervisor ? '/strategy/performance-appraisals' : '/appraisal/my'} replace />
   );
 };
 
@@ -150,11 +148,11 @@ function App() {
         <ConnectionStatus />
         <Routes>
           <Route path="/login" element={<Login />} />
-      {/* Self-service password reset. Both pages are unauthenticated by
+          {/* Self-service password reset. Both pages are unauthenticated by
           necessity; ResetPassword re-validates the emailed link on mount and
           refuses to continue if it has expired or been used. */}
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/data-protection-consent" element={<DataProtectionConsent />} />
 
           <Route
@@ -416,40 +414,37 @@ function App() {
                 </Guarded>
               }
             />
+            <Route path="appraisal" element={<AppraisalIndexRedirect />} />
             <Route
-              path="appraisal"
-              element={<AppraisalIndexRedirect />}
+              path="appraisal/my"
+              element={
+                <Guarded route="/appraisal/my">
+                  <Suspense fallback={<PageLoader />}>
+                    <MyAppraisals />
+                  </Suspense>
+                </Guarded>
+              }
             />
-             <Route
-               path="appraisal/my"
-               element={
-                 <Guarded route="/appraisal/my">
-                   <Suspense fallback={<PageLoader />}>
-                     <MyAppraisals />
-                   </Suspense>
-                 </Guarded>
-               }
-             />
-             <Route
-               path="appraisal/completed"
-               element={
-                 <Guarded route="/appraisal/completed">
-                   <Suspense fallback={<PageLoader />}>
-                     <CompletedAppraisals />
-                   </Suspense>
-                 </Guarded>
-               }
-             />
-             <Route
-               path="strategy/performance-appraisals"
-               element={
-                 <Guarded route="/strategy/performance-appraisals">
-                   <Suspense fallback={<PageLoader />}>
-                     <SupervisorAppraisals />
-                   </Suspense>
-                 </Guarded>
-               }
-             />
+            <Route
+              path="appraisal/completed"
+              element={
+                <Guarded route="/appraisal/completed">
+                  <Suspense fallback={<PageLoader />}>
+                    <CompletedAppraisals />
+                  </Suspense>
+                </Guarded>
+              }
+            />
+            <Route
+              path="strategy/performance-appraisals"
+              element={
+                <Guarded route="/strategy/performance-appraisals">
+                  <Suspense fallback={<PageLoader />}>
+                    <SupervisorAppraisals />
+                  </Suspense>
+                </Guarded>
+              }
+            />
 
             <Route
               path="audit"

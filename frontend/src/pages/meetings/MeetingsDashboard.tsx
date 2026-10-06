@@ -11,6 +11,8 @@ import Select from '../../components/ui/Select';
 // meetings:export gates Export CSV, meetings:create/edit/delete gate the
 // respective row actions (PUT /meetings/{id} and /cancel → meetings:edit).
 import { Can, CanCreate, CanDelete } from '../../components/ui/PermissionGate';
+import MeetingMinutesPrint from './MeetingMinutesPrint';
+import type { MinutesMeetingInfo } from './MeetingMinutesModal';
 import { downloadCsv, toCsv, csvFilenameWithDate } from '../../utils/csvUtils';
 import {
   CalendarDays,
@@ -35,6 +37,7 @@ import {
   Ban,
   RefreshCw,
   CalendarX2,
+  FileText,
 } from 'lucide-react';
 
 interface Meeting {
@@ -128,6 +131,8 @@ const MeetingsDashboard = () => {
   const [perPage, setPerPage] = useState(25);
   const [exporting, setExporting] = useState(false);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
+  // Branded minutes viewer (logo + formal layout + Print/PDF).
+  const [minutesMeeting, setMinutesMeeting] = useState<MinutesMeetingInfo | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -923,6 +928,24 @@ const MeetingsDashboard = () => {
                           >
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setMinutesMeeting({
+                                id: m.id,
+                                title: m.title,
+                                meeting_date: m.meeting_date,
+                                start_time: m.start_time,
+                                end_time: m.end_time,
+                                location: m.location,
+                                status: m.status,
+                              })
+                            }
+                            title="View formatted minutes (print / PDF)"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                          </Button>
                           <Can module="meetings" action="edit">
                             <Button
                               size="sm"
@@ -1011,6 +1034,10 @@ const MeetingsDashboard = () => {
           </>
         )}
       </Card>
+
+      {minutesMeeting && (
+        <MeetingMinutesPrint meeting={minutesMeeting} onClose={() => setMinutesMeeting(null)} />
+      )}
     </div>
   );
 };

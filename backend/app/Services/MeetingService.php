@@ -239,6 +239,9 @@ class MeetingService
     /**
      * Update an existing meeting.
      *
+     * When employee_ids is present the invitation roster is synced and every
+     * genuinely new invitee receives the same invitation email as on create.
+     *
      * @param int   $id
      * @param array $data
      * @return bool
@@ -285,10 +288,27 @@ class MeetingService
         }
 
         if (empty($updateData)) {
-            return true;
+            // Field updates may be empty while the roster still changed —
+            // fall through to the sync below instead of returning early.
+            if (!isset($data['employee_ids']) || !is_array($data['employee_ids'])) {
+                return true;
+            }
+        } else {
+            $this->meetingRepository->update($id, $updateData);
         }
 
-        return $this->meetingRepository->update($id, $updateData);
+        // Sync the invitation roster when the form submitted one. Only
+        // genuinely new invitees are emailed; RSVP history of kept invitees
+        // is preserved by syncInvitations().
+        if (isset($data['employee_ids']) && is_array($data['employee_ids'])) {
+            $userId = Auth::getInstance()->id() ?: 0;
+            $sync = $this->meetingRepository->syncInvitations($id, $data['employee_ids'], (int) $userId);
+            if (!empty($sync['added'])) {
+                $this->notificationService->notifyInvitations($id);
+            }
+        }
+
+        return true;
     }
 
     /**

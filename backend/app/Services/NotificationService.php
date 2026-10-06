@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Services\Notification\NotificationDispatcher;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
@@ -34,21 +35,91 @@ class NotificationService
      * Send an in-app notification using the live notifications schema.
      * `action_url` replaced the legacy `link` column; keeping this mapping in
      * one place prevents appraisal notifications from failing at runtime.
+     *
+     * EMAIL MIRROR: every bell written here is ALSO queued for email delivery
+     * (notification_logs -> cron/notification_worker.php -> SMTP). The mirror
+     * is a queue row, never an inline SMTP call, so this stays a fast local
+     * INSERT inside whatever business request triggered it. Failures to queue
+     * are logged and swallowed: a missed email is an annoyance, a failed
+     * business operation is not.
+     *
+     * $category exists because one historical caller (DelegateService) wrote
+     * category 'leave' via raw SQL; routing it through here keeps that
+     * categorisation without forgoing the mirror.
      */
-    public function sendInApp(int $userId, string $title, string $message, string $type = 'info', ?string $link = null): int
-    {
+    public function sendInApp(
+        int $userId,
+        string $title,
+        string $message,
+        string $type = 'info',
+        ?string $link = null,
+        string $category = 'general'
+    ): int {
         $db = \db();
-        return $db->insert('notifications', [
+        $id = $db->insert('notifications', [
             'user_id' => $userId,
             'title' => $title,
             'message' => $message,
             'type' => $type,
-            'category' => 'general',
+            'category' => $category,
             'action_url' => $link,
             'is_read' => 0,
             'is_sent' => 1,
             'created_at' => date('Y-m-d H:i:s'),
         ]);
+
+        $this->mirrorToEmail($userId, (int) $id, $title, $message, $type, $link);
+
+        return $id;
+    }
+
+    /**
+     * Queue the email twin of one in-app notification.
+     *
+     * The dedupe key is derived from the bell's own id, so the same
+     * notification can never be mailed twice (the unique (user_id, dedupe_key)
+     * index on notification_logs enforces it), while two different bells for
+     * the same person each get their own email.
+     *
+     * Type `in_app_mirror` keeps these rows distinguishable from native event
+     * notifications in the delivery log and in worker --type filters.
+     */
+    private function mirrorToEmail(int $userId, int $notificationId, string $title, string $message, string $type, ?string $link): void
+    {
+        if ($notificationId <= 0) {
+            return;
+        }
+
+        try {
+            $dispatcher = new NotificationDispatcher();
+            // Resolves the ACCOUNT email (users.email, active only). Null when
+            // the id is not a user - legacy call sites historically passed an
+            // employees.id - in which case dispatch() records a 'skipped' row
+            // with the reason instead of failing the caller.
+            $recipient = $dispatcher->resolveRecipientByUserId($userId);
+
+            $dispatcher->dispatch(
+                $userId,
+                $recipient['email'] ?? null,
+                $recipient['phone'] ?? null,
+                'in_app_mirror',
+                [NotificationDispatcher::CHANNEL_EMAIL],
+                'inapp:' . $notificationId,
+                [
+                    'title' => $title,
+                    'body'  => $message,
+                    'link'  => $link,
+                    'type'  => $type,
+                ],
+                $recipient['employee_id'] ?? null
+            );
+        } catch (\Throwable $e) {
+            \logger()->warning('In-app notification email mirror could not be queued', [
+                'user_id'        => $userId,
+                'notification_id' => $notificationId,
+                'error'          => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -118,15 +189,13 @@ class NotificationService
         $message = $this->parseTemplate($templateData['message'], $data);
         $type = $templateData['type'] ?? 'info';
 
-        // Send in-app notification
+        // In-app bell, mirrored to email BY sendInApp() itself. The opt-in
+        // send_email template flag that used to gate a second, explicit
+        // sendEmail() call here is obsolete: the organisation rule is now that
+        // EVERY in-house notification also goes out by email, and keeping both
+        // paths would mail template recipients twice. $email stays in the
+        // signature for callers that still pass it.
         $this->sendInApp($userId, $title, $message, $type, $data['link'] ?? null);
-
-        // Send email if email address provided
-        if (!empty($email) && ($templateData['send_email'] ?? false)) {
-            $emailSubject = $title;
-            $emailBody = $this->renderEmailTemplate($template, $data);
-            $this->sendEmail($email, $emailSubject, $emailBody);
-        }
     }
 
     /**
@@ -202,10 +271,10 @@ class NotificationService
         $link = "leave_management.php";
 
         foreach ($hrManagers as $manager) {
+            // The explicit sendEmail() that used to sit beside this call is
+            // gone: sendInApp() queues the email mirror itself now, and
+            // keeping both would mail every HR manager twice per request.
             $this->sendInApp((int) $manager['id'], $title, $message, 'info', $link);
-            if (!empty($manager['email'])) {
-                $this->sendEmail($manager['email'], $title, $message);
-            }
         }
     }
 

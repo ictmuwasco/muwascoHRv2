@@ -5,17 +5,23 @@ declare(strict_types=1);
 /**
  * Unified Database Migration Runner
  * Runs all SQL migrations in order from the migrations/ directory.
- * 
- * Usage: php backend/database/run.php
+ *
+ * Usage:
+ *   php backend/database/run.php migrate    Apply pending migrations (default)
+ *   php backend/database/run.php baseline   Record existing migrations as
+ *                                           applied, WITHOUT executing them
+ *   php backend/database/run.php status     Show applied/pending counts
+ *
+ * `baseline` is an explicit, irreversible acknowledgement that a pre-existing
+ * database already satisfies a set of migrations. It never runs SQL from the
+ * migration files; it only writes the ledger. It exists so adopting an
+ * existing database is a deliberate, auditable act rather than a side effect.
  */
 
 // Load bootstrap to get database connection
 require_once __DIR__ . '/../bootstrap.php';
 
 use App\Helpers\Database;
-
-echo "MUWASCO HR Database Migrations\n";
-echo str_repeat("=", 50) . "\n";
 
 try {
     $db = Database::getInstance();
@@ -26,6 +32,94 @@ try {
 }
 
 $migrationsDir = __DIR__ . '/migrations';
+
+// Support commands live in baseline.php and are always loaded: `status` is a
+// read-only inspection command and `baseline` is the deliberate escape hatch
+// offered by the safety guard below. Both are needed before any migration runs.
+require __DIR__ . '/baseline.php';
+
+/** @var list<string> $argv */
+$command = $argv[1] ?? 'migrate';
+
+if ($command === 'baseline') {
+    exit(baselineCommand($conn, $migrationsDir));
+}
+
+if ($command === 'status') {
+    exit(showStatus($conn, $migrationsDir));
+}
+
+echo "MUWASCO HR Database Migrations\n";
+echo str_repeat("=", 50) . "\n";
+
+// SAFETY: refuse to migrate a database that already holds data but has no
+// migration ledger.
+//
+// This check exists because of how the runner decides what is "pending": it
+// compares migration FILENAMES against the ledger and nothing else. Against a
+// database created by an earlier or different application, that ledger is
+// absent or lists unrelated names, so EVERY migration looks pending and the
+// runner would replay the entire history - CREATE TABLE, ALTER TABLE and
+// UPDATE - against live rows.
+//
+// That is not hypothetical: the production database admin_hrmuwasco has 55
+// tables, ~194 employees and ~17k attendance rows, and no `migrations` table
+// at all. Running this script against it unmodified would have been a
+// destructive act, not a migration.
+//
+// An empty database is always safe (there is nothing to damage), so a fresh
+// install proceeds normally. Only a populated, untracked database is blocked,
+// and the operator is told exactly how to proceed deliberately.
+function assertMigratableDatabase(mysqli $conn): void
+{
+    $schema = (string) $conn->query('SELECT DATABASE()')->fetch_row()[0];
+
+    $hasLedger = $conn->query("SHOW TABLES LIKE 'migrations'")->num_rows > 0;
+
+    // Count user tables excluding the ledger itself.
+    $countSql = "SELECT COUNT(*) FROM information_schema.TABLES
+                 WHERE TABLE_SCHEMA = '" . $conn->real_escape_string((string) $schema) . "'
+                   AND TABLE_NAME <> 'migrations'";
+    $existingTables = (int) ($conn->query($countSql)->fetch_row()[0] ?? 0);
+
+    if ($hasLedger || $existingTables === 0) {
+        return; // Fresh install, or already tracked by this runner.
+    }
+
+    fwrite(STDERR, <<<TXT
+
+    ═══════════════════════════════════════════════════════════════════
+     BLOCKED: refusing to migrate a populated database with no ledger
+    ═══════════════════════════════════════════════════════════════════
+     Database : {$schema}
+     Tables   : {$existingTables} (excluding `migrations`)
+
+     This database contains tables but has no `migrations` ledger, so this
+     runner cannot tell which migrations have already been applied. It would
+     treat every migration as pending and replay the full history against
+     existing rows.
+
+     DO NOT delete the tables to force this through - that destroys data.
+
+     Choose one deliberately:
+       A) Adopt this database (schema already correct)
+          Record the applied migrations as completed, then re-run:
+            php backend/database/run.php baseline
+          Only valid if the schema genuinely matches.
+
+       B) Migrate the data into a fresh database (recommended when the
+          schema differs): create an empty database, run migrations there,
+          then copy the rows across with an explicit column mapping.
+
+    ═══════════════════════════════════════════════════════════════════
+
+    TXT);
+    exit(2);
+}
+
+// Guard BEFORE the ledger is created. Creating `migrations` first would make
+// the database look tracked and the check would pass vacuously.
+assertMigratableDatabase($conn);
 
 // Create or alter migrations tracking table to ensure it has all columns
 $conn->query("CREATE TABLE IF NOT EXISTS migrations (

@@ -85,6 +85,16 @@ class NotificationDispatcher
 
         $result['recipient'] = ['user_id' => $userId, 'email' => $email, 'phone' => $phone];
 
+        // ORGANISATION RULE: an in-house (in-app) notification is ALWAYS also
+        // sent by email. Callers may still list email explicitly - this only
+        // guarantees the channel can never be forgotten, so a future caller
+        // that passes [in_app] alone still gets the email twin. Callers that
+        // never asked for in-app (SMS-only rows) are left untouched.
+        if (in_array(self::CHANNEL_IN_APP, $channels, true)
+            && !in_array(self::CHANNEL_EMAIL, $channels, true)) {
+            $channels[] = self::CHANNEL_EMAIL;
+        }
+
         foreach ($channels as $channel) {
             // The channel is part of the dedupe key, so re-queuing the same
             // event never re-queues one channel but re-enables another.

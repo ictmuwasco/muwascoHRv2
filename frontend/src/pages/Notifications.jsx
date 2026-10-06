@@ -111,7 +111,11 @@ const Notifications = () => {
             disabled={busyId !== null}
             className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
           >
-            {busyId === 'all' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCheck className="h-4 w-4" />}
+            {busyId === 'all' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCheck className="h-4 w-4" />
+            )}
             Mark all read
           </button>
         )}
@@ -138,7 +142,9 @@ const Notifications = () => {
           >
             <option value="">All categories</option>
             {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
           </select>
         )}
@@ -162,7 +168,10 @@ const Notifications = () => {
             <p className="text-sm">No notifications to show.</p>
             {filter !== 'all' && (
               <button
-                onClick={() => { setFilter('all'); setCategory(''); }}
+                onClick={() => {
+                  setFilter('all');
+                  setCategory('');
+                }}
                 className="mt-3 text-sm text-primary-600 dark:text-primary-400 hover:underline"
               >
                 Clear filters
@@ -178,10 +187,15 @@ const Notifications = () => {
                   disabled={busyId === item.id}
                   className={`w-full text-left px-4 py-3.5 flex items-start gap-3 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-60 ${!item.is_read ? 'bg-primary-50/40 dark:bg-primary-900/10' : ''}`}
                 >
-                  <span className={`mt-1.5 shrink-0 h-2.5 w-2.5 rounded-full ${toneClass(item.type)}`} aria-hidden="true" />
+                  <span
+                    className={`mt-1.5 shrink-0 h-2.5 w-2.5 rounded-full ${toneClass(item.type)}`}
+                    aria-hidden="true"
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
-                      <p className={`text-sm truncate ${item.is_read ? 'font-normal text-gray-700 dark:text-gray-300' : 'font-semibold text-gray-900 dark:text-gray-100'}`}>
+                      <p
+                        className={`text-sm truncate ${item.is_read ? 'font-normal text-gray-700 dark:text-gray-300' : 'font-semibold text-gray-900 dark:text-gray-100'}`}
+                      >
                         {item.title}
                         {!item.is_read && <span className="sr-only"> (unread)</span>}
                       </p>
@@ -215,7 +229,9 @@ const Notifications = () => {
             <ChevronLeft className="h-4 w-4" />
             Previous
           </button>
-          <span className="text-sm text-gray-500 dark:text-gray-400">Page {page} of {pages}</span>
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            Page {page} of {pages}
+          </span>
           <button
             onClick={() => load(page + 1)}
             disabled={page >= pages || loading}

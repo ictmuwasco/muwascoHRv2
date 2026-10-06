@@ -260,6 +260,15 @@ class LeaveProfileService
      * Resolve the employee record ID (employees.id) from the session's
      * employee_id value, which may be either the integer primary key or
      * the employee's string ID (e.g. "EMP00125").
+     *
+     * The STRING employee number is matched first, because that is how
+     * users.employee_id is joined to employees.employee_id everywhere else in
+     * the leave module (approval queues, delegation, document access). For
+     * numeric-looking numbers ("207", "074") treating the value as the integer
+     * primary key resolves to a DIFFERENT employee — or no row at all — which
+     * silently denied heads access to their own unit's leave profile (and its
+     * supporting documents). The integer interpretation is kept only as a
+     * fallback for callers that really pass employees.id.
      */
     private function resolveEmployeeRecordId($employeeIdValue): int
     {
@@ -267,18 +276,22 @@ class LeaveProfileService
             return 0;
         }
 
-        // If it's already an integer, use it directly
+        $value = (string) $employeeIdValue;
+        $stmt = $this->db->prepare("SELECT id FROM employees WHERE employee_id = ? LIMIT 1");
+        $stmt->bind_param('s', $value);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if ($result) {
+            return (int) $result['id'];
+        }
+
+        // Fallback: some callers pass the integer primary key directly.
         if (is_numeric($employeeIdValue)) {
             return (int) $employeeIdValue;
         }
 
-        // Otherwise, look up the employee by their string employee_id
-        $stmt = $this->db->prepare("SELECT id FROM employees WHERE employee_id = ? LIMIT 1");
-        $stmt->bind_param('s', $employeeIdValue);
-        $stmt->execute();
-        $result = $stmt->get_result()->fetch_assoc();
-        $stmt->close();
-        return $result ? (int) $result['id'] : 0;
+        return 0;
     }
 
     // ───────────────────────────────────────────────────────────────────

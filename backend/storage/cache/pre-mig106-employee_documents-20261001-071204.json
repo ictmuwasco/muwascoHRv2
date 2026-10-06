@@ -1,0 +1,14 @@
+{
+    "taken_at": "2026-10-01T07:12:04+02:00",
+    "database": "muwasco",
+    "row_count": 902,
+    "checksum": "06572c4467993e3dc3f707fc49067cdc",
+    "columns": [
+        "id",
+        "employee_id",
+        "document_name",
+        "category",
+        "file_name",
+        "uploaded_at"
+    ]
+}

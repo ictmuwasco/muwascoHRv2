@@ -87,6 +87,19 @@ class EmployeeController extends BaseController
                 $this->forbidden('You are not authorized to view this employee');
             }
 
+            // DOCUMENT METADATA REDACTION (migration 106)
+            //
+            // The repository attaches every document's NAME and CATEGORY to the
+            // employee payload. Those are themselves sensitive - "Certified
+            // Certificate SPU.pdf / undergraduate" discloses a qualification, and
+            // a national-ID filename discloses that they have one - so gating
+            // only the file bytes would leave the more telling part readable.
+            //
+            // The owner always sees their own list. Anyone else sees placeholders
+            // unless they hold a live, verified OTP approval. Hiding this in the
+            // frontend would be cosmetic: the data has already left the server.
+            $this->redactDocumentsForViewer($employee);
+
             $this->success($employee);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
@@ -94,6 +107,112 @@ class EmployeeController extends BaseController
             \logger()->error('Employee retrieval error', ['error' => $e->getMessage(), 'id' => $id]);
             $this->error('Failed to retrieve employee. Please try again.', 500);
         }
+    }
+
+    /**
+     * Replace an employee's document list with placeholders unless the viewer is
+     * the owner or holds a live, verified approval.
+     *
+     * Mutates $employee in place and records the resolved state under
+     * `documents_access` so the UI can render a "Request access" affordance
+     * without a second round trip.
+     *
+     * @param array<string,mixed> $employee
+     */
+    private function redactDocumentsForViewer(array &$employee): void
+    {
+        $documents = is_array($employee['documents'] ?? null) ? $employee['documents'] : [];
+        $employeeId = (int) ($employee['id'] ?? 0);
+        $viewerId = $this->getAuthUserId();
+
+        if ($documents === []) {
+            $employee['documents'] = [];
+            $employee['documents_access'] = 'none';
+            return;
+        }
+
+        // Owner: always full access, no approval needed.
+        if ($employeeIdForViewer = $this->viewerOwnEmployeeId()) {
+            if ($employeeIdForViewer === $employeeId) {
+                $employee['documents_access'] = 'owner';
+                return;
+            }
+        }
+
+        // Two independent approval scopes, and BOTH must be honoured.
+        //
+        //   employee-scoped  a verified `document_id = 0` request, which is what
+        //                     the "Request access" button produces while the list
+        //                     is redacted. It unlocks the WHOLE list.
+        //   document-scoped  a verified approval for one specific document, which
+        //                     is what the per-document Open flow produces. It
+        //                     unlocks the list too, because at that point the
+        //                     caller has demonstrably seen the document names.
+        //
+        // Checking only one of these is a silent lockout: the employee-scoped
+        // flow verifies successfully and then still receives placeholders,
+        // which reads to the user as "access granted" followed by nothing
+        // happening.
+        try {
+            $service = new \App\Services\Security\DocumentAccessService();
+
+            $unlocked = $service->hasEmployeeApproval($employeeId, $viewerId)
+                || $this->hasAnyVerifiedApproval($service, $documents, $viewerId);
+
+            if ($unlocked) {
+                $employee['documents_access'] = 'granted';
+                return;
+            }
+        } catch (\Throwable $e) {
+            // Fail CLOSED: if the check cannot be performed, treat the viewer as
+            // unverified rather than falling back to the full list.
+            \logger()->error('Document access check failed; redacting', [
+                'error' => $e->getMessage(),
+                'employee_id' => $employeeId,
+            ]);
+        }
+
+        // Resolved inline rather than injected: EmployeeServiceInterface has no
+        // redaction method, and widening the application's service contract to
+        // expose one presentational helper would be the wrong trade for a single
+        // call site. Instantiated lazily so the cost is only paid when someone
+        // actually hits the locked path.
+        $repository = new \App\Repositories\EmployeeRepository();
+        $employee['documents'] = $repository->redactDocumentsFor($employeeId);
+        $employee['documents_access'] = 'locked';
+    }
+
+    /**
+     * The caller's own employees.id, or null.
+     */
+    private function viewerOwnEmployeeId(): ?int
+    {
+        try {
+            $me = $this->employeeService->getEmployeeByUserId($this->getAuthUserId());
+            $id = $me ? (int) ($me['id'] ?? 0) : 0;
+            return $id > 0 ? $id : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Does the viewer hold a live approval for ANY of these documents?
+     *
+     * @param array<int,array<string,mixed>> $documents
+     */
+    private function hasAnyVerifiedApproval(
+        \App\Services\Security\DocumentAccessService $service,
+        array $documents,
+        int $viewerId
+    ): bool {
+        foreach ($documents as $doc) {
+            $docId = (int) ($doc['id'] ?? 0);
+            if ($docId > 0 && $service->hasLiveApproval($docId, $viewerId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -269,6 +388,417 @@ class EmployeeController extends BaseController
      * served exclusively through the authorized streaming endpoint
      * GET /api/profile/documents/{id}.
      */
+
+    /**
+     * POST /api/profile/documents/{documentId}/request-access
+     *
+     * Step 1 of opening a document: email the OWNER a 6-digit code.
+     *
+     * The code goes to the employee the document belongs to, not to whoever is
+     * asking. A code sent to the requester would prove nothing the session
+     * cookie does not already prove; sending it to the data subject is what
+     * makes it an actual consent step.
+     *
+     * The response deliberately does not vary in SHAPE depending on whether the
+     * owner has a usable email - `masked_email` is simply null when no code was
+     * sent. A difference would let a caller probe which employee ids belong to
+     * real, reachable people.
+     */
+    public function requestDocumentAccessAction(int $documentId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        try {
+            // Authorization is decided BEFORE anything is emailed, using the
+            // same rule as viewing: owner, or holder of employees:view. A
+            // request that cannot lead to a download must not generate mail.
+            if (!$this->mayAccessDocument($documentId, $userId)) {
+                $this->forbidden('You do not have permission to request this document');
+                return;
+            }
+
+            $service = new \App\Services\Security\DocumentAccessService();
+            $result = $service->requestApproval($documentId, $userId);
+
+            if ($result['reason'] === 'document_not_found') {
+                $this->notFound('Document not found');
+                return;
+            }
+            if ($result['reason'] === 'rate_limited') {
+                $this->error('Too many requests. Please wait a minute and try again.', 429, 'RATE_LIMITED');
+                return;
+            }
+            if (!$result['ok']) {
+                // "owner_unreachable" is reported generically: the requester
+                // learns the request could not be delivered, not whether the
+                // employee exists or has an email on file.
+                $this->error(
+                    'This document cannot be shared right now. Please contact HR.',
+                    409,
+                    'DOCUMENT_UNAVAILABLE'
+                );
+                return;
+            }
+
+            $this->success([
+                'sent'            => true,
+                'masked_email'    => $result['masked_email'],
+                'ttl_minutes'     => \App\Services\Security\DocumentAccessService::TTL_MINUTES,
+                'already_pending' => $result['reason'] === 'already_pending',
+            ], 'A code has been emailed to the document owner.');
+
+        } catch (\Throwable $e) {
+            \logger()->error('Document access request failed', [
+                'error' => $e->getMessage(),
+                'document_id' => $documentId,
+            ]);
+            $this->error('Could not start document access. Please try again.', 500);
+        }
+    }
+
+    /**
+     * POST /api/profile/documents/{documentId}/verify
+     *
+     * Step 2: the owner types the code they received.
+     *
+     * Success marks the approval verified but does NOT download anything; the
+     * file is fetched by the next call, which spends the approval. Keeping the
+     * two apart is what makes a correct code non-replayable for a second
+     * download.
+     */
+    public function verifyDocumentAccessAction(int $documentId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        try {
+            if (!$this->mayAccessDocument($documentId, $userId)) {
+                $this->forbidden('You do not have permission to access this document');
+                return;
+            }
+
+            $body = $this->getJsonBody();
+            $code = (string) ($body['code'] ?? '');
+
+            $service = new \App\Services\Security\DocumentAccessService();
+            $result = $service->verifyCode($documentId, $userId, $code);
+
+            if ($result['ok']) {
+                $this->success(['verified' => true], 'Code accepted.');
+                return;
+            }
+
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\Security\DocumentAccessService::ACTION_DENIED,
+                'Document access code verification failed',
+                [
+                    'target_type' => 'Document',
+                    'target_id'   => $documentId,
+                    'status'      => 'FAILED',
+                    // The reason is a fixed enum. The code itself is NEVER
+                    // logged, not even hashed, in case it is still live.
+                    'metadata'    => ['reason' => $result['reason'], 'user_id' => $userId],
+                ]
+            );
+
+            // Reported differently per reason because this endpoint is only
+            // reachable after the permission check, so it is not an oracle for
+            // which documents exist.
+            $message = $result['reason'] === 'incorrect_code'
+                ? 'That code is not correct. Check the email and try again.'
+                : 'There is no pending request for this document. Request a new code.';
+
+            $status = $result['reason'] === 'incorrect_code' ? 400 : 409;
+
+            $this->error($message, $status, 'DOCUMENT_CODE_INVALID');
+
+        } catch (\Throwable $e) {
+            \logger()->error('Document access verification failed', [
+                'error' => $e->getMessage(),
+                'document_id' => $documentId,
+            ]);
+            $this->error('Could not verify the code. Please try again.', 500);
+        }
+    }
+
+    /**
+     * POST /api/profile/employees/{employeeId}/documents/request-access
+     *
+     * The EMPLOYEE-SCOPED request, used when the document list is still locked.
+     *
+     * This exists because redacted placeholders carry no document id, and a
+     * per-document request would require the caller to already know which
+     * document they want - which is precisely what redaction prevents. The
+     * owner receives ONE email covering their documents, rather than being
+     * flooded by someone probing each one separately.
+     *
+     * On approval the list unlocks; each individual document open is still
+     * separately gated by the per-document flow.
+     */
+    public function requestEmployeeDocumentsAccessAction(int $employeeId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        try {
+            $employee = $this->employeeService->getEmployeeById($employeeId);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+                return;
+            }
+
+            // Same authorization as viewing the profile itself. Requesting
+            // access must not be a way to probe employees you cannot see.
+            if (!\App\Services\Security\EmployeePolicy::canView($userId, $employee)) {
+                $this->forbidden('You do not have permission to view this employee');
+                return;
+            }
+
+            $service = new \App\Services\Security\DocumentAccessService();
+            $result = $service->requestEmployeeAccess($employeeId, $userId);
+
+            if ($result['reason'] === 'no_documents') {
+                $this->notFound('This employee has no documents');
+                return;
+            }
+            if ($result['reason'] === 'rate_limited') {
+                $this->error('Too many requests. Please wait a minute and try again.', 429, 'RATE_LIMITED');
+                return;
+            }
+            if (!$result['ok']) {
+                $this->error(
+                    'These documents cannot be shared right now. Please contact HR.',
+                    409,
+                    'DOCUMENT_UNAVAILABLE'
+                );
+                return;
+            }
+
+            $this->success([
+                'sent'            => true,
+                'masked_email'    => $result['masked_email'],
+                'ttl_minutes'     => \App\Services\Security\DocumentAccessService::TTL_MINUTES,
+                'already_pending' => $result['reason'] === 'already_pending',
+            ], 'A code has been emailed to the document owner.');
+
+        } catch (\Throwable $e) {
+            \logger()->error('Employee document access request failed', [
+                'error' => $e->getMessage(),
+                'employee_id' => $employeeId,
+            ]);
+            $this->error('Could not start document access. Please try again.', 500);
+        }
+    }
+
+    /**
+     * POST /api/profile/employees/{employeeId}/documents/verify
+     *
+     * Verifies the owner's code for an employee-scoped approval, unlocking the
+     * document LIST. Opening an individual file still requires the per-document
+     * approval, so this does not hand out a blanket decryption capability.
+     */
+    public function verifyEmployeeDocumentsAccessAction(int $employeeId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        try {
+            $employee = $this->employeeService->getEmployeeById($employeeId);
+            if (!$employee) {
+                $this->notFound('Employee not found');
+                return;
+            }
+            if (!\App\Services\Security\EmployeePolicy::canView($userId, $employee)) {
+                $this->forbidden('You do not have permission to view this employee');
+                return;
+            }
+
+            $body = $this->getJsonBody();
+            $code = (string) ($body['code'] ?? '');
+
+            $service = new \App\Services\Security\DocumentAccessService();
+            $result = $service->verifyEmployeeCode($employeeId, $userId, $code);
+
+            if ($result['ok']) {
+                $this->success(['verified' => true], 'Code accepted.');
+                return;
+            }
+
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\Security\DocumentAccessService::ACTION_DENIED,
+                'Employee document access code verification failed',
+                [
+                    'target_type' => 'Employee',
+                    'target_id'   => $employeeId,
+                    'status'      => 'FAILED',
+                    // The reason is a fixed enum. The code is never logged, not
+                    // even hashed, in case it is still live.
+                    'metadata'    => ['reason' => $result['reason'], 'user_id' => $userId],
+                ]
+            );
+
+            $message = $result['reason'] === 'incorrect_code'
+                ? 'That code is not correct. Check the email and try again.'
+                : 'There is no pending request for these documents. Request access again.';
+
+            $this->error(
+                $message,
+                $result['reason'] === 'incorrect_code' ? 400 : 409,
+                'DOCUMENT_CODE_INVALID'
+            );
+
+        } catch (\Throwable $e) {
+            \logger()->error('Employee document verify failed', [
+                'error' => $e->getMessage(),
+                'employee_id' => $employeeId,
+            ]);
+            $this->error('Could not verify the code. Please try again.', 500);
+        }
+    }
+
+    /**
+     * May this user request or open this document at all?
+     *
+     * Same rule as viewing: the document owner, or a holder of employees:view.
+     * A missing document returns false, so this cannot be used to enumerate
+     * document ids via the difference between 403 and 404.
+     */
+    private function mayAccessDocument(int $documentId, int $userId): bool
+    {
+        $document = $this->employeeService->getDocumentById($documentId);
+        if (!$document) {
+            return false;
+        }
+
+        $employee = $this->employeeService->getEmployeeByUserId($userId);
+        $isOwner = $employee && ((int) $document['employee_id'] === (int) $employee['id']);
+
+        return $isOwner || $this->hasPermission('employees', 'view');
+    }
+
+    /**
+     * GET /api/profile/documents/{documentId}/open
+     *
+     * Step 3: spend the verified approval and stream the plaintext.
+     *
+     * The approval is consumed BEFORE any bytes are served, and only if the
+     * consume actually claimed a row. That ordering is what makes it single-use
+     * under concurrency: exactly one caller wins the UPDATE and every other is
+     * refused rather than receiving a second copy.
+     *
+     * ?download=1 forces a save rather than an inline preview, for the
+     * formats applyStreamHeaders() would otherwise render in the browser.
+     */
+    public function openDocumentAction(int $documentId): void
+    {
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+            return;
+        }
+
+        $tempPath = null;
+        $isTemporary = false;
+
+        try {
+            if (!$this->mayAccessDocument($documentId, $userId)) {
+                $this->forbidden('You do not have permission to access this document');
+                return;
+            }
+
+            $document = $this->employeeService->getDocumentById($documentId);
+            if (!$document) {
+                $this->notFound('Document not found');
+                return;
+            }
+
+            $service = new \App\Services\Security\DocumentAccessService();
+
+            // No live approval means no file, whatever the RBAC check allowed.
+            if (!$service->hasLiveApproval($documentId, $userId)) {
+                $this->error(
+                    'You need a verified code from the document owner to open this. '
+                    . 'Request access first.',
+                    403,
+                    'DOCUMENT_OTP_REQUIRED'
+                );
+                return;
+            }
+
+            // Claim the approval BEFORE decrypting. If decryption then fails the
+            // approval is spent and the user must request again, which is the
+            // right trade: a spent code is far cheaper than a reusable one.
+            if (!$service->consumeApproval($documentId, $userId)) {
+                $this->error(
+                    'That approval has already been used or has expired. Request a new code.',
+                    403,
+                    'DOCUMENT_OTP_CONSUMED'
+                );
+                return;
+            }
+
+            $file = $service->decryptToTempFile($document);
+            $tempPath = $file['path'];
+            $isTemporary = (bool) $file['temporary'];
+
+            \App\Services\AuditService::getInstance()->log(
+                \App\Services\AuditService::MODULE_EMPLOYEES,
+                \App\Services\Security\DocumentAccessService::ACTION_OPENED,
+                'Document opened after owner verification',
+                [
+                    'target_type' => 'Document',
+                    'target_id'   => $documentId,
+                    'target_name' => (string) ($document['document_name'] ?? ''),
+                    'metadata'    => [
+                        'user_id'       => $userId,
+                        'was_encrypted' => (int) ($document['is_encrypted'] ?? 0) === 1,
+                        'bytes'         => $file['bytes'],
+                    ],
+                ]
+            );
+
+            \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+                $file['mime'],
+                (string) ($document['document_name'] ?? 'document'),
+                (string) ($_GET['download'] ?? '') === '1'
+            );
+            header('Content-Length: ' . $file['bytes']);
+
+            readfile($file['path']);
+
+            // A legacy plaintext document is the ORIGINAL file and must
+            // survive; only the decrypted temp copy is removed.
+            if ($isTemporary) {
+                @unlink($file['path']);
+            }
+            exit();
+
+        } catch (\Throwable $e) {
+            if ($tempPath !== null && $isTemporary) {
+                @unlink($tempPath);
+            }
+            \logger()->error('Document open failed', [
+                'error' => $e->getMessage(),
+                'document_id' => $documentId,
+            ]);
+            $this->error('This document could not be opened. Please contact IT.', 500);
+        }
+    }
 
     /**
      * DELETE /api/employees/documents/{id} - Delete an employee document.
@@ -452,32 +982,81 @@ class EmployeeController extends BaseController
             return;
         }
 
-        $filePath = STORAGE_PATH . '/uploads/documents/' . $document['file_name'];
-        if (!file_exists($filePath)) {
-            // Check legacy path fallback
-            $legacyPath = __DIR__ . '/../../public/uploads/employee_documents/' . $document['file_name'];
-            if (file_exists($legacyPath)) {
-                $filePath = $legacyPath;
-            } else {
-                $this->notFound('File not found on server');
-                return;
-            }
+        // Candidate list is owned by FileLocator (canonical storage first,
+        // then the legacy webroot roots). It also performs the basename
+        // guard, so a file_name from the database cannot traverse upward.
+        $filePath = \App\Helpers\FileLocator::resolve(
+            \App\Helpers\FileLocator::documentCandidates((string) ($document['file_name'] ?? ''))
+        );
+        if ($filePath === null) {
+            $this->notFound('File not found on server');
+            return;
         }
 
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mimeType = finfo_file($finfo, $filePath) ?: 'application/octet-stream';
-        finfo_close($finfo);
+        $encrypted = (int) ($document['is_encrypted'] ?? 0) === 1;
 
-        // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
-        // PDF/images (business in-browser preview), attachment otherwise.
-        \App\Middleware\SecurityMiddleware::applyStreamHeaders(
-            $mimeType,
-            $document['document_name'] ?? 'document'
-        );
-        header('Content-Length: ' . filesize($filePath));
+        // Retire switch for this legacy route, as documented next to the route
+        // registrations in api.php. Once encrypt_existing_files.php has run and
+        // the frontend uses the /open flow everywhere, setting
+        // DOCUMENT_OTP_REQUIRED=true makes encrypted files refuse HERE rather
+        // than being released to a caller who never satisfied the owner's
+        // consent gate. Default false: a plaintext legacy document, or an
+        // encrypted one before the switch is flipped, must stay readable.
+        if (
+            $encrypted
+            && filter_var((string) \env('DOCUMENT_OTP_REQUIRED', 'false'), FILTER_VALIDATE_BOOLEAN)
+        ) {
+            $this->error(
+                'You need a verified code from the document owner to open this. '
+                . 'Request access first.',
+                403,
+                'DOCUMENT_OTP_REQUIRED'
+            );
+            return;
+        }
 
-        readfile($filePath);
-        exit();
+        // The bytes on disk are an MWSC1 container once encryption has run, not
+        // the document - handing them to finfo and streaming them returned raw
+        // ciphertext. decryptToTempFile() is the same read path /open uses: it
+        // returns the ORIGINAL file for a legacy plaintext row and a decrypted
+        // temp copy for an encrypted one, so the browser always receives the
+        // real PDF/DOCX. The caller owns any temporary file and must unlink it.
+        $service = new \App\Services\Security\DocumentAccessService();
+        $tempPath = null;
+
+        try {
+            $file = $service->decryptToTempFile($document);
+            if ($file['temporary']) {
+                $tempPath = $file['path'];
+            }
+
+            // Phase 7 (P7-7): sandbox CSP + nosniff + no-store; inline only for
+            // PDF/images (business in-browser preview), attachment otherwise.
+            \App\Middleware\SecurityMiddleware::applyStreamHeaders(
+                $file['mime'],
+                (string) ($document['document_name'] ?? 'document')
+            );
+            header('Content-Length: ' . $file['bytes']);
+
+            readfile($file['path']);
+
+            // Only the decrypted copy goes; a plaintext document is the
+            // original file on disk and must survive.
+            if ($tempPath !== null) {
+                @unlink($tempPath);
+            }
+            exit();
+        } catch (\Throwable $e) {
+            if ($tempPath !== null) {
+                @unlink($tempPath);
+            }
+            \logger()->error('Profile document view failed', [
+                'error'      => $e->getMessage(),
+                'document_id' => $documentId,
+                'encrypted'   => $encrypted,
+            ]);
+            $this->error('This document could not be opened. Please contact IT.', 500);
+        }
     }
 
     /**
@@ -656,10 +1235,14 @@ class EmployeeController extends BaseController
             return;
         }
 
-        // Create upload directory in public webroot so images are accessible via URL
-        $uploadDir = __DIR__ . '/../../public/uploads/profile_images/';
+        // Write to the canonical private storage tree, NOT into the application
+        // tree. The previous location (__DIR__ . '/../../public/') resolved to
+        // backend/app/public - inside the codebase, not the webroot - which is
+        // why 8 orphaned images had accumulated there. 0750 rather than 0777:
+        // the web server only ever reads these through the API endpoint.
+        $uploadDir = \App\Helpers\FileLocator::profileImagesDir() . '/';
         if (!is_dir($uploadDir)) {
-            mkdir($uploadDir, 0777, true);
+            mkdir($uploadDir, 0750, true);
         }
 
         // Generate unique filename
@@ -682,8 +1265,12 @@ class EmployeeController extends BaseController
         $stmt->close();
 
         if ($old && !empty($old['profile_image_url'])) {
-            $oldPath = __DIR__ . '/../../public/' . $old['profile_image_url'];
-            if (file_exists($oldPath)) {
+            // Resolve through FileLocator rather than concatenating: the old
+            // copy may live in canonical storage or in either legacy root.
+            $oldPath = \App\Helpers\FileLocator::resolve(
+                \App\Helpers\FileLocator::profileImageCandidates((string) $old['profile_image_url'])
+            );
+            if ($oldPath !== null) {
                 @unlink($oldPath);
             }
         }
@@ -798,15 +1385,14 @@ class EmployeeController extends BaseController
             \App\Helpers\ApiResponse::error('Profile picture not found', 'NOT_FOUND', [], 404);
         }
 
-        // Support both public-webroot path and storage-relative path
-        $filePath = __DIR__ . '/../../public/' . $employee['profile_image_url'];
-        if (!file_exists($filePath)) {
-            $storagePath = STORAGE_PATH . '/' . $employee['profile_image_url'];
-            if (file_exists($storagePath)) {
-                $filePath = $storagePath;
-            } else {
-                \App\Helpers\ApiResponse::error('Profile picture file not found on server', 'NOT_FOUND', [], 404);
-            }
+        // Resolve against the canonical storage tree first, then the legacy
+        // roots. The previous code rebuilt the same list by hand and had
+        // already drifted from DocumentAccessService; FileLocator owns it.
+        $filePath = \App\Helpers\FileLocator::resolve(
+            \App\Helpers\FileLocator::profileImageCandidates((string) $employee['profile_image_url'])
+        );
+        if ($filePath === null) {
+            \App\Helpers\ApiResponse::error('Profile picture file not found on server', 'NOT_FOUND', [], 404);
         }
 
         $finfo = finfo_open(FILEINFO_MIME_TYPE);

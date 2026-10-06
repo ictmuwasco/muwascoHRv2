@@ -50,13 +50,16 @@ class AttendanceClockService
 
     private OfficeRepositoryInterface $officeRepository;
     private CalendarContextService $calendar;
+    private AttendanceDeviceLockService $deviceLock;
 
     public function __construct(
         ?OfficeRepositoryInterface $officeRepository = null,
-        ?CalendarContextService $calendar = null
+        ?CalendarContextService $calendar = null,
+        ?AttendanceDeviceLockService $deviceLock = null
     ) {
         $this->officeRepository = $officeRepository ?? new OfficeRepository();
         $this->calendar = $calendar ?? new CalendarContextService();
+        $this->deviceLock = $deviceLock ?? new AttendanceDeviceLockService();
     }
 
     // =====================================================================
@@ -70,13 +73,16 @@ class AttendanceClockService
      *                            authenticated session — never from the body.
      * @param array $request     {office_id:int, latitude:?float, longitude:?float,
      *                            accuracy:?float, location_status:string,
-     *                            ip_address:?string, channel:string}
+     *                            ip_address:?string, channel:string,
+     *                            device_id:?string}
      * @return array{outcome:'created'|'idempotent', payload:array<string,mixed>}
      *
      * @throws InvalidClockRequestException request shape / location unusable (HTTP 400)
      * @throws InvalidOfficeException       unknown office or unusable office coordinates (HTTP 400)
      * @throws OutsideGeofenceException     fix outside the office radius (HTTP 403, OUTSIDE_RADIUS)
      * @throws OnApprovedLeaveException     blocking enabled + approved leave today (HTTP 409, ON_APPROVED_LEAVE)
+     * @throws DeviceLockedException        device owned by another employee in the
+     *                                      lock window (HTTP 409, DEVICE_LOCKED)
      * @throws \RuntimeException            persistence failure (HTTP 500)
      */
     public function clockIn(int $employeeDbId, array $request): array
@@ -159,11 +165,40 @@ class AttendanceClockService
         $now = date('Y-m-d H:i:s');
         $late = $this->resolveLateStatus($now);
 
+        // Privacy-safe device identity. The raw client value is hashed with
+        // APP_KEY and only the digest is ever persisted - see
+        // AttendanceDeviceLockService for the rationale.
+        $deviceFingerprint = $this->deviceLock->fingerprint($request['device_id'] ?? null);
+
         $inTransaction = false;
         try {
             $db = \db();
             $db->beginTransaction();
             $inTransaction = true;
+
+            // One device, one employee, per rolling window. Runs INSIDE the
+            // transaction so the SELECT ... FOR UPDATE serialises competing
+            // clock-ins and the check can never be bypassed by a race.
+            try {
+                $this->deviceLock->assertDeviceAvailable((string) $deviceFingerprint, $employeeDbId);
+            } catch (DeviceLockedException $e) {
+                $this->audit(
+                    $request,
+                    $office,
+                    $geo,
+                    AuditService::ACTION_CLOCK_IN,
+                    AuditService::STATUS_DENIED,
+                    'Clock-in denied: device locked to another employee',
+                    [
+                        'target_type' => 'Attendance',
+                        'metadata' => [
+                            'code'         => 'DEVICE_LOCKED',
+                            'window_hours' => $e->context()['window_hours'] ?? null,
+                        ],
+                    ]
+                );
+                throw $e;
+            }
 
             $record = [
                 'employee_id' => $employeeDbId,
@@ -171,6 +206,10 @@ class AttendanceClockService
                 'clock_in_office_id' => (int) $request['office_id'],
                 'clock_in' => $now,
                 'ip_address' => $request['ip_address'] ?? null,
+                // NULL when the client sent no device id: an unidentifiable
+                // device cannot participate in the lock, and is stored NULL
+                // rather than as a shared empty-string bucket.
+                'device_fingerprint' => $deviceFingerprint,
                 'status' => $late['status'],
                 'is_late' => $late['is_late'] ? 1 : 0,
                 'created_at' => $now,
@@ -255,6 +294,14 @@ class AttendanceClockService
                 ['target_type' => 'Attendance', 'metadata' => ['error' => $e->getMessage()]]
             );
             throw new \RuntimeException('Failed to record your clock-in. Please try again.');
+        } catch (DeviceLockedException $e) {
+            // MUST be re-thrown verbatim. The catch-all \Throwable below would
+            // otherwise convert this business-rule denial into an opaque 500,
+            // hiding DEVICE_LOCKED from the client and the audit trail.
+            if ($inTransaction) {
+                $this->safeRollback();
+            }
+            throw $e;
         } catch (\Throwable $e) {
             if ($inTransaction) {
                 $this->safeRollback();

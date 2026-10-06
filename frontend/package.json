@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "clean:assets": "node scripts/clean-assets.mjs",
+    "build": "npm run clean:assets && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

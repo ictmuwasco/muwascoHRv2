@@ -80,67 +80,84 @@ export interface AppraisalEmployeeRow {
 
 export const appraisalPerformanceReportService = {
   options: async (): Promise<AppraisalReportOptions> => {
-    const res = await apiClient.get<ApiResponse<AppraisalReportOptions>>('/reports/appraisal/options');
+    const res = await apiClient.get<ApiResponse<AppraisalReportOptions>>(
+      '/reports/appraisal/options',
+    );
     return res.data.data;
   },
 
   summary: async (f: AppraisalReportFilters = {}): Promise<AppraisalReportSummary> => {
-    const res = await apiClient.get<ApiResponse<AppraisalReportSummary>>('/reports/appraisal/summary', {
-      params: toParams(f),
-    });
+    const res = await apiClient.get<ApiResponse<AppraisalReportSummary>>(
+      '/reports/appraisal/summary',
+      {
+        params: toParams(f),
+      },
+    );
     return res.data.data;
   },
 
   trends: async (f: AppraisalReportFilters = {}): Promise<AppraisalTrendPoint[]> => {
-    const res = await apiClient.get<ApiResponse<AppraisalTrendPoint[]>>('/reports/appraisal/trends', {
-      params: toParams(f),
-    });
+    const res = await apiClient.get<ApiResponse<AppraisalTrendPoint[]>>(
+      '/reports/appraisal/trends',
+      {
+        params: toParams(f),
+      },
+    );
     return res.data.data ?? [];
   },
 
   byDepartment: async (f: AppraisalReportFilters = {}): Promise<AppraisalUnitStat[]> => {
-    const res = await apiClient.get<ApiResponse<AppraisalUnitStat[]>>('/reports/appraisal/by-department', {
-      params: toParams(f),
-    });
+    const res = await apiClient.get<ApiResponse<AppraisalUnitStat[]>>(
+      '/reports/appraisal/by-department',
+      {
+        params: toParams(f),
+      },
+    );
     return res.data.data ?? [];
   },
 
   bySection: async (f: AppraisalReportFilters = {}): Promise<AppraisalUnitStat[]> => {
-    const res = await apiClient.get<ApiResponse<AppraisalUnitStat[]>>('/reports/appraisal/by-section', {
-      params: toParams(f),
-    });
+    const res = await apiClient.get<ApiResponse<AppraisalUnitStat[]>>(
+      '/reports/appraisal/by-section',
+      {
+        params: toParams(f),
+      },
+    );
     return res.data.data ?? [];
   },
 
   bySubsection: async (f: AppraisalReportFilters = {}): Promise<AppraisalUnitStat[]> => {
-    const res = await apiClient.get<ApiResponse<AppraisalUnitStat[]>>('/reports/appraisal/by-subsection', {
-      params: toParams(f),
-    });
+    const res = await apiClient.get<ApiResponse<AppraisalUnitStat[]>>(
+      '/reports/appraisal/by-subsection',
+      {
+        params: toParams(f),
+      },
+    );
     return res.data.data ?? [];
   },
 
   byStatus: async (
     f: AppraisalReportFilters = {},
   ): Promise<Array<{ status: string; label: string; count: number }>> => {
-    const res = await apiClient.get<ApiResponse<Array<{ status: string; label: string; count: number }>>>(
-      '/reports/appraisal/by-status',
-      { params: toParams(f) },
-    );
+    const res = await apiClient.get<
+      ApiResponse<Array<{ status: string; label: string; count: number }>>
+    >('/reports/appraisal/by-status', { params: toParams(f) });
     return res.data.data ?? [];
   },
 
   performers: async (
     f: AppraisalReportFilters = {},
   ): Promise<{ top: AppraisalPerformer[]; bottom: AppraisalPerformer[] }> => {
-    const res = await apiClient.get<ApiResponse<{ top: AppraisalPerformer[]; bottom: AppraisalPerformer[] }>>(
-      '/reports/appraisal/performers',
-      { params: toParams(f) },
-    );
+    const res = await apiClient.get<
+      ApiResponse<{ top: AppraisalPerformer[]; bottom: AppraisalPerformer[] }>
+    >('/reports/appraisal/performers', { params: toParams(f) });
     return res.data.data ?? { top: [], bottom: [] };
   },
 
   insights: async (f: AppraisalReportFilters = {}): Promise<string[]> => {
-    const res = await apiClient.get<ApiResponse<string[]>>('/reports/appraisal/insights', { params: toParams(f) });
+    const res = await apiClient.get<ApiResponse<string[]>>('/reports/appraisal/insights', {
+      params: toParams(f),
+    });
     return res.data.data ?? [];
   },
 
@@ -151,9 +168,12 @@ export const appraisalPerformanceReportService = {
     sort = 'percentage',
     dir = 'desc',
   ): Promise<AppraisalEmployeePage> => {
-    const res = await apiClient.get<ApiResponse<AppraisalEmployeePage>>('/reports/appraisal/employees', {
-      params: { ...toParams(f), page, per_page: perPage, sort, dir },
-    });
+    const res = await apiClient.get<ApiResponse<AppraisalEmployeePage>>(
+      '/reports/appraisal/employees',
+      {
+        params: { ...toParams(f), page, per_page: perPage, sort, dir },
+      },
+    );
     return res.data.data ?? { items: [], total: 0, page: 1, per_page: perPage, last_page: 1 };
   },
 
@@ -170,9 +190,12 @@ export const appraisalPerformanceReportService = {
     sort = 'submitted',
     dir = 'desc',
   ): Promise<AppraisalRegisterPage> => {
-    const res = await apiClient.get<ApiResponse<AppraisalRegisterPage>>('/reports/appraisal/appraisals', {
-      params: { ...toParams(f), page, per_page: perPage, sort, dir },
-    });
+    const res = await apiClient.get<ApiResponse<AppraisalRegisterPage>>(
+      '/reports/appraisal/appraisals',
+      {
+        params: { ...toParams(f), page, per_page: perPage, sort, dir },
+      },
+    );
     return res.data.data ?? { items: [], total: 0, page: 1, per_page: perPage, last_page: 1 };
   },
 
@@ -187,7 +210,6 @@ export const appraisalPerformanceReportService = {
 };
 
 export default appraisalPerformanceReportService;
-
 
 export interface AppraisalEmployeePage {
   items: AppraisalEmployeeRow[];
