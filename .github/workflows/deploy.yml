@@ -440,6 +440,13 @@ jobs:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
       - name: Deploy to production over SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
         # SSH replaces the previous FTP/SFTP deploy (SamKirkland/FTP-Deploy-Action),
         # which had two problems:
         #   1. It required a long-lived PLAINTEXT PASSWORD in repository secrets.
@@ -448,6 +455,12 @@ jobs:
         #   2. FTP is fronted by xinetd (port 21 LISTEN via xinetd, psa-ftpd not
         #      running), so a single connection is spawned per transfer and the
         #      action's server-dir did not match the vhost document root.
+        #
+        # The transfer itself is plain `rsync` over the runner's native OpenSSH
+        # client - no third-party deploy action. (appleboy/rsync-action was
+        # removed after its repository disappeared and every Setup step that
+        # referenced it failed with "repository not found", which blocked ALL
+        # production deploys including this history note.)
         #
         # rsync is run WITHOUT --delete ON PURPOSE. backend/public/ contains
         # .htaccess, index.php, robots.txt, favicon.ico and uploads/ that the
@@ -473,29 +486,34 @@ jobs:
         # Keeping the SPA on its own subdomain is what makes this safe: rsync
         # cannot reach the legacy app, so the separation is enforced by DNS
         # rather than by remembering not to set the wrong path.
-        uses: appleboy/rsync-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          port: ${{ secrets.SSH_PORT }}
-          username: ${{ secrets.SSH_USERNAME }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: ./
-          target: ${{ vars.DEPLOY_PATH }}
-          delete: false
-          args: >-
-            -avz
-            --exclude=.git
-            --exclude=node_modules
-            --exclude=.env
-            --exclude=.env.*
-            --exclude=backend/tests
-            --exclude=frontend/dist
-            --exclude=*.md
-            --exclude=backend/docs
-            --exclude=frontend/src
-            --exclude=backend/storage/logs/*
-            --exclude=backend/storage/cache/*
-            --exclude=backend/storage/backups/*
+        #
+        # Secrets/vars wired into this step via `env:` above:
+        #   $SSH_HOST / $SSH_PORT / $SSH_USERNAME / $SSH_PRIVATE_KEY
+        #   $SSH_KNOWN_HOSTS   known_hosts fragment for the production server
+        #                      (public host key - safe to store as a secret)
+        #   $DEPLOY_PATH       picked up from the repo variable DEPLOY_PATH
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          rsync -avz -e "ssh -i ~/.ssh/deploy_key -p ${SSH_PORT:-22} -o BatchMode=yes" \
+            --exclude=.git \
+            --exclude=node_modules \
+            --exclude=.env \
+            --exclude=.env.* \
+            --exclude=backend/tests \
+            --exclude=frontend/dist \
+            --exclude='*.md' \
+            --exclude=backend/docs \
+            --exclude=frontend/src \
+            --exclude=backend/storage/logs/ \
+            --exclude=backend/storage/cache/ \
+            --exclude=backend/storage/backups/ \
+            ./ "${SSH_USERNAME}@${SSH_HOST}:${DEPLOY_PATH}/"
           # rsync runs WITHOUT --delete. backend/public/ contains .htaccess,
           # index.php, robots.txt, favicon.ico and uploads/ that the build does
           # NOT produce; a --delete sync would destroy them on every deploy.
