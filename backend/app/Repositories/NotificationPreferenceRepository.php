@@ -52,7 +52,9 @@ class NotificationPreferenceRepository implements NotificationPreferenceReposito
             'user_id'            => $userId,
             'push_enabled'       => $push,
             'sms_enabled'        => $sms,
-            'email_enabled'      => 0,
+            // Mirrors the column default set by migration 107: email is ON
+            // unless the employee explicitly opts out.
+            'email_enabled'      => 1,
             'reminders_mandated' => 0,
         ];
     }
