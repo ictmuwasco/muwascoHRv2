@@ -168,6 +168,7 @@ backend/storage/cache/rate-limits/
 # machine's progress into another checkout and make the migration skip files
 # the next developer has never encrypted. Runtime state, never source.
 backend/storage/cache/storage_encryption_state.json
+backend/storage/cache/legacy_upload_adoption.json
 
 # E2E / scratch probe artifacts (never commit runtime outputs)
 backend/storage/*.out

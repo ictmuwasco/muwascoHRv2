@@ -9,6 +9,7 @@ name: MUWASCO HR System - CI/CD Pipeline
       - main
       - develop
       - 'feature/**'
+      - 'feat/**'
       - 'phase*/**'
       - 'chore/**'
       - 'fix/**'
