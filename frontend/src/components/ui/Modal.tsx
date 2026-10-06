@@ -8,12 +8,27 @@ interface ModalProps {
   children: ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   className?: string;
+  /**
+   * When true, clicking the backdrop or pressing Escape does NOT close the
+   * modal — only the explicit close button / action buttons do. Used for
+   * data-entry forms (e.g. Create Meeting) so an accidental click outside
+   * never discards unsaved input.
+   */
+  persistent?: boolean;
 }
 
-const Modal = ({ isOpen, onClose, title, children, size = 'lg', className = '' }: ModalProps) => {
-  // Close on Escape key
+const Modal = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  size = 'lg',
+  className = '',
+  persistent = false,
+}: ModalProps) => {
+  // Close on Escape key (skipped for persistent modals)
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || persistent) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -24,7 +39,7 @@ const Modal = ({ isOpen, onClose, title, children, size = 'lg', className = '' }
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = '';
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, persistent]);
 
   if (!isOpen) return null;
 
@@ -39,7 +54,9 @@ const Modal = ({ isOpen, onClose, title, children, size = 'lg', className = '' }
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={onClose}
+      // Persistent modals ignore backdrop clicks so unsaved form input is
+      // never discarded by an accidental click outside the dialog.
+      onClick={persistent ? undefined : onClose}
     >
       <div
         className={`relative w-full ${sizeClasses[size]} mx-4 bg-white dark:bg-slate-800 rounded-xl shadow-xl transform transition-all duration-200 ${className}`}
