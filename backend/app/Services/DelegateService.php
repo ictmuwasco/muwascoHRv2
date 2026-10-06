@@ -200,12 +200,18 @@ class DelegateService
         );
 
         foreach ($delegateUserIds as $userId) {
-            $stmt = $this->db->prepare("
-                INSERT INTO notifications (user_id, title, message, type, category, is_read, created_at)
-                VALUES (?, ?, ?, 'delegate_assignment', 'leave', 0, NOW())
-            ");
-            $stmt->bind_param('iss', $userId, $title, $message);
-            $stmt->execute();
+            // Routed through the central sendInApp() rather than a raw INSERT:
+            // the same bell row lands (type and category preserved via the
+            // $category argument), and it now also gains the email mirror that
+            // every in-house notification sends.
+            NotificationService::getInstance()->sendInApp(
+                (int) $userId,
+                $title,
+                $message,
+                'delegate_assignment',
+                null,
+                'leave'
+            );
         }
     }
 }

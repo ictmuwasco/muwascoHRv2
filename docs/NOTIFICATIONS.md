@@ -263,6 +263,15 @@ A blocked channel is recorded as `status = 'skipped'`, never `pending`: a
 pending row would be picked up by the worker and delivered, silently reversing
 the policy decision the dispatcher just made.
 
+**Migration 107 turned the email preference ON by default.** The column
+shipped as `DEFAULT 0 COMMENT 'Future channel - reserved'` (migration 024)
+and the preferences API never exposed it — `PUT /api/notification-preferences`
+accepts `push_enabled` and `sms_enabled` only — so every existing `0` was a
+default artifact rather than a choice, and gating on it would have silently
+skipped the email twin for every employee who had ever saved a preference.
+An explicit `0` written in the table remains the opt-out and is still
+honoured by `channelBlockedReason()`.
+
 ## K.6 Worker
 
 ```
@@ -327,6 +336,25 @@ guard proving the 025-era `claim()` still behaves identically.
 notification routine swallows its own failures: a leave application that saves
 correctly but fails to email the approver is far preferable to one that rolls
 back because a mail server hiccuped.
+
+### In-app → email mirroring (organisation rule)
+
+**Every** in-house notification is also sent by email, at both write paths:
+
+* `NotificationDispatcher::dispatch()` adds `CHANNEL_EMAIL` whenever
+  `CHANNEL_IN_APP` was requested, so no caller can forget the channel — the
+  table above stays accurate by construction, and a future caller passing
+  `[in_app]` alone still gets the email twin.
+* `NotificationService::sendInApp()` (the legacy direct-writer used by vault,
+  HR policy, financial year, delegation, complaints, payroll and attendance
+  alerts) queues an email row itself after writing the bell, with type
+  `in_app_mirror` and dedupe key `inapp:{notifications.id}` — one bell, one
+  email, enforced by the unique `(user_id, dedupe_key)` index. The queue row
+  is a plain INSERT; the SMTP round-trip still belongs exclusively to the
+  worker.
+
+Both paths funnel into the same `notification_logs` row shape, the same
+payload rendering and the same preference gate documented in §K.5.
 
 ## K.9 Scheduled jobs
 
