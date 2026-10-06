@@ -6,6 +6,7 @@ namespace App\Controllers;
 
 use App\Services\Attendance\AttendanceClockService;
 use App\Services\Attendance\AttendanceCloseService;
+use App\Services\Attendance\DeviceLockedException;
 use App\Services\Attendance\InvalidClockRequestException;
 use App\Services\Attendance\InvalidOfficeException;
 use App\Services\Attendance\NoOpenSessionException;
@@ -146,6 +147,16 @@ class AttendanceController extends BaseController
         } catch (OnApprovedLeaveException $e) {
             $this->error($e->getMessage(), 409, 'ON_APPROVED_LEAVE');
             return;
+        } catch (DeviceLockedException $e) {
+            // 409 Conflict: the device is validly registered to another
+            // employee inside the rolling lock window. Not a 500 - this is an
+            // expected, well-defined business outcome, not a server fault.
+            $ctx = $e->context();
+            $this->error($e->getMessage(), 409, 'DEVICE_LOCKED', [
+                'unlocks_at'   => $ctx['unlocks_at'] ?? null,
+                'window_hours' => $ctx['window_hours'] ?? null,
+            ]);
+            return;
         } catch (InvalidClockRequestException | InvalidOfficeException $e) {
             $this->error($e->getMessage(), 400);
             return;
@@ -225,13 +236,28 @@ class AttendanceController extends BaseController
 
         if (!$employee) {
             $this->success([
-                'is_clocked_in' => false,
-                'has_clocked_in_today' => false,
-                'current_session' => null,
-                'today_record' => null,
-                'default_office' => null,
-                'office_mode' => 'manual',
-                'offices' => [],
+            // The office list is INDEPENDENT of the employee lookup. Returning
+            // an empty list here made "this account has no employee record"
+            // look identical to "there are no offices", which is why the
+            // dashboard office dropdown appeared broken with no way to tell the
+            // two apart. The offices are global reference data - always send
+            // them, and name the real reason separately.
+            'offices' => \db()->fetchAll(
+                "SELECT id, name, latitude, longitude, geo_fence_radius
+                 FROM offices
+                 WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                 ORDER BY name ASC"
+            ),
+            // Distinguishes "no employee record linked to this account" from
+            // "no offices configured" in the UI and in the logs.
+            'employee_linked' => false,
+            'unavailable_reason' => 'no_employee_record',
+            'is_clocked_in' => false,
+            'has_clocked_in_today' => false,
+            'current_session' => null,
+            'today_record' => null,
+            'default_office' => null,
+            'office_mode' => 'manual',
             ]);
             return;
         }
@@ -740,7 +766,30 @@ class AttendanceController extends BaseController
             'accuracy' => $data['accuracy'] ?? null,
             'ip_address' => $this->clientIp(),
             'channel' => 'WEB',
+            // Opaque, client-generated device identifier. The server hashes it
+            // with APP_KEY and stores only the digest; the raw value is never
+            // persisted and is optional (absent => no device lock applies).
+            'device_id' => $this->normalizeDeviceId($data['device_id'] ?? null),
         ];
+    }
+
+    /**
+     * Bound and sanitise the client-supplied device identifier.
+     *
+     * Anything that is not a short string is discarded rather than repaired,
+     * so a malformed payload can never widen the lock's blast radius.
+     */
+    private function normalizeDeviceId(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $id = trim($value);
+        if ($id === '' || strlen($id) > 255) {
+            return null;
+        }
+
+        return $id;
     }
 
     /**

@@ -113,7 +113,31 @@ passes at or below the baseline, so any **new** orphan fails immediately.
 > that do not exist. This was hit during the audit; acting on it would have
 > destroyed valid data. The test now documents the correct key.
 
-### 0.5 Corrections to the earlier report
+### 0.5 CI had never once passed
+
+The pipeline had **30 consecutive failed runs** and had never executed a
+single migration or test. Eight independent defects, each masking the next:
+
+| # | Defect | Evidence |
+|---|---|---|
+| 1 | `phpunit.xml.dist` never committed | `.gitignore:115` said it was tracked; it was not |
+| 2 | Zero `*Test.php` files | Job printed "PHPUnit skipped" and exited **0** |
+| 3 | `phpoffice/phpword: "1.4"` exact pin | `composer validate --strict` treats the warning as fatal |
+| 4 | 31 files unformatted | Prettier had never passed; verified against `main`'s own copies |
+| 5 | **No MariaDB client on the runner** | `ubuntu-latest` ships no `mysql-client`/`mariadb-client`; `mariadb-admin` was "command not found" |
+| 6 | **Stray `xam` in `081_hr_policies.sql`** | Broke `hr_policy_bookmarks`; **no clean database could ever be built** |
+| 7 | DB credentials read from unset secrets | An empty secret is falsy, so `env()` fell back and `DB_PASSWORD` became `""` |
+| 8 | A test asserted a server-specific `sql_mode` | Passed on XAMPP, failed on `mariadb:10.4` |
+
+Defects 5-7 are why "Run Tests" never got past the setup steps. They were
+isolated using **step timing** — a step that starts and ends in the same
+second cannot have run a 120-second poll loop or a 34-second migration — plus
+the annotated run page, since job logs require admin rights.
+
+**Result:** run `36681950590` — `conclusion: success`, all three jobs green,
+`Deploy to Production` correctly skipped (it only fires on `main`).
+
+### 0.6 Corrections to the earlier report
 
 - **§4.4 understated it:** 16 `json_decode` sites, not 12.
 - **§4.5 was worse than "dead column":** `users.session_token` holds **166
@@ -328,7 +352,7 @@ to re-queue it.
 ---
 
 *Phase 2 complete: additive indexing landed and measured. Phase 3 complete:
-backup restore fixed and proven, CI now runs real tests, malformed JSON can no
-longer silently discard HR data. Destructive work (§4.1–4.6) deliberately
-held pending the decisions above.*
+backup restore fixed and proven, CI now runs real tests and passes for the
+first time, malformed JSON can no longer silently discard HR data. Destructive
+work (§4.1–4.6) deliberately held pending the decisions above.*
 

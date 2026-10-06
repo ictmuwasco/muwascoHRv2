@@ -47,7 +47,15 @@ export interface AppraisalDetail extends AppraisalWorkflowRow {
 }
 
 export interface AppraisalWorkspace {
-  employees: Array<{ id: number; employee_id: string; first_name: string; last_name: string; employee_type: string; department_name?: string | null; section_name?: string | null }>;
+  employees: Array<{
+    id: number;
+    employee_id: string;
+    first_name: string;
+    last_name: string;
+    employee_type: string;
+    department_name?: string | null;
+    section_name?: string | null;
+  }>;
   cycles: Array<{ id: number; name: string; start_date: string; end_date: string; status: string }>;
   counts: { regular: number; pending: number; escalated: number; rejected: number };
   permissions: { supervise: boolean; score: boolean; approve: boolean };
@@ -58,19 +66,32 @@ export const appraisalService = {
     const response = await apiClient.get<ApiResponse<AppraisalWorkspace>>('/appraisals/workspace');
     return response.data.data;
   },
-  list: async (tab: 'regular' | 'pending' | 'escalated' | 'rejected'): Promise<AppraisalWorkflowRow[]> => {
-    const response = await apiClient.get<ApiResponse<AppraisalWorkflowRow[]>>(`/appraisals/supervisor/${tab}`);
+  list: async (
+    tab: 'regular' | 'pending' | 'escalated' | 'rejected',
+  ): Promise<AppraisalWorkflowRow[]> => {
+    const response = await apiClient.get<ApiResponse<AppraisalWorkflowRow[]>>(
+      `/appraisals/supervisor/${tab}`,
+    );
     return response.data.data;
   },
   detail: async (tab: string, id: number): Promise<AppraisalDetail> => {
-    const response = await apiClient.get<ApiResponse<AppraisalDetail>>(`/appraisals/supervisor/${tab}/${id}`);
+    const response = await apiClient.get<ApiResponse<AppraisalDetail>>(
+      `/appraisals/supervisor/${tab}/${id}`,
+    );
     return response.data.data;
   },
   create: async (data: { employee_id: number; appraisal_cycle_id: number }): Promise<number> => {
     const response = await apiClient.post<ApiResponse<{ id: number }>>('/appraisals', data);
     return response.data.data.id;
   },
-  saveScores: async (id: number, data: { scores: Record<number, number>; comments: Record<number, string>; supervisor_comment: string }): Promise<void> => {
+  saveScores: async (
+    id: number,
+    data: {
+      scores: Record<number, number>;
+      comments: Record<number, string>;
+      supervisor_comment: string;
+    },
+  ): Promise<void> => {
     await apiClient.put(`/appraisals/${id}/scores`, data);
   },
   my: async (): Promise<AppraisalWorkflowRow[]> => {
@@ -81,14 +102,21 @@ export const appraisalService = {
     const response = await apiClient.get<ApiResponse<AppraisalDetail>>(`/appraisals/my/${id}`);
     return response.data.data;
   },
-  submitFeedback: async (id: number, data: { employee_comment: string; employee_satisfied: number }): Promise<void> => {
+  submitFeedback: async (
+    id: number,
+    data: { employee_comment: string; employee_satisfied: number },
+  ): Promise<void> => {
     await apiClient.post(`/appraisals/my/${id}/feedback`, data);
   },
   decide: async (id: number, data: { decision: string; comment: string }): Promise<void> => {
     await apiClient.put(`/appraisals/${id}/decision`, data);
   },
-  getAll: async (params?: Record<string, unknown>): Promise<ApiResponse<PaginatedResponse<Appraisal>>> => {
-    const response = await apiClient.get<ApiResponse<PaginatedResponse<Appraisal>>>('/appraisals', { params });
+  getAll: async (
+    params?: Record<string, unknown>,
+  ): Promise<ApiResponse<PaginatedResponse<Appraisal>>> => {
+    const response = await apiClient.get<ApiResponse<PaginatedResponse<Appraisal>>>('/appraisals', {
+      params,
+    });
     return response.data;
   },
   getById: async (id: number): Promise<ApiResponse<Appraisal>> => {
@@ -112,8 +140,9 @@ export const appraisalService = {
     return response.data;
   },
   getByEmployee: async (employeeId: number): Promise<ApiResponse<Appraisal[]>> => {
-    const response = await apiClient.get<ApiResponse<Appraisal[]>>(`/appraisals/employee/${employeeId}`);
+    const response = await apiClient.get<ApiResponse<Appraisal[]>>(
+      `/appraisals/employee/${employeeId}`,
+    );
     return response.data;
   },
 };
-

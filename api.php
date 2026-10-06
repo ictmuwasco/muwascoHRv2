@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 use App\Controllers\Auth\AuthController;
 use App\Controllers\Auth\PasswordResetController;
 use App\Controllers\Employee\EmployeeController;
+use App\Controllers\Employee\VaultController;
 use App\Controllers\HR\DepartmentController;
 use App\Controllers\Leave\LeaveController;
 use App\Controllers\Leave\LeaveRosterController;
@@ -746,6 +747,49 @@ $router->add('PUT', '/profile', EmployeeController::class, 'updateProfile', 'pro
 $router->add('POST', '/profile/documents', EmployeeController::class, 'uploadProfileDocument', 'profile:edit', '20:300');
 $router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewProfileDocument');
 $router->add('GET', '/profile/documents/{id}/view', EmployeeController::class, 'viewProfileDocument');
+// ===========================================================================
+// Encrypted document access — the two-step OTP gate (migration 106).
+//
+// WHY THIS IS SEPARATE FROM THE EXISTING /documents/{id} VIEW ROUTE
+//   GET /profile/documents/{id} still exists and still serves LEGACY
+//   plaintext documents for anyone with profile:view / employees:view. It is
+//   left in place deliberately: without it, every un-migrated document becomes
+//   unreadable the moment this feature is switched on.
+//
+//   Once encrypt_existing_files.php has run, set DOCUMENT_OTP_REQUIRED=true and
+//   retire that route, at which point /open is the only path to a document.
+//
+// PERMISSION NOTES
+//   * All three are `profile:view`, NOT `profile:edit`. Reading a document you
+//     already have permission to see is not a mutation, and gating it on edit
+//     would make the OTP flow inaccessible to exactly the HR staff who need it.
+//   * The per-document authorization (owner OR employees:view) is enforced in
+//     the controller's mayAccessDocument(), not by the route, because it needs
+//     the document's employee_id.
+//   * Throttles: requesting a code sends MAIL, so it is tightly bounded.
+//     Verifying and opening are bounded too, because a 6-digit code with an
+//     unlimited verify endpoint is brute-forceable regardless of the row-level
+//     attempt counter.
+// ===========================================================================
+$router->add('POST', '/profile/documents/{id}/request-access', EmployeeController::class, 'requestDocumentAccessAction', 'profile:view', '5:300');
+$router->add('POST', '/profile/documents/{id}/verify',        EmployeeController::class, 'verifyDocumentAccessAction',   'profile:view', '10:300');
+$router->add('GET',  '/profile/documents/{id}/open',           EmployeeController::class, 'openDocumentAction',          'profile:view', '20:300');
+
+// Employee-scoped variants, used while the document LIST is still redacted.
+//
+// These MUST come after the document-scoped routes above. The router builds its
+// pattern with an anchored `([^/]+)` per placeholder, so `/profile/documents/{id}`
+// cannot match a two-segment path and the two groups cannot shadow each other
+// — but registering the more specific pair first keeps the intent obvious to
+// whoever reads the file next.
+//
+// Requesting is `employees:view` because the whole point is that someone who
+// legitimately sees the profile may ask the owner to unlock the documents. The
+// controller still re-checks EmployeePolicy::canView for this specific employee,
+// so the route permission is necessary but not sufficient.
+$router->add('POST', '/profile/employees/{employeeId}/documents/request-access', EmployeeController::class, 'requestEmployeeDocumentsAccessAction', 'employees:view', '5:300');
+$router->add('POST', '/profile/employees/{employeeId}/documents/verify',        EmployeeController::class, 'verifyEmployeeDocumentsAccessAction',   'employees:view', '10:300');
+
 $router->add('DELETE', '/profile/documents/{id}', EmployeeController::class, 'deleteProfileDocument', 'profile:edit');
 
 // Profile contracts routes — self-service.
@@ -766,6 +810,36 @@ $router->add('GET', '/employees/{id}/profile-image', EmployeeController::class, 
 $router->add('GET', '/employees/{id}/contracts', EmployeeController::class, 'getEmployeeContracts', 'employees:view');
 $router->add('POST', '/employees/{id}/contracts/{contractId}/renew', EmployeeController::class, 'renewEmployeeContract', 'employees:edit', '20:300');
 $router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController::class, 'convertToPermanent', 'employees:edit', '20:300');
+
+// ===========================================================================
+// Private Vault (PART A) — zero-knowledge, client-side encryption.
+//
+// The browser performs ALL cryptography. These routes move ciphertext, wrapped
+// keys and access decisions only; the server never receives a passphrase, an
+// unwrapped data key, or a decrypted value.
+//
+// PERMISSION NOTES (each choice is deliberate):
+//   * setup / status / item writes are `profile:*` because the target is
+//     ALWAYS the caller's own employee, resolved server-side from the session.
+//     No route takes an employee id for a write, so "non-owner write" is
+//     impossible by construction rather than by a check.
+//   * reads of ANOTHER employee are `employees:view`, matching the directory,
+//     and the service re-checks EmployeePolicy so a grant cannot become a side
+//     door around RBAC.
+//   * throttle: setup/unlock writes and grant minting are expensive and
+//     security-relevant, so they carry the vault_access budget in
+//     backend/config/rate_limits.php.
+// ===========================================================================
+$router->add('GET',  '/vault/status',              VaultController::class, 'statusAction',        'profile:view');
+$router->add('POST', '/vault/setup',               VaultController::class, 'setupAction',         'profile:edit', '5:900');
+$router->add('PUT',  '/vault/items/{group}',       VaultController::class, 'writeItemAction',     'profile:edit', '30:300');
+$router->add('GET',  '/vault/items/{employeeId}',  VaultController::class, 'readItemsAction',     'employees:view');
+$router->add('GET',  '/vault/lock-state/{employeeId}', VaultController::class, 'lockStateAction', 'employees:view');
+$router->add('POST', '/vault/requests',            VaultController::class, 'requestAccessAction', 'employees:view', '10:300');
+$router->add('PUT',  '/vault/requests/{id}',       VaultController::class, 'decideRequestAction', 'profile:edit',  '20:300');
+$router->add('POST', '/vault/grants',              VaultController::class, 'createGrantAction',   'profile:edit',  '10:300');
+$router->add('DELETE', '/vault/grants/{id}',       VaultController::class, 'revokeGrantAction',   'profile:edit',  '20:300');
+
 
 // Permission routes - plain method names (permission administration itself
 // is protected by permission_overrides:view / permission_overrides:manage)

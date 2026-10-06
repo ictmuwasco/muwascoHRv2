@@ -40,6 +40,12 @@ import {
 // centralized in src/config/api.ts so every consumer shares VITE_API_URL.
 import { API_BASE_URL as API_BASE } from '../../config/api';
 
+// Tab-visibility rules live in their own module so they can be unit tested
+// without mounting this component. The comment there explains why that matters:
+// the rule previously lived here as a useMemo consumed by an effect declared
+// above it, which is a temporal dead zone crash at load time.
+import { DOCUMENT_ACCESS_STATES, filterVisibleTabs } from './visibleTabs';
+
 // Tab definitions for the EmployeeProfile tab navigation, declared at MODULE
 // level (single source of truth). This is required because the ?tab=
 // deep-link effect below must validate the query parameter even during the
@@ -105,6 +111,32 @@ const EmployeeProfile = () => {
     file: null,
   });
 
+  // Encrypted-document OTP gate (migration 106).
+  //
+  // SERVER-SIDE, NOT JUST VISUAL: for a viewer who is neither the owner nor
+  // holds a verified approval, the API returns document PLACEHOLDERS with no
+  // name, no category, no id and no filename - only the count. So the tab is
+  // hidden because there is genuinely nothing to show, not because the markup
+  // is conditionally rendered around data the browser already received.
+  const [documentsAccess, setDocumentsAccess] = useState(DOCUMENT_ACCESS_STATES.NONE);
+  //
+  // FLOW, three steps, deliberately sequential:
+  //   1. requestAccess  -> emails a 6-digit code to the DOCUMENT OWNER
+  //   2. verifyCode     -> the owner types it; marks the approval verified
+  //   3. openDocument   -> spends the approval and streams the plaintext
+  //
+  // Splitting verify from open is what makes the approval single-use: a correct
+  // code cannot be replayed for a second download, because the file is only
+  // ever returned by the call that consumes the approval.
+  //
+  // The code is never stored in component state beyond the moment of
+  // submission, and `setOtpCode('')` clears it as soon as verification
+  // succeeds, so it does not linger in a re-render or a React DevTools dump.
+  const [otpDoc, setOtpDoc] = useState(null); // { docId, name, step, maskedEmail }
+  const [otpCode, setOtpCode] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [otpBusy, setOtpBusy] = useState(false);
+
   // Profile picture state
   const [profileImageUrl, setProfileImageUrl] = useState(null);
   const [profileImageUploading, setProfileImageUploading] = useState(false);
@@ -155,20 +187,52 @@ const EmployeeProfile = () => {
 
   const requestedTab = searchParams.get('tab');
 
+  // ---- Which tabs exist ----------------------------------------------------
+  //
+  // DECLARED HERE, NOT LATER, AND THAT IS LOAD-BEARING.
+  //
+  // The deep-link and redirect effects below both close over `tabs` and
+  // `documentsVisible`. A hook's dependency array is evaluated DURING render,
+  // at the point the useEffect call is reached - so referencing a `const`
+  // declared further down the function body throws
+  //
+  //   ReferenceError: Cannot access 'tabs' before initialization
+  //
+  // because the binding is still in its temporal dead zone. React evaluates
+  // every hook in order, so the value must be computed before the first effect
+  // that needs it, not merely before the JSX that renders it.
+  //
+  // Tabs actually rendered. The rule lives in visibleTabs.js so it can be unit
+  // tested without mounting this component - see the note there about the
+  // temporal dead zone this replaces.
+  const tabs = useMemo(() => filterVisibleTabs(PROFILE_TABS, documentsAccess), [documentsAccess]);
+
+  const documentsVisible = tabs.some((t) => t.id === 'documents');
+
   // Apply a valid ?tab= deep link (e.g. ?tab=contracts from the HR Insights
-  // "Expired Contracts" dashboard card). Validated against PROFILE_TABS — a
-  // module-level constant, NOT the component `tabs` reference below: during
-  // the loading early-return `tabs` is still uninitialised and an effect
-  // touching it throws "Cannot access 'tabs' before initialization".
+  // "Expired Contracts" dashboard card).
+  //
+  // Validated against the RENDERED `tabs`, not PROFILE_TABS. This matters for
+  // the documents tab: PROFILE_TABS always contains it, so validating against
+  // that would set activeTab='documents' even when the tab is filtered out for
+  // a locked viewer. That then trips the redirect effect below, which resets it
+  // to 'details', which writes 'details' back to the URL - and the two effects
+  // ping-pong on every render. Validating against what is actually shown makes
+  // the deep link simply not apply.
   useEffect(() => {
-    if (
-      requestedTab &&
-      PROFILE_TABS.some((t) => t.id === requestedTab) &&
-      requestedTab !== activeTab
-    ) {
+    if (requestedTab && tabs.some((t) => t.id === requestedTab) && requestedTab !== activeTab) {
       setActiveTab(requestedTab);
     }
-  }, [requestedTab]);
+  }, [requestedTab, tabs]);
+
+  // A deep link to ?tab=documents must not strand someone on a tab that does
+  // not exist, which is what would otherwise happen once the tab is filtered
+  // out. Falling back to 'details' keeps the URL and the view consistent.
+  useEffect(() => {
+    if (activeTab === 'documents' && !documentsVisible) {
+      setActiveTab('details');
+    }
+  }, [activeTab, documentsVisible]);
 
   // Mirror tab changes into the URL so refresh/back behave predictably.
   useEffect(() => {
@@ -199,7 +263,14 @@ const EmployeeProfile = () => {
       const parsedDependants = data.dependants_data || safeParse(data.dependants);
       setDependants(parsedDependants);
 
-      // Parse documents
+      // Parse documents.
+      //
+      // `documents_access` is the server's verdict, not a client guess:
+      //   owner   - these are the caller's own documents
+      //   granted - a verified approval is live for at least one of them
+      //   locked  - placeholders only; no name/category/id was ever sent
+      //   none    - the employee has no documents at all
+      setDocumentsAccess(data.documents_access || DOCUMENT_ACCESS_STATES.NONE);
       const parsedDocuments = safeParse(data.documents);
       setDocuments(parsedDocuments);
 
@@ -376,6 +447,195 @@ const EmployeeProfile = () => {
     }
   };
 
+  // ---- Encrypted document OTP flow ---------------------------------------
+  // The code is emailed to the EMPLOYEE WHO OWNS the document, not to whoever
+  // clicked Download. If you are HR opening somebody's national ID, that
+  // employee has to approve it, and the wording here says so up front rather
+  // than surprising them with a code that never arrives.
+
+  const requestDocumentAccess = async (doc) => {
+    setOtpBusy(true);
+    setOtpError('');
+    setOtpCode('');
+    setOtpDoc({
+      docId: doc.id,
+      name: doc.name || doc.document_name || 'this document',
+      step: 'requested',
+      maskedEmail: null,
+    });
+
+    try {
+      const res = await api.post(`/profile/documents/${doc.id}/request-access`);
+      const data = res.data?.data || res.data || {};
+      setOtpDoc((prev) => ({
+        ...prev,
+        step: 'awaiting_code',
+        maskedEmail: data.masked_email || null,
+        ttlMinutes: data.ttl_minutes || 10,
+      }));
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'Could not request access to this document.';
+      setOtpError(msg);
+      setOtpDoc(null);
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  const submitOtpCode = async (e) => {
+    e.preventDefault();
+    if (!otpDoc) return;
+
+    const digits = otpCode.replace(/\D/g, '');
+    if (digits.length !== 6) {
+      setOtpError('Enter the 6-digit code from the email.');
+      return;
+    }
+
+    setOtpBusy(true);
+    setOtpError('');
+
+    try {
+      // Employee-scoped and document-scoped approvals use different verify
+      // endpoints: the first unlocks the whole list, the second marks a single
+      // document ready to open.
+      const verifyUrl = otpDoc.employeeScoped
+        ? `/profile/employees/${id}/documents/verify`
+        : `/profile/documents/${otpDoc.docId}/verify`;
+
+      await api.post(verifyUrl, { code: digits });
+
+      // Clear the code the instant it is no longer needed, before the follow-up
+      // request, so it is not sitting in state if that request fails.
+      setOtpCode('');
+      setOtpDoc((prev) => ({ ...prev, step: 'opening' }));
+
+      if (otpDoc.employeeScoped) {
+        // Employee-scoped approval unlocks the LIST. Re-fetch so the real names
+        // and ids arrive from the server - they are never assembled client-side.
+        await fetchEmployee();
+
+        // Land on the tab the user just paid for. Without this they are left on
+        // whichever tab they were on, the Documents tab silently appears in the
+        // nav, and "Access granted" is followed by no visible change - which
+        // reads as the grant having failed.
+        setActiveTab('documents');
+
+        setOtpDoc(null);
+        setOtpError('');
+        setSuccess('Access granted. Documents are now visible.');
+        return;
+      }
+
+      await openVerifiedDocument(otpDoc.docId, otpDoc.name);
+    } catch (err) {
+      const msg = err?.response?.data?.message || 'That code could not be verified.';
+      setOtpError(msg);
+      setOtpCode('');
+      setOtpDoc((prev) => ({ ...prev, step: 'awaiting_code' }));
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  /**
+   * Fetch the plaintext through the approval-spending endpoint and save it.
+   *
+   * Uses fetch rather than api.get so the response can be read as a Blob:
+   * api.get would try to parse a PDF as JSON and fail. credentials:'include'
+   * is required because auth rides on the httpOnly session cookie.
+   *
+   * The approval is consumed by this request. A failed download therefore needs
+   * a new code, which is the intended trade - a spent code is much cheaper than
+   * a reusable one.
+   */
+  const openVerifiedDocument = async (docId, docName) => {
+    const response = await fetch(`${API_BASE}/profile/documents/${docId}/open?download=1`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/octet-stream' },
+    });
+
+    if (!response.ok) {
+      let message = 'This document could not be opened.';
+      try {
+        const payload = await response.json();
+        if (payload?.message) message = payload.message;
+      } catch {
+        /* a non-JSON body is expected on some error paths */
+      }
+      throw new Error(message);
+    }
+
+    const blob = await response.blob();
+
+    // Prefer the filename the server sent; fall back to the record's name.
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^";]+)"?/i);
+    const fileName = match ? match[1] : docName || 'document';
+
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    // Revoke on the next tick: revoking synchronously can cancel the download
+    // in some browsers before it has started reading the blob.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+
+    setOtpDoc(null);
+    setOtpError('');
+    setSuccess(`Downloaded ${fileName}`);
+  };
+
+  const cancelOtp = () => {
+    setOtpDoc(null);
+    setOtpCode('');
+    setOtpError('');
+  };
+
+  /**
+   * Start a request when the document list is still locked.
+   *
+   * The placeholders deliberately carry NO id, so there is nothing to address a
+   * per-document request with - and that is deliberate: naming a document in a
+   * request would require already knowing its name, which is the thing being
+   * protected.
+   *
+   * This asks the employee to unlock their documents for this session. The
+   * server emails the owner a code; once approved the list is re-fetched and
+   * the real names and ids appear. One request rather than one per document
+   * also means the owner receives a single email instead of being flooded by
+   * someone probing five separate documents.
+   */
+  const requestFirstDocumentAccess = async () => {
+    setOtpBusy(true);
+    setOtpError('');
+    setOtpCode('');
+
+    try {
+      const res = await api.post(`/profile/employees/${id}/documents/request-access`);
+      const data = res.data?.data || res.data || {};
+
+      const ownerName = `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim();
+
+      setOtpDoc({
+        docId: null, // employee-scoped: no single document chosen yet
+        name: ownerName ? `${ownerName}'s documents` : "this employee's documents",
+        step: 'awaiting_code',
+        maskedEmail: data.masked_email || null,
+        ttlMinutes: data.ttl_minutes || 10,
+        employeeScoped: true,
+      });
+    } catch (err) {
+      setOtpError(err?.response?.data?.message || 'Could not request access to these documents.');
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
   // Contract renewal — open the small renewal form pre-filled from the
   // selected contract. Start defaults to the day after the current term ends
   // (seamless renewal) when that is in the future, otherwise today; the
@@ -546,8 +806,6 @@ const EmployeeProfile = () => {
       </div>
     );
   }
-
-  const tabs = PROFILE_TABS;
 
   const nextOfKin = employee.next_of_kin_data || safeParse(employee.next_of_kin);
   const dependantsList = employee.dependants_data || dependants;
@@ -773,6 +1031,53 @@ const EmployeeProfile = () => {
         </div>
       )}
 
+      {/* Documents are LOCKED for this viewer.
+          Shown instead of the Documents tab, which is filtered out of the nav
+          above. The server sent placeholders only - no name, no category, no id -
+          so this card can say how MANY documents exist without saying what they
+          are. A viewer must be able to discover that access is requestable,
+          otherwise the control is indistinguishable from "this employee has no
+          documents" and nobody would ever ask. */}
+      {documentsAccess === DOCUMENT_ACCESS_STATES.LOCKED && (
+        <Card className="border-amber-200 bg-amber-50">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-shrink-0">
+              <div className="h-12 w-12 rounded-full bg-amber-100 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-amber-700" />
+              </div>
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-amber-900">Encrypted documents</h3>
+              <p className="text-sm text-amber-800 mt-1">
+                {documents.length > 0 ? (
+                  <>
+                    This employee has <span className="font-medium">{documents.length}</span>{' '}
+                    encrypted document{documents.length === 1 ? '' : 's'}. Their contents and
+                    filenames are hidden.
+                  </>
+                ) : (
+                  'This employee has encrypted documents, hidden pending approval.'
+                )}
+              </p>
+              <p className="text-xs text-amber-700 mt-1">
+                Opening one sends a 6-digit code to the employee's own email address. They must
+                approve it before anything becomes visible — you cannot see what you are requesting.
+              </p>
+            </div>
+            <div className="flex-shrink-0">
+              <Button onClick={requestFirstDocumentAccess} disabled={otpBusy}>
+                {otpBusy ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 mr-2" />
+                )}
+                Request access
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {activeTab === 'documents' && (
         <div className="space-y-6">
           <CanEdit module="employees">
@@ -853,9 +1158,20 @@ const EmployeeProfile = () => {
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-1" />
-                        Download
+                      {/* Opening a document requires the OWNER's emailed code.
+                          The button says so rather than failing silently. */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => requestDocumentAccess(doc)}
+                        disabled={otpBusy}
+                      >
+                        {otpBusy ? (
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4 mr-1" />
+                        )}
+                        Open
                       </Button>
                       <CanEdit module="employees">
                         <Button
@@ -1481,6 +1797,101 @@ const EmployeeProfile = () => {
           </Card>
         </div>
       )}
+      {/* Encrypted-document approval — the owner's emailed code.
+          Rendered once, outside the tab panels, because the modal has to
+          survive a tab switch while the user goes to their inbox. */}
+      <Modal
+        isOpen={!!otpDoc}
+        onClose={() => {
+          if (!otpBusy) cancelOtp();
+        }}
+        title="Document approval required"
+        size="sm"
+      >
+        {otpDoc && (
+          <form onSubmit={submitOtpCode} className="space-y-4">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <p className="text-xs text-gray-600">
+                <span className="font-medium">Document:</span> {otpDoc.name}
+              </p>
+            </div>
+
+            {otpDoc.step === 'requested' && (
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Sending a code to the document owner…</span>
+              </div>
+            )}
+
+            {otpDoc.step === 'opening' && (
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Code accepted. Opening the document…</span>
+              </div>
+            )}
+
+            {otpDoc.step === 'awaiting_code' && (
+              <>
+                <p className="text-sm text-gray-700">
+                  A 6-digit code was emailed to{' '}
+                  <span className="font-medium">{otpDoc.maskedEmail || 'the document owner'}</span>
+                  {otpDoc.ttlMinutes ? ` and expires in ${otpDoc.ttlMinutes} minutes` : ''}.
+                </p>
+
+                <p className="text-xs text-gray-500">
+                  The code goes to the employee who owns this document, so you may need to ask them
+                  for it. It can be used once.
+                </p>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    6-digit code
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(e) => {
+                      setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6));
+                      setOtpError('');
+                    }}
+                    disabled={otpBusy}
+                    autoFocus
+                    placeholder="000000"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 text-center text-lg tracking-widest font-mono"
+                  />
+                </div>
+              </>
+            )}
+
+            {otpError && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                {otpError}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" onClick={cancelOtp} disabled={otpBusy}>
+                Cancel
+              </Button>
+              {otpDoc.step === 'awaiting_code' && (
+                <Button type="submit" disabled={otpBusy || otpCode.length !== 6}>
+                  {otpBusy ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Verifying...
+                    </>
+                  ) : (
+                    'Verify and open'
+                  )}
+                </Button>
+              )}
+            </div>
+          </form>
+        )}
+      </Modal>
     </div>
   );
 };

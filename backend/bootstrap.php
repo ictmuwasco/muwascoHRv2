@@ -52,10 +52,65 @@ if (ob_get_level() > 0 && ob_get_length() !== false && ob_get_length() > 0) {
 }
 
 
-// Load .env via vlucas/phpdotenv (handles quoted values, comments, etc.)
-$envFile = BASE_PATH . '/.env';
-if (file_exists($envFile)) {
-    \Dotenv\Dotenv::createImmutable(BASE_PATH)->safeLoad();
+// Load configuration via vlucas/phpdotenv (handles quoted values, comments,
+// etc.).
+//
+// WHERE THE ENV FILE LIVES
+//   By default it is <repo>/.env, which is inside the git working tree. That is
+//   fine for local development (gitignored) but wrong for production, for two
+//   independent reasons:
+//
+//     1. COMMITTED BY ACCIDENT. The tracked templates .env.example and
+//        .env.production.example sit beside it. A real value pasted into one of
+//        them lands in git history permanently. That is exactly how production
+//        DB, SMTP and AI credentials ended up in a tracked file here.
+//     2. SERVED OVER HTTP. If the document root is the repo root (the layout
+//        vite.config.js supports), .env is inside the web root. It is denied by
+//        the .htaccess extension rules, but that is a second line of defence
+//        behind a file that should not be there at all.
+//
+//   So production sets ENV_FILE (Apache `SetEnv`, Plesk, php-fpm env, or a
+//   systemd unit) to a path OUTSIDE both the repo and the document root, e.g.
+//   /var/www/private/hrdemo.env. getenv() is read here as well as $_ENV and
+//   $_SERVER (see env() below), so all three injection styles work.
+//
+//   Resolution order:
+//     1. $ENV_FILE           - explicit path, used verbatim
+//     2. /var/www/private/hrdemo.env - conventional out-of-webroot default
+//     3. BASE_PATH/.env      - local development fallback
+//
+//   The first readable candidate wins. Nothing is required: with no file at all
+//   the app still boots and reads whatever the real process environment holds,
+//   which is the recommended setup for Plesk-managed hosts.
+$envCandidates = array_filter([
+    getenv('ENV_FILE') ?: null,
+    '/var/www/private/hrdemo.env',
+    BASE_PATH . '/.env',
+]);
+foreach ($envCandidates as $envCandidate) {
+    if (is_file($envCandidate) && is_readable($envCandidate)) {
+        // Pass the filename explicitly rather than letting phpdotenv default to
+        // '.env': createImmutable($paths, $names) would otherwise load EVERY
+        // readable file in the directory, so pointing it at /var/www/private
+        // would pick up unrelated files that happen to sit there.
+        //
+        // immutable = does not overwrite a variable already present in the real
+        // process environment, so an Apache `SetEnv` / php-fpm value wins
+        // over the file. VERIFIED: with PROBE_TEST exported to
+        // 'realenvvalue' and the file declaring a different value, getenv()
+        // and $_SERVER both still return 'realenvvalue' after safeLoad().
+        // (A value set with putenv() in the same process is NOT protected -
+        // phpdotenv only reads the inherited table - so do not use putenv()
+        // as the injection mechanism.)
+        //
+        // That is what lets the Plesk variables and this file coexist: either
+        // one alone is sufficient.
+        \Dotenv\Dotenv::createImmutable(
+            dirname($envCandidate),
+            basename($envCandidate)
+        )->safeLoad();
+        break;
+    }
 }
 
 error_reporting(E_ALL);
@@ -422,6 +477,102 @@ try {
 } catch (\Throwable $e) {
     error_log('[Config Validation] ' . $e->getMessage());
     // Don't die here - let the exception handler deal with it when a request comes in
+}
+
+// ============================================================================
+// STORAGE ENCRYPTION BOOT GATE (PART B) - HARD FAIL
+// ============================================================================
+// ConfigValidator's own failure handling above only writes to the error log, so
+// it cannot enforce a production requirement on its own.
+//
+// STORAGE_ENCRYPTION_KEY is the exception that must NOT be tolerated at boot.
+// Every other missing variable degrades one feature; this one means every
+// encrypted file under backend/storage and backend/public/uploads is written
+// with a key nobody can reproduce, or - if the failure were allowed to pass -
+// is silently written in plaintext while the documentation claims encryption.
+// Either outcome is silent data loss, so production refuses to serve traffic.
+//
+// Non-production is untouched: local and CI have no key by design and simply
+// do not exercise the feature.
+//
+// NOTE this reads APP_ENV directly rather than calling validate() again, so
+// the message names the one specific problem instead of re-listing every
+// unrelated config warning.
+if (strtolower(trim((string) env('APP_ENV', ''))) === 'production') {
+    $storageKeyIssues = [];
+
+    $storageKey = trim((string) env('STORAGE_ENCRYPTION_KEY', ''));
+    if ($storageKey === '') {
+        $storageKeyIssues[] = 'STORAGE_ENCRYPTION_KEY is not set';
+    } elseif (strlen($storageKey) < 32) {
+        $storageKeyIssues[] = 'STORAGE_ENCRYPTION_KEY is shorter than 32 characters ('
+            . strlen($storageKey) . ')';
+    }
+
+    // Reject a key that is still the committed example placeholder. The
+    // banned values are read from the templates themselves, so editing a
+    // template automatically updates this gate.
+    foreach (['.env.example', '.env.production.example'] as $template) {
+        $path = BASE_PATH . '/' . $template;
+        if (!is_readable($path)) {
+            continue;
+        }
+        $lines = file($path, FILE_IGNORE_NEW_LINES);
+        if ($lines === false) {
+            continue;
+        }
+        foreach ($lines as $line) {
+            if (preg_match('/^\s*STORAGE_ENCRYPTION_KEY\s*=\s*(.*)$/', $line, $m) !== 1) {
+                continue;
+            }
+            $placeholder = trim(trim((string) preg_replace('/\s+#.*$/', '', $m[1])), "\"'");
+            if ($placeholder !== '' && strcasecmp($storageKey, $placeholder) === 0) {
+                $storageKeyIssues[] = 'STORAGE_ENCRYPTION_KEY is still the example value "'
+                    . $placeholder . '"';
+                break 2;
+            }
+        }
+    }
+
+    $jwtSecret = trim((string) env('JWT_SECRET', ''));
+    if ($storageKey !== '' && $jwtSecret !== '' && hash_equals($storageKey, $jwtSecret)) {
+        $storageKeyIssues[] = 'STORAGE_ENCRYPTION_KEY is identical to JWT_SECRET';
+    }
+
+    // A key of the right shape can still be unusable if this build cannot do
+    // AES-256-GCM, so check the primitive too.
+    if (!\App\Helpers\StorageEncryption::isAvailable()) {
+        $storageKeyIssues[] = 'this PHP build has no AES-256-GCM (OpenSSL extension missing '
+            . 'or does not advertise the cipher), so encrypted files could never be read back';
+    }
+
+    if (!empty($storageKeyIssues)) {
+        $message = 'Refusing to start: encrypted file storage is misconfigured. '
+            . implode('; ', $storageKeyIssues)
+            . '. Generate a key with: php -r "echo bin2hex(random_bytes(32));" '
+            . 'and set it in the environment file OUTSIDE the web root. '
+            . 'Do NOT disable this check to make the error go away - files written '
+            . 'without it are permanently unreadable.';
+
+        error_log('[Storage Encryption] ' . $message);
+
+        if (PHP_SAPI === 'cli') {
+            fwrite(STDERR, $message . PHP_EOL);
+            exit(1);
+        }
+
+        http_response_code(503);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode([
+            'success' => false,
+            'message' => 'Service temporarily unavailable.',
+            'error'   => [
+                'code'    => 'STORAGE_ENCRYPTION_MISCONFIGURED',
+                'details' => env('APP_DEBUG', false) ? $message : null,
+            ],
+        ]);
+        exit;
+    }
 }
 
 // ============================================================================

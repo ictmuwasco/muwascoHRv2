@@ -5,7 +5,6 @@ import {
   FileText,
   Users,
   ListChecks,
-  Gavel,
   ClipboardList,
   CheckCircle2,
   Loader2,
@@ -13,12 +12,11 @@ import {
   Send,
   RotateCcw,
   Plus,
-  ArrowUp,
-  ArrowDown,
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
 import Modal from '../../components/ui/Modal';
+import MeetingMinutesPrint from './MeetingMinutesPrint';
 import Tabs from '../../components/ui/Tabs';
 import Button from '../../components/ui/Button';
 import Badge from '../../components/ui/Badge';
@@ -122,12 +120,11 @@ const blankForm = (m: MinutesMeetingInfo): FormState => ({
 });
 
 const TABS = [
-  { id: 'overview', name: 'Overview', icon: <FileText className="h-4 w-4" /> },
+  { id: 'overview', name: 'Meeting Info', icon: <FileText className="h-4 w-4" /> },
   { id: 'attendance', name: 'Attendance', icon: <Users className="h-4 w-4" /> },
-  { id: 'agenda', name: 'Agenda', icon: <ListChecks className="h-4 w-4" /> },
-  { id: 'decisions', name: 'Decisions', icon: <Gavel className="h-4 w-4" /> },
-  { id: 'actions', name: 'Action Items', icon: <ClipboardList className="h-4 w-4" /> },
-  { id: 'review', name: 'AOB & Publish', icon: <CheckCircle2 className="h-4 w-4" /> },
+  { id: 'agenda', name: 'Agenda & Discussion', icon: <ListChecks className="h-4 w-4" /> },
+  { id: 'actions', name: 'Resolutions & Actions', icon: <ClipboardList className="h-4 w-4" /> },
+  { id: 'review', name: 'Review & Publish', icon: <CheckCircle2 className="h-4 w-4" /> },
 ];
 
 const catOf = (p: AttendanceRow): string => {
@@ -189,6 +186,8 @@ const MeetingMinutesModal = ({
   const [saving, setSaving] = useState(false);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [error, setError] = useState('');
+  // Branded printable view (logo + formal layout + Print/PDF).
+  const [showPrint, setShowPrint] = useState(false);
 
   // Chairperson/secretary pickers scan the full staff list, so they get
   // type-to-filter. emp_no and designation ride along in `description`, which
@@ -344,36 +343,74 @@ const MeetingMinutesModal = ({
     }));
   };
 
-  const moveItem = (list: ItemList, from: number, to: number) => {
-    if (to < 0 || to >= form[list].length) return;
-    const items = [...form[list]];
-    const [moved] = items.splice(from, 1);
-    items.splice(to, 0, { ...moved, position: to + 1 });
-    items.forEach((item: any, i: number) => {
-      item.position = i + 1;
-    });
-    setForm((f) => ({ ...f, [list]: items }));
+  const buildPayload = (opts: { publish?: boolean } = {}): MinutesPayload => {
+    // The backend 422s on blank rows (agenda title required, action text
+    // required, AOB item required…). Template placeholder rows the user
+    // never filled are dropped here so saving "just works".
+    const cleanAgenda = form.agenda_items.filter(
+      (a) =>
+        String(a.title ?? '').trim() !== '' ||
+        String(a.discussion ?? '').trim() !== '' ||
+        String(a.decision ?? '').trim() !== '',
+    );
+    const cleanDecisions = form.decisions.filter((d) => String(d.resolution ?? '').trim() !== '');
+    const cleanActions = form.action_items.filter((a) => String(a.action ?? '').trim() !== '');
+    const cleanAob = form.aob_items.filter(
+      (a) =>
+        String(a.item ?? '').trim() !== '' ||
+        String(a.discussion ?? '').trim() !== '' ||
+        String(a.decision ?? '').trim() !== '' ||
+        String(a.action ?? '').trim() !== '',
+    );
+    // The simplified editor has no Decisions tab: resolutions live on each
+    // agenda item ("Resolution / Agreement") and tasks in the Actions list.
+    // Strict publish validation still requires >= 1 decision, so derive the
+    // list from whatever the user actually filled in (never invent content).
+    let derivedDecisions = cleanDecisions;
+    if (derivedDecisions.length === 0) {
+      const fromAgenda = cleanAgenda
+        .filter((a) => String(a.decision ?? '').trim() !== '')
+        .map((a, i) => ({
+          decision_number: String(i + 1),
+          resolution: String(a.decision).trim(),
+          responsible_id: '',
+          department_id: '',
+          due_date: '',
+          status: 'pending',
+        }));
+      const fromActions = cleanActions.map((a, i) => ({
+        decision_number: String(i + 1),
+        resolution: String(a.action).trim(),
+        responsible_id: String(a.assigned_to ?? ''),
+        department_id: '',
+        due_date: String(a.due_date ?? ''),
+        status: 'pending',
+      }));
+      derivedDecisions = fromAgenda.length > 0 ? fromAgenda : fromActions;
+    }
+    return {
+      publish: opts.publish ?? false,
+      // Strict publish validation requires a non-empty reference number; the
+      // status endpoint always reports one (generated on the fly if needed).
+      reference_number: minutesStatus?.reference_number ?? '',
+      meeting_date: form.meeting_date,
+      start_time: form.start_time,
+      end_time: form.end_time,
+      venue: form.venue,
+      chairperson_id: form.chairperson_id,
+      secretary_id: form.secretary_id,
+      aob: form.aob,
+      next_meeting_date: form.next_meeting_date,
+      next_meeting_time: form.next_meeting_time,
+      next_meeting_venue: form.next_meeting_venue,
+      next_meeting_notes: form.next_meeting_notes,
+      amendment_reason: form.amendment_reason,
+      agenda_items: cleanAgenda,
+      decisions: derivedDecisions,
+      action_items: cleanActions,
+      aob_items: cleanAob,
+    };
   };
-
-  const buildPayload = (opts: { publish?: boolean } = {}): MinutesPayload => ({
-    publish: opts.publish ?? false,
-    meeting_date: form.meeting_date,
-    start_time: form.start_time,
-    end_time: form.end_time,
-    venue: form.venue,
-    chairperson_id: form.chairperson_id,
-    secretary_id: form.secretary_id,
-    aob: form.aob,
-    next_meeting_date: form.next_meeting_date,
-    next_meeting_time: form.next_meeting_time,
-    next_meeting_venue: form.next_meeting_venue,
-    next_meeting_notes: form.next_meeting_notes,
-    amendment_reason: form.amendment_reason,
-    agenda_items: form.agenda_items,
-    decisions: form.decisions,
-    action_items: form.action_items,
-    aob_items: form.aob_items,
-  });
 
   // ---- Save handlers ----
   const saveDraft = async () => {
@@ -403,9 +440,22 @@ const MeetingMinutesModal = ({
     try {
       const pl = buildPayload({ publish: true });
       if (minutesStatus?.exists) {
-        await minutesService.update(meeting.id, pl);
+        // publish() saves the current form state AND flips status to
+        // 'published'. update() alone would silently keep it a draft while
+        // the UI reported success.
+        await minutesService.publish(meeting.id, pl);
       } else {
-        await minutesService.create(meeting.id, pl);
+        // Create a draft first, then publish it: the strict publish rules
+        // (reference number + >= 1 decision) only run on the publish
+        // endpoint, keeping both paths consistent.
+        await minutesService.create(meeting.id, buildPayload());
+        const st = await minutesService.status(meeting.id);
+        const latest = st.data?.data as MinutesStatus | undefined;
+        if (latest) setMinutesStatus(latest);
+        await minutesService.publish(meeting.id, {
+          ...pl,
+          reference_number: latest?.reference_number ?? pl.reference_number,
+        });
       }
       toast.success('Minutes published successfully');
       const res = await minutesService.status(meeting.id);
@@ -567,212 +617,192 @@ const MeetingMinutesModal = ({
     );
   };
 
-  const renderItemForm = (
-    list: ItemList,
-    title: string,
-    fields: Array<{
-      key: string;
-      label: string;
-      type?: string;
-      wide?: boolean;
-      options?: { id: number | string; name: string }[];
-    }>,
-    template: (pos: number) => any,
-  ) => {
-    const items = form[list] as any[];
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
+  const renderAgenda = () => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            {title} ({items.length})
+            Agenda Items & Discussion ({form.agenda_items.length})
           </h4>
-          {!isViewOnly && (
-            <Button variant="outline" size="sm" onClick={() => addItem(list, template)}>
-              <Plus className="h-3 w-3 mr-1" /> Add
-            </Button>
-          )}
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            What was discussed under each agenda item, and what was agreed.
+          </p>
         </div>
-        {items.map((item, i) => (
-          <div
-            key={item.id || i}
-            className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 space-y-3"
+        {!isViewOnly && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => addItem('agenda_items', (pos) => emptyAgenda(pos))}
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-gray-500 dark:text-gray-400">Item {i + 1}</span>
-              {!isViewOnly && items.length > 1 && (
-                <div className="flex space-x-1">
-                  <button
-                    type="button"
-                    onClick={() => moveItem(list, i, i - 1)}
-                    className="p-0.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    title="Move up"
-                  >
-                    <ArrowUp className="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => moveItem(list, i, i + 1)}
-                    className="p-0.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-                    title="Move down"
-                  >
-                    <ArrowDown className="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(list, i)}
-                    className="p-0.5 text-red-500 hover:text-red-700"
-                    title="Remove"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-            </div>
-            {fields.map((f) => {
-              const val = item[f.key] ?? '';
-              const gridSpan = f.wide ? 'md:col-span-2' : '';
-              if (f.type === 'textarea') {
-                return (
-                  <div key={f.key} className={gridSpan}>
-                    <label className="label text-gray-700 dark:text-gray-300">{f.label}</label>
-                    <textarea
-                      className={textareaCls}
-                      value={String(val)}
-                      onChange={(e) => updateItem(list, i, f.key, e.target.value)}
-                      disabled={isViewOnly}
-                      rows={2}
-                    />
-                  </div>
-                );
-              }
-              if (f.options) {
-                return (
-                  <div key={f.key} className={gridSpan}>
-                    <label className="label text-gray-700 dark:text-gray-300">{f.label}</label>
-                    <select
-                      className={selectCls}
-                      value={String(val)}
-                      onChange={(e) => updateItem(list, i, f.key, e.target.value)}
-                      disabled={isViewOnly}
-                    >
-                      {f.options.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              }
-              return (
-                <div key={f.key} className={gridSpan}>
-                  <label className="label text-gray-700 dark:text-gray-300">{f.label}</label>
-                  <input
-                    type={f.type || 'text'}
-                    className={selectCls}
-                    value={String(val)}
-                    onChange={(e) => updateItem(list, i, f.key, e.target.value)}
-                    disabled={isViewOnly}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        ))}
+            <Plus className="h-3 w-3 mr-1" /> Add Item
+          </Button>
+        )}
       </div>
-    );
-  };
+      {form.agenda_items.map((item, i) => (
+        <div
+          key={(item as { id?: string | number }).id ?? i}
+          className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              Agenda {item.agenda_number || `${i + 1}.0`}
+            </span>
+            {!isViewOnly && form.agenda_items.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeItem('agenda_items', i)}
+                className="p-0.5 text-red-500 hover:text-red-700"
+                title="Remove"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          <div>
+            <label className="label text-gray-700 dark:text-gray-300">Title *</label>
+            <input
+              className={selectCls}
+              value={String(item.title ?? '')}
+              onChange={(e) => updateItem('agenda_items', i, 'title', e.target.value)}
+              disabled={isViewOnly}
+              placeholder="e.g. Non-revenue water reduction — Zone 3"
+            />
+          </div>
+          <div>
+            <label className="label text-gray-700 dark:text-gray-300">
+              Discussion / Deliberation
+            </label>
+            <textarea
+              className={textareaCls}
+              value={String(item.discussion ?? '')}
+              onChange={(e) => updateItem('agenda_items', i, 'discussion', e.target.value)}
+              disabled={isViewOnly}
+              rows={3}
+              placeholder="Key points raised, reports tabled…"
+            />
+          </div>
+          <div>
+            <label className="label text-gray-700 dark:text-gray-300">Resolution / Agreement</label>
+            <textarea
+              className={textareaCls}
+              value={String(item.decision ?? '')}
+              onChange={(e) => updateItem('agenda_items', i, 'decision', e.target.value)}
+              disabled={isViewOnly}
+              rows={2}
+              placeholder="What was agreed…"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
-  const renderAgenda = () =>
-    renderItemForm(
-      'agenda_items',
-      'Agenda Items',
-      [
-        { key: 'agenda_number', label: 'No.' },
-        { key: 'title', label: 'Title' },
-        {
-          key: 'presenter_id',
-          label: 'Presenter',
-          options: options.employees.map((e) => ({
-            id: e.id,
-            name: `${e.first_name} ${e.last_name}`,
-          })),
-        },
-        { key: 'discussion', label: 'Discussion', type: 'textarea', wide: true },
-        { key: 'decision', label: 'Decision', type: 'textarea', wide: true },
-      ],
-      (pos: number) => emptyAgenda(pos),
-    );
-
-  const renderDecisions = () =>
-    renderItemForm(
-      'decisions',
-      'Decisions',
-      [
-        { key: 'decision_number', label: 'No.' },
-        { key: 'resolution', label: 'Resolution', type: 'textarea', wide: true },
-        {
-          key: 'responsible_id',
-          label: 'Responsible',
-          options: options.employees.map((e) => ({
-            id: e.id,
-            name: `${e.first_name} ${e.last_name}`,
-          })),
-        },
-        {
-          key: 'department_id',
-          label: 'Department',
-          options: options.departments.map((d) => ({ id: d.id, name: d.name })),
-        },
-        { key: 'due_date', label: 'Due Date', type: 'date' },
-        {
-          key: 'status',
-          label: 'Status',
-          options: ['pending', 'in_progress', 'completed', 'deferred', 'cancelled'].map((s) => ({
-            id: s,
-            name: s.replace('_', ' '),
-          })),
-        },
-      ],
-      (pos: number) => emptyDecision(pos),
-    );
-
-  const renderActions = () =>
-    renderItemForm(
-      'action_items',
-      'Action Items',
-      [
-        { key: 'action', label: 'Action', type: 'textarea', wide: true },
-        {
-          key: 'assigned_to',
-          label: 'Assigned To',
-          options: options.employees.map((e) => ({
-            id: e.id,
-            name: `${e.first_name} ${e.last_name}`,
-          })),
-        },
-        {
-          key: 'department_id',
-          label: 'Department',
-          options: options.departments.map((d) => ({ id: d.id, name: d.name })),
-        },
-        { key: 'due_date', label: 'Due Date', type: 'date' },
-        {
-          key: 'priority',
-          label: 'Priority',
-          options: ['low', 'medium', 'high', 'critical'].map((p) => ({ id: p, name: p })),
-        },
-        {
-          key: 'status',
-          label: 'Status',
-          options: ['pending', 'in_progress', 'completed', 'overdue', 'deferred', 'cancelled'].map(
-            (s) => ({ id: s, name: s.replace('_', ' ') }),
-          ),
-        },
-        { key: 'remarks', label: 'Remarks', type: 'textarea', wide: true },
-      ],
-      () => emptyAction(),
-    );
+  // Resolutions + follow-ups in ONE simple table (water-company style):
+  // what was agreed, who does it, by when. The old separate Decisions tab
+  // (resolution + responsible + department + due + status) is folded in here,
+  // and the old priority/remarks/department columns are dropped.
+  const renderActions = () => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+            Resolutions & Action Points ({form.action_items.length})
+          </h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Each agreement becomes a trackable action: who, by when.
+          </p>
+        </div>
+        {!isViewOnly && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => addItem('action_items', () => emptyAction())}
+          >
+            <Plus className="h-3 w-3 mr-1" /> Add Action
+          </Button>
+        )}
+      </div>
+      {form.action_items.map((item, i) => (
+        <div
+          key={(item as { id?: string | number }).id ?? i}
+          className="border border-gray-200 dark:border-slate-700 rounded-lg p-3 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              Action {i + 1}
+            </span>
+            {!isViewOnly && form.action_items.length > 1 && (
+              <button
+                type="button"
+                onClick={() => removeItem('action_items', i)}
+                className="p-0.5 text-red-500 hover:text-red-700"
+                title="Remove"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          <div>
+            <label className="label text-gray-700 dark:text-gray-300">Resolution / Action *</label>
+            <textarea
+              className={textareaCls}
+              value={String(item.action ?? '')}
+              onChange={(e) => updateItem('action_items', i, 'action', e.target.value)}
+              disabled={isViewOnly}
+              rows={2}
+              placeholder="e.g. Repair the burst main on Kenyatta Road"
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="label text-gray-700 dark:text-gray-300">Responsible Person</label>
+              <select
+                className={selectCls}
+                value={String(item.assigned_to ?? '')}
+                onChange={(e) => updateItem('action_items', i, 'assigned_to', e.target.value)}
+                disabled={isViewOnly}
+              >
+                <option value="">— Select —</option>
+                {options.employees.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.first_name} {e.last_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label text-gray-700 dark:text-gray-300">Due Date</label>
+              <input
+                type="date"
+                className={selectCls}
+                value={String(item.due_date ?? '')}
+                onChange={(e) => updateItem('action_items', i, 'due_date', e.target.value)}
+                disabled={isViewOnly}
+              />
+            </div>
+            <div>
+              <label className="label text-gray-700 dark:text-gray-300">Status</label>
+              <select
+                className={selectCls}
+                value={String(item.status ?? 'pending')}
+                onChange={(e) => updateItem('action_items', i, 'status', e.target.value)}
+                disabled={isViewOnly}
+              >
+                {['pending', 'in_progress', 'completed', 'deferred'].map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace('_', ' ')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      ))}
+      {!isViewOnly && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">Empty rows are ignored on save.</p>
+      )}
+    </div>
+  );
 
   const renderReview = () => (
     <div className="space-y-6">
@@ -819,13 +849,14 @@ const MeetingMinutesModal = ({
           </Field>
         </div>
       </div>
-      <Field label="AOB (Additional)">
+      <Field label="Any Other Business (AOB)">
         <textarea
           className={textareaCls}
           value={form.aob}
           onChange={(e) => updateField('aob', e.target.value)}
           disabled={isViewOnly}
           rows={3}
+          placeholder="Any other matters raised, e.g. burst pipes, meter faults, customer complaints…"
         />
       </Field>
       {canReopen && minutesStatus?.exists && minutesStatus?.status === 'published' && (
@@ -854,6 +885,11 @@ const MeetingMinutesModal = ({
       <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-slate-700">
         <StatusBadge status={minutesStatus?.status || null} exists={!!minutesStatus?.exists} />
         <div className="flex space-x-3">
+          {minutesStatus?.exists && (
+            <Button variant="outline" onClick={() => setShowPrint(true)}>
+              <FileText className="h-4 w-4 mr-1" /> View Minutes
+            </Button>
+          )}
           {canEdit && (
             <Button variant="secondary" onClick={saveDraft} loading={saving}>
               <Save className="h-4 w-4 mr-1" /> Save Draft
@@ -874,7 +910,6 @@ const MeetingMinutesModal = ({
     overview: renderOverview,
     attendance: renderAttendance,
     agenda: renderAgenda,
-    decisions: renderDecisions,
     actions: renderActions,
     review: renderReview,
   };
@@ -933,6 +968,7 @@ const MeetingMinutesModal = ({
           </>
         )}
       </div>
+      {showPrint && <MeetingMinutesPrint meeting={meeting} onClose={() => setShowPrint(false)} />}
     </Modal>
   );
 };

@@ -15,6 +15,9 @@ class Database
     private \mysqli $mysqli;
     private array $config;
 
+    /** Test-only override; null in normal operation. See setConnection(). */
+    private ?\mysqli $injected = null;
+
     /**
      * Private constructor to enforce singleton pattern.
      */
@@ -79,11 +82,40 @@ class Database
      */
     public function getConnection(): \mysqli
     {
-        // Check if connection is still alive, reconnect if needed
+        // Check if connection is still alive, reconnect if needed.
+        //
+        // SKIPPED when an external connection was injected via
+        // setConnection(): re-pinging and reconnecting would silently swap a
+        // test's scratch database back to the configured one, which is exactly
+        // the accident the seam exists to prevent.
+        if ($this->injected !== null) {
+            return $this->injected;
+        }
+
         if (!$this->mysqli->ping()) {
             $this->connect();
         }
         return $this->mysqli;
+    }
+
+    /**
+     * Inject an external connection, overriding the configured one.
+     *
+     * EXISTS FOR TESTS ONLY. The vault authorization tests need a real
+     * database, but must never touch the application's own data, so they
+     * create a scratch database and point the helper at it.
+     *
+     * Consequences, both deliberate:
+     *   - getConnection() returns this connection and never reconnects.
+     *   - Pass null to restore normal behaviour.
+     *
+     * Production code has no reason to call this; the only caller in the
+     * repository is the vault integration test, and a second one showing up
+     * should be treated as a finding.
+     */
+    public function setConnection(?\mysqli $connection): void
+    {
+        $this->injected = $connection;
     }
 
     /**
@@ -120,9 +152,15 @@ class Database
      */
     public function query(string $sql, string $types = '', array $params = []): \mysqli_stmt
     {
-        $stmt = $this->mysqli->prepare($sql);
+        // Via getConnection(), NOT $this->mysqli, so an injected test
+        // connection is honoured. Reading the property directly here is what
+        // made setConnection() appear to do nothing - the scratch database was
+        // created and then every query silently ran against the application's
+        // own. Caught by the first run of VaultAccessTest.
+        $conn = $this->getConnection();
+        $stmt = $conn->prepare($sql);
         if (!$stmt) {
-            throw new \RuntimeException("Query preparation failed: " . $this->mysqli->error);
+            throw new \RuntimeException("Query preparation failed: " . $conn->error);
         }
         
         if (!empty($params)) {

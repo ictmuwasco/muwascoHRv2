@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../../utils/api';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
@@ -81,6 +82,16 @@ const MyMeetings = () => {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<TabId>('scheduled');
+
+  // Deep-link support: the dashboard "My Pending Meetings" card links here
+  // with ?tab=scheduled so the pending queue opens directly.
+  const [searchParams] = useSearchParams();
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab === 'scheduled' || tab === 'confirmed' || tab === 'past') {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   // Meeting details modal state
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);

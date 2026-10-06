@@ -1,10 +1,10 @@
-import js from '@eslint/js'
-import globals from 'globals'
-import react from 'eslint-plugin-react'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import tsPlugin from '@typescript-eslint/eslint-plugin'
-import tsParser from '@typescript-eslint/parser'
+import js from '@eslint/js';
+import globals from 'globals';
+import react from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
+import tsPlugin from '@typescript-eslint/eslint-plugin';
+import tsParser from '@typescript-eslint/parser';
 
 /**
  * ESLint flat config (ESLint 9).
@@ -119,10 +119,20 @@ export default [
   },
 
   {
+    // Build/tooling scripts run under Node, not the browser. Without this they
+    // are linted against browser globals and every console/process call is a
+    // no-undef error.
+    files: ['scripts/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
+
+  {
     // Service worker (public/sw.js) runs in the SW global scope.
     files: ['public/sw.js'],
     languageOptions: {
       globals: { ...globals.serviceworker },
     },
   },
-]
+];

@@ -260,4 +260,3 @@ const NotificationBell = ({ enabled = true }) => {
 };
 
 export default NotificationBell;
-

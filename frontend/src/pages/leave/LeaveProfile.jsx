@@ -10,6 +10,7 @@ import Badge from '../../components/ui/Badge';
 // Stricter than GET /leave/profile/{id}/export (route gate leave:view) and
 // intentional — see the export note in components/ui/PermissionGate.tsx.
 import { Can } from '../../components/ui/PermissionGate';
+import LeaveDocuments, { leaveSupportsDocuments } from './LeaveDocuments.jsx';
 import {
   Search,
   Download,
@@ -1085,6 +1086,22 @@ const LeaveProfile = () => {
                                 <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-3 text-sm text-red-700 dark:text-red-300">
                                   <XCircle className="h-4 w-4 inline mr-1" />
                                   Rejected — no balance was deducted.
+                                </div>
+                              )}
+
+                              {/* Supporting documents — Sick / Study leave ONLY
+                                  (the only types that carry evidence). For any
+                                  other type render nothing at all. */}
+                              {leaveSupportsDocuments(app) && (
+                                <div>
+                                  <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                                    Supporting Documents
+                                  </h5>
+                                  <LeaveDocuments
+                                    applicationId={app.id}
+                                    leaveTypeId={app.leave_type_id}
+                                    leaveTypeName={app.leave_type_name}
+                                  />
                                 </div>
                               )}
                             </div>

@@ -281,7 +281,9 @@ const performRequest = async (endpoint, options = {}) => {
       const error = new Error('Your session has ended. Please sign in again.');
       error.isAuthError = true;
       error.response = { data: {}, status: 401, statusText: 'Unauthorized' };
-      handleSessionExpired('Your session ended after a period of inactivity. Please sign in again.');
+      handleSessionExpired(
+        'Your session ended after a period of inactivity. Please sign in again.',
+      );
       throw error;
     }
   }

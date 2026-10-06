@@ -29,7 +29,10 @@ const DEFAULT_PREFS = {
  * place that explains where the messages actually appear.
  */
 const InboxTile = ({ unreadCount }) => (
-  <Link to="/notifications" className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded-lg">
+  <Link
+    to="/notifications"
+    className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 rounded-lg"
+  >
     <Card className="p-6 flex items-center justify-between gap-4 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
       <div className="flex items-center gap-4 min-w-0">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400">

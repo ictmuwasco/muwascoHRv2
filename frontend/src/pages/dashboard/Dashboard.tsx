@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 import { requestLocation } from '../../utils/geolocation';
+import { getDeviceId } from '../../utils/deviceId';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
@@ -39,6 +40,7 @@ import { hrPolicyService } from '../../api/services/hrPolicyService';
 import type { CurrentPolicyResponse } from '../../api/services/hrPolicyService';
 // Role behavior groups — centralized in the global role registry (config/roles.js)
 import { SUPERVISOR_ROLES } from '../../config/roles';
+import NotificationSlideshow from '../../components/NotificationSlideshow';
 
 interface Stats {
   totalEmployees: number;
@@ -78,6 +80,14 @@ interface AttendanceData {
   /** 'default' = State A, 'alternative' = State B, 'manual' = State C */
   office_mode: 'default' | 'alternative' | 'manual';
   offices: Office[];
+  /**
+   * False when the authenticated account has no linked employee record. The
+   * office list is still returned in that case, so an empty dropdown always
+   * means "no offices configured", never "your account is unlinked".
+   */
+  employee_linked?: boolean;
+  /** Machine-readable reason when the widget is degraded, e.g. 'no_employee_record'. */
+  unavailable_reason?: string | null;
 }
 interface Analytics {
   attendance: Record<string, any> | null;
@@ -119,6 +129,91 @@ interface HrInsights {
   };
   on_leave_today: { count: number; items: HrInsightItem[] };
 }
+
+interface PendingMeetingItem {
+  id: number;
+  title: string;
+  meeting_date: string;
+  start_time: string;
+  location: string;
+  organizer_name: string | null;
+}
+
+const PendingMeetingsCard = () => {
+  const navigate = useNavigate();
+  const [items, setItems] = useState<PendingMeetingItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchPending = async () => {
+      try {
+        const response = await api.get('/my-meetings');
+        const payload = response.data?.data;
+        const list = Array.isArray(payload) ? payload : [];
+        const pending = list.filter((m: any) => {
+          const responseStatus = m?.invitation?.response_status || 'pending';
+          if (responseStatus !== 'pending') return false;
+          const dateStr = m?.meeting_date;
+          if (!dateStr) return true;
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const d = new Date(dateStr);
+          return Number.isNaN(d.getTime()) || d >= today;
+        });
+        if (!cancelled) setItems(pending);
+      } catch {
+        if (!cancelled) setItems([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchPending();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const fmtDate = (d: string) => {
+    if (!d) return '';
+    try {
+      return new Date(d).toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    } catch {
+      return d;
+    }
+  };
+
+  return (
+    <Card className="md:col-span-2 lg:col-span-3">
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">My Pending Meetings</p>
+          <p className="text-3xl font-bold text-blue-600">{loading ? '…' : items.length}</p>
+        </div>
+        <CalendarCheck className="h-5 w-5 text-blue-500" />
+      </div>
+      <div className="space-y-1 mb-3 max-h-24 overflow-y-auto">
+        {!loading &&
+          items.slice(0, 5).map((m) => (
+            <p key={m.id} className="text-xs text-gray-600 dark:text-gray-300 truncate">
+              {m.title} · {fmtDate(m.meeting_date)}
+              {m.start_time ? ` · ${m.start_time}` : ''}
+            </p>
+          ))}
+        {!loading && items.length === 0 && (
+          <p className="text-xs text-gray-400">No pending meeting invitations.</p>
+        )}
+      </div>
+      <Button variant="secondary" size="sm" onClick={() => navigate('/my-meetings?tab=scheduled')}>
+        View <ExternalLink className="ml-1 h-3 w-3" />
+      </Button>
+    </Card>
+  );
+};
 
 /**
  * Great-circle distance between two coordinates, in whole metres (Haversine).
@@ -259,6 +354,20 @@ const Dashboard = () => {
     }
   }, [showMyPending]);
 
+  // The personal clock-in/out card (and the office list it needs) is NOT
+  // HR-restricted, so it must not sit behind showHrInsights. It was previously
+  // only ever called from the post-clock-in success path, which meant the
+  // office <select> stayed `offices: []` - i.e. empty - until the employee had
+  // already clocked in once. Every fresh page load rendered an office dropdown
+  // with no options, so clock-in was impossible on first use.
+  //
+  // The dependency is deliberately empty-ish: run once on mount. Re-running on
+  // every permission change would refetch on each auth-state transition, and
+  // the same argument applies that gates the HR widgets above.
+  useEffect(() => {
+    fetchAttendanceDashboard();
+  }, []);
+
   const fetchStats = async () => {
     try {
       const response = await api.get('/dashboard/stats');
@@ -300,6 +409,15 @@ const Dashboard = () => {
         }
         return data.offices && data.offices.length > 0 ? String(data.offices[0].id) : prev;
       });
+
+      // Make an unlinked account explicit instead of letting it look like a
+      // broken office dropdown. Clock-in itself will 404, so say why up front.
+      if (data.employee_linked === false) {
+        setActionMessage(
+          'Your login is not linked to an employee record, so clock-in is unavailable. ' +
+            'Please contact HR to have your account linked.',
+        );
+      }
     } catch (error) {
       console.error('Failed to fetch attendance data:', error);
     }
@@ -420,6 +538,9 @@ const Dashboard = () => {
         latitude: coords.lat,
         longitude: coords.lng,
         accuracy: coords.accuracy,
+        // Opaque random per-browser id (no hardware fingerprinting). The
+        // server hashes it and applies the one-device/one-employee lock.
+        device_id: getDeviceId(),
       };
 
       const response = await api.post(
@@ -451,6 +572,24 @@ const Dashboard = () => {
             `${formatDistance(allowed)} to clock ${action === 'clock-in' ? 'in' : 'out'} - ` +
             'please move closer and try again.',
         );
+      } else if (resp?.error?.code === 'DEVICE_LOCKED') {
+        // Server-authoritative device conflict. Surface the reason and when the
+        // device frees up, rather than the generic failure text.
+        // Envelope: { success:false, message, error:{ code, details:{...} } }
+        const details = resp?.error?.details ?? {};
+        const hours = Number(details.window_hours ?? 0);
+        const unlocksAt = details.unlocks_at ? new Date(details.unlocks_at) : null;
+        setLocationError(
+          resp.message ||
+            (hours
+              ? `This device is already registered to another employee. It becomes ` +
+                `available again in ${hours} hour${hours === 1 ? '' : 's'}. ` +
+                'Please clock in from your own device.'
+              : 'This device is already registered to another employee. Please use your own device.'),
+        );
+        if (unlocksAt && !Number.isNaN(unlocksAt.getTime())) {
+          setActionMessage(`Device lock expires at ${unlocksAt.toLocaleString()}.`);
+        }
       } else {
         setLocationError(getErrorMessage(error));
       }
@@ -617,6 +756,18 @@ const Dashboard = () => {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
         <p className="text-gray-500 dark:text-gray-400">Welcome to MUWASCO HR Management System</p>
       </div>
+
+      {/* Attention-grabbing summary slideshow pinned directly ABOVE the
+          attendance card: auto-rotating one-line counts of everything that
+          needs this user's attention - pending leave approvals (org-wide
+          figure for HR holders, personal queue for other approvers), pending
+          meeting invitations and unread in-app notifications. Each slide
+          links to the page that owns the summary. */}
+      <NotificationSlideshow
+        pendingLeaveApprovals={
+          showHrInsights ? stats.pendingApprovals : showMyPending ? myPendingLeaves.count : 0
+        }
+      />
 
       {/* Clock In/Clock Out Card */}
       <Card>
@@ -1243,6 +1394,13 @@ const Dashboard = () => {
           </Button>
         </Card>
       )}
+
+      {/* My Pending Meetings — every employee's own pending invitations.
+          Visible to ANYONE who can open My Meetings (meetings:view, held by
+          all roles). Fetched from the personal /my-meetings endpoint; rows
+          still awaiting this user's response and not yet past are counted.
+          The View button deep-links to the Scheduled tab. */}
+      {can('meetings', 'view') && <PendingMeetingsCard />}
 
       {/* Analytics Graphs - live Recharts visualisations fed by the
            /dashboard/charts/* endpoints. HR-restricted surface: charts are

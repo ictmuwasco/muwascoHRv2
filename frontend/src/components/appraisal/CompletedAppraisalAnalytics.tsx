@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { Award, BarChart3, ChevronDown, ChevronUp, TrendingUp, Users } from 'lucide-react';
 import Card from '../ui/Card';
-import type { AnalyticsUnit, AppraisalAnalytics, FilterScopeLevel } from '../../api/services/appraisalReportService';
+import type {
+  AnalyticsUnit,
+  AppraisalAnalytics,
+  FilterScopeLevel,
+} from '../../api/services/appraisalReportService';
 
 /**
  * Which unit breakdowns are worth showing for a given scope tier.
@@ -11,7 +15,10 @@ import type { AnalyticsUnit, AppraisalAnalytics, FilterScopeLevel } from '../../
  * the tiers BELOW the caller's own are informative, so the list is keyed off the
  * scope level the server already reports.
  */
-const BREAKDOWNS: Record<FilterScopeLevel, Array<{ key: 'departments' | 'sections' | 'subsections'; label: string }>> = {
+const BREAKDOWNS: Record<
+  FilterScopeLevel,
+  Array<{ key: 'departments' | 'sections' | 'subsections'; label: string }>
+> = {
   organisation: [
     { key: 'departments', label: 'By department' },
     { key: 'sections', label: 'By section' },
@@ -55,7 +62,8 @@ const Overall = ({ analytics }: { analytics: AppraisalAnalytics }) => {
       )}
       <p className="mt-2 text-xs text-gray-400">
         {analytics.appraisals} appraisal{analytics.appraisals === 1 ? '' : 's'} in view
-        {analytics.scored < analytics.appraisals && ` · ${analytics.appraisals - analytics.scored} not yet scored`}
+        {analytics.scored < analytics.appraisals &&
+          ` · ${analytics.appraisals - analytics.scored} not yet scored`}
       </p>
     </div>
   );
@@ -80,11 +88,16 @@ const Best = ({
     </p>
     {unit ? (
       <>
-        <p className="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100" title={unit.name}>
+        <p
+          className="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-gray-100"
+          title={unit.name}
+        >
           {unit.name}
         </p>
         {unit.detail && <p className="text-xs text-gray-400">Staff No {unit.detail}</p>}
-        <p className={`mt-1 text-lg font-bold ${analyticsBand(unit.percentage)}`}>{unit.percentage}%</p>
+        <p className={`mt-1 text-lg font-bold ${analyticsBand(unit.percentage)}`}>
+          {unit.percentage}%
+        </p>
         <p className="text-xs text-gray-500">
           across {unit.count} appraisal{unit.count === 1 ? '' : 's'}
         </p>
@@ -95,7 +108,6 @@ const Best = ({
   </div>
 );
 
-
 /** One ranked unit, with a proportional bar so tiers are comparable at a glance. */
 const UnitRow = ({ unit, best }: { unit: AnalyticsUnit; best: number }) => (
   <li className="py-2">
@@ -104,7 +116,9 @@ const UnitRow = ({ unit, best }: { unit: AnalyticsUnit; best: number }) => (
         {unit.name}
         {unit.detail && <span className="ml-1 text-xs text-gray-400">({unit.detail})</span>}
       </span>
-      <span className={`shrink-0 text-sm font-semibold ${analyticsBand(unit.percentage)}`}>{unit.percentage}%</span>
+      <span className={`shrink-0 text-sm font-semibold ${analyticsBand(unit.percentage)}`}>
+        {unit.percentage}%
+      </span>
     </div>
     <div className="mt-1 flex items-center gap-2">
       {/* Scaled against the top unit, not 100%, so a tier where everyone scores
@@ -148,7 +162,13 @@ interface Props {
   defaultOpen?: boolean;
 }
 
-const CompletedAppraisalAnalytics = ({ analytics, loading, error, scopeLevel, defaultOpen = true }: Props) => {
+const CompletedAppraisalAnalytics = ({
+  analytics,
+  loading,
+  error,
+  scopeLevel,
+  defaultOpen = true,
+}: Props) => {
   const [open, setOpen] = useState(defaultOpen);
 
   // A subsection head gets no breakdown lists at all, so the panel is only worth
@@ -164,7 +184,9 @@ const CompletedAppraisalAnalytics = ({ analytics, loading, error, scopeLevel, de
         className="flex w-full items-center gap-2 text-left"
       >
         <BarChart3 className="h-4 w-4 text-gray-500" aria-hidden="true" />
-        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Performance analytics</span>
+        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          Performance analytics
+        </span>
         {open ? (
           <ChevronUp className="ml-auto h-4 w-4 text-gray-400" aria-hidden="true" />
         ) : (
@@ -180,7 +202,8 @@ const CompletedAppraisalAnalytics = ({ analytics, loading, error, scopeLevel, de
             <p className="py-6 text-center text-sm text-gray-500">Loading analytics…</p>
           ) : !analytics.available ? (
             <p className="text-sm text-gray-500">
-              Performance analytics cover a whole unit, so they are not available for your own appraisals.
+              Performance analytics cover a whole unit, so they are not available for your own
+              appraisals.
             </p>
           ) : (
             <>
@@ -188,8 +211,8 @@ const CompletedAppraisalAnalytics = ({ analytics, loading, error, scopeLevel, de
                   first 100 rows than to present them as organisation-wide. */}
               {analytics.truncated && (
                 <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                  More records match than can be aggregated at once, so these figures cover the most recent 100.
-                  Narrow the filters for an exact total.
+                  More records match than can be aggregated at once, so these figures cover the most
+                  recent 100. Narrow the filters for an exact total.
                 </p>
               )}
 
@@ -219,8 +242,8 @@ const CompletedAppraisalAnalytics = ({ analytics, loading, error, scopeLevel, de
 
               <p className="flex items-start gap-1.5 text-xs text-gray-400">
                 <Users className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                Averages are weighted by points scored (total score ÷ total possible), not an average of
-                per-appraisal percentages. Units with no scored appraisals are omitted.
+                Averages are weighted by points scored (total score ÷ total possible), not an
+                average of per-appraisal percentages. Units with no scored appraisals are omitted.
               </p>
             </>
           )}
