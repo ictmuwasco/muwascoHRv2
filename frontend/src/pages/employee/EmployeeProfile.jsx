@@ -44,10 +44,7 @@ import { API_BASE_URL as API_BASE } from '../../config/api';
 // without mounting this component. The comment there explains why that matters:
 // the rule previously lived here as a useMemo consumed by an effect declared
 // above it, which is a temporal dead zone crash at load time.
-import {
-  DOCUMENT_ACCESS_STATES,
-  filterVisibleTabs,
-} from './visibleTabs';
+import { DOCUMENT_ACCESS_STATES, filterVisibleTabs } from './visibleTabs';
 
 // Tab definitions for the EmployeeProfile tab navigation, declared at MODULE
 // level (single source of truth). This is required because the ?tab=
@@ -208,10 +205,7 @@ const EmployeeProfile = () => {
   // Tabs actually rendered. The rule lives in visibleTabs.js so it can be unit
   // tested without mounting this component - see the note there about the
   // temporal dead zone this replaces.
-  const tabs = useMemo(
-    () => filterVisibleTabs(PROFILE_TABS, documentsAccess),
-    [documentsAccess],
-  );
+  const tabs = useMemo(() => filterVisibleTabs(PROFILE_TABS, documentsAccess), [documentsAccess]);
 
   const documentsVisible = tabs.some((t) => t.id === 'documents');
 
@@ -226,11 +220,7 @@ const EmployeeProfile = () => {
   // ping-pong on every render. Validating against what is actually shown makes
   // the deep link simply not apply.
   useEffect(() => {
-    if (
-      requestedTab &&
-      tabs.some((t) => t.id === requestedTab) &&
-      requestedTab !== activeTab
-    ) {
+    if (requestedTab && tabs.some((t) => t.id === requestedTab) && requestedTab !== activeTab) {
       setActiveTab(requestedTab);
     }
   }, [requestedTab, tabs]);
@@ -280,9 +270,7 @@ const EmployeeProfile = () => {
       //   granted - a verified approval is live for at least one of them
       //   locked  - placeholders only; no name/category/id was ever sent
       //   none    - the employee has no documents at all
-      setDocumentsAccess(
-        data.documents_access || DOCUMENT_ACCESS_STATES.NONE,
-      );
+      setDocumentsAccess(data.documents_access || DOCUMENT_ACCESS_STATES.NONE);
       const parsedDocuments = safeParse(data.documents);
       setDocuments(parsedDocuments);
 
@@ -486,9 +474,7 @@ const EmployeeProfile = () => {
         ttlMinutes: data.ttl_minutes || 10,
       }));
     } catch (err) {
-      const msg =
-        err?.response?.data?.message ||
-        'Could not request access to this document.';
+      const msg = err?.response?.data?.message || 'Could not request access to this document.';
       setOtpError(msg);
       setOtpDoc(null);
     } finally {
@@ -543,8 +529,7 @@ const EmployeeProfile = () => {
 
       await openVerifiedDocument(otpDoc.docId, otpDoc.name);
     } catch (err) {
-      const msg =
-        err?.response?.data?.message || 'That code could not be verified.';
+      const msg = err?.response?.data?.message || 'That code could not be verified.';
       setOtpError(msg);
       setOtpCode('');
       setOtpDoc((prev) => ({ ...prev, step: 'awaiting_code' }));
@@ -565,14 +550,11 @@ const EmployeeProfile = () => {
    * a reusable one.
    */
   const openVerifiedDocument = async (docId, docName) => {
-    const response = await fetch(
-      `${API_BASE}/profile/documents/${docId}/open?download=1`,
-      {
-        method: 'GET',
-        credentials: 'include',
-        headers: { Accept: 'application/octet-stream' },
-      },
-    );
+    const response = await fetch(`${API_BASE}/profile/documents/${docId}/open?download=1`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/octet-stream' },
+    });
 
     if (!response.ok) {
       let message = 'This document could not be opened.';
@@ -637,8 +619,7 @@ const EmployeeProfile = () => {
       const res = await api.post(`/profile/employees/${id}/documents/request-access`);
       const data = res.data?.data || res.data || {};
 
-      const ownerName =
-        `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim();
+      const ownerName = `${employee?.first_name || ''} ${employee?.last_name || ''}`.trim();
 
       setOtpDoc({
         docId: null, // employee-scoped: no single document chosen yet
@@ -649,10 +630,7 @@ const EmployeeProfile = () => {
         employeeScoped: true,
       });
     } catch (err) {
-      setOtpError(
-        err?.response?.data?.message ||
-          'Could not request access to these documents.',
-      );
+      setOtpError(err?.response?.data?.message || 'Could not request access to these documents.');
     } finally {
       setOtpBusy(false);
     }
@@ -1069,15 +1047,12 @@ const EmployeeProfile = () => {
               </div>
             </div>
             <div className="flex-1">
-              <h3 className="text-sm font-semibold text-amber-900">
-                Encrypted documents
-              </h3>
+              <h3 className="text-sm font-semibold text-amber-900">Encrypted documents</h3>
               <p className="text-sm text-amber-800 mt-1">
                 {documents.length > 0 ? (
                   <>
-                    This employee has{' '}
-                    <span className="font-medium">{documents.length}</span> encrypted
-                    document{documents.length === 1 ? '' : 's'}. Their contents and
+                    This employee has <span className="font-medium">{documents.length}</span>{' '}
+                    encrypted document{documents.length === 1 ? '' : 's'}. Their contents and
                     filenames are hidden.
                   </>
                 ) : (
@@ -1085,16 +1060,12 @@ const EmployeeProfile = () => {
                 )}
               </p>
               <p className="text-xs text-amber-700 mt-1">
-                Opening one sends a 6-digit code to the employee's own email address.
-                They must approve it before anything becomes visible — you cannot
-                see what you are requesting.
+                Opening one sends a 6-digit code to the employee's own email address. They must
+                approve it before anything becomes visible — you cannot see what you are requesting.
               </p>
             </div>
             <div className="flex-shrink-0">
-              <Button
-                onClick={requestFirstDocumentAccess}
-                disabled={otpBusy}
-              >
+              <Button onClick={requestFirstDocumentAccess} disabled={otpBusy}>
                 {otpBusy ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
@@ -1868,8 +1839,8 @@ const EmployeeProfile = () => {
                 </p>
 
                 <p className="text-xs text-gray-500">
-                  The code goes to the employee who owns this document, so you may need to ask
-                  them for it. It can be used once.
+                  The code goes to the employee who owns this document, so you may need to ask them
+                  for it. It can be used once.
                 </p>
 
                 <div>
@@ -1902,12 +1873,7 @@ const EmployeeProfile = () => {
             )}
 
             <div className="flex justify-end gap-2 pt-1">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={cancelOtp}
-                disabled={otpBusy}
-              >
+              <Button type="button" variant="outline" onClick={cancelOtp} disabled={otpBusy}>
                 Cancel
               </Button>
               {otpDoc.step === 'awaiting_code' && (
