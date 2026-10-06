@@ -536,6 +536,32 @@ class LeaveApprovalService
     }
 
     /**
+     * Public read of the approver check for callers that are NOT making a
+     * decision — e.g. the leave-document endpoints, where a supervisor must be
+     * able to read the evidence for an application they may decide.
+     *
+     * Deliberately read-only: approve/reject keep calling the private
+     * isAuthorisedApprover() so nothing outside this service can transition a
+     * workflow state.
+     *
+     * Returns false for a missing application or user.
+     */
+    public function isAuthorisedApproverForApplication(int $userId, int $applicationId): bool
+    {
+        $app = $this->getApplication($applicationId);
+        if (!$app) {
+            return false;
+        }
+
+        $user = $this->getUserById($userId);
+        if (!$user) {
+            return false;
+        }
+
+        return $this->isAuthorisedApprover($userId, $app, (string) ($user['role'] ?? ''));
+    }
+
+    /**
      * Check if the user is an authorised approver for this application.
      */
     private function isAuthorisedApprover(int $userId, array $app, string $role): bool
