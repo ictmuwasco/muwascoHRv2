@@ -294,6 +294,52 @@ class MeetingRepository implements RepositoryInterface
     /**
      * Get all eligible employees for inviting to a meeting.
      * Returns active employees with their basic info and designation.
+     *
+     * Sync a meeting's invitation roster to exactly the given employee ids.
+     * Employees already invited are left untouched so their RSVP history is
+     * preserved; employees no longer in the list are removed; genuinely new
+     * employees are invited with the HR-invited type.
+     *
+     * @return array{added: list<int>, removed: list<int>}
+     */
+    public function syncInvitations(int $meetingId, array $employeeIds, int $invitedBy): array
+    {
+        $wanted = array_values(array_unique(array_map('intval', $employeeIds)));
+        $wanted = array_values(array_filter($wanted, static fn ($id) => $id > 0));
+
+        $stmt = $this->conn->prepare("SELECT employee_id FROM meeting_invitations WHERE meeting_id = ?");
+        $stmt->bind_param('i', $meetingId);
+        $stmt->execute();
+        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        $existing = array_map(static fn ($r) => (int) $r['employee_id'], $rows);
+
+        $toAdd = array_values(array_diff($wanted, $existing));
+        $toRemove = array_values(array_diff($existing, $wanted));
+
+        if (!empty($toAdd)) {
+            $this->createInvitations($meetingId, $toAdd, $invitedBy);
+        }
+
+        if (!empty($toRemove)) {
+            $placeholders = implode(',', array_fill(0, count($toRemove), '?'));
+            $types = 'i' . str_repeat('i', count($toRemove));
+            $del = $this->conn->prepare(
+                "DELETE FROM meeting_invitations WHERE meeting_id = ? AND employee_id IN ($placeholders)"
+            );
+            $params = array_merge([$meetingId], $toRemove);
+            $del->bind_param($types, ...$params);
+            $del->execute();
+            $del->close();
+        }
+
+        return ['added' => $toAdd, 'removed' => $toRemove];
+    }
+
+    /**
+     * Get all eligible employees for inviting to a meeting.
+     * Returns active employees with their basic info and designation.
      */
     public function getEligibleEmployees(): array
     {
