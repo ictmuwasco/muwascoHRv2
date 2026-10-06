@@ -209,6 +209,45 @@ foreach ($tables as $tableName => $spec) {
         continue;
     }
 
+    // Step 7 of the per-file work stamps is_encrypted / size_bytes /
+    // original_mime onto the OWNING row, because that stamp is how the read
+    // path decides plaintext-vs-ciphertext. Migration 106 added those three
+    // columns to employee_documents ONLY - the schema deliberately uses the
+    // side table file_encryption rather than coupling itself to every
+    // document table (see migration 105, section 5).
+    //
+    // So a table without them cannot be migrated: the file would encrypt
+    // successfully, the key row would be written, and the stamp would then
+    // throw - leaving a file the application still believes is plaintext.
+    // Worse, the read paths for leave documents and policies do not decrypt
+    // at all, so the browser would receive MWSC1 container bytes as a PDF.
+    //
+    // Skipping here is the honest outcome: those tables are simply not
+    // supported by PART B yet. Report it instead of failing mid-run.
+    $missingCols = [];
+    foreach (['is_encrypted', 'size_bytes', 'original_mime'] as $col) {
+        $probe = null;
+        try {
+            $probe = $conn->query(
+                "SELECT 1 FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = '" . $conn->real_escape_string($schema) . "'
+                    AND TABLE_NAME   = '" . $conn->real_escape_string($tableName) . "'
+                    AND COLUMN_NAME  = '" . $conn->real_escape_string($col) . "'
+                  LIMIT 1"
+            );
+        } catch (\Throwable $e) {
+            $probe = false;
+        }
+        if (!$probe || $probe->num_rows === 0) {
+            $missingCols[] = $col;
+        }
+    }
+    if ($missingCols !== []) {
+        out("  skip: table '$tableName' has no " . implode(', ', $missingCols)
+            . " - PART B stamping not supported for this table");
+        continue;
+    }
+
     $rows = null;
     try {
         $rows = $conn->query($spec['sql']);
@@ -232,7 +271,11 @@ foreach ($tables as $tableName => $spec) {
 
 out('');
 out(($verifyOnly ? 'VERIFY ONLY -' : ($execute ? 'MIGRATING' : 'DRY RUN -')) . ' file inventory');
-out(sprintf('  %d file record(s) found across %d table(s)', count($work), count($tables)));
+// Count the tables that actually CONTRIBUTED rows. $tables still holds the
+// skipped ones, and reporting "3 tables" when two were skipped is a small
+// lie that makes the summary harder to trust.
+$contributing = count(array_unique(array_column($work, 'table')));
+out(sprintf('  %d file record(s) found across %d table(s)', count($work), $contributing));
 out('');
 
 if (empty($work)) {
