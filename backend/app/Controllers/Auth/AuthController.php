@@ -223,6 +223,17 @@ class AuthController extends BaseController
             // refresh it on every permission poll.
             $user['active_delegations'] = $this->activeDelegationsFor($userId);
 
+            // Consent flag for the frontend consent gate (login → consent →
+            // dashboard). Mirrors AuthService::login() so a page reload does
+            // not lose the flag when AuthContext refreshes the profile.
+            $user['consent_accepted'] = false;
+            try {
+                $user['consent_accepted'] = (new \App\Models\Consent())
+                    ->hasAcceptedVersion($userId, \App\Models\Consent::CURRENT_VERSION);
+            } catch (\Throwable $e) {
+                \logger()->warning('Consent check during me failed', ['error' => $e->getMessage()]);
+            }
+
             $this->success($user);
         } catch (\Exception $e) {
             \logger()->error('Get user error', ['error' => $e->getMessage()]);

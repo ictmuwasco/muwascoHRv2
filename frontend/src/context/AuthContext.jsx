@@ -214,11 +214,12 @@ export const AuthProvider = ({ children }) => {
     };
   }, []);
 
-  const login = async (email, password) => {
+  const login = async (email, password, rememberMe = false) => {
     try {
       const response = await api.post('/auth/login', {
         email,
         password,
+        remember_me: rememberMe,
       });
 
       const payload = response?.data;
@@ -239,7 +240,7 @@ export const AuthProvider = ({ children }) => {
 
       setUser(userData);
 
-      return { success: true };
+      return { success: true, consentAccepted: userData?.consent_accepted === true };
     } catch (error) {
       const errorData = error.response?.data;
 
