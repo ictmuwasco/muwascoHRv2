@@ -443,10 +443,12 @@ jobs:
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_PORT_VAR: ${{ vars.SSH_PORT }}
           SSH_USERNAME: ${{ secrets.SSH_USERNAME }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_PATH_SECRET: ${{ secrets.DEPLOY_PATH }}
         # SSH replaces the previous FTP/SFTP deploy (SamKirkland/FTP-Deploy-Action),
         # which had two problems:
         #   1. It required a long-lived PLAINTEXT PASSWORD in repository secrets.
@@ -477,7 +479,7 @@ jobs:
         #                          apply.php, config.php, ...). None of those
         #                          files exist in this repository. Deploying this
         #                          repo there would overwrite live production.
-        #   /var/www/vhosts/app.muwascoerp.co.ke/httpdocs/   <-- this one
+        #   #/var/www/vhosts/muwascoerp.co.ke/app.muwascoerp.co.ke   <-- this one
         #
         # Confirm after creating the subdomain with:
         #   plesk domain --info app.muwascoerp.co.ke | grep -i document-root
@@ -492,15 +494,40 @@ jobs:
         #   $SSH_KNOWN_HOSTS   known_hosts fragment for the production server
         #                      (public host key - safe to store as a secret)
         #   $DEPLOY_PATH       picked up from the repo variable DEPLOY_PATH
+        #                      (falls back to the DEPLOY_PATH *secret* when the
+        #                      variable is unset - either spelling works).
+        #   $SSH_PORT          SSH_PORT secret first, SSH_PORT variable as
+        #                      fallback, then 22.
         run: |
           set -euo pipefail
+          # ---- Fail fast when deploy credentials are not configured ----
+          # Without this, an empty $SSH_HOST produces the cryptic
+          #   ssh: Could not resolve hostname : Name or service not known
+          #   rsync error: unexplained error (code 255)
+          # which hides the real cause: repository Secrets/Variables missing.
+          # Each value is checked individually so the error names the exact
+          # name to set under Settings > Secrets and variables > Actions.
+          SSH_PORT="${SSH_PORT:-${SSH_PORT_VAR:-22}}"
+          DEPLOY_PATH="${DEPLOY_PATH:-${DEPLOY_PATH_SECRET:-}}"
+          MISSING=""
+          [ -n "${SSH_HOST:-}" ] || MISSING="$MISSING SSH_HOST(secret)"
+          [ -n "${SSH_USERNAME:-}" ] || MISSING="$MISSING SSH_USERNAME(secret)"
+          [ -n "${SSH_PRIVATE_KEY:-}" ] || MISSING="$MISSING SSH_PRIVATE_KEY(secret)"
+          [ -n "${SSH_KNOWN_HOSTS:-}" ] || MISSING="$MISSING SSH_KNOWN_HOSTS(secret)"
+          [ -n "${DEPLOY_PATH:-}" ] || MISSING="$MISSING DEPLOY_PATH(variable or secret)"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Deploy credentials missing:$MISSING. Set them in GitHub > Settings > Secrets and variables > Actions (SSH_* under Repository secrets, DEPLOY_PATH under Repository variables)."
+            echo "SSH_PORT is optional and defaults to 22 when unset."
+            exit 1
+          fi
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          rsync -avz -e "ssh -i ~/.ssh/deploy_key -p ${SSH_PORT:-22} -o BatchMode=yes" \
+          rsync -avz --chown=OWNER:GROUP --chmod=D755,F644 \
+            -e "ssh -i ~/.ssh/deploy_key -p ${SSH_PORT:-22} -o BatchMode=yes" \
             --exclude=.git \
             --exclude=node_modules \
             --exclude=.env \
