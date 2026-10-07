@@ -1,7 +1,9 @@
-﻿import { Navigate } from 'react-router-dom';
+﻿import { useEffect, useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AccessDenied from './AccessDenied';
 import { firstPermittedRoute, parsePermission } from '../config/pagePermissions';
+import { getCachedConsent, getConsentStatus } from '../api/services/consentService';
 
 /**
  * Route guard (Phase 2 Section 12, hardened by the Role/Page/Permission
@@ -23,10 +25,49 @@ import { firstPermittedRoute, parsePermission } from '../config/pagePermissions'
  * guard prevents rendering pages the user cannot use and gives clear
  * feedback instead of an empty or erroring screen.
  */
-const ProtectedRoute = ({ children, permission, fallbackPermission }) => {
-  const { isAuthenticated, loading: authLoading, can } = useAuth();
+const ProtectedRoute = ({ children, permission, fallbackPermission, skipConsentCheck = false }) => {
+  const { user, isAuthenticated, loading: authLoading, can } = useAuth();
+  const location = useLocation();
+  const [consentState, setConsentState] = useState('checking'); // checking | ok | missing
 
-  if (authLoading) {
+  // Consent gate (login → consent → dashboard):
+  // every authenticated page EXCEPT /data-protection-consent itself requires
+  // an accepted Data Protection Notice. Order of checks avoids the known
+  // session-cookie race:
+  //   1. user.consent_accepted from the login/me payload (no extra request)
+  //   2. localStorage consent cache (survives logout, skips the race entirely)
+  //   3. GET /consent/status as the authoritative fallback
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || skipConsentCheck) {
+      setConsentState(skipConsentCheck ? 'ok' : 'checking');
+      return;
+    }
+    if (user?.consent_accepted === true) {
+      setConsentState('ok');
+      return;
+    }
+    if (user?.id && getCachedConsent(user.id)) {
+      setConsentState('ok');
+      return;
+    }
+    let cancelled = false;
+    setConsentState('checking');
+    getConsentStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setConsentState(status?.consented === true ? 'ok' : 'missing');
+      })
+      .catch(() => {
+        // Fail-closed: a broken consent lookup must not silently grant access
+        // to the whole HR system. The consent page itself re-checks on load.
+        if (!cancelled) setConsentState('missing');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isAuthenticated, skipConsentCheck, user?.id, user?.consent_accepted]);
+
+  if (authLoading || (isAuthenticated && !skipConsentCheck && consentState === 'checking')) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -36,6 +77,17 @@ const ProtectedRoute = ({ children, permission, fallbackPermission }) => {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Authenticated but consent not yet given — force the consent flow.
+  // The location key lets the consent page return them where they were headed.
+  if (!skipConsentCheck && consentState === 'missing') {
+    return (
+      <Navigate
+        to={`/data-protection-consent?returnTo=${encodeURIComponent(location.pathname + location.search)}`}
+        replace
+      />
+    );
   }
 
   if (permission) {

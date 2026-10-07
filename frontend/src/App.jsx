@@ -153,7 +153,17 @@ function App() {
           refuses to continue if it has expired or been used. */}
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/data-protection-consent" element={<DataProtectionConsent />} />
+          {/* Consent step of login → consent → dashboard. Authenticated-only
+          (a signed-out visitor is bounced to /login); the consent check
+          itself is skipped here or the page would redirect to itself. */}
+          <Route
+            path="/data-protection-consent"
+            element={
+              <ProtectedRoute skipConsentCheck>
+                <DataProtectionConsent />
+              </ProtectedRoute>
+            }
+          />
 
           <Route
             path="/"

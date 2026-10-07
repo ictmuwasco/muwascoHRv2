@@ -8,7 +8,11 @@ export type RoleCheck = (roles: string | string[]) => boolean;
 
 export interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  login: (
+    email: string,
+    password: string,
+    rememberMe?: boolean,
+  ) => Promise<{ success: boolean; message?: string; consentAccepted?: boolean }>;
   logout: () => Promise<void>;
   loading: boolean;
   isAuthenticated: boolean;

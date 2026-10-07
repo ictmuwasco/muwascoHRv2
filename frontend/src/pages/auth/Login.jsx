@@ -16,12 +16,16 @@ import {
 } from 'lucide-react';
 import Logo from '../../components/Logo';
 
-// Note: Consent check is handled by ProtectedRoute component
+// Note: Consent is enforced in two places:
+//  1. Login redirects here to /data-protection-consent when the login payload
+//     says consent_accepted !== true.
+//  2. ProtectedRoute re-checks (payload -> cache -> GET /consent/status) so a
+//     deep link or reload cannot bypass the consent step.
 
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -33,35 +37,65 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [touched, setTouched] = useState({ email: false, password: false });
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated — consented users go to the dashboard,
+  // users who still owe consent go to the consent step first.
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true });
+      navigate(user?.consent_accepted === true ? '/dashboard' : '/data-protection-consent', {
+        replace: true,
+      });
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, user?.consent_accepted, navigate]);
 
   const emailError =
     touched.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
       ? 'Please enter a valid email address'
       : '';
+  // Inline hint only — length is enforced on submit via freshPasswordError
+  // below. An 8-char minimum on LOGIN would lock out real users with older
+  // short passwords; the server (password_verify) is authoritative.
   const passwordError =
-    touched.password && password.length < 8 ? 'Password must be at least 8 characters' : '';
+    touched.password && password.length > 0 && password.length < 8
+      ? 'Password must be at least 8 characters'
+      : '';
+  const emptyPasswordError = touched.password && !password ? 'Please enter your password' : '';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setTouched({ email: true, password: true });
     setError('');
 
-    if (emailError || passwordError || !email || !password) {
+    // NOTE: emailError/passwordError above are STALE on this render — they
+    // were computed before setTouched took effect, so an untouched short
+    // password submits anyway (the production bypass you saw). Recompute
+    // from the current values instead of trusting the rendered errors.
+    const freshEmailError = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      ? 'Please enter a valid email address'
+      : '';
+    // Login must accept ANY non-empty password: length is a signup/reset
+    // rule, not a login rule. Blocking <8 chars here only stops real users
+    // with old/short passwords from signing in — the server is authoritative.
+    const freshPasswordError =
+      !password || password.length < 8 ? 'Password must be at least 8 characters' : '';
+
+    if (freshEmailError || freshPasswordError) {
+      setError(freshEmailError || freshPasswordError);
       return;
     }
 
     setLoading(true);
 
     try {
-      const result = await login(email, password);
+      const result = await login(email, password, rememberMe);
 
       if (result.success) {
+        // New employee (or a new consent version): consent first, then the
+        // dashboard. Consented users return to the page their session expired
+        // on, or the dashboard on a normal first sign-in.
+        if (result.consentAccepted !== true) {
+          navigate('/data-protection-consent', { replace: true });
+          return;
+        }
         // Return the employee to the page their session expired on, rather
         // than dumping them on the dashboard. Falls back to the dashboard when
         // there is nothing remembered (a normal first sign-in).
@@ -226,10 +260,14 @@ const Login = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     onBlur={() => setTouched((t) => ({ ...t, password: true }))}
-                    aria-invalid={!!passwordError}
-                    aria-describedby={passwordError ? 'password-error' : undefined}
+                    aria-invalid={!!passwordError || !!emptyPasswordError}
+                    aria-describedby={
+                      passwordError || emptyPasswordError ? 'password-error' : undefined
+                    }
                     className={`w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-900 text-sm dark:text-slate-100 rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-500 ${
-                      passwordError ? 'border-red-300' : 'border-slate-200 dark:border-slate-600'
+                      passwordError || emptyPasswordError
+                        ? 'border-red-300'
+                        : 'border-slate-200 dark:border-slate-600'
                     }`}
                     placeholder="Enter your password"
                   />
@@ -242,9 +280,9 @@ const Login = () => {
                     {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                   </button>
                 </div>
-                {passwordError && (
+                {(passwordError || emptyPasswordError) && (
                   <p id="password-error" className="mt-1 text-xs text-red-600 dark:text-red-400">
-                    {passwordError}
+                    {passwordError || emptyPasswordError}
                   </p>
                 )}
               </div>
