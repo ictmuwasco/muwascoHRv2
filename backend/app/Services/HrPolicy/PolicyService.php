@@ -73,6 +73,45 @@ class PolicyService
         // Get file extension for parsing
         $ext = strtolower(pathinfo($stored['original_name'], PATHINFO_EXTENSION));
 
+        // Extract the section tree BEFORE any database write. Parsing can fail
+        // (legacy .doc, image-only PDF, parser errors) and a failure must NOT
+        // leave behind a ghost document row with section_count = 0 — HR would
+        // publish a version whose reader shows "No sections available". On any
+        // failure the stored file is removed too, so a failed upload leaves
+        // nothing behind at all.
+        $absPath = PolicyFileService::absolutePath($stored['relative_path']);
+        if ($absPath === null) {
+            PolicyFileService::delete($stored['relative_path']);
+            throw new \InvalidArgumentException('Uploaded policy file could not be read for section extraction.');
+        }
+
+        try {
+            $parsedSections = DocumentParser::parse($absPath, $ext);
+        } catch (\InvalidArgumentException $e) {
+            PolicyFileService::delete($stored['relative_path']);
+            throw $e;
+        } catch (\Throwable $e) {
+            PolicyFileService::delete($stored['relative_path']);
+            \logger()->error('Policy section extraction failed', [
+                'file' => $stored['original_name'], 'error' => $e->getMessage(),
+            ]);
+            throw new \InvalidArgumentException(
+                'Failed to extract sections from the uploaded document: ' . $e->getMessage()
+            );
+        }
+
+        if (count($parsedSections) === 0) {
+            PolicyFileService::delete($stored['relative_path']);
+            throw new \InvalidArgumentException(
+                'No sections could be extracted from the uploaded file. '
+                . 'Please ensure the document is a valid PDF or DOCX with selectable text.'
+            );
+        }
+
+        \logger()->info('Policy sections extracted', [
+            'file' => $stored['original_name'], 'sections' => count($parsedSections),
+        ]);
+
         $ackMessage = trim((string) ($meta['acknowledgement_message'] ?? ''));
 
         $id = \db()->insert('hr_policy_documents', [
@@ -95,50 +134,44 @@ class PolicyService
                 : self::DEFAULT_ACK_MESSAGE,
         ]);
 
-        // Parse the document and create sections automatically
+        // Persist the extracted section tree (children of the new document)
         try {
-            $absPath = PolicyFileService::absolutePath($stored['relative_path']);
-            \logger()->info('Document parsing started', [
-                'document_id' => $id,
-                'relative_path' => $stored['relative_path'],
-                'abs_path' => $absPath,
-                'extension' => $ext,
-            ]);
-            if ($absPath !== null && is_file($absPath)) {
-                $parsedSections = DocumentParser::parse($absPath, $ext);
-                \logger()->info('Document parsing completed', [
-                    'document_id' => $id,
-                    'sections_found' => count($parsedSections),
-                ]);
-                foreach ($parsedSections as $idx => $section) {
-                    \db()->insert('hr_policy_sections', [
-                        'policy_document_id' => $id,
-                        'section_number'     => $section['section_number'],
-                        'title'              => mb_substr($section['title'], 0, 200),
-                        'content'            => $section['content'],
-                        'page_start'         => $section['page_start'],
-                        'page_end'           => $section['page_end'],
-                        'sort_order'         => $idx + 1,
-                    ]);
-                }
-                // Update section count
-                \db()->update('hr_policy_documents',
-                    ['section_count' => count($parsedSections)],
-                    'id = ?', 'i', [$id]
-                );
-            } else {
-                \logger()->warning('Document file not found for parsing', [
-                    'document_id' => $id,
-                    'abs_path' => $absPath,
+            foreach ($parsedSections as $idx => $section) {
+                \db()->insert('hr_policy_sections', [
+                    'policy_document_id' => $id,
+                    'section_number'     => $section['section_number'],
+                    'title'              => mb_substr($section['title'], 0, 200),
+                    'content'            => $section['content'],
+                    'page_start'         => $section['page_start'],
+                    'page_end'           => $section['page_end'],
+                    'sort_order'         => $idx + 1,
                 ]);
             }
+
+            // Update section count
+            \db()->update(
+                'hr_policy_documents',
+                ['section_count' => count($parsedSections)],
+                'id = ?', 'i', [$id]
+            );
         } catch (\Throwable $e) {
-            // Parsing failed - log but don't fail the upload
-            \logger()->warning('Document parsing failed', [
-                'document_id' => $id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+            // Undo the half-created version (children first) so the reader can
+            // never resolve a document with a broken/empty section tree.
+            try {
+                \db()->delete('hr_policy_sections', 'policy_document_id = ?', 'i', [$id]);
+                \db()->delete('hr_policy_documents', 'id = ?', 'i', [$id]);
+            } catch (\Throwable $rollbackError) {
+                \logger()->error('Policy upload rollback failed', [
+                    'id' => $id, 'error' => $rollbackError->getMessage(),
+                ]);
+            }
+            PolicyFileService::delete($stored['relative_path']);
+            \logger()->error('Policy section save failed', [
+                'id' => $id, 'error' => $e->getMessage(),
             ]);
+            throw new \InvalidArgumentException(
+                'Failed to save the extracted sections: ' . $e->getMessage()
+            );
         }
 
         AuditService::getInstance()->log(
