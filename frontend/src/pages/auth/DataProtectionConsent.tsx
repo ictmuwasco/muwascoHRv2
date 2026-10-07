@@ -1,7 +1,12 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { verifyEmployeeId, submitConsent } from '../../api/services/consentService';
+import {
+  getConsentStatus,
+  saveCachedConsent,
+  verifyEmployeeId,
+  submitConsent,
+} from '../../api/services/consentService';
 import {
   ShieldCheck,
   ChevronDown,
@@ -157,7 +162,8 @@ const sections: Section[] = [
 
 const DataProtectionConsent = () => {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { user, isAuthenticated, loading: authLoading, logout, refreshPermissions } = useAuth();
   const [openSection, setOpenSection] = useState<string | null>('collect');
   const [nationalId, setNationalId] = useState('');
   const [verified, setVerified] = useState(false);
@@ -167,6 +173,46 @@ const DataProtectionConsent = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [, setVerifiedName] = useState('');
+  const [alreadyConsented, setAlreadyConsented] = useState(false);
+
+  // The route itself is ProtectedRoute-guarded (authenticated-only), so this
+  // handles the two in-page cases:
+  //  - signed-out (session died mid-flow): back to /login.
+  //  - already consented (reload, back-button, double submit): skip the form
+  //    and continue to the dashboard / original destination.
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      navigate('/login', { replace: true });
+      return;
+    }
+    let cancelled = false;
+    getConsentStatus()
+      .then((status) => {
+        if (cancelled || status?.consented !== true) return;
+        setAlreadyConsented(true);
+        if (user?.id) saveCachedConsent(user.id, String(status?.consent_version ?? '1.0'));
+        refreshPermissions().finally(() => {
+          if (cancelled) return;
+          const returnTo = searchParams.get('returnTo');
+          const destination =
+            returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')
+              ? returnTo
+              : '/dashboard';
+          navigate(destination, { replace: true });
+        });
+      })
+      .catch(() => {
+        // Status lookup failed — leave the form up so the user can still
+        // verify + submit rather than being stuck on a spinner.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // exhaustive-deps is off repo-wide; deps kept minimal on purpose —
+    // refreshPermissions/searchParams are recreated each render and would
+    // re-fire this effect. The guard below re-checks on auth changes only.
+  }, [authLoading, isAuthenticated]);
 
   const handleVerify = async () => {
     setError('');
@@ -209,8 +255,18 @@ const DataProtectionConsent = () => {
     try {
       const result = await submitConsent(nationalId.trim());
       if (result.success) {
+        // Cache + refresh so ProtectedRoute lets the next page through
+        // immediately (no session-cookie race on the redirect).
+        const version = String(result?.data?.consent_version ?? '1.0');
+        if (user?.id) saveCachedConsent(user.id, version);
         setSuccess('Consent recorded successfully. Redirecting to Dashboard...');
-        setTimeout(() => navigate('/dashboard', { replace: true }), 1200);
+        await refreshPermissions();
+        const returnTo = searchParams.get('returnTo');
+        const destination =
+          returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')
+            ? returnTo
+            : '/dashboard';
+        setTimeout(() => navigate(destination, { replace: true }), 1200);
       } else {
         setError(result.message || 'Failed to save consent. Please try again.');
       }
@@ -222,6 +278,7 @@ const DataProtectionConsent = () => {
   };
 
   const handleDecline = async () => {
+    // Declining = no access: sign out and return to /login.
     await logout();
     navigate('/login', { replace: true });
   };
@@ -229,6 +286,16 @@ const DataProtectionConsent = () => {
   const toggleSection = (id: string) => {
     setOpenSection(openSection === id ? null : id);
   };
+
+  // While the auth/consent status resolves (or an already-consented user is
+  // being forwarded), hold a spinner so the form never flashes first.
+  if (authLoading || alreadyConsented) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 py-8 px-4 sm:px-6">
