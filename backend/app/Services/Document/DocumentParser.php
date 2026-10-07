@@ -17,6 +17,22 @@ class DocumentParser
 
         $extension = strtolower($extension);
 
+        // Legacy binary Word files (real .doc, and .docx names carrying OLE2
+        // bytes) cannot be read by PhpWord, which only understands OOXML (ZIP).
+        // Detect the OLE2 signature up front so the upload fails with one clear
+        // message instead of a confusing ZipArchive error mid-parse.
+        $handle = @fopen($filePath, 'rb');
+        $magic = $handle !== false ? (string) fread($handle, 4) : '';
+        if ($handle !== false) {
+            fclose($handle);
+        }
+        if ($magic === "\xD0\xCF\x11\xE0") {
+            throw new \InvalidArgumentException(
+                'This file is a legacy Word binary (.doc) document, which cannot be converted into policy sections. '
+                . 'Open it in Word, choose "Save As" -> .docx or PDF, and upload the new file.'
+            );
+        }
+
         // For .doc files, try to parse as .docx (PhpWord can sometimes handle them)
         if ($extension === 'doc') {
             $extension = 'docx';

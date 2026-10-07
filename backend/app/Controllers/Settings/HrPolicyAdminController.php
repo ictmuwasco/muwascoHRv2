@@ -71,7 +71,10 @@ class HrPolicyAdminController extends BaseController
             $this->success(['id' => $id], 'Policy version uploaded as draft', 201);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // \Throwable, not \Exception — parser failures can surface as
+            // \Error (e.g. a missing dependency class) and must not escape to
+            // the global handler leaving the caller without a reason.
             \logger()->error('Policy upload error', ['error' => $e->getMessage()]);
             $this->error('Failed to upload the policy. Please try again.', 500);
         }
