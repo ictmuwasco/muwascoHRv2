@@ -24,7 +24,7 @@ class PolicyFileService
 
     public static function maxBytes(): int
     {
-        $mb = (int) \env('HR_POLICY_MAX_MB', 20);
+        $mb = (int) \env('HR_POLICY_MAX_MB', 100);
         return max(1, $mb) * 1024 * 1024;
     }
 
@@ -58,7 +58,7 @@ class PolicyFileService
         }
         if ($size > self::maxBytes()) {
             throw new \InvalidArgumentException(
-                'File exceeds the maximum allowed size of ' . (int) \env('HR_POLICY_MAX_MB', 20) . 'MB.'
+                'File exceeds the maximum allowed size of ' . (int) \env('HR_POLICY_MAX_MB', 100) . 'MB.'
             );
         }
 
@@ -142,7 +142,7 @@ class PolicyFileService
      */
     public static function uploadErrorMessage(int $code): string
     {
-        $maxMb = (int) \env('HR_POLICY_MAX_MB', 20);
+        $maxMb = (int) \env('HR_POLICY_MAX_MB', 100);
 
         return match ($code) {
             UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
@@ -220,17 +220,20 @@ class PolicyFileService
         // Known file signatures
         $pdfSig = "\x25PDF";           // PDF: %PDF
         $ole2Sig = "\xD0\xCF\x11\xE0"; // DOC/OLE2: D0 CF 11 E0
-        $zipSig = "\x50\x4B\x03\x04";  // DOCX/ZIP: PK
+        $zipSig = "\x50\x4B\x03\x04";  // DOCX/ZIP: standard PK\x03\x04
+        $zipEmptySig = "\x50\x4B\x05\x06"; // PK\x05\x06 (empty archive)
+        $zipSpannedSig = "\x50\x4B\x07\x08"; // PK\x07\x08 (spanned archive)
 
         switch ($ext) {
             case 'pdf':
                 return $signature === $pdfSig;
 
             case 'docx':
-                // ZIP only. An OLE2 payload renamed to .docx is a legacy
-                // binary and can never be parsed — reject it here with the
-                // Save-As guidance rather than dying mid-parse.
-                return $signature === $zipSig;
+                // Must be a valid ZIP archive (PK..), never a legacy OLE2 binary renamed to .docx
+                if ($signature === $ole2Sig) {
+                    return false;
+                }
+                return $signature === $zipSig || $signature === $zipEmptySig || $signature === $zipSpannedSig || (str_starts_with($signature, "PK"));
 
             default:
                 return false;

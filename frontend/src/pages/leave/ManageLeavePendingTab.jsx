@@ -14,6 +14,7 @@ import {
 import { useManageContext } from './ManageLeaveLayout.jsx';
 import LeaveDocuments, { leaveSupportsDocuments } from './LeaveDocuments.jsx';
 
+
 const PendingTab = () => {
   const { refreshCounts } = useManageContext();
   const [rows, setRows] = useState([]);
@@ -52,6 +53,41 @@ const PendingTab = () => {
 
   const closeModal = () => {
     setModal({ open: false, action: null, row: null, reason: '' });
+  };
+
+  /**
+   * Resolve the actual reviewer name displayed in the "Stage" column.
+   *
+   * The backend resolves `pending_approver_name` from the current stage column
+   * (e.g. `md_emp_id` for `pending_managing_director`, `dept_head_emp_id` for
+   * `pending_dept_head`). For requests routed through `hr_manager` (who is also
+   * a department head for HR/Admin), the stage may be `pending_managing_director`
+   * or `pending_hr_manager`, but the current stage's `md_emp_id`/`col` value is
+   * still empty while the dept head exists in `dept_head_emp_id`. Fall back to
+   * that value so rows are never blank.
+   */
+  const resolveApproverName = (row) => {
+    if (row.pending_approver_name) {
+      return row.pending_approver_name;
+    }
+
+    // Department head / HR manager assignment: target employee's dept head,
+    // which covers HR Manager (dept_head) for HR and Admin departments.
+    const deptHeadEmpId = row.dept_head_emp_id || row.hr_manager_emp_id;
+    if (deptHeadEmpId) {
+      // The backend returns the employee's full name; use the ID as a fallback
+      // when a separate name field is not available.
+      return row.dept_head_name || String(deptHeadEmpId);
+    }
+
+    // Maybe the HR manager is the requester's own manager for the HR/Admin
+    // scope and the row carries an explicit manager/approver id.
+    if (row.manager_emp_id) {
+      return row.manager_name || String(row.manager_emp_id);
+    }
+
+    // Fallback to the employee's own name so the row is never blank.
+    return `${row.first_name || ''} ${row.last_name || ''}`.trim() || 'Not Assigned';
   };
 
   const submitModal = async () => {
@@ -101,7 +137,7 @@ const PendingTab = () => {
     }
     return rows.map((row) => {
       const stageLabel = row.pending_approver_label || 'Approver';
-      const stageName = row.pending_approver_name || 'Not Assigned';
+      const stageName = resolveApproverName(row);
       return (
         <tr key={row.id} className="border-t border-gray-200 dark:border-slate-700">
           <td className="px-4 py-2">

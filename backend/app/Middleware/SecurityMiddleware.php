@@ -862,7 +862,7 @@ class SecurityMiddleware
         }
 
         // Check file size (default 10MB)
-        $maxSize = (int) \env('UPLOAD_MAX_SIZE', 10485760);
+        $maxSize = (int) \env('UPLOAD_MAX_SIZE', 104857600);
         if ($file['size'] > $maxSize) {
             $errors[] = 'File size exceeds maximum allowed size of ' . ($maxSize / 1048576) . 'MB';
         }
