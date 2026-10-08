@@ -55,8 +55,16 @@ const extractErrorMessage = (err: unknown, fallback: string): string => {
 };
 
 const STATUS_CONFIG = {
-  draft: { label: 'Draft', icon: Edit3, color: 'bg-gray-100 text-gray-800 dark:bg-slate-700' },
-  review: { label: 'Review', icon: Clock, color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30' },
+  draft: {
+    label: 'Draft',
+    icon: Edit3,
+    color: 'bg-gray-100 text-gray-800 dark:bg-slate-700',
+  },
+  review: {
+    label: 'Review',
+    icon: Clock,
+    color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30',
+  },
   published: {
     label: 'Published',
     icon: CheckCircle,

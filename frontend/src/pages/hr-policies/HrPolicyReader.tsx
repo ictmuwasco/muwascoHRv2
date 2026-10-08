@@ -16,6 +16,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { hrPolicyService } from '../../api/services/hrPolicyService';
+import { reportClientError } from '../../utils/errorReporting';
 import type {
   PolicySectionNode,
   PolicySectionDetail,
@@ -175,7 +176,16 @@ const HrPolicyReader = () => {
           setDocumentId(res.policy.id);
         }
       } catch (err) {
-        console.error('Failed to fetch current policy:', err);
+        const axiosErr = err as { response?: { status?: number }; message?: string };
+        reportClientError({
+          kind: 'api',
+          message: `HR policy reader: failed to fetch current policy: ${axiosErr?.message || 'Unknown error'}`,
+          stack: err instanceof Error ? err.stack : undefined,
+          component: 'HrPolicyReader/loadCurrentPolicy',
+          endpoint: '/hr-policies/current',
+          status_code: axiosErr?.response?.status,
+          severity: 'MEDIUM',
+        });
       }
     };
     loadCurrentPolicy();
@@ -190,7 +200,16 @@ const HrPolicyReader = () => {
         const tree = await hrPolicyService.getSections(documentId);
         setSections(tree);
       } catch (err) {
-        console.error('Failed to fetch sections:', err);
+        const axiosErr = err as { response?: { status?: number }; message?: string };
+        reportClientError({
+          kind: 'api',
+          message: `HR policy reader: failed to fetch sections for document ${documentId}: ${axiosErr?.message || 'Unknown error'}`,
+          stack: err instanceof Error ? err.stack : undefined,
+          component: 'HrPolicyReader/loadSections',
+          endpoint: `/hr-policies/${documentId}/sections`,
+          status_code: axiosErr?.response?.status,
+          severity: 'MEDIUM',
+        });
       } finally {
         setLoading(false);
       }
@@ -217,7 +236,16 @@ const HrPolicyReader = () => {
         setBreadcrumbs(res.breadcrumbs || []);
         setBookmarked(res.bookmarked || false);
       } catch (err) {
-        console.error('Failed to fetch section:', err);
+        const axiosErr = err as { response?: { status?: number }; message?: string };
+        reportClientError({
+          kind: 'api',
+          message: `HR policy reader: failed to fetch section ${sectionId}: ${axiosErr?.message || 'Unknown error'}`,
+          stack: err instanceof Error ? err.stack : undefined,
+          component: 'HrPolicyReader/loadSection',
+          endpoint: `/hr-policies/sections/${sectionId}`,
+          status_code: axiosErr?.response?.status,
+          severity: 'MEDIUM',
+        });
       } finally {
         setSectionLoading(false);
       }
@@ -237,7 +265,16 @@ const HrPolicyReader = () => {
       const results = await hrPolicyService.search(query);
       setSearchResults(results);
     } catch (err) {
-      console.error('Search failed:', err);
+      const axiosErr = err as { response?: { status?: number }; message?: string };
+      reportClientError({
+        kind: 'api',
+        message: `HR policy reader: search failed for "${query.slice(0, 80)}": ${axiosErr?.message || 'Unknown error'}`,
+        stack: err instanceof Error ? err.stack : undefined,
+        component: 'HrPolicyReader/handleSearch',
+        endpoint: '/hr-policies/search',
+        status_code: axiosErr?.response?.status,
+        severity: 'LOW',
+      });
     } finally {
       setSearchLoading(false);
     }
@@ -255,7 +292,16 @@ const HrPolicyReader = () => {
         setBookmarked(true);
       }
     } catch (err) {
-      console.error('Bookmark failed:', err);
+      const axiosErr = err as { response?: { status?: number }; message?: string };
+      reportClientError({
+        kind: 'api',
+        message: `HR policy reader: bookmark toggle failed for section ${currentSection.id}: ${axiosErr?.message || 'Unknown error'}`,
+        stack: err instanceof Error ? err.stack : undefined,
+        component: 'HrPolicyReader/toggleBookmark',
+        endpoint: '/hr-policies/bookmarks',
+        status_code: axiosErr?.response?.status,
+        severity: 'LOW',
+      });
     }
   };
 

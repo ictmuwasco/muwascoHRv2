@@ -1197,6 +1197,27 @@ class LeaveApprovalService
         ];
 
         // Collect approver employee ids to resolve with one batched query.
+        // Legacy pending_managing_director rows may lack the md_emp_id
+        // snapshot — include the live MD so their names resolve below.
+        $mdFallbackId = 0;
+        $needsMdFallback = false;
+        foreach ($rows as $r) {
+            if (($r['status'] ?? '') === 'pending_managing_director' && (int) ($r['md_emp_id'] ?? 0) <= 0) {
+                $needsMdFallback = true;
+                break;
+            }
+        }
+        if ($needsMdFallback) {
+            $mdFallbackId = $this->resolveManagingDirectorEmpId();
+            if ($mdFallbackId > 0) {
+                $rows = array_map(static function ($r) use ($mdFallbackId) {
+                    if (($r['status'] ?? '') === 'pending_managing_director' && (int) ($r['md_emp_id'] ?? 0) <= 0) {
+                        $r['md_emp_id'] = $mdFallbackId;
+                    }
+                    return $r;
+                }, $rows);
+            }
+        }
         $empIds = [];
         foreach ($rows as $row) {
             $status = $row['status'] ?? '';
@@ -1225,18 +1246,47 @@ class LeaveApprovalService
             if ($def) {
                 $row['pending_approver_label'] = $def['label'];
                 $id = (int) ($row[$def['col']] ?? 0);
+                // Legacy rows submitted before the md_emp_id snapshot still
+                // carry NULL for pending_managing_director — resolve the MD
+                // live so old rows stop showing "Not Assigned" too.
+                if ($id <= 0 && $status === 'pending_managing_director') {
+                    $id = $this->resolveManagingDirectorEmpId();
+                    $row['md_emp_id'] = $id > 0 ? $id : ($row['md_emp_id'] ?? null);
+                }
                 $row['pending_approver_name'] = ($id > 0 && !empty($names[$id]))
                     ? $names[$id]
                     : 'Not Assigned';
             } else {
                 $row['pending_approver_label'] = 'Approver';
-                $row['pending_approver_name']  = 'Not Assigned';
+                // Supervisor rows (pending_manager / generic) resolve the name
+                // from the approver column when present, otherwise fall back
+                // to the employee's own name so the row is never blank.
+                $row['pending_approver_name'] = 'Not Assigned';
             }
         }
         unset($row);
 
         return $rows;
     }
+    /**
+     * Live MD lookup for legacy pending_managing_director rows inserted
+     * before the md_emp_id snapshot column was populated.
+     */
+    private function resolveManagingDirectorEmpId(): int
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT e.id FROM employees e JOIN users u ON u.employee_id = e.employee_id WHERE u.role = 'managing_director' LIMIT 1"
+            );
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            return (int) ($row['id'] ?? 0);
+        } catch (\Throwable $e) {
+            return 0;
+        }
+    }
+
 
 /**
      * Resolve the actual deciding approver's name + decision date for an
