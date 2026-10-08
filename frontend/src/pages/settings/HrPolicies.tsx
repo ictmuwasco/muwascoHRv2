@@ -144,13 +144,13 @@ const HrPolicies = () => {
       );
       return;
     }
-    // Client-side size hint (the server re-checks authoritatively): read the
-    // app cap from the response headers is overkill — 20MB matches the
-    // HR_POLICY_MAX_MB default; oversized files get the precise server message.
-    const MAX_CLIENT_BYTES = 20 * 1024 * 1024;
+    // Client-side size hint (the server re-checks authoritatively): 100MB
+    // matches the HR_POLICY_MAX_MB backend default; oversized files get the
+    // precise server message (php.ini limits, compression advice).
+    const MAX_CLIENT_BYTES = 100 * 1024 * 1024;
     if (file.size > MAX_CLIENT_BYTES) {
       toast.error(
-        `This file is ${(file.size / 1048576).toFixed(1)}MB, over the ~20MB policy limit. Compress the PDF or split it, then try again.`,
+        `This file is ${(file.size / 1048576).toFixed(1)}MB, over the ~100MB policy limit. Compress the PDF or split it, then try again.`,
         { duration: 8000 },
       );
       return;

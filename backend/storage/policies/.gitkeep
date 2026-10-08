@@ -1,0 +1,6 @@
+# Kept in git so every deploy ships backend/storage/policies/ on the server.
+# PolicyFileService::store() writes uploaded PDFs/DOCX here (private storage,
+# never webroot). Without this file the directory is gitignored-and-absent in
+# a fresh checkout, rsync never creates it, and production uploads fail with
+# "Policy storage is not available" while localhost (where the dir already
+# exists from local uploads) keeps working.

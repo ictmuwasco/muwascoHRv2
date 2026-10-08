@@ -102,7 +102,14 @@ class PolicyFileService
 
         $dir = self::storageDir();
         if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
-            \logger()->error('Policy storage directory could not be created', ['dir' => $dir]);
+            // parent_writable is the discriminator that matters in production:
+            // mkdir only fails when its PARENT (backend/storage) is not
+            // writable by the web-server user — the classic "works on
+            // localhost, 500 in production" case.
+            \logger()->error('Policy storage directory could not be created', [
+                'dir'             => $dir,
+                'parent_writable' => is_writable(dirname($dir)),
+            ]);
             throw new \RuntimeException('Policy storage is not available.');
         }
 
@@ -110,7 +117,12 @@ class PolicyFileService
         if (!move_uploaded_file($tmpPath, $target)) {
             // Fallback for test/CLI harnesses where the file is not an HTTP upload.
             if (!@rename($tmpPath, $target)) {
-                \logger()->error('Policy file move failed', ['stored_name' => $storedName]);
+                \logger()->error('Policy file move failed', [
+                    'stored_name'  => $storedName,
+                    'dir'          => $dir,
+                    'dir_writable' => is_writable($dir),
+                    'last_error'   => error_get_last()['message'] ?? null,
+                ]);
                 throw new \RuntimeException('Could not store the uploaded policy file.');
             }
         }
