@@ -36,7 +36,7 @@ const PermissionsTab = () => {
   const { can } = useAuth();
   /** Write capability for overrides — reads only need permission_overrides:view. */
   const canManageOverrides = can('permission_overrides', 'manage');
-  
+
   // Tab switcher: 'users' (User Permission Matrix) | 'dashboard' (Overrides Accountability Dashboard)
   const [activeTab, setActiveTab] = useState('users');
 
@@ -165,11 +165,7 @@ const PermissionsTab = () => {
       });
 
       // Reload user permissions, stats and overrides list
-      await Promise.all([
-        loadUserPermissions(selectedUserId),
-        loadStats(),
-        loadAllOverrides(),
-      ]);
+      await Promise.all([loadUserPermissions(selectedUserId), loadStats(), loadAllOverrides()]);
       setSuccessMsg(`Permission ${module}:${action} set to ${permissionType}`);
 
       // Clear success after 3s
@@ -192,11 +188,7 @@ const PermissionsTab = () => {
 
     try {
       await permissionService.removeOverride(selectedUserId, { module, action });
-      await Promise.all([
-        loadUserPermissions(selectedUserId),
-        loadStats(),
-        loadAllOverrides(),
-      ]);
+      await Promise.all([loadUserPermissions(selectedUserId), loadStats(), loadAllOverrides()]);
       setSuccessMsg(`Override ${module}:${action} removed (will inherit role permission)`);
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch (err) {
@@ -268,8 +260,7 @@ const PermissionsTab = () => {
     return Object.entries(catalog.modules)
       .map(([moduleKey, mod]) => {
         const matchesModule =
-          mod.label.toLowerCase().includes(query) ||
-          moduleKey.toLowerCase().includes(query);
+          mod.label.toLowerCase().includes(query) || moduleKey.toLowerCase().includes(query);
 
         // Filter actions within module
         const matchingActions = mod.actions.filter(
@@ -277,7 +268,7 @@ const PermissionsTab = () => {
             matchesModule ||
             act.label.toLowerCase().includes(query) ||
             act.key.toLowerCase().includes(query) ||
-            `${moduleKey}:${act.key}`.toLowerCase().includes(query)
+            `${moduleKey}:${act.key}`.toLowerCase().includes(query),
         );
 
         if (matchingActions.length > 0) {
@@ -453,7 +444,9 @@ const PermissionsTab = () => {
                           {user.email}
                         </p>
                       </div>
-                      <Badge className={roleColor(user.role)}>{user.role?.replace(/_/g, ' ')}</Badge>
+                      <Badge className={roleColor(user.role)}>
+                        {user.role?.replace(/_/g, ' ')}
+                      </Badge>
                     </div>
                   </button>
                 ))}
@@ -575,7 +568,10 @@ const PermissionsTab = () => {
                     <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-100 dark:divide-slate-700">
                       {filteredModules.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+                          <td
+                            colSpan={5}
+                            className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500"
+                          >
                             No modules or actions match &ldquo;{moduleSearch}&rdquo;
                           </td>
                         </tr>
@@ -662,9 +658,13 @@ const PermissionsTab = () => {
                                           Deny
                                         </button>
                                         <button
-                                          onClick={() => handleRemoveOverride(moduleKey, action.key)}
+                                          onClick={() =>
+                                            handleRemoveOverride(moduleKey, action.key)
+                                          }
                                           disabled={
-                                            !override || isSaving || isSuperAdmin(userPerms.user.role)
+                                            !override ||
+                                            isSaving ||
+                                            isSuperAdmin(userPerms.user.role)
                                           }
                                           title="Remove override (inherit role)"
                                           className="px-2 py-1 rounded text-xs font-medium bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-600 disabled:opacity-50"
@@ -683,7 +683,11 @@ const PermissionsTab = () => {
                                             size="sm"
                                             value={notes[`${moduleKey}|${action.key}`] || ''}
                                             onChange={(e) =>
-                                              handleNotesChange(moduleKey, action.key, e.target.value)
+                                              handleNotesChange(
+                                                moduleKey,
+                                                action.key,
+                                                e.target.value,
+                                              )
                                             }
                                             placeholder="Add note (e.g., Temporary access for audit)"
                                             className="text-xs"
@@ -793,7 +797,8 @@ const PermissionsTab = () => {
                   Accountability &amp; Override Audit Trail
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Complete view of all active page and feature overrides, indicating whose access was modified, which page/action was affected, and who granted it.
+                  Complete view of all active page and feature overrides, indicating whose access
+                  was modified, which page/action was affected, and who granted it.
                 </p>
               </div>
               <Button
@@ -875,7 +880,9 @@ const PermissionsTab = () => {
                 <FileCheck className="h-10 w-10 text-gray-300 dark:text-slate-600 mx-auto mb-2" />
                 <p className="text-gray-600 dark:text-gray-400 font-medium">No overrides found</p>
                 <p className="text-xs text-gray-400 mt-1">
-                  {overrideFilterText || overrideTypeFilter !== 'all' || overrideModuleFilter !== 'all'
+                  {overrideFilterText ||
+                  overrideTypeFilter !== 'all' ||
+                  overrideModuleFilter !== 'all'
                     ? 'Try clearing the search or filters.'
                     : 'No custom page or action permissions have been overridden.'}
                 </p>
@@ -985,7 +992,9 @@ const PermissionsTab = () => {
 
                           {/* Reason / Notes */}
                           <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 max-w-xs truncate">
-                            {ov.notes || <span className="text-gray-400 italic">No notes provided</span>}
+                            {ov.notes || (
+                              <span className="text-gray-400 italic">No notes provided</span>
+                            )}
                           </td>
 
                           {/* Actions */}
@@ -1008,7 +1017,11 @@ const PermissionsTab = () => {
                                   variant="ghost"
                                   size="sm"
                                   onClick={() =>
-                                    handleRemoveOverrideFromDashboard(ov.user_id, ov.module, ov.action)
+                                    handleRemoveOverrideFromDashboard(
+                                      ov.user_id,
+                                      ov.module,
+                                      ov.action,
+                                    )
                                   }
                                   className="text-red-600 hover:text-red-700 text-xs px-2 py-1"
                                   title="Remove override (inherit role default)"
