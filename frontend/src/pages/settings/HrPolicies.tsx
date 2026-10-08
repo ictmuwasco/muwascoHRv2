@@ -159,7 +159,13 @@ const HrPolicies = () => {
     // never be parsed — peek at the first 4 bytes before uploading.
     try {
       const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
-      if (head.length === 4 && head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) {
+      if (
+        head.length === 4 &&
+        head[0] === 0xd0 &&
+        head[1] === 0xcf &&
+        head[2] === 0x11 &&
+        head[3] === 0xe0
+      ) {
         toast.error(
           'This file is a legacy Word binary renamed to .docx and cannot be converted into policy sections. Open it in Word, choose "Save As" -> .docx or PDF, and upload the new file.',
           { duration: 8000 },
@@ -538,8 +544,8 @@ const HrPolicies = () => {
               className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border file:bg-primary-50 file:text-primary-700 dark:file:bg-primary-900/20 dark:file:text-primary-300"
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              PDF or DOCX only, max ~20MB. Legacy .doc files cannot be converted — open in Word
-              and use &quot;Save As&quot; -&gt; .docx or PDF first.
+              PDF or DOCX only, max ~20MB. Legacy .doc files cannot be converted — open in Word and
+              use &quot;Save As&quot; -&gt; .docx or PDF first.
             </p>
           </div>
           <div>
