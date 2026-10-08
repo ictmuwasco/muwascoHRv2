@@ -259,8 +259,8 @@ class LeaveApplicationService
         $stmt = $this->db->prepare("
             INSERT INTO leave_applications
                 (employee_id, leave_type_id, financial_year_id, start_date, end_date, days_requested, reason, status, applied_at,
-                 subsection_head_emp_id, section_head_emp_id, dept_head_emp_id, delegate_emp_id, primary_days, annual_days, applied_by_user_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?)
+                 subsection_head_emp_id, section_head_emp_id, dept_head_emp_id, md_emp_id, delegate_emp_id, primary_days, annual_days, applied_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         $primaryDays = (int) $deductionPlan['primary_deduction'];
@@ -270,9 +270,12 @@ class LeaveApplicationService
         $subsectionHeadEmpId = $managers['subsection_head_emp_id'] ?? null;
         $sectionHeadEmpId    = $managers['section_head_emp_id'] ?? null;
         $deptHeadEmpId       = $managers['dept_head_emp_id'] ?? null;
+        // MD snapshot so pending_managing_director rows (dept_head / hr_manager
+        // self-leave) resolve a name instead of "Not Assigned".
+        $mdEmpId = $managers['md_emp_id'] ?? null;
 
         $stmt->bind_param(
-            'iiississiiiiiii',
+            'iiississiiiiiiii',
             $employeeId,
             $leaveTypeId,
             $fyId,
@@ -284,6 +287,7 @@ class LeaveApplicationService
             $subsectionHeadEmpId,
             $sectionHeadEmpId,
             $deptHeadEmpId,
+            $mdEmpId,
             $delegateEmpId,
             $primaryDays,
             $annualDays,

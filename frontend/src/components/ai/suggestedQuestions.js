@@ -73,6 +73,14 @@ export const buildSuggestedQuestions = (user, can) => {
     questions.push('Summarize my team\u2019s attendance this month.');
   }
 
+  // Super-admin-only diagnostics: system error briefing. The backend tool
+  // hard-requires the super_admin role; the chip is permission-filtered here
+  // so only super admins are invited to ask (UX only — the API is authority).
+  if (user?.role === 'super_admin' || user?.role === 'admin') {
+    questions.push('Summarize system errors from the last 7 days.');
+    questions.push('What should we fix first?');
+  }
+
   // De-duplicate (defensive) and cap the chips so the panel stays tidy. The
   // cap is 9 (not 6) so the supervisory chips still surface for heads after
   // the self-service block grew (appraisal status + notifications).

@@ -505,8 +505,12 @@ class LeaveWorkflowService
                  LIMIT 1) as section_head_emp_id,
                 (SELECT e4.id FROM employees e4
                  JOIN users u4 ON u4.employee_id = e4.employee_id
-                 WHERE e4.department_id = e.department_id AND u4.role = 'dept_head'
-                 LIMIT 1) as dept_head_emp_id
+                 WHERE e4.department_id = e.department_id AND u4.role IN ('dept_head', 'hr_manager')
+                 LIMIT 1) as dept_head_emp_id,
+                (SELECT e5.id FROM employees e5
+                 JOIN users u5 ON u5.employee_id = e5.employee_id
+                 WHERE u5.role = 'managing_director' AND e5.employee_status = 'active'
+                 LIMIT 1) as md_emp_id
             FROM employees e
             WHERE e.id = ?
         ");
