@@ -74,16 +74,32 @@ if (ob_get_level() > 0 && ob_get_length() !== false && ob_get_length() > 0) {
 //   /var/www/private/hrdemo.env. getenv() is read here as well as $_ENV and
 //   $_SERVER (see env() below), so all three injection styles work.
 //
-//   Resolution order:
-//     1. $ENV_FILE           - explicit path, used verbatim
-//     2. /var/www/private/hrdemo.env - conventional out-of-webroot default
-//     3. BASE_PATH/.env      - local development fallback
+//   Resolution order - the FIRST readable candidate wins, then loading stops:
+//     1. ENV_FILE              - explicit path (Apache `SetEnv`, Plesk, php-fpm
+//                                or systemd unit), read from getenv(), $_ENV
+//                                and $_SERVER. Used verbatim.
+//     2. <repo-parent>/private/app.env   - out-of-webroot file beside the repo
+//                                (dirname(BASE_PATH) is NEVER the document root,
+//                                so this can never be served over HTTP).
+//     3. /var/www/private/hrdemo.env - conventional out-of-webroot default.
+//     4. BASE_PATH/.env        - local development fallback (gitignored). On a
+//                                production host neither 1-3 exists only when
+//                                misconfigured, and .env is rsync-excluded, so
+//                                this candidate is a no-op there.
+//
+//   LOCAL AND PRODUCTION COEXIST: only candidate 4 exists on a dev machine
+//   (candidates 2 and 3 are Linux paths outside the checkout, and 1 is unset),
+//   and only 1-3 can exist in production. Nothing needs to be edited when
+//   moving between the two - the same bootstrap.php serves both.
 //
 //   The first readable candidate wins. Nothing is required: with no file at all
 //   the app still boots and reads whatever the real process environment holds,
 //   which is the recommended setup for Plesk-managed hosts.
 $envCandidates = array_filter([
     getenv('ENV_FILE') ?: null,
+    $_ENV['ENV_FILE'] ?? null,
+    $_SERVER['ENV_FILE'] ?? null,
+    dirname(BASE_PATH) . '/private/app.env',
     '/var/www/private/hrdemo.env',
     BASE_PATH . '/.env',
 ]);
