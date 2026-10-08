@@ -42,8 +42,14 @@ class PolicyFileService
      */
     public static function store(array $uploadedFile): array
     {
+        // PHP-level upload errors (php.ini caps, partial writes, missing tmp
+        // dir) arrive here as a non-OK error code — translate each into an
+        // actionable message instead of the old generic
+        // 'No file uploaded or upload error.' which left HR guessing.
         if (!isset($uploadedFile['error']) || $uploadedFile['error'] !== UPLOAD_ERR_OK) {
-            throw new \InvalidArgumentException('No file uploaded or upload error.');
+            throw new \InvalidArgumentException(self::uploadErrorMessage(
+                (int) ($uploadedFile['error'] ?? UPLOAD_ERR_NO_FILE)
+            ));
         }
 
         $size = (int) ($uploadedFile['size'] ?? 0);
@@ -58,8 +64,21 @@ class PolicyFileService
 
         $originalName = (string) ($uploadedFile['name'] ?? '');
         $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-        if (!in_array($ext, ['pdf', 'doc', 'docx'], true)) {
-            throw new \InvalidArgumentException('Only PDF, DOC or DOCX policy files are allowed.');
+
+        // Legacy OLE2 Word binaries are accepted by the storage signature
+        // check (.doc) but DocumentParser can never turn them into policy
+        // sections (PhpWord only reads OOXML). Reject by EXTENSION up front so
+        // the user gets the Save-As guidance on the storage step instead of a
+        // parse failure after the file has already been written to disk.
+        if ($ext === 'doc') {
+            throw new \InvalidArgumentException(
+                'Legacy Word (.doc) files cannot be converted into policy sections. '
+                . 'Open the file in Word, choose "Save As" -> .docx or PDF, and upload the new file.'
+            );
+        }
+
+        if (!in_array($ext, ['pdf', 'docx'], true)) {
+            throw new \InvalidArgumentException('Only PDF or DOCX policy files are allowed. For legacy Word documents, use "Save As" -> .docx or PDF first.');
         }
 
         $tmpPath = (string) ($uploadedFile['tmp_name'] ?? '');
@@ -72,7 +91,8 @@ class PolicyFileService
         // .docx files which are ZIP archives and may be detected as application/zip.
         if (!self::verifyFileSignature($tmpPath, $ext)) {
             throw new \InvalidArgumentException(
-                'File content does not match an allowed document type (pdf/doc/docx).'
+                'File content does not match an allowed document type (pdf/docx). '
+                . 'If this is a Word document, open it in Word and use "Save As" -> .docx or PDF first.'
             );
         }
 
@@ -113,14 +133,71 @@ class PolicyFileService
     }
 
     /**
+     * Map a PHP upload error code to an actionable, user-facing message.
+     *
+     * The old generic 'No file uploaded or upload error.' left HR re-trying
+     * uploads that could never work (e.g. a PDF bigger than the php.ini cap).
+     * Each message says what happened and what to do: compress/split, retry,
+     * or ask IT to raise the server limit.
+     */
+    public static function uploadErrorMessage(int $code): string
+    {
+        $maxMb = (int) \env('HR_POLICY_MAX_MB', 20);
+
+        return match ($code) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE =>
+                'The file is too large for the server to accept (PHP upload limit). '
+                . "Compress the PDF or split it, keeping it under {$maxMb}MB, and try again. "
+                . 'If it is already under that size, ask IT to raise upload_max_filesize / post_max_size.',
+            UPLOAD_ERR_PARTIAL =>
+                'The upload was interrupted (partial file received). Please try again on a stable connection.',
+            UPLOAD_ERR_NO_FILE =>
+                'No file was received. Please choose a PDF or DOCX file and try again.',
+            UPLOAD_ERR_NO_TMP_DIR =>
+                'The server is temporarily unable to accept uploads (missing upload directory). Please try again later or contact IT.',
+            UPLOAD_ERR_CANT_WRITE =>
+                'The server could not save the uploaded file (disk write failed). Please try again later or contact IT.',
+            UPLOAD_ERR_EXTENSION =>
+                'The upload was blocked by a server extension. Please try again or contact IT.',
+            default =>
+                'The file could not be uploaded (unknown upload error). Please try again.',
+        };
+    }
+
+    /**
+     * Detect a POST body that PHP silently discarded because it exceeded
+     * post_max_size: $_POST and $_FILES are then BOTH empty even though the
+     * browser sent a multipart body (Content-Length > 0). Without this check
+     * the user sees 'title and version are required' for what is really an
+     * oversized request.
+     */
+    public static function truncatedPostMessage(): ?string
+    {
+        $contentLength = (int) ($_SERVER['CONTENT_LENGTH'] ?? 0);
+        if ($contentLength <= 0) {
+            return null;
+        }
+        if (!empty($_POST) || !empty($_FILES)) {
+            return null;
+        }
+        $postMax = ini_get('post_max_size');
+        $cap = ($postMax !== false && $postMax !== '') ? " {$postMax}" : '';
+        return 'The request was too large for the server to accept (post_max_size' . $cap . '). '
+            . 'Compress the PDF or split it into smaller parts and try again. '
+            . 'If the file is small, ask IT to raise post_max_size / upload_max_filesize.';
+    }
+
+    /**
      * Verify file content by checking magic bytes (file signature).
      * This is more reliable than MIME type detection for .docx files.
      *
-     * Note: Some .docx files may actually be OLE2 format (old .doc renamed to .docx),
-     * so we accept both signatures for .docx files.
+     * Legacy OLE2 binaries are NEVER accepted here, even when renamed to
+     * .docx: DocumentParser cannot turn them into sections (PhpWord reads
+     * OOXML only), so they fail with the Save-As guidance alongside the
+     * extension check.
      *
      * @param string $filePath Path to the uploaded file
-     * @param string $ext      File extension (pdf, doc, docx)
+     * @param string $ext      File extension (pdf, docx)
      * @return bool True if file signature matches the expected type
      */
     private static function verifyFileSignature(string $filePath, string $ext): bool
@@ -149,12 +226,11 @@ class PolicyFileService
             case 'pdf':
                 return $signature === $pdfSig;
 
-            case 'doc':
-                return $signature === $ole2Sig;
-
             case 'docx':
-                // Accept both ZIP (modern .docx) and OLE2 (old .doc renamed to .docx)
-                return $signature === $zipSig || $signature === $ole2Sig;
+                // ZIP only. An OLE2 payload renamed to .docx is a legacy
+                // binary and can never be parsed — reject it here with the
+                // Save-As guidance rather than dying mid-parse.
+                return $signature === $zipSig;
 
             default:
                 return false;
@@ -168,7 +244,6 @@ class PolicyFileService
     {
         $mimeTypes = [
             'pdf'  => 'application/pdf',
-            'doc'  => 'application/msword',
             'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ];
 

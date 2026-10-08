@@ -6,6 +6,7 @@ namespace App\Controllers\Settings;
 
 use App\Controllers\BaseController;
 use App\Models\HrPolicyDocument;
+use App\Services\HrPolicy\PolicyFileService;
 use App\Services\HrPolicy\PolicyService;
 use App\Validators\HrPolicyValidator;
 
@@ -39,9 +40,10 @@ class HrPolicyAdminController extends BaseController
 
     /**
      * POST /api/settings/hr-policies — upload a new version (multipart).
-     * Fields: file (pdf/doc/docx), title, version, source_type?,
+     * Fields: file (pdf/docx), title, version, source_type?,
      *         description?, effective_date?, acknowledgement_message?
-     * The new version is ALWAYS created as DRAFT — never auto-published.
+     * Legacy .doc is rejected with Save-As guidance (it can never be parsed
+     * into sections). The new version is ALWAYS created as DRAFT.
      */
     public function storeAction(): void
     {
@@ -52,6 +54,14 @@ class HrPolicyAdminController extends BaseController
         }
 
         try {
+            // post_max_size overflow: PHP empties BOTH $_POST and $_FILES, so
+            // without this the user gets a misleading 'title required' or
+            // 'upload error' message for what is really an oversized request.
+            $truncated = PolicyFileService::truncatedPostMessage();
+            if ($truncated !== null) {
+                $this->error($truncated, 400);
+            }
+
             $data = $this->validateRequest(new HrPolicyValidator(), [
                 'title'                  => trim((string) ($_POST['title'] ?? '')),
                 'version'                => trim((string) ($_POST['version'] ?? '')),
@@ -63,7 +73,7 @@ class HrPolicyAdminController extends BaseController
 
             $file = $_FILES['file'] ?? null;
             if (!is_array($file)) {
-                $this->error('A policy file (PDF, DOC or DOCX) is required.', 422, 'VALIDATION_ERROR');
+                $this->error('A policy file (PDF or DOCX) is required. For legacy Word documents, use "Save As" -> .docx or PDF first.', 422, 'VALIDATION_ERROR');
             }
 
             $id = PolicyService::upload($file, $data, $userId);
