@@ -51,14 +51,23 @@ composer install --no-dev --optimize-autoloader --no-scripts
 
 #### 4. Database Migration
 
+CI migrates only its own ephemeral test database — **the deploy job rsyncs
+code and never touches the production schema**. After every deploy, apply
+pending migrations on the server:
+
 ```bash
-cd backend/database
-php run_migration.php
+php backend/database/run.php status    # show applied/pending counts
+php backend/database/run.php migrate   # apply pending migrations
 ```
 
 #### 5. Set Permissions
 
+The web-server user must be able to write into the private storage tree,
+including `storage/policies/` (HR policy uploads — missing/unwritable here
+causes HTTP 500 on `POST /api/settings/hr-policies`) and `storage/uploads/`:
+
 ```bash
+mkdir -p storage/policies storage/uploads
 chmod -R 775 storage
 chmod -R 775 public/uploads
 ```

@@ -9,8 +9,31 @@ use PhpOffice\PhpWord\IOFactory as PhpWordIOFactory;
 
 class DocumentParser
 {
+    /**
+     * Explicit headroom for the parse step ONLY (raised, never lowered).
+     *
+     * Extracting sections from a 150-page policy manual is the most
+     * resource-hungry operation in the module. Stock production php.ini
+     * (memory_limit=128M, max_execution_time=30s) is tuned for ordinary web
+     * requests, not for parsing a full manual, while a dev machine typically
+     * runs with far looser limits — which is exactly how an upload can succeed
+     * on localhost and die in production. Hitting either limit raises a PHP
+     * fatal that CATCH BLOCKS CANNOT SEE: the controller's \Throwable handler
+     * never runs, nothing is written to the log, and the caller gets a bare
+     * 500 with no message. Raising the limits here keeps the failure inside
+     * the normal exception path (a real parser error → 400 with a reason).
+     *
+     * Best-effort by design: @ and function_exists() guard hosts where the
+     * functions are disabled or the value is php_admin_value-locked, and the
+     * checks never LOWER a limit the operator already set higher.
+     */
+    private const PARSE_MEMORY_BYTES  = 536870912; // 512M
+    private const PARSE_TIME_SECONDS  = 300;
+
     public static function parse(string $filePath, string $extension): array
     {
+        self::ensureParseHeadroom();
+
         if (!is_file($filePath)) {
             throw new \InvalidArgumentException('Document file not found for parsing.');
         }
@@ -43,6 +66,51 @@ class DocumentParser
             'pdf' => self::parsePdf($filePath),
             'docx' => self::parseDocx($filePath),
             default => throw new \InvalidArgumentException("Unsupported document type: {$extension}"),
+        };
+    }
+
+    /**
+     * Raise memory/time limits for a single parse when — and only when — the
+     * current limit is below what parsing a large manual needs.
+     */
+    private static function ensureParseHeadroom(): void
+    {
+        if (function_exists('set_time_limit')) {
+            $current = (int) ini_get('max_execution_time');
+            // 0 = unlimited (CLI) — nothing to do.
+            if ($current > 0 && $current < self::PARSE_TIME_SECONDS) {
+                @set_time_limit(self::PARSE_TIME_SECONDS);
+            }
+        }
+
+        if (function_exists('ini_set')) {
+            $current = self::memoryLimitBytes((string) ini_get('memory_limit'));
+            // -1 = unlimited, 0 = unparseable — only act on a real, too-small cap.
+            if ($current > 0 && $current < self::PARSE_MEMORY_BYTES) {
+                @ini_set('memory_limit', (string) self::PARSE_MEMORY_BYTES);
+            }
+        }
+    }
+
+    /**
+     * Convert a php.ini memory_limit ("128M", "1G", "-1", bytes) to bytes.
+     * Returns -1 for unlimited and 0 for anything unparseable, so callers can
+     * distinguish "leave it alone" from "raise it".
+     */
+    private static function memoryLimitBytes(string $raw): int
+    {
+        $raw = trim($raw);
+        if ($raw === '' || $raw === '-1') {
+            return $raw === '-1' ? -1 : 0;
+        }
+
+        $unit  = strtolower(substr($raw, -1));
+        $value = (int) $raw;
+        return match ($unit) {
+            'k' => $value * 1024,
+            'm' => $value * 1048576,
+            'g' => $value * 1073741824,
+            default => $value,
         };
     }
 

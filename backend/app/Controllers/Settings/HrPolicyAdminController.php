@@ -85,7 +85,16 @@ class HrPolicyAdminController extends BaseController
             // \Throwable, not \Exception — parser failures can surface as
             // \Error (e.g. a missing dependency class) and must not escape to
             // the global handler leaving the caller without a reason.
-            \logger()->error('Policy upload error', ['error' => $e->getMessage()]);
+            // class + file:line are logged because the user-facing message is
+            // deliberately generic: on production the ONLY way to tell a
+            // storage failure (unwritable policies/ dir) from a schema failure
+            // (missing migration) from a missing class is this line. The log is
+            // sealed at rest — read it with scripts/storage/read_log.php.
+            \logger()->error('Policy upload error', [
+                'error' => $e->getMessage(),
+                'class' => get_class($e),
+                'at'    => $e->getFile() . ':' . $e->getLine(),
+            ]);
             $this->error('Failed to upload the policy. Please try again.', 500);
         }
     }
