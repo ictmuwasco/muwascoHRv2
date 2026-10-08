@@ -12,8 +12,6 @@ import {
   SlidersHorizontal,
   History,
   Filter,
-  FileCheck,
-  ShieldAlert,
 } from 'lucide-react';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
@@ -877,7 +875,6 @@ const PermissionsTab = () => {
               </div>
             ) : filteredDashboardOverrides.length === 0 ? (
               <div className="py-12 text-center">
-                <FileCheck className="h-10 w-10 text-gray-300 dark:text-slate-600 mx-auto mb-2" />
                 <p className="text-gray-600 dark:text-gray-400 font-medium">No overrides found</p>
                 <p className="text-xs text-gray-400 mt-1">
                   {overrideFilterText ||
