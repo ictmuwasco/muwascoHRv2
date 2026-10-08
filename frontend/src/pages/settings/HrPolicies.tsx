@@ -125,6 +125,42 @@ const HrPolicies = () => {
       toast.error('Please select a file to upload');
       return;
     }
+    // Block legacy .doc BEFORE the request leaves the browser: the backend
+    // can never parse OLE2 binaries into sections, so uploading one only
+    // burns a round trip to get the Save-As guidance.
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith('.doc') && !lowerName.endsWith('.docx')) {
+      toast.error(
+        'Legacy Word (.doc) files cannot be converted into policy sections. Open the file in Word, choose "Save As" -> .docx or PDF, and upload the new file.',
+        { duration: 8000 },
+      );
+      return;
+    }
+    // Client-side size hint (the server re-checks authoritatively): read the
+    // app cap from the response headers is overkill — 20MB matches the
+    // HR_POLICY_MAX_MB default; oversized files get the precise server message.
+    const MAX_CLIENT_BYTES = 20 * 1024 * 1024;
+    if (file.size > MAX_CLIENT_BYTES) {
+      toast.error(
+        `This file is ${(file.size / 1048576).toFixed(1)}MB, over the ~20MB policy limit. Compress the PDF or split it, then try again.`,
+        { duration: 8000 },
+      );
+      return;
+    }
+    // A legacy binary renamed to .docx still carries OLE2 magic bytes and can
+    // never be parsed — peek at the first 4 bytes before uploading.
+    try {
+      const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+      if (head.length === 4 && head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) {
+        toast.error(
+          'This file is a legacy Word binary renamed to .docx and cannot be converted into policy sections. Open it in Word, choose "Save As" -> .docx or PDF, and upload the new file.',
+          { duration: 8000 },
+        );
+        return;
+      }
+    } catch {
+      // Byte-peek failed (rare) — let the server validate authoritatively.
+    }
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -489,10 +525,14 @@ const HrPolicies = () => {
             <input
               type="file"
               name="file"
-              accept=".pdf,.doc,.docx"
+              accept=".pdf,.docx"
               required
               className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border file:bg-primary-50 file:text-primary-700 dark:file:bg-primary-900/20 dark:file:text-primary-300"
             />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              PDF or DOCX only, max ~20MB. Legacy .doc files cannot be converted — open in Word
+              and use &quot;Save As&quot; -&gt; .docx or PDF first.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">Title</label>
