@@ -14,7 +14,6 @@ import {
 import { useManageContext } from './ManageLeaveLayout.jsx';
 import LeaveDocuments, { leaveSupportsDocuments } from './LeaveDocuments.jsx';
 
-
 const PendingTab = () => {
   const { refreshCounts } = useManageContext();
   const [rows, setRows] = useState([]);
