@@ -19,6 +19,7 @@ import type {
   HrPolicyDocument,
   HistoryAuditRow,
   AckRecord,
+  ParseStatus,
 } from '../../api/services/hrPolicyService';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
@@ -36,6 +37,7 @@ import {
   ExternalLink,
   Send,
   Download,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -77,10 +79,54 @@ const STATUS_CONFIG = {
   },
 };
 
+/**
+ * Section-extraction badges (separate from the publishing status above).
+ *
+ * Section extraction is asynchronous: the file is stored instantly and the
+ * PDF/DOCX -> section tree parse runs in a CLI worker, because parsing a
+ * 150-page manual inside the web request exceeds the server's memory/time
+ * limits and used to return a bare 500. HR therefore sees "Extracting…" for a
+ * few seconds, then either a ready version or a failed one WITH the reason.
+ */
+const PARSE_CONFIG: Record<
+  ParseStatus,
+  { label: string; icon: typeof Loader2; className: string; spin?: boolean }
+> = {
+  pending: {
+    label: 'Extracting sections…',
+    icon: Loader2,
+    className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+    spin: true,
+  },
+  processing: {
+    label: 'Extracting sections…',
+    icon: Loader2,
+    className: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+    spin: true,
+  },
+  done: { label: 'Ready', icon: CheckCircle, className: 'text-gray-400 dark:text-gray-500' },
+  failed: {
+    label: 'Extraction failed',
+    icon: AlertCircle,
+    className: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
+  },
+};
+
+/** How long to poll for a pending extraction before giving up quietly. */
+const PARSE_POLL_MS = 2500;
+const PARSE_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
 const HrPolicies = () => {
   const { can } = useAuth();
   const [policies, setPolicies] = useState<HrPolicyDocument[]>([]);
   const [loading, setLoading] = useState(true);
+
+  /**
+   * Ids whose section extraction is still running. The list is refreshed on a
+   * short interval while this is non-empty, so HR sees the version become ready
+   * (or fail with a reason) without reloading the page.
+   */
+  const [parsingIds, setParsingIds] = useState<Set<number>>(new Set());
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [historyModalOpen, setHistoryModalOpen] = useState(false);
@@ -106,6 +152,22 @@ const HrPolicies = () => {
     try {
       const items = await hrPolicyService.adminList();
       setPolicies(items);
+
+      // Track anything still extracting, including documents that were already
+      // pending when the page opened (e.g. the worker was still busy on a file
+      // uploaded in a previous session).
+      setParsingIds((prev) => {
+        const next = new Set(prev);
+        for (const item of items) {
+          const ps = item.parse_status;
+          if (ps === 'pending' || ps === 'processing') {
+            next.add(item.id);
+          } else if (ps === 'done' || ps === 'failed') {
+            next.delete(item.id);
+          }
+        }
+        return next;
+      });
     } catch (err) {
       console.error('Failed to fetch policies:', err);
       toast.error('Failed to load policy list');
@@ -117,6 +179,26 @@ const HrPolicies = () => {
   useEffect(() => {
     fetchPolicies();
   }, []);
+
+  /**
+   * Poll while any document is still extracting. The interval is cleared as
+   * soon as the set empties, and a hard timeout stops it even if the worker
+   * never reports back, so a broken backend cannot spin this page forever.
+   */
+  useEffect(() => {
+    if (parsingIds.size === 0) return undefined;
+
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (Date.now() - started > PARSE_POLL_TIMEOUT_MS) {
+        setParsingIds(new Set());
+        return;
+      }
+      fetchPolicies();
+    }, PARSE_POLL_MS);
+
+    return () => clearInterval(timer);
+  }, [parsingIds]);
 
   const handleUpload = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -181,8 +263,15 @@ const HrPolicies = () => {
       formData.append('title', form.title.value);
       formData.append('version', form.version.value || '1.0');
       formData.append('description', form.description.value || '');
-      const id = await hrPolicyService.adminUpload(formData);
-      toast.success(`Policy uploaded as Draft (ID: ${id})`);
+      const uploaded = await hrPolicyService.adminUpload(formData);
+      // The file is stored and the version exists as a draft; section
+      // extraction runs in the background (a large manual takes longer than a
+      // web request should be allowed to). Start polling so HR watches it go
+      // from "Extracting" to ready, or sees the reason it failed.
+      if (uploaded.parse_status && uploaded.parse_status !== 'done') {
+        setParsingIds((prev) => new Set(prev).add(uploaded.id));
+      }
+      toast.success('Policy uploaded as Draft — extracting sections in the background.');
       setUploadModalOpen(false);
       fetchPolicies();
     } catch (err) {
@@ -219,6 +308,33 @@ const HrPolicies = () => {
     } catch (err) {
       console.error('Update failed:', err);
       toast.error('Failed to update');
+    }
+  };
+
+  /**
+   * Retry section extraction for a version whose parse failed.
+   *
+   * This is the recovery path for a file the server genuinely could not read
+   * (encrypted PDF, image-only scan). The server returns the reason, which is
+   * shown verbatim — that reason is what tells HR whether to fix the file or
+   * ask IT for help.
+   */
+  const handleReparse = async (policy: HrPolicyDocument) => {
+    try {
+      const result = await hrPolicyService.adminReparse(policy.id);
+      if (result.parse_status === 'done') {
+        toast.success(`Extracted ${result.sections} sections.`);
+      } else {
+        setParsingIds((prev) => new Set(prev).add(policy.id));
+        toast('Extraction restarted…');
+      }
+      fetchPolicies();
+    } catch (err) {
+      console.error('Reparse failed:', err);
+      // A 422 PARSE_FAILED carries the real reason (e.g. "no selectable text"),
+      // which is far more useful than a generic failure.
+      toast.error(extractErrorMessage(err, 'Extraction failed'), { duration: 8000 });
+      fetchPolicies();
     }
   };
 
@@ -401,6 +517,12 @@ const HrPolicies = () => {
               {policies.map((policy) => {
                 const config = STATUS_CONFIG[policy.status] || STATUS_CONFIG.draft;
                 const Icon = config.icon;
+                // Extraction state is shown under the publishing status, not
+                // instead of it: a version can be a stored draft that is not
+                // yet readable, and HR needs both facts at once.
+                const parseStatus: ParseStatus = policy.parse_status ?? 'done';
+                const parseCfg = PARSE_CONFIG[parseStatus];
+                const ParseIcon = parseCfg.icon;
                 return (
                   <tr key={policy.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/50">
                     <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
@@ -421,6 +543,26 @@ const HrPolicies = () => {
                         <Icon className="h-3 w-3 mr-1" />
                         {config.label}
                       </span>
+                      {parseStatus !== 'done' && (
+                        <span
+                          className={`mt-1 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${parseCfg.className}`}
+                        >
+                          <ParseIcon
+                            className={`h-3 w-3 mr-1 ${parseCfg.spin ? 'animate-spin' : ''}`}
+                          />
+                          {parseCfg.label}
+                        </span>
+                      )}
+                      {/* The reason is the whole point: it tells HR whether the
+                          file is fixable or IT needs to raise a server limit. */}
+                      {parseStatus === 'failed' && policy.parse_error && (
+                        <p
+                          className="mt-1 max-w-xs text-xs text-red-600 dark:text-red-400"
+                          title={policy.parse_error}
+                        >
+                          {policy.parse_error}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">
                       {policy.effective_date
@@ -476,12 +618,30 @@ const HrPolicies = () => {
                             <CheckCircle className="h-4 w-4" />
                           </Button>
                         )}
+                        {/* Retry extraction — the recovery path for a version
+                            the server could not read. Only offered when there is
+                            something to retry. */}
+                        {canManage && parseStatus === 'failed' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Retry section extraction"
+                            onClick={() => handleReparse(policy)}
+                          >
+                            <RefreshCw className="h-4 w-4 text-amber-600" />
+                          </Button>
+                        )}
                         {canPublish &&
                           (policy.status === 'draft' || policy.status === 'review') && (
                             <Button
                               variant="ghost"
                               size="sm"
-                              title="Publish (archives the previous active version)"
+                              disabled={parseStatus !== 'done'}
+                              title={
+                                parseStatus === 'done'
+                                  ? 'Publish (archives the previous active version)'
+                                  : parseCfg.label + ' — publishing is unavailable until this finishes'
+                              }
                               onClick={() => handlePublish(policy)}
                             >
                               <Send className="h-4 w-4 text-primary-600" />

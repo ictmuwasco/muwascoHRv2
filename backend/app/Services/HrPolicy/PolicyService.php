@@ -70,49 +70,31 @@ class PolicyService
 
         $stored = PolicyFileService::store($uploadedFile);
 
-        // Get file extension for parsing
-        $ext = strtolower(pathinfo($stored['original_name'], PATHINFO_EXTENSION));
-
-        // Extract the section tree BEFORE any database write. Parsing can fail
-        // (legacy .doc, image-only PDF, parser errors) and a failure must NOT
-        // leave behind a ghost document row with section_count = 0 — HR would
-        // publish a version whose reader shows "No sections available". On any
-        // failure the stored file is removed too, so a failed upload leaves
-        // nothing behind at all.
-        $absPath = PolicyFileService::absolutePath($stored['relative_path']);
-        if ($absPath === null) {
-            PolicyFileService::delete($stored['relative_path']);
-            throw new \InvalidArgumentException('Uploaded policy file could not be read for section extraction.');
-        }
-
-        try {
-            $parsedSections = DocumentParser::parse($absPath, $ext);
-        } catch (\InvalidArgumentException $e) {
-            PolicyFileService::delete($stored['relative_path']);
-            throw $e;
-        } catch (\Throwable $e) {
-            PolicyFileService::delete($stored['relative_path']);
-            \logger()->error('Policy section extraction failed', [
-                'file' => $stored['original_name'], 'error' => $e->getMessage(),
-            ]);
-            throw new \InvalidArgumentException(
-                'Failed to extract sections from the uploaded document: ' . $e->getMessage()
-            );
-        }
-
-        if (count($parsedSections) === 0) {
-            PolicyFileService::delete($stored['relative_path']);
-            throw new \InvalidArgumentException(
-                'No sections could be extracted from the uploaded file. '
-                . 'Please ensure the document is a valid PDF or DOCX with selectable text.'
-            );
-        }
-
-        \logger()->info('Policy sections extracted', [
-            'file' => $stored['original_name'], 'sections' => count($parsedSections),
-        ]);
-
         $ackMessage = trim((string) ($meta['acknowledgement_message'] ?? ''));
+
+        // PHASE 1 of 2 — store only, and return fast.
+        //
+        // The row is inserted as DRAFT with parse_status='pending' and
+        // section_count=0; the section tree is extracted afterwards by
+        // extractSections(), which the CLI worker (backend/cron/
+        // policy_parse_worker.php) calls. It used to happen right here, inside
+        // the web request, and that is what produced the bare 500:
+        //
+        //   * production FPM runs memory_limit=128M / max_execution_time=30,
+        //     while CLI PHP on the SAME host runs -1 / 0.
+        //     DocumentParser::ensureParseHeadroom() tries to raise them, but
+        //     Plesk locks them with php_admin_value, so the raise is ignored.
+        //   * exceeding either raises a PHP FATAL, which is NOT a Throwable:
+        //     the controller's catch (\Throwable) never runs, nothing is
+        //     logged, no cleanup happens, and the caller gets a 500 with no
+        //     reason — exactly the signature in audit log #1098.
+        //   * move_uploaded_file() had already succeeded, so every retry left
+        //     another orphaned policy-*.pdf in private storage.
+        //
+        // Splitting it means the web request does two small writes and returns
+        // 201, while the heavy parse runs where the limits really are
+        // unlimited. The cost is that the document is briefly unparsed, so
+        // publishing is blocked until parse_status='done' (see publish()).
 
         $id = \db()->insert('hr_policy_documents', [
             'title'                   => mb_substr($title, 0, 200),
@@ -129,13 +111,117 @@ class PolicyService
             'file_size'               => $stored['size'],
             'uploaded_by'             => $userId,
             'is_active'               => 0,
+            'section_count'           => 0,
+            'parse_status'            => HrPolicyDocument::PARSE_PENDING,
+            'parse_attempts'          => 0,
             'acknowledgement_message' => $ackMessage !== ''
                 ? mb_substr($ackMessage, 0, 1000)
                 : self::DEFAULT_ACK_MESSAGE,
         ]);
 
-        // Persist the extracted section tree (children of the new document)
+        AuditService::getInstance()->log(
+            AuditService::MODULE_SETTINGS,
+            AuditService::ACTION_CREATE,
+            "Uploaded HR policy version \"{$title}\" v{$version} (draft, sections queued for extraction)",
+            [
+                'target_type' => 'hr_policy_documents',
+                'target_id'   => $id,
+                'target_name' => "{$title} v{$version}",
+                'new_values'  => [
+                    'title' => $title, 'version' => $version,
+                    'source_type' => $sourceType, 'status' => 'draft',
+                    'file_name' => $stored['original_name'], 'size' => $stored['size'],
+                    'parse_status' => HrPolicyDocument::PARSE_PENDING,
+                ],
+            ]
+        );
+
+        return $id;
+    }
+    /**
+     * PHASE 2 of 2 — extract the section tree for a stored document.
+     *
+     * Called by the CLI worker (and by the admin "retry extraction" action),
+     * NEVER from the web request: parsing a full manual is the most
+     * resource-hungry operation in this module and must run where PHP's
+     * memory/time limits are not capped by php_admin_value. See upload() for
+     * the full rationale.
+     *
+     * Idempotent and failure-tolerant: a parse failure marks the row
+     * parse_status='failed' with a reason and KEEPS the file, so HR can retry
+     * or replace it, rather than silently deleting an official document.
+     *
+     * @return array{status:string, sections:int, error:string|null}
+     */
+    public static function extractSections(int $id): array
+    {
+        $doc = HrPolicyDocument::find($id);
+        if (!$doc || $doc['deleted_at'] !== null) {
+            return ['status' => HrPolicyDocument::PARSE_FAILED, 'sections' => 0, 'error' => 'Policy document not found.'];
+        }
+
+        if ($doc['parse_status'] === HrPolicyDocument::PARSE_DONE && (int) $doc['section_count'] > 0) {
+            return [
+                'status'   => HrPolicyDocument::PARSE_DONE,
+                'sections' => (int) $doc['section_count'],
+                'error'    => null,
+            ];
+        }
+
+        $absPath = PolicyFileService::absolutePath((string) $doc['file_path']);
+        if ($absPath === null) {
+            self::markParseFailed($id, 'The stored policy file could not be read for section extraction.');
+            return [
+                'status'   => HrPolicyDocument::PARSE_FAILED,
+                'sections' => 0,
+                'error'    => 'Stored policy file is missing from private storage.',
+            ];
+        }
+
+        $ext = strtolower(pathinfo((string) $doc['file_name'], PATHINFO_EXTENSION));
+
         try {
+            $parsedSections = DocumentParser::parse($absPath, $ext);
+        } catch (\InvalidArgumentException $e) {
+            // Unparseable input (legacy .doc, image-only PDF, OLE2 renamed to
+            // .docx). The message is deliberately specific — it is what HR
+            // reads in the UI, so it must say what to do next.
+            self::markParseFailed($id, $e->getMessage());
+            return ['status' => HrPolicyDocument::PARSE_FAILED, 'sections' => 0, 'error' => $e->getMessage()];
+        } catch (\Throwable $e) {
+            \logger()->error('Policy section extraction failed', [
+                'id'    => $id,
+                'file'  => $doc['file_name'],
+                'class' => get_class($e),
+                'at'    => $e->getFile() . ':' . $e->getLine(),
+                'error' => $e->getMessage(),
+            ]);
+            self::markParseFailed($id, 'Section extraction failed: ' . $e->getMessage());
+            return [
+                'status'   => HrPolicyDocument::PARSE_FAILED,
+                'sections' => 0,
+                'error'    => 'Section extraction failed. See the server log for details.',
+            ];
+        }
+
+        if (count($parsedSections) === 0) {
+            self::markParseFailed(
+                $id,
+                'No sections could be extracted from the uploaded file. '
+                . 'Please ensure the document is a valid PDF or DOCX with selectable text.'
+            );
+            return [
+                'status'   => HrPolicyDocument::PARSE_FAILED,
+                'sections' => 0,
+                'error'    => 'No selectable text found in the document.',
+            ];
+        }
+
+        // Persist the extracted section tree. Any partial tree from a previous
+        // failed attempt is replaced first, so a retry cannot leave duplicates.
+        try {
+            \db()->delete('hr_policy_sections', 'policy_document_id = ?', 'i', [$id]);
+
             foreach ($parsedSections as $idx => $section) {
                 \db()->insert('hr_policy_sections', [
                     'policy_document_id' => $id,
@@ -148,50 +234,125 @@ class PolicyService
                 ]);
             }
 
-            // Update section count
             \db()->update(
                 'hr_policy_documents',
-                ['section_count' => count($parsedSections)],
+                [
+                    'section_count' => count($parsedSections),
+                    'parse_status'  => HrPolicyDocument::PARSE_DONE,
+                    'parse_error'   => null,
+                    'parsed_at'     => date('Y-m-d H:i:s'),
+                ],
                 'id = ?', 'i', [$id]
             );
         } catch (\Throwable $e) {
-            // Undo the half-created version (children first) so the reader can
-            // never resolve a document with a broken/empty section tree.
-            try {
-                \db()->delete('hr_policy_sections', 'policy_document_id = ?', 'i', [$id]);
-                \db()->delete('hr_policy_documents', 'id = ?', 'i', [$id]);
-            } catch (\Throwable $rollbackError) {
-                \logger()->error('Policy upload rollback failed', [
-                    'id' => $id, 'error' => $rollbackError->getMessage(),
-                ]);
-            }
-            PolicyFileService::delete($stored['relative_path']);
-            \logger()->error('Policy section save failed', [
-                'id' => $id, 'error' => $e->getMessage(),
-            ]);
-            throw new \InvalidArgumentException(
-                'Failed to save the extracted sections: ' . $e->getMessage()
-            );
+            \logger()->error('Policy section save failed', ['id' => $id, 'error' => $e->getMessage()]);
+            self::markParseFailed($id, 'Failed to save the extracted sections: ' . $e->getMessage());
+            return [
+                'status'   => HrPolicyDocument::PARSE_FAILED,
+                'sections' => 0,
+                'error'    => 'Failed to save the extracted sections.',
+            ];
         }
+
+        \logger()->info('Policy sections extracted', [
+            'id' => $id, 'file' => $doc['file_name'], 'sections' => count($parsedSections),
+        ]);
 
         AuditService::getInstance()->log(
             AuditService::MODULE_SETTINGS,
-            AuditService::ACTION_CREATE,
-            "Uploaded HR policy version \"{$title}\" v{$version} (draft)",
+            AuditService::ACTION_UPDATE,
+            "Extracted " . count($parsedSections) . " sections from HR policy \"{$doc['title']}\" v{$doc['version']}",
             [
                 'target_type' => 'hr_policy_documents',
                 'target_id'   => $id,
-                'target_name' => "{$title} v{$version}",
+                'target_name' => "{$doc['title']} v{$doc['version']}",
                 'new_values'  => [
-                    'title' => $title, 'version' => $version,
-                    'source_type' => $sourceType, 'status' => 'draft',
-                    'file_name' => $stored['original_name'], 'size' => $stored['size'],
+                    'parse_status'  => HrPolicyDocument::PARSE_DONE,
+                    'section_count' => count($parsedSections),
                 ],
             ]
         );
 
-        return $id;
+        return [
+            'status'   => HrPolicyDocument::PARSE_DONE,
+            'sections' => count($parsedSections),
+            'error'    => null,
+        ];
     }
+
+    /** Record a failed extraction, keeping the file so HR can retry/replace. */
+    private static function markParseFailed(int $id, string $message): void
+    {
+        try {
+            \db()->update(
+                'hr_policy_documents',
+                [
+                    'parse_status' => HrPolicyDocument::PARSE_FAILED,
+                    'parse_error'  => mb_substr($message, 0, 1000),
+                ],
+                'id = ?', 'i', [$id]
+            );
+        } catch (\Throwable $e) {
+            \logger()->error('Policy parse failure could not be recorded', [
+                'id' => $id, 'error' => $e->getMessage(),
+            ]);
+        }
+
+        \logger()->error('Policy section extraction failed', ['id' => $id, 'error' => $message]);
+
+        AuditService::getInstance()->log(
+            AuditService::MODULE_SETTINGS,
+            AuditService::ACTION_UPDATE,
+            "HR policy section extraction FAILED (id {$id}): " . mb_substr($message, 0, 300),
+            [
+                'target_type' => 'hr_policy_documents',
+                'target_id'   => $id,
+                'new_values'  => ['parse_status' => HrPolicyDocument::PARSE_FAILED],
+                'status'      => AuditService::STATUS_FAILED,
+                'metadata'    => ['error' => mb_substr($message, 0, 500)],
+            ]
+        );
+    }
+
+    /**
+     * Re-queue a failed extraction (admin "retry" action). Resets the attempt
+     * counter so the worker will pick the row up again.
+     */
+    public static function retryExtraction(int $id, int $userId): array
+    {
+        $doc = HrPolicyDocument::find($id);
+        if (!$doc || $doc['deleted_at'] !== null) {
+            throw new \InvalidArgumentException('Policy document not found.');
+        }
+        if ($doc['parse_status'] === HrPolicyDocument::PARSE_DONE) {
+            throw new \InvalidArgumentException('This version has already been processed.');
+        }
+
+        \db()->update(
+            'hr_policy_documents',
+            [
+                'parse_status'   => HrPolicyDocument::PARSE_PENDING,
+                'parse_attempts' => 0,
+                'parse_error'    => null,
+            ],
+            'id = ?', 'i', [$id]
+        );
+
+        AuditService::getInstance()->log(
+            AuditService::MODULE_SETTINGS,
+            AuditService::ACTION_UPDATE,
+            "Re-queued HR policy \"{$doc['title']}\" v{$doc['version']} for section extraction",
+            [
+                'target_type' => 'hr_policy_documents',
+                'target_id'   => $id,
+                'target_name' => "{$doc['title']} v{$doc['version']}",
+                'new_values'  => ['parse_status' => HrPolicyDocument::PARSE_PENDING],
+            ]
+        );
+
+        return self::extractSections($id);
+    }
+
 
     /**
      * Edit metadata. Published/archived versions are immutable official
@@ -268,6 +429,22 @@ class PolicyService
             throw new \InvalidArgumentException('This document is no longer editable.');
         }
 
+        // Sending a version to review implies it is ready for a human to read.
+        // Sections arrive asynchronously, so a still-processing document is not
+        // ready yet — say so rather than letting HR review an empty reader.
+        $parseStatus = (string) ($doc['parse_status'] ?? HrPolicyDocument::PARSE_DONE);
+        if ($parseStatus === HrPolicyDocument::PARSE_PENDING || $parseStatus === HrPolicyDocument::PARSE_PROCESSING) {
+            throw new \InvalidArgumentException(
+                'This version is still being processed. Wait until section extraction finishes '
+                . 'before moving it to review.'
+            );
+        }
+        if ($parseStatus === HrPolicyDocument::PARSE_FAILED) {
+            throw new \InvalidArgumentException(
+                'This version could not be read: ' . ($doc['parse_error'] ?? 'section extraction failed')
+            );
+        }
+
         \db()->update('hr_policy_documents', ['status' => $status], 'id = ?', 'i', [$id]);
 
         self::invalidateActiveDocumentCache();
@@ -301,6 +478,32 @@ class PolicyService
         }
         if ((int) $doc['is_active'] === 1 && $doc['status'] === HrPolicyDocument::STATUS_PUBLISHED) {
             throw new \InvalidArgumentException('This version is already the active policy.');
+        }
+
+        // Sections are extracted asynchronously now (see upload()), so a draft
+        // can exist with no readable text yet. Publishing one would make the
+        // EMPLOYEE-FACING manual an empty reader - the exact "looks published,
+        // nothing to read" failure the old synchronous parse prevented. Refuse
+        // until extraction has actually succeeded.
+        $parseStatus = (string) ($doc['parse_status'] ?? HrPolicyDocument::PARSE_DONE);
+        if ($parseStatus === HrPolicyDocument::PARSE_PENDING || $parseStatus === HrPolicyDocument::PARSE_PROCESSING) {
+            throw new \InvalidArgumentException(
+                'This version is still being processed — its sections have not been extracted yet. '
+                . 'Wait a moment and try again.'
+            );
+        }
+        if ($parseStatus === HrPolicyDocument::PARSE_FAILED) {
+            throw new \InvalidArgumentException(
+                'This version could not be read, so it cannot be published: '
+                . ($doc['parse_error'] ?? 'section extraction failed')
+                . ' Replace the file or fix it and retry extraction.'
+            );
+        }
+        if ((int) $doc['section_count'] === 0) {
+            throw new \InvalidArgumentException(
+                'This version has no readable sections, so it cannot be published. '
+                . 'Upload a PDF or DOCX with selectable text.'
+            );
         }
 
         \db()->beginTransaction();
