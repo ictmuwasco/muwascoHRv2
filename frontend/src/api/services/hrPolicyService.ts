@@ -231,14 +231,14 @@ export const hrPolicyService = {
    * extraction happens in the background, so callers should refresh the list to
    * watch `parse_status` move from pending -> done (or -> failed with a reason).
    */
-  adminUpload: async (
-    form: FormData,
-  ): Promise<{ id: number; parse_status: ParseStatus }> => {
-    const res = await apiClient.post<
-      ApiResponse<{ id: number; parse_status: ParseStatus }>
-    >('/settings/hr-policies', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+  adminUpload: async (form: FormData): Promise<{ id: number; parse_status: ParseStatus }> => {
+    const res = await apiClient.post<ApiResponse<{ id: number; parse_status: ParseStatus }>>(
+      '/settings/hr-policies',
+      form,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      },
+    );
     return res.data.data;
   },
 

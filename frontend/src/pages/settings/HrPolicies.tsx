@@ -640,7 +640,8 @@ const HrPolicies = () => {
                               title={
                                 parseStatus === 'done'
                                   ? 'Publish (archives the previous active version)'
-                                  : parseCfg.label + ' — publishing is unavailable until this finishes'
+                                  : parseCfg.label +
+                                    ' — publishing is unavailable until this finishes'
                               }
                               onClick={() => handlePublish(policy)}
                             >
