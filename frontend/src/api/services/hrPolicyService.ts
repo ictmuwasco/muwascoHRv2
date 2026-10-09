@@ -12,12 +12,24 @@ import { API_BASE_URL } from '../../config/api';
 
 export type PolicyStatus = 'draft' | 'review' | 'published' | 'archived';
 
+/**
+ * Section-extraction state. Orthogonal to `status` (the publishing workflow):
+ * the file is stored and the version returned immediately, while the PDF/DOCX
+ * -> section tree parse runs in a CLI worker. Parsing a large manual in the web
+ * request is what used to 500 on production, so the upload no longer waits for
+ * it. `pending` means "stored, not yet readable".
+ */
+export type ParseStatus = 'pending' | 'processing' | 'done' | 'failed';
+
 export interface HrPolicyDocument {
   id: number;
   title: string;
   description?: string | null;
   version: string;
   status: PolicyStatus;
+  parse_status?: ParseStatus;
+  parse_error?: string | null;
+  parsed_at?: string | null;
   source_type: string;
   effective_date?: string | null;
   published_at?: string | null;
@@ -214,11 +226,33 @@ export const hrPolicyService = {
     return res.data.data.items;
   },
 
-  adminUpload: async (form: FormData): Promise<number> => {
-    const res = await apiClient.post<ApiResponse<{ id: number }>>('/settings/hr-policies', form, {
+  /**
+   * Upload a new version. Resolves as soon as the file is stored — section
+   * extraction happens in the background, so callers should refresh the list to
+   * watch `parse_status` move from pending -> done (or -> failed with a reason).
+   */
+  adminUpload: async (
+    form: FormData,
+  ): Promise<{ id: number; parse_status: ParseStatus }> => {
+    const res = await apiClient.post<
+      ApiResponse<{ id: number; parse_status: ParseStatus }>
+    >('/settings/hr-policies', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
-    return res.data.data.id;
+    return res.data.data;
+  },
+
+  /**
+   * Retry section extraction for a version whose parse failed (encrypted PDF,
+   * image-only scan). Rejects with the server's reason so the UI can show it.
+   */
+  adminReparse: async (
+    id: number,
+  ): Promise<{ id: number; parse_status: ParseStatus; sections: number }> => {
+    const res = await apiClient.post<
+      ApiResponse<{ id: number; parse_status: ParseStatus; sections: number }>
+    >(`/settings/hr-policies/${id}/reparse`);
+    return res.data.data;
   },
 
   adminUpdate: async (id: number, payload: Record<string, unknown>): Promise<void> => {

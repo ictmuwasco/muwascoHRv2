@@ -78,7 +78,22 @@ class HrPolicyAdminController extends BaseController
 
             $id = PolicyService::upload($file, $data, $userId);
 
-            $this->success(['id' => $id], 'Policy version uploaded as draft', 201);
+            // Kick the CLI worker so sections appear within seconds rather than
+            // at the next cron tick. Best-effort: if spawning fails (exec
+            // disabled, restricted host) the row simply stays 'pending' and the
+            // scheduled worker picks it up. A spawn failure must NEVER turn a
+            // successful upload into an error - that is the class of bug this
+            // whole change exists to remove.
+            self::spawnParseWorker($id);
+
+            $this->success(
+                [
+                    'id'           => $id,
+                    'parse_status' => HrPolicyDocument::PARSE_PENDING,
+                ],
+                'Policy version uploaded as draft. Sections are being extracted in the background.',
+                201
+            );
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
         } catch (\Throwable $e) {
@@ -96,6 +111,84 @@ class HrPolicyAdminController extends BaseController
                 'at'    => $e->getFile() . ':' . $e->getLine(),
             ]);
             $this->error('Failed to upload the policy. Please try again.', 500);
+        }
+    }
+
+    /**
+     * Spawn the CLI section-extraction worker for a freshly stored document.
+     *
+     * Best-effort and non-blocking: the worker is detached (output to the null
+     * device) so the HTTP response is not held open by a multi-minute parse.
+     * Any failure is swallowed on purpose - the scheduled cron worker is the
+     * real guarantee, and this is only a latency optimisation.
+     */
+    private static function spawnParseWorker(int $id): void
+    {
+        $worker = dirname(__DIR__, 3) . '/cron/policy_parse_worker.php';
+        if (!is_file($worker) || !function_exists('proc_open')) {
+            return;
+        }
+
+        $php = defined('PHP_BINARY') && PHP_BINARY !== '' ? PHP_BINARY : 'php';
+
+        // Windows needs the whole thing wrapped for start /B; POSIX needs the
+        // trailing & to detach. Both redirect stdout/stderr so nothing leaks
+        // into the response body.
+        $isWindows = stripos(PHP_OS_FAMILY, 'win') === 0;
+        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($worker)
+            . ' ' . escapeshellarg('--id=' . $id) . ' --quiet'
+            . ($isWindows ? '' : ' > /dev/null 2>&1 &');
+
+        try {
+            if ($isWindows) {
+                @pclose(@popen('start /B ' . $cmd, 'r'));
+            } else {
+                @exec($cmd);
+            }
+        } catch (\Throwable $e) {
+            \logger()->warning('Policy parse worker spawn failed', [
+                'id' => $id, 'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * POST /api/settings/hr-policies/{id}/reparse — retry section extraction.
+     *
+     * The recovery path for a document whose parse failed (encrypted PDF,
+     * image-only scan, a file that legitimately could not be read). HR sees the
+     * reason in the list and can retry after replacing the file.
+     */
+    public function reparseAction(int $id): void
+    {
+        $this->requirePermission('hr_policies', 'manage');
+        $userId = $this->getUserId();
+        if ($userId === 0) {
+            $this->unauthorized('Authentication required');
+        }
+
+        try {
+            $result = PolicyService::retryExtraction($id, $userId);
+
+            if ($result['status'] === HrPolicyDocument::PARSE_DONE) {
+                $this->success(
+                    ['id' => $id, 'parse_status' => $result['status'], 'sections' => $result['sections']],
+                    "Extracted {$result['sections']} sections."
+                );
+                return;
+            }
+
+            // Extraction genuinely failed. The row now records why, so this is
+            // a real answer, not a server error: 422 with the reason attached.
+            $this->error((string) $result['error'], 422, 'PARSE_FAILED', [
+                'id' => $id,
+                'parse_status' => $result['status'],
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            $this->error($e->getMessage(), 400);
+        } catch (\Exception $e) {
+            \logger()->error('Policy reparse error', ['error' => $e->getMessage(), 'id' => $id]);
+            $this->error('Failed to re-process the policy. Please try again.', 500);
         }
     }
 

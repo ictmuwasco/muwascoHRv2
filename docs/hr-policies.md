@@ -98,7 +98,7 @@ HR managers out of `/settings/hr-policies`. The shell is now gated by
 independently permission-guarded and the backend enforces everything
 independently. UX only — no backend change.
 
-## 8. Document ingestion
+## 8. Document ingestion & async section extraction
 
 `scripts/ingest_policy_manual.php <path-to-docx>` reads the official manual
 via ZipArchive (`word/document.xml`), maps headings/numbering to the section
@@ -108,16 +108,53 @@ for HR review. Official wording is never rewritten. Run:
     php backend/database/run.php
     php scripts/ingest_policy_manual.php "C:\path\MUWASCO PP MANUAL.docx"
 
-After HR review of the parse report, set the version to REVIEW, then PUBLISH
-from Settings → HR Policies.
+### Uploads extract sections in the BACKGROUND (migration 108)
+
+`POST /settings/hr-policies` stores the file, inserts the DRAFT row with
+`parse_status='pending'` and returns **201 immediately**. The PDF/DOCX →
+section-tree parse runs afterwards in a CLI worker.
+
+WHY: production PHP-FPM is capped at `memory_limit=128M` /
+`max_execution_time=30`, and Plesk pins both with `php_admin_value`, so
+`DocumentParser::ensureParseHeadroom()` cannot raise them. Exceeding either is
+a PHP **fatal**, which is not a `Throwable` — the controller's
+`catch (\Throwable)` never ran, nothing was logged, no cleanup happened, and HR
+got a bare `500` with no reason (audit log #1098). Each retry also left an
+orphaned file in private storage. Verified on the production host: **CLI PHP
+runs `memory_limit=-1` / `max_execution_time=0`**, and the real manual takes
+~69s to parse — over the 30s web cap, so it could never have worked inline.
+
+Install the worker (the upload endpoint also spawns it once per upload as a
+latency optimisation, but cron is the guarantee):
+
+    * * * * * php /var/www/vhosts/muwascoerp.co.ke/app.muwascoerp.co.ke/backend/cron/policy_parse_worker.php --quiet
+
+    # manual / debugging
+    php backend/cron/policy_parse_worker.php              # drain pending
+    php backend/cron/policy_parse_worker.php --id=123     # force one
+    php backend/cron/policy_parse_worker.php --dry-run    # report only
+
+| `parse_status` | Meaning |
+| --- | --- |
+| `pending` | file stored, sections not extracted yet |
+| `processing` | a worker has claimed it |
+| `done` | sections extracted, `section_count` > 0 |
+| `failed` | unreadable file; `parse_error` says why and HR can retry |
+
+**Publishing is blocked** until `parse_status='done'` — an unparsed draft would
+otherwise become an empty employee-facing manual. `POST
+/settings/hr-policies/{id}/reparse` re-queues a failed one. A file that fails
+`PARSE_MAX_ATTEMPTS` (3) times is left alone rather than retried forever;
+retrying resets the counter deliberately.
 
 ## 9. Deployment / rollback
 
 Deploy:
-1. `php backend/database/run.php` (applies 081 — idempotent:
+1. `php backend/database/run.php` (applies 081 + 108 — idempotent:
    `CREATE TABLE IF NOT EXISTS` + `ON DUPLICATE KEY UPDATE` seeds).
 2. Deploy backend + frontend code; `npm run build` for the frontend.
-3. Run the ingestion script (§8) and publish v1 after HR review.
+3. Install the section-extraction cron (§8).
+4. Run the ingestion script (§8) and publish v1 after HR review.
 
 Rollback:
 1. `DROP TABLE hr_policy_recent_views, hr_policy_bookmarks,

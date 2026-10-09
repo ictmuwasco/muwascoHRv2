@@ -1010,6 +1010,7 @@ $router->add('POST', '/hr-policies/{id}/acknowledge', HrPolicyController::class,
 // --- HR administration (/settings/hr-policies) ---
 $router->add('GET', '/settings/hr-policies', HrPolicyAdminController::class, 'index', 'hr_policies:manage');
 $router->add('POST', '/settings/hr-policies', HrPolicyAdminController::class, 'store', 'hr_policies:manage', '30:300');
+$router->add('POST', '/settings/hr-policies/{id}/reparse', HrPolicyAdminController::class, 'reparse', 'hr_policies:manage', '10:300');
 $router->add('PUT', '/settings/hr-policies/{id}', HrPolicyAdminController::class, 'update', 'hr_policies:manage', '20:300');
 $router->add('POST', '/settings/hr-policies/{id}/status', HrPolicyAdminController::class, 'setStatus', 'hr_policies:manage', '20:300');
 $router->add('POST', '/settings/hr-policies/{id}/publish', HrPolicyAdminController::class, 'publish', 'hr_policies:publish', '10:300');

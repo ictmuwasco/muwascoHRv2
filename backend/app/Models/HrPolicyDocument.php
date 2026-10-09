@@ -24,6 +24,28 @@ class HrPolicyDocument extends BaseModel
 
     public const STATUSES = [self::STATUS_DRAFT, self::STATUS_REVIEW, self::STATUS_PUBLISHED, self::STATUS_ARCHIVED];
 
+    /**
+     * Section-extraction state (migration 108) — ORTHOGONAL to the publishing
+     * `status` above and deliberately not merged into it.
+     *
+     * A version is stored and returned to HR instantly as a draft; the
+     * expensive PDF/DOCX -> section tree parse runs in a CLI worker, because
+     * production FPM is capped at 128M/30s and a fatal there is uncatchable
+     * (the 500-with-no-log failure this split fixes). `pending` means "file is
+     * stored, sections not extracted yet".
+     */
+    public const PARSE_PENDING    = 'pending';
+    public const PARSE_PROCESSING = 'processing';
+    public const PARSE_DONE       = 'done';
+    public const PARSE_FAILED     = 'failed';
+
+    public const PARSE_STATUSES = [
+        self::PARSE_PENDING, self::PARSE_PROCESSING, self::PARSE_DONE, self::PARSE_FAILED,
+    ];
+
+    /** Max extraction attempts before the worker gives up on a file. */
+    public const PARSE_MAX_ATTEMPTS = 3;
+
     /** AI source hierarchy (manual > CBA > circular > law > procedure). */
     public const SOURCE_MANUAL    = 'manual';
     public const SOURCE_CBA       = 'cba';
@@ -44,7 +66,59 @@ class HrPolicyDocument extends BaseModel
         'mime_type', 'file_size', 'page_count', 'section_count',
         'uploaded_by', 'is_active', 'active_token',
         'acknowledgement_message', 'deleted_at',
+        'parse_status', 'parse_error', 'parse_attempts', 'parsed_at',
     ];
+
+    /**
+     * Claim a document for section extraction.
+     *
+     * A conditional UPDATE, not SELECT-then-UPDATE: two overlapping worker
+     * runs both see the same 'pending' row, but only the one whose UPDATE
+     * actually matched gets affected_rows = 1. The loser sees 0 and moves on,
+     * so a document is never parsed twice concurrently and no lock table is
+     * needed. Same pattern as the notification worker's queue drain.
+     *
+     * Rows already at PARSE_MAX_ATTEMPTS are left alone: a file that failed
+     * three times is permanently broken (encrypted PDF, image-only scan) and
+     * retrying it every cron tick would spin forever.
+     */
+    public static function claimForParsing(int $id): bool
+    {
+        // Raw SQL, not \db()->update(): that helper binds EVERY value as a
+        // parameter, so 'parse_attempts + 1' would be stored as the literal
+        // string and coerced to 0 by MySQL — the counter would never advance
+        // and a broken file would be retried forever.
+        $stmt = \db()->query(
+            "UPDATE " . static::$table . "
+                SET parse_status = '" . self::PARSE_PROCESSING . "',
+                    parse_attempts = parse_attempts + 1
+              WHERE id = ?
+                AND parse_status = '" . self::PARSE_PENDING . "'
+                AND parse_attempts < " . self::PARSE_MAX_ATTEMPTS,
+            'i',
+            [$id]
+        );
+
+        return $stmt->affected_rows === 1;
+    }
+
+    /**
+     * Documents still awaiting section extraction, oldest first, capped so one
+     * cron tick cannot open an unbounded amount of work.
+     */
+    public static function pendingParsing(int $limit = 5): array
+    {
+        $limit = max(1, min(50, $limit));
+
+        return \db()->fetchAll(
+            "SELECT * FROM " . static::$table . "
+              WHERE parse_status = '" . self::PARSE_PENDING . "'
+                AND parse_attempts < " . self::PARSE_MAX_ATTEMPTS . "
+                AND deleted_at IS NULL
+              ORDER BY id ASC
+              LIMIT {$limit}"
+        );
+    }
 
     /** The single active, published official policy (employee-facing). */
     public static function findActive(): ?array
