@@ -72,12 +72,6 @@ final class AiToolRegistry
         // --- Super-admin diagnostics (system_errors:view_sensitive) --------
         // Hard super_admin role check lives inside the tool itself.
         $this->register(new GetSystemErrorSummaryTool());
-
-        // --- Diagrams (mermaid:generate) ----------------------------------------
-        // Read-only, organisation-wide: every authenticated employee plus the
-        // HR/MD/super-admins hold mermaid:view. The rendered <svg> is sent back
-        // to the AI as base64 data and drawn into the chat.
-        $this->register(new GenerateMermaidDiagramTool());
     }
 
     public function register(AiToolInterface $tool): void
