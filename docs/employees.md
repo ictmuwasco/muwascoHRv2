@@ -39,3 +39,14 @@ Department  ──< Section  ──< Subsection
 ## Employee ↔ user relationship
 
 Every employee may have a linked user account (login identity). Profile sync between the two records is the subject of the small archived note `EMPLOYEE_PROFILE_SYNC.md`; treat that file as history, not as a current-state reference.
+
+**Current contract (EmployeeService):**
+
+- **Create** — `createEmployee()` auto-creates the linked account via `createUserForEmployee()` (login = employee email, initial password = employee number, `role` derived from `employee_type` through `mapEmployeeTypeToRole()`).
+- **Update** — `updateEmployee()` / `updateEmployeeProfile()` call `syncLinkedUserAccount()` after a successful employees write. It mirrors the shared identity columns (`employee_id`, `email`, `first_name`, `last_name`, `surname`, `gender`, `designation`, `phone`, `address`) onto the linked `users` row, and keeps `users.role` aligned with `employee_type`:
+  - role is rewritten whenever `employee_type` changes;
+  - empty/unknown roles (e.g. legacy `hr`, empty string) are repaired on **any** edit — an unresolvable role denies every permission, which is what produced the SPA-wide "Access denied — required: dashboard:view";
+  - `super_admin`/`admin` grants require a `super_admin` session actor (same escalation policy as `UserService::assertAuthorizedRoleChange`), so a non-super-admin editor can never escalate through an employee form;
+  - `password`, `is_active`, `session_token`, `login_identifier`, `last_activity` are never written from this path.
+  - The sync is non-fatal: a users-write failure is logged (`Employee->user sync failed`) and the employee edit still succeeds.
+- **Data repair** — migration `109_backfill_users_role_from_employee_type.sql` re-derives `users.role` from `employee_type` for existing rows whose role is NULL/empty/outside the catalog (FK link first, unique-email fallback for legacy unlinked rows). Valid roles, including the `admin` alias, are left untouched.

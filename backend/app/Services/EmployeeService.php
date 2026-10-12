@@ -116,6 +116,23 @@ class EmployeeService implements EmployeeServiceInterface
     ];
 
     /**
+     * employees columns that ALSO exist on the linked login account (users).
+     *
+     * When an employee is updated these are mirrored onto the users row so the
+     * two records cannot drift (an employee whose email changed but whose
+     * account still logs in with the old one, names mismatching in the users
+     * UI, etc). Deliberately an explicit allowlist: the users repository
+     * builds SET clauses from array keys, and password / role / is_active /
+     * session_token / login_identifier / last_activity are NEVER written from
+     * an employee edit (role goes through the guarded path below, status
+     * through PUT /users/{id}/toggle-status).
+     */
+    private const USER_SYNC_FIELDS = [
+        'employee_id', 'email', 'first_name', 'last_name', 'surname',
+        'gender', 'designation', 'phone', 'address',
+    ];
+
+    /**
      * Normalise a next_of_kin / dependants payload that may arrive as a
      * JSON string or as an already-decoded array.
      *
@@ -228,7 +245,17 @@ class EmployeeService implements EmployeeServiceInterface
         // Phase 7 (P7-8): mass-assignment guard (see EMPLOYEE_WRITABLE_FIELDS).
         $data = $this->filterWritable($data, self::EMPLOYEE_WRITABLE_FIELDS);
 
-        return $this->employeeRepository->update($id, $data);
+        $result = $this->employeeRepository->update($id, $data);
+
+        // Profile edits carry shared columns (phone, address, email...) too -
+        // keep the linked login account in step. No employee_type here (the
+        // self-service endpoint cannot change employment fields), so this only
+        // mirrors columns; the guarded role path no-ops.
+        if ($result) {
+            $this->syncLinkedUserAccount($id, $existingEmployee, $data);
+        }
+
+        return $result;
     }
 
     public function createEmployee(array $data): int
@@ -417,7 +444,17 @@ class EmployeeService implements EmployeeServiceInterface
         // Phase 7 (P7-8): mass-assignment guard (see EMPLOYEE_WRITABLE_FIELDS).
         $data = $this->filterWritable($data, self::EMPLOYEE_WRITABLE_FIELDS);
 
-        return $this->employeeRepository->update($id, $data);
+        $result = $this->employeeRepository->update($id, $data);
+
+        // Mirror the edit onto the linked login account (shared columns +
+        // role derived from employee_type). Runs AFTER the employee write so
+        // the sync always reflects committed data; failures are logged, never
+        // fatal - the employee edit itself already succeeded.
+        if ($result) {
+            $this->syncLinkedUserAccount($id, $existingEmployee, $data);
+        }
+
+        return $result;
     }
 
     public function deleteEmployee(int $id): bool
@@ -652,7 +689,10 @@ class EmployeeService implements EmployeeServiceInterface
      * role) and escalated managing_director/bod_chairman to 'super_admin',
      * which bypassed the privilege-escalation guard in
      * UserService::assertAuthorizedRoleChange(). Each role now maps to its
-     * own catalog identity.
+     * own catalog identity — including officer/manager, which previously
+     * fell through to 'employee' and silently downgraded the account's
+     * permissions whenever this mapping was replayed (e.g. by the
+     * employee->user sync below).
      */
     private function mapEmployeeTypeToRole(string $employeeType): string
     {
@@ -664,8 +704,155 @@ class EmployeeService implements EmployeeServiceInterface
             'dept_head'        => 'dept_head',
             'section_head'     => 'section_head',
             'sub_section_head' => 'sub_section_head',
+            'manager'          => 'manager',
+            'officer'          => 'officer',
             default            => 'employee',
         };
+    }
+
+    /**
+     * Mirror an employee update onto its linked users row.
+     *
+     * WHY: users and employees share identity columns, and users.role — the
+     * ONLY value RBAC resolves (AuthorizationService::resolveUserRole) — is
+     * derived from employees.employee_type at CREATE time but was never
+     * refreshed on UPDATE. An employee promoted/demoted in the Employees
+     * interface therefore kept a stale (or empty, pre-sync era) role, and an
+     * empty/unknown role denies EVERY permission — the SPA then renders
+     * "Access denied … required: dashboard:view" on every page.
+     *
+     * WHAT SYNCs:
+     *  - Shared identity columns from USER_SYNC_FIELDS (payload ∩ allowlist).
+     *  - users.role when employee_type is part of the edit (guarded:
+     *    super_admin/admin grants require a super_admin ACTOR — same policy
+     *    as UserService::assertAuthorizedRoleChange, taken from session,
+     *    never from the payload).
+     *  - users.role is ALSO repaired when empty/invalid even if
+     *    employee_type was not part of the edit (heals existing accounts).
+     *
+     * Non-fatal by design: the employee edit already committed, so a users
+     * write failure is logged and swallowed rather than reported as a failed
+     * employee update.
+     *
+     * @param int   $employeeId       Employees PK (for log context).
+     * @param array $existingEmployee Pre-update row (fallbacks + type-change
+     *                                detection).
+     * @param array $data             Filtered, post-update employee payload.
+     */
+    private function syncLinkedUserAccount(int $employeeId, array $existingEmployee, array $data): void
+    {
+        if (!$this->userRepository) {
+            return;
+        }
+
+        try {
+            // users is the FK child (users.employee_id -> employees.employee_id).
+            // Look up by the (possibly changed) business number first, then the
+            // pre-update number, then email for legacy rows missing the link.
+            $user = null;
+            $employeeNumber = trim((string) ($data['employee_id'] ?? $existingEmployee['employee_id'] ?? ''));
+            if ($employeeNumber !== '') {
+                $user = $this->userRepository->findByEmployeeId($employeeNumber);
+            }
+            $oldNumber = trim((string) ($existingEmployee['employee_id'] ?? ''));
+            if (!$user && $oldNumber !== '' && $oldNumber !== $employeeNumber) {
+                $user = $this->userRepository->findByEmployeeId($oldNumber);
+            }
+            if (!$user && !empty($existingEmployee['email'])) {
+                $user = $this->userRepository->findByEmail((string) $existingEmployee['email']);
+            }
+            if (!$user) {
+                return; // No login account linked - nothing to sync.
+            }
+
+            $userUpdate = [];
+
+            // 1. Shared identity columns present in this edit.
+            foreach (self::USER_SYNC_FIELDS as $field) {
+                if (array_key_exists($field, $data)) {
+                    $userUpdate[$field] = $data[$field];
+                }
+            }
+
+            // 2. Role: rewrite when employee_type was part of the edit, or
+            //    when the stored role is empty/invalid (repair path - heals
+            //    accounts stuck in the deny-everywhere state even when the
+            //    admin only touched, say, the phone number).
+            $currentRole = trim((string) ($user['role'] ?? ''));
+            $typeChanged = array_key_exists('employee_type', $data)
+                && (string) $data['employee_type'] !== (string) ($existingEmployee['employee_type'] ?? '');
+            $roleBroken = $currentRole === '' || !$this->isKnownRole($currentRole);
+
+            if ($typeChanged || $roleBroken) {
+                $employeeType = (string) ($data['employee_type']
+                    ?? $existingEmployee['employee_type']
+                    ?? '');
+                if ($employeeType !== '') {
+                    $mappedRole = $this->mapEmployeeTypeToRole($employeeType);
+                    if ($mappedRole !== $currentRole && $this->canAssignRole($mappedRole)) {
+                        $userUpdate['role'] = $mappedRole;
+                    }
+                }
+            }
+
+            if ($userUpdate === []) {
+                return;
+            }
+
+            $userUpdate['updated_at'] = date('Y-m-d H:i:s');
+            $this->userRepository->update((int) $user['id'], $userUpdate);
+        } catch (\Throwable $e) {
+            \logger()->warning('Employee->user sync failed', [
+                'employee_id' => $employeeId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Is $role a real, assignable catalog role (config/permissions.php
+     * "roles" list, plus the legacy 'admin' alias RBAC normalizes)? An
+     * unknown role resolves to deny-by-default in AuthorizationService, so
+     * anything not listed here counts as broken and is repair-eligible.
+     */
+    private function isKnownRole(string $role): bool
+    {
+        if ($role === 'admin') {
+            return true; // legacy alias, normalized to super_admin by RBAC
+        }
+
+        $roles = (array) config('permissions.roles', []);
+
+        return in_array($role, $roles, true);
+    }
+
+    /**
+     * Privilege-escalation guard for the employee->user role sync (mirrors
+     * UserService::assertAuthorizedRoleChange): only a super_admin/admin
+     * ACTOR (session, never payload) may write super_admin/admin onto an
+     * account. When denied the sync skips ONLY the role field, so the
+     * legitimate shared-column sync still completes.
+     */
+    private function canAssignRole(string $role): bool
+    {
+        if ($role !== 'super_admin' && $role !== 'admin') {
+            return true;
+        }
+
+        $actingRole = (string) ($_SESSION['user_role'] ?? '');
+        $actingUserId = (int) ($_SESSION['user_id'] ?? 0);
+
+        // CLI/worker fallback: re-resolve from the DB, never from a payload.
+        if ($actingRole === '' && $actingUserId > 0) {
+            try {
+                $acting = db()->fetchOne('SELECT role FROM users WHERE id = ?', 'i', [$actingUserId]);
+                $actingRole = (string) ($acting['role'] ?? '');
+            } catch (\Throwable $e) {
+                $actingRole = '';
+            }
+        }
+
+        return $actingRole === 'admin' || $actingRole === 'super_admin';
     }
 
     /**
