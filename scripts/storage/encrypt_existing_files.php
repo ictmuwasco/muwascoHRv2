@@ -531,6 +531,21 @@ if ($selectEnc) {
 out('');
 out(sprintf('processed: %d, skipped: %d, failed: %d, missing: %d', $done, $skipped, $failed, $missing));
 
+// A run that "succeeds" while hundreds of rows point at files that are not
+// on disk must not read as full success. The counters say it; the closing
+// line has to as well. missing is NOT a script failure (there was nothing to
+// encrypt), so the exit code stays 0 - but the operator has to SEE it.
+if ($missing > 0) {
+    out('');
+    out($yellow . sprintf(
+        '  %d record(s) reference files that are not on disk (primary OR legacy location checked).',
+        $missing
+    ) . $nc);
+    out($yellow . '  They were left alone: a file that cannot be read cannot be encrypted.' . $nc);
+    out($yellow . '  Restore them from backup (scripts/storage/adopt_legacy_uploads.php may help'
+        . ' locate legacy roots), then re-run so they are actually migrated.' . $nc);
+}
+
 if (!$execute) {
     out('');
     out($yellow . 'DRY RUN - nothing was written.' . $nc);
@@ -547,6 +562,18 @@ if ($failed > 0) {
     out('Failed files keep their plaintext and are retried on the next run.');
     out('Review the messages above before re-running.');
     exit(1);
+}
+
+if ($missing > 0) {
+    out($yellow . sprintf(
+        'PARTIAL: every file found on disk is encrypted and verified, but %d of %d',
+        $missing,
+        count($work)
+    ) . $nc);
+    out($yellow . 'record(s) have no file to migrate - they are missing from this machine.' . $nc);
+    out('Sanity check: `head -c5 <file>` should read MWSC1, and the file should no');
+    out('longer be recognised as its original document type.');
+    exit(0);
 }
 
 out($green . 'All discovered files are encrypted and verified.' . $nc);

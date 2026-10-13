@@ -143,6 +143,12 @@ try {
         foreach ($summary['skipped_by'] as $reason => $count) {
             echo "  skipped {$reason}: {$count}" . PHP_EOL;
         }
+        // Show the sms_fallback decision before exiting: who WOULD receive an
+        // SMS (eligible now) vs. who would NOT (already clocked in today).
+        if ($stagesDue[ReminderSettings::STAGE_SMS_FALLBACK]) {
+            $dryClockedIn = (int) ($summary['skipped_by'][AttendanceReminderEligibilityService::REASON_ALREADY_CLOCKED_IN] ?? 0);
+            echo "  sms_fallback (dry) would_send={$summary['eligible']} clocked_in={$dryClockedIn}" . PHP_EOL;
+        }
         exit(0);
     }
 
@@ -194,9 +200,18 @@ try {
                 $summary['sms_failed']++;
             } else {
                 $summary['sms_skipped']++;
+                // Skipped specifically because the fresh pre-send re-check
+                // found the employee had clocked in since the batch pass.
+                if (($outcome['reason'] ?? '') === 'Re-check: ' . AttendanceReminderEligibilityService::REASON_ALREADY_CLOCKED_IN) {
+                    $summary['sms_clocked_in']++;
+                }
             }
         }
-        echo "  sms_fallback sent={$summary['sms_sent']} skipped={$summary['sms_skipped']} failed={$summary['sms_failed']}" . PHP_EOL;
+        // clocked_in = batch exclusions + live re-check exclusions. The two
+        // sets are disjoint: batch-ineligible employees never enter this loop.
+        $clockedInSkips = $summary['sms_clocked_in']
+            + (int) ($summary['skipped_by'][AttendanceReminderEligibilityService::REASON_ALREADY_CLOCKED_IN] ?? 0);
+        echo "  sms_fallback sent={$summary['sms_sent']} skipped={$summary['sms_skipped']} failed={$summary['sms_failed']} clocked_in={$clockedInSkips}" . PHP_EOL;
 
         // ---------------- temporary-failure retries within attempt budget -
         foreach ($logs->findRetryable(ReminderSettings::STAGE_SMS_FALLBACK, $date, $settings->maxSmsAttempts()) as $row) {

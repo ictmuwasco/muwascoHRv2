@@ -41,7 +41,7 @@ const warnCls = 'mt-1 text-xs text-amber-600 dark:text-amber-400';
 
 /**
  * One-click downward cascade. Creates a validated CHILD activity linked to
- * the selected parent (parent_objective_id lineage) — never a detached
+ * the selected parent (parent_objective_id lineage) â€” never a detached
  * duplicate. The target level is inferred from the parent:
  *   organisation -> department (pick contract)
  *   department   -> section    (pick section)
@@ -67,8 +67,6 @@ export default function CascadeActivityDialog({
 }: Props) {
   const [liveCycles, setLiveCycles] = useState<AppraisalCycle[] | null>(null);
   const [objective, setObjective] = useState('');
-  const [kpi, setKpi] = useState('');
-  const [measure, setMeasure] = useState('');
   const [contractId, setContractId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [subsectionId, setSubsectionId] = useState('');
@@ -98,8 +96,6 @@ export default function CascadeActivityDialog({
   useEffect(() => {
     if (!isOpen) return;
     setObjective('');
-    setKpi('');
-    setMeasure('');
     setContractId('');
     setSectionId('');
     setSubsectionId('');
@@ -142,8 +138,8 @@ export default function CascadeActivityDialog({
   };
 
   const submit = async () => {
-    if (!objective.trim() || !kpi.trim() || !measure.trim()) {
-      fail('Objective, KPI and measure unit are required.');
+    if (!objective.trim()) {
+      fail('Activity / Task is required.');
       return;
     }
     if (parentLevel === 'organisation' && !contractId) {
@@ -164,8 +160,6 @@ export default function CascadeActivityDialog({
     try {
       await workplanService.cascade(parent.id, {
         objective: objective.trim(),
-        kpi: kpi.trim(),
-        measure_unit: measure.trim(),
         performance_contract_id:
           parentLevel === 'organisation'
             ? Number(contractId)
@@ -180,7 +174,7 @@ export default function CascadeActivityDialog({
         cycle_ids: cycleIds.join(','),
       });
       onCascaded(
-        `Activity cascaded to the next level successfully (#${parent.id} → new activity).`,
+        `Activity cascaded to the next level successfully (#${parent.id} â†’ new activity).`,
       );
       onClose();
     } catch (err: any) {
@@ -209,7 +203,7 @@ export default function CascadeActivityDialog({
           </p>
           <p className="mt-0.5 line-clamp-2">{parent.objective}</p>
           <p className="mt-1 text-xs opacity-80">
-            A linked child activity will be created at the next level — the parent stays intact for
+            A linked child activity will be created at the next level â€” the parent stays intact for
             traceability.
           </p>
         </div>
@@ -226,22 +220,6 @@ export default function CascadeActivityDialog({
               onChange={(e) => setObjective(e.target.value)}
               placeholder="Break the parent activity into this level's actionable work"
             />
-          </div>
-          <div className="space-y-3">
-            <div>
-              <label className={labelCls}>KPI / Indicator *</label>
-              <input className={inputCls} value={kpi} onChange={(e) => setKpi(e.target.value)} />
-            </div>
-            <div>
-              <label className={labelCls}>Measure Unit *</label>
-              <input
-                className={inputCls}
-                value={measure}
-                onChange={(e) => setMeasure(e.target.value)}
-                placeholder="Percentage, Number…"
-              />
-            </div>
-          </div>
         </div>
 
         {parentLevel !== 'subsection' && (
@@ -253,11 +231,11 @@ export default function CascadeActivityDialog({
                 value={contractId}
                 onChange={(e) => setContractId(e.target.value)}
               >
-                <option value="">— Select commitment —</option>
+                <option value="">â€” Select commitment â€”</option>
                 {visibleContracts.map((c) => (
                   <option key={c.id} value={String(c.id)}>
                     {c.name}
-                    {c.department_name ? ` — ${c.department_name}` : ''}
+                    {c.department_name ? ` â€” ${c.department_name}` : ''}
                   </option>
                 ))}
               </select>
@@ -268,7 +246,7 @@ export default function CascadeActivityDialog({
                 value={sectionId}
                 onChange={(e) => setSectionId(e.target.value)}
               >
-                <option value="">— Select section —</option>
+                <option value="">â€” Select section â€”</option>
                 {sections.map((s) => (
                   <option key={s.id} value={String(s.id)}>
                     {s.name}
@@ -282,7 +260,7 @@ export default function CascadeActivityDialog({
                 value={subsectionId}
                 onChange={(e) => setSubsectionId(e.target.value)}
               >
-                <option value="">— Select subsection —</option>
+                <option value="">â€” Select subsection â€”</option>
                 {subsections.map((ss) => (
                   <option key={ss.id} value={String(ss.id)}>
                     {ss.name}
@@ -294,19 +272,19 @@ export default function CascadeActivityDialog({
                 selection can never be made, so say so up front. */}
             {parentLevel === 'organisation' && visibleContracts.length === 0 && (
               <p className={warnCls}>
-                No performance contracts are available yet — create the departmental performance
+                No performance contracts are available yet â€” create the departmental performance
                 commitment first, then retry the cascade.
               </p>
             )}
             {parentLevel === 'department' && sections.length === 0 && (
               <p className={warnCls}>
-                No sections are available under your department yet — create the section on the
+                No sections are available under your department yet â€” create the section on the
                 Departments page first, then retry the cascade.
               </p>
             )}
             {parentLevel === 'section' && subsections.length === 0 && (
               <p className={warnCls}>
-                No subsections exist for your department yet — a section-level activity can only be
+                No subsections exist for your department yet â€” a section-level activity can only be
                 cascaded into a subsection. Create the subsection on the Departments page first,
                 then retry the cascade.
               </p>
@@ -327,6 +305,7 @@ export default function CascadeActivityDialog({
             />
           </div>
         )}
+</div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
@@ -358,7 +337,7 @@ export default function CascadeActivityDialog({
             className={inputCls}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Guidance for the receiving unit…"
+            placeholder="Guidance for the receiving unitâ€¦"
           />
         </div>
 
@@ -367,7 +346,7 @@ export default function CascadeActivityDialog({
           <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 min-h-[42px] items-center">
             {allCycles.length === 0 ? (
               <span className="text-sm text-gray-400">
-                No appraisal cycles yet — will inherit the parent's quarters.
+                No appraisal cycles yet â€” will inherit the parent's quarters.
               </span>
             ) : (
               allCycles.map((c) => (
@@ -408,7 +387,7 @@ export default function CascadeActivityDialog({
             Cancel
           </Button>
           <Button onClick={submit} disabled={saving}>
-            {saving ? 'Cascading…' : 'Cascade Activity'}
+            {saving ? 'Cascadingâ€¦' : 'Cascade Activity'}
           </Button>
         </div>
       </div>

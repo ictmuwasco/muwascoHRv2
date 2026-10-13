@@ -48,7 +48,27 @@ class ExceptionHandler
     private static function handleGenericException(\Throwable $exception): void
     {
         $statusCode = self::getHttpStatusCode($exception);
-        
+
+        // Never let a 500 vanish without a trace. This handler REPLACES the
+        // richer set_exception_handler from bootstrap.php (register() runs
+        // later and set_exception_handler overrides), so without this write
+        // an uncaught error produced a bare "An internal error occurred" with
+        // no error.log entry and no error-monitor row - the exact signature
+        // that hid the POST /employees 500 (EmployeeService welcome-email
+        // TypeError) behind only the audit safety-net.
+        try {
+            \logger()->error('Uncaught ' . get_class($exception) . ': ' . $exception->getMessage(), [
+                'file'      => $exception->getFile(),
+                'line'      => $exception->getLine(),
+                'trace'     => $exception->getTraceAsString(),
+                'status'    => $statusCode,
+                'method'    => $_SERVER['REQUEST_METHOD'] ?? null,
+                'endpoint'  => $_SERVER['REQUEST_URI'] ?? null,
+            ]);
+        } catch (\Throwable) {
+            // Logging must never mask the original error response.
+        }
+
         http_response_code($statusCode);
         header('Content-Type: application/json; charset=utf-8');
         header('X-Content-Type-Options: nosniff');

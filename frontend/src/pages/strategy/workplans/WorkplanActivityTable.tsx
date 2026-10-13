@@ -3,6 +3,7 @@ import Badge from '../../../components/ui/Badge';
 import {
   GitBranch,
   Pencil,
+  Plus,
   Trash2,
   Network,
   History,
@@ -20,7 +21,10 @@ export interface ProgressPatch {
 interface Props {
   rows: WorkplanObjective[];
   canManage: boolean;
-  showOfficer?: boolean;
+  /** Whether the caller may create KPIs — gates the per-row "Add KPI" action. */
+  canManageKpis?: boolean;
+  /** Open the KPI form (KPIs page) with this activity preselected. */
+  onAddKpi?(row: WorkplanObjective): void;
   view?: 'md' | 'department' | 'section' | 'subsection';
   onEdit?(row: WorkplanObjective): void;
   onCascade?(row: WorkplanObjective): void;
@@ -207,7 +211,8 @@ function getCascadeTooltip(
 export default function WorkplanActivityTable({
   rows,
   canManage,
-  showOfficer,
+  canManageKpis = false,
+  onAddKpi,
   view = 'department',
   onEdit,
   onCascade,
@@ -231,8 +236,8 @@ export default function WorkplanActivityTable({
         <thead className="bg-gray-50 dark:bg-slate-900/60">
           <tr>
             <th className={th}>Activity</th>
-            <th className={th}>KPI / Measure</th>
-            <th className={th}>{showOfficer ? 'Responsible' : 'Responsible Unit'}</th>
+            <th className={th}>KPI &amp; Team</th>
+            <th className={th}>Responsible Unit</th>
             <th className={th}>Timeline</th>
             <th className={th}>Progress &amp; Status</th>
             <th className={`${th} text-center`}>Cascade Status</th>
@@ -277,19 +282,31 @@ export default function WorkplanActivityTable({
                     )}
                   </div>
                 </td>
-                <td className={td}>
-                  <p className="text-gray-700 dark:text-gray-200">{row.kpi}</p>
-                  {row.measure_unit && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      Unit: {row.measure_unit}
-                    </p>
+                <td className={`${td} max-w-xs`}>
+                  {(row.linked_kpis ?? []).length === 0 ? (
+                    <span className="text-gray-400 dark:text-gray-500">No KPI yet</span>
+                  ) : (
+                    <div className="space-y-2">
+                      {(row.linked_kpis ?? []).map((kpi) => (
+                        <div key={kpi.id}>
+                          <p className="font-medium text-gray-800 dark:text-gray-100">
+                            {kpi.name}
+                            <span className="ml-1 text-xs font-normal text-gray-400">
+                              ({kpi.max_score} marks)
+                            </span>
+                          </p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
+                            {kpi.assigned_employee_names.length > 0
+                              ? kpi.assigned_employee_names.join(', ')
+                              : 'No one assigned'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </td>
                 <td className={td}>
                   <p className="text-gray-700 dark:text-gray-200">{owner}</p>
-                  {showOfficer && row.officer_name && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500">{row.officer_name}</p>
-                  )}
                 </td>
                 <td className={td}>
                   <p className="text-gray-600 dark:text-gray-300 whitespace-nowrap">
@@ -339,6 +356,15 @@ export default function WorkplanActivityTable({
                         className="rounded p-1.5 text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30"
                       >
                         <Pencil className="h-4 w-4" />
+                      </button>
+                    )}
+                    {canManageKpis && onAddKpi && (
+                      <button
+                        onClick={() => onAddKpi(row)}
+                        title="Add KPI"
+                        className="rounded p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30"
+                      >
+                        <Plus className="h-4 w-4" />
                       </button>
                     )}
                     <button

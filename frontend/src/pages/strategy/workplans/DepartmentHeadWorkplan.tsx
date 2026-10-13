@@ -13,7 +13,6 @@ export default function DepartmentHeadWorkplan() {
       description="Turn your department's performance-contract commitments into activities and cascade them to sections."
       showSection
       showSubsection
-      showOfficer
       showCommitmentsPanel
     />
   );

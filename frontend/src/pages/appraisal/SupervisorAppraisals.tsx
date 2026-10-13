@@ -13,6 +13,7 @@ import {
 } from '../../api/services/appraisalService';
 import { AppraisalStatus, formatAppraisalDate } from './AppraisalUI';
 import SupervisorAppraisalDetail from './SupervisorAppraisalDetail';
+import StrategyTabs from '../../components/strategy/StrategyTabs';
 
 type Tab = 'regular' | 'pending' | 'escalated' | 'rejected';
 const TABS: Array<[Tab, string]> = [
@@ -198,6 +199,9 @@ export default function SupervisorAppraisals() {
           )}
         </div>
       </div>
+      {/* Strategy & Performance module tabs (shared — KPIs scoring units live one tap away) */}
+      <StrategyTabs />
+
       {(error || notice) && (
         <div
           className={`rounded-lg px-4 py-3 text-sm ${error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}

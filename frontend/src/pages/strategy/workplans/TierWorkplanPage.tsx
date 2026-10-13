@@ -26,7 +26,6 @@ interface Props {
   allowContractless?: boolean;
   showSection?: boolean;
   showSubsection?: boolean;
-  showOfficer?: boolean;
   showIntegratedFlag?: boolean;
   showCommitmentsPanel?: boolean;
 }
@@ -48,7 +47,6 @@ export default function TierWorkplanPage({
   allowContractless = false,
   showSection = false,
   showSubsection = false,
-  showOfficer = false,
   showIntegratedFlag = false,
   showCommitmentsPanel = false,
 }: Props) {
@@ -383,7 +381,7 @@ export default function TierWorkplanPage({
       <WorkplanActivityTable
         rows={visibleRows}
         canManage={canManage}
-        showOfficer={showOfficer}
+        canManageKpis={canManage}
         view={view}
         canCascade={canCascadeRow}
         onSaveProgress={saveProgress}
@@ -433,7 +431,6 @@ export default function TierWorkplanPage({
         allowContractless={allowContractless}
         showSection={showSection}
         showSubsection={showSubsection}
-        showOfficer={showOfficer}
         showIntegratedFlag={showIntegratedFlag}
         mdMode={view === 'md'}
         departmentId={deptId}

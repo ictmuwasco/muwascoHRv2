@@ -235,7 +235,11 @@ class EmployeeController extends BaseController
             $this->success(['id' => $employeeId], 'Employee created successfully', 201);
         } catch (\InvalidArgumentException $e) {
             $this->error($e->getMessage(), 400);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // \Throwable, not \Exception: TypeError/Error (e.g. a bad service
+            // call under strict_types) previously escaped both catches and
+            // surfaced as a generic 500 AFTER the rows had committed, with
+            // nothing in error.log to explain it.
             \logger()->error('Employee creation error', ['error' => $e->getMessage(), 'data' => $data]);
             $this->error('Failed to create employee. Please try again.', 500);
         }

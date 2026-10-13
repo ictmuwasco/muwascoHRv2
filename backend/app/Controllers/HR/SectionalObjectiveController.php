@@ -507,6 +507,9 @@ class SectionalObjectiveController extends BaseController
 
         $name        = trim((string) ($data['name'] ?? ''));
         $desc        = trim((string) ($data['description'] ?? ''));
+        $measureUnit = isset($data['measure_unit']) && trim((string) $data['measure_unit']) !== ''
+            ? trim((string) $data['measure_unit'])
+            : null;
         $maxScore    = (int) ($data['max_score'] ?? 5);
         $role        = isset($data['role']) && trim((string) $data['role']) !== '' ? trim((string) $data['role']) : null;
         $isActive    = !empty($data['is_active']) ? 1 : 0;
@@ -540,14 +543,14 @@ class SectionalObjectiveController extends BaseController
 
         $stmt = $this->db->prepare(
             "INSERT INTO performance_indicators
-                (name, description, max_score, activity_ids, role, assigned_to_employee_ids,
+                (name, description, measure_unit, max_score, activity_ids, role, assigned_to_employee_ids,
                  department_id, section_id, subsection_id, is_active, is_recurrent, created_by, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())"
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())"
         );
         $userId = $this->getUserId() ?: null;
         $stmt->bind_param(
-            'ssisssssiiii',
-            $name, $desc, $maxScore, $activityIdsStr, $role, $assignedStr,
+            'sssisssssiiii',
+            $name, $desc, $measureUnit, $maxScore, $activityIdsStr, $role, $assignedStr,
             $departmentId, $sectionId, $subsectionId, $isActive, $isRecurrent, $userId
         );
         $stmt->execute();
@@ -611,7 +614,7 @@ class SectionalObjectiveController extends BaseController
         $params = [];
         $types  = '';
 
-        foreach (['name', 'description', 'role'] as $f) {
+        foreach (['name', 'description', 'measure_unit', 'role'] as $f) {
             if (array_key_exists($f, $data)) {
                 $val = trim((string) $data[$f]);
                 $fields[] = "$f = ?";
