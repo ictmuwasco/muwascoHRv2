@@ -3,7 +3,7 @@ import Modal from '../../../components/ui/Modal';
 import Button from '../../../components/ui/Button';
 import { Plus } from 'lucide-react';
 import { workplanService } from '../../../api/services/workplanService';
-import type { AssignableEmployee, UnitRef } from '../../../api/services/workplanService';
+import type { UnitRef } from '../../../api/services/workplanService';
 import type { AppraisalCycle } from '../../../api/services/appraisalCycleService';
 import { appraisalCycleService, cycleLabel } from '../../../api/services/appraisalCycleService';
 
@@ -15,8 +15,6 @@ interface Props {
   sources: { id: number; objective: string }[];
   /** Section head cascades to these (only shown when the section HAS subsections). */
   subsections: UnitRef[];
-  /** Employees the head can assign the activity to (their own unit's staff). */
-  employees: AssignableEmployee[];
   /** Own section id (section heads only; subsection heads are server-pinned). */
   sectionId?: number | null;
   cycles: AppraisalCycle[];
@@ -49,7 +47,6 @@ export default function TierAddWorkplanModal({
   kind,
   sources,
   subsections,
-  employees,
   sectionId,
   cycles = [],
   onClose,
