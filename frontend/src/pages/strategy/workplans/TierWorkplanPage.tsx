@@ -461,7 +461,6 @@ export default function TierWorkplanPage({
           kind={view === 'section' ? 'section' : 'subsection'}
           sources={sectionSources}
           subsections={tier.list?.subsections ?? []}
-          employees={tier.list?.employees ?? []}
           sectionId={tier.list?.scope.section ?? null}
           cycles={cycles}
           onClose={() => setTierAddOpen(false)}
