@@ -82,6 +82,15 @@ final class VaultAccessTest extends TestCase
 
     protected function tearDown(): void
     {
+        // Clear the test-only injection BEFORE closing the scratch handle.
+        // getConnection() returns the injected object verbatim (no ping /
+        // reconnect), so leaving a CLOSED mysqli injected poisons every later
+        // test in the process with "mysqli object is already closed" — exactly
+        // what killed EmployeeServiceCreateTransactionTest (Services/ runs
+        // after Security/ alphabetically). Matches DocumentOtpVerifyTest and
+        // InAppEmailMirrorTest ordering: reset first, then close.
+        \App\Helpers\Database::getInstance()->setConnection(null);
+
         if ($this->conn !== null) {
             $this->conn->close();
             $this->conn = null;
