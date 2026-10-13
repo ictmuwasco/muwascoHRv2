@@ -203,8 +203,8 @@ export default function CascadeActivityDialog({
           </p>
           <p className="mt-0.5 line-clamp-2">{parent.objective}</p>
           <p className="mt-1 text-xs opacity-80">
-            A linked child activity will be created at the next level â€” the parent stays intact for
-            traceability.
+            A linked child activity will be created at the next level â€” the parent stays intact
+            for traceability.
           </p>
         </div>
 
@@ -220,92 +220,92 @@ export default function CascadeActivityDialog({
               onChange={(e) => setObjective(e.target.value)}
               placeholder="Break the parent activity into this level's actionable work"
             />
-        </div>
+          </div>
 
-        {parentLevel !== 'subsection' && (
-          <div>
-            <label className={labelCls}>{targetLabel}</label>
-            {parentLevel === 'organisation' && (
-              <select
-                className={inputCls}
-                value={contractId}
-                onChange={(e) => setContractId(e.target.value)}
-              >
-                <option value="">â€” Select commitment â€”</option>
-                {visibleContracts.map((c) => (
-                  <option key={c.id} value={String(c.id)}>
-                    {c.name}
-                    {c.department_name ? ` â€” ${c.department_name}` : ''}
-                  </option>
-                ))}
-              </select>
-            )}
-            {parentLevel === 'department' && (
-              <select
-                className={inputCls}
-                value={sectionId}
-                onChange={(e) => setSectionId(e.target.value)}
-              >
-                <option value="">â€” Select section â€”</option>
-                {sections.map((s) => (
-                  <option key={s.id} value={String(s.id)}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            {parentLevel === 'section' && (
-              <select
-                className={inputCls}
-                value={subsectionId}
-                onChange={(e) => setSubsectionId(e.target.value)}
-              >
-                <option value="">â€” Select subsection â€”</option>
-                {subsections.map((ss) => (
-                  <option key={ss.id} value={String(ss.id)}>
-                    {ss.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            {/* Dead-end guard: without the next-level unit the required
+          {parentLevel !== 'subsection' && (
+            <div>
+              <label className={labelCls}>{targetLabel}</label>
+              {parentLevel === 'organisation' && (
+                <select
+                  className={inputCls}
+                  value={contractId}
+                  onChange={(e) => setContractId(e.target.value)}
+                >
+                  <option value="">â€” Select commitment â€”</option>
+                  {visibleContracts.map((c) => (
+                    <option key={c.id} value={String(c.id)}>
+                      {c.name}
+                      {c.department_name ? ` â€” ${c.department_name}` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {parentLevel === 'department' && (
+                <select
+                  className={inputCls}
+                  value={sectionId}
+                  onChange={(e) => setSectionId(e.target.value)}
+                >
+                  <option value="">â€” Select section â€”</option>
+                  {sections.map((s) => (
+                    <option key={s.id} value={String(s.id)}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {parentLevel === 'section' && (
+                <select
+                  className={inputCls}
+                  value={subsectionId}
+                  onChange={(e) => setSubsectionId(e.target.value)}
+                >
+                  <option value="">â€” Select subsection â€”</option>
+                  {subsections.map((ss) => (
+                    <option key={ss.id} value={String(ss.id)}>
+                      {ss.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {/* Dead-end guard: without the next-level unit the required
                 selection can never be made, so say so up front. */}
-            {parentLevel === 'organisation' && visibleContracts.length === 0 && (
-              <p className={warnCls}>
-                No performance contracts are available yet â€” create the departmental performance
-                commitment first, then retry the cascade.
-              </p>
-            )}
-            {parentLevel === 'department' && sections.length === 0 && (
-              <p className={warnCls}>
-                No sections are available under your department yet â€” create the section on the
-                Departments page first, then retry the cascade.
-              </p>
-            )}
-            {parentLevel === 'section' && subsections.length === 0 && (
-              <p className={warnCls}>
-                No subsections exist for your department yet â€” a section-level activity can only be
-                cascaded into a subsection. Create the subsection on the Departments page first,
-                then retry the cascade.
-              </p>
-            )}
-          </div>
-        )}
+              {parentLevel === 'organisation' && visibleContracts.length === 0 && (
+                <p className={warnCls}>
+                  No performance contracts are available yet â€” create the departmental performance
+                  commitment first, then retry the cascade.
+                </p>
+              )}
+              {parentLevel === 'department' && sections.length === 0 && (
+                <p className={warnCls}>
+                  No sections are available under your department yet â€” create the section on the
+                  Departments page first, then retry the cascade.
+                </p>
+              )}
+              {parentLevel === 'section' && subsections.length === 0 && (
+                <p className={warnCls}>
+                  No subsections exist for your department yet â€” a section-level activity can only
+                  be cascaded into a subsection. Create the subsection on the Departments page
+                  first, then retry the cascade.
+                </p>
+              )}
+            </div>
+          )}
 
-        {parentLevel === 'subsection' && (
-          <div>
-            <label className={labelCls}>{targetLabel}</label>
-            <Combobox
-              value={officerId}
-              onChange={setOfficerId}
-              options={employeeOptions}
-              placeholder="Search employees"
-              emptyMessage="No employee matches your search."
-              noOptionsMessage="No employees available in your unit."
-            />
-          </div>
-        )}
-</div>
+          {parentLevel === 'subsection' && (
+            <div>
+              <label className={labelCls}>{targetLabel}</label>
+              <Combobox
+                value={officerId}
+                onChange={setOfficerId}
+                options={employeeOptions}
+                placeholder="Search employees"
+                emptyMessage="No employee matches your search."
+                noOptionsMessage="No employees available in your unit."
+              />
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>

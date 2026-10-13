@@ -28,7 +28,12 @@ interface StrategyTab {
  * canViewSupervisorAppraisals).
  */
 const ALL_TABS: StrategyTab[] = [
-  { to: '/strategy/strategic-plan', label: 'Strategic Plan', module: 'strategic_plan', action: 'view' },
+  {
+    to: '/strategy/strategic-plan',
+    label: 'Strategic Plan',
+    module: 'strategic_plan',
+    action: 'view',
+  },
   {
     to: '/strategy/performance-contracts',
     label: 'Performance Contracts',
@@ -43,7 +48,12 @@ const ALL_TABS: StrategyTab[] = [
     module: 'performance',
     action: 'supervise',
   },
-  { to: '/strategy/reports', label: 'Performance Reports', module: 'strategic_plan', action: 'view' },
+  {
+    to: '/strategy/reports',
+    label: 'Performance Reports',
+    module: 'strategic_plan',
+    action: 'view',
+  },
 ];
 
 const SUPERVISOR_EXCLUDED_ROLES = ['officer', 'employee', 'bod_chairman'];
@@ -76,9 +86,7 @@ export default function StrategyTabs() {
     // Workplans has tier sub-routes (/strategy/workplans/<tier>) that must
     // keep the parent tab highlighted.
     if (to === '/strategy/workplans') {
-      return (
-        location.pathname === to || location.pathname.startsWith('/strategy/workplans/')
-      );
+      return location.pathname === to || location.pathname.startsWith('/strategy/workplans/');
     }
     return location.pathname === to;
   };

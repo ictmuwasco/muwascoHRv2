@@ -94,7 +94,7 @@ class LeaveController extends BaseController
         // Resolve the employee's SURROGATE key.
         //
         // $currentUser['employee_id'] is the employees.employee_id BUSINESS CODE
-        // (e.g. '242', 'ADMIN001'), but leave_applications.employee_id is a FK to
+        // (e.g. '242', 'STAFF-042'), but leave_applications.employee_id is a FK to
         // employees.id — the INT primary key (e.g. 514). Binding the code straight
         // into `WHERE la.employee_id = ?` matched whichever unrelated employee
         // happened to own that numeric id, so this page listed ANOTHER PERSON'S
