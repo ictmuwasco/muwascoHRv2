@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import { Plus, RefreshCw, Search, Pencil, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
+import StrategyTabs from '../../components/strategy/StrategyTabs';
 import {
   kpiService,
   type Kpi,
@@ -20,15 +20,6 @@ import {
  * sees everything; heads are scoped to their own unit). This page renders
  * whatever the API allows the caller to see and do.
  */
-
-const TABS = [
-  { to: '/strategy/strategic-plan', label: 'Strategic Plan' },
-  { to: '/strategy/performance-contracts', label: 'Performance Contracts' },
-  { to: '/strategy/workplans', label: 'Workplans' },
-  { to: '/strategy/kpis', label: 'KPIs' },
-  { to: '/strategy/performance-appraisals', label: 'Performance Appraisals' },
-  { to: '/strategy/reports', label: 'Performance Reports' },
-];
 
 const parseIds = (raw: string | null | undefined): number[] =>
   (raw || '')
@@ -54,8 +45,7 @@ const labelCls =
   'block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1';
 
 export default function Kpis() {
-  const location = useLocation();
-  const { user, can } = useAuth();
+  const { user } = useAuth();
   const [data, setData] = useState<KpiListPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -73,12 +63,6 @@ export default function Kpis() {
   const [formRecurrent, setFormRecurrent] = useState(false);
 
   const userId = Number((user as any)?.id ?? (user as any)?.user_id ?? 0);
-  const canViewSupervisorAppraisals =
-    !!user &&
-    !['officer', 'employee', 'bod_chairman'].includes(
-      String((user as any)?.role || '').toLowerCase(),
-    ) &&
-    can('performance', 'supervise');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -288,24 +272,8 @@ export default function Kpis() {
         </div>
       </div>
 
-      {/* Strategy & Performance module tabs */}
-      <div className="flex space-x-1 border-b overflow-x-auto">
-        {TABS.filter(
-          (tab) => tab.to !== '/strategy/performance-appraisals' || canViewSupervisorAppraisals,
-        ).map((tab) => (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              location.pathname === tab.to
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
+      {/* Strategy & Performance module tabs (shared — includes KPIs link) */}
+      <StrategyTabs />
 
       {(error || notice) && (
         <div

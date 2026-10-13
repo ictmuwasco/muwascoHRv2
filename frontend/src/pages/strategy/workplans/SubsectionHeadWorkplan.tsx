@@ -15,7 +15,6 @@ export default function SubsectionHeadWorkplan() {
       view="subsection"
       title="Subsection Head Workplan"
       description="Break cascaded section work into employee-level tasks for your subsection and monitor completion."
-      showOfficer
     />
   );
 }

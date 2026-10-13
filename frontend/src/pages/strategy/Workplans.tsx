@@ -1,13 +1,7 @@
-import { Link, NavLink, useLocation, Outlet } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { TIER_TABS, visibleTiersForRole } from './workplans/tierRouting';
-
-const TABS = [
-  { to: '/strategy/strategic-plan', label: 'Strategic Plan' },
-  { to: '/strategy/performance-contracts', label: 'Performance Contracts' },
-  { to: '/strategy/workplans', label: 'Workplans' },
-  { to: '/strategy/reports', label: 'Performance Reports' },
-];
+import StrategyTabs from '../../components/strategy/StrategyTabs';
 
 /**
  * Unified cascading workplan entry point.
@@ -18,7 +12,6 @@ const TABS = [
  * users can inspect the other levels through the tier tabs below.
  */
 export default function Workplans() {
-  const location = useLocation();
   const { user } = useAuth();
   const role = (user?.role || '').toLowerCase();
   const visibleTiers = visibleTiersForRole(role);
@@ -34,22 +27,8 @@ export default function Workplans() {
         </div>
       </div>
 
-      {/* Strategy & Performance module tabs */}
-      <div className="flex space-x-1 border-b overflow-x-auto">
-        {TABS.map((tab) => (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              location.pathname === tab.to
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
+      {/* Strategy & Performance module tabs (shared — includes KPIs link) */}
+      <StrategyTabs />
 
       {/* Organisational cascade tiers — every role sees exactly the tabs it is
           allowed: super_admin all four, hr_manager Managing Director +

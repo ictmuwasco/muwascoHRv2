@@ -33,6 +33,7 @@ class EmployeeValidator extends BaseValidator
         $this->validateRequired('employee_status', 'Employee status');
         $this->validateRequired('hire_date', 'Hire date');
         $this->validateDate('hire_date', 'Hire date');
+        $this->validateDate('date_of_birth', 'Date of birth');
 
         if (!empty($this->data['phone'])) {
             $this->validateMaxLength('phone', 20, 'Phone');

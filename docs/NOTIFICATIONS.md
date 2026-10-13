@@ -45,10 +45,23 @@ yesterday session never blocks today's reminder (the auto-clockout job closes it
 | `reminder_1` | `ATTENDANCE_REMINDER_TIME` (default 08:00) | Web Push |
 | `sms_fallback` | reminder + `ATTENDANCE_SMS_FALLBACK_DELAY_MINUTES` (default 15) | SMS |
 
+* **This deployment** runs `ATTENDANCE_REMINDER_TIME=08:00`,
+  `ATTENDANCE_SMS_FALLBACK_DELAY_MINUTES=0` and `ATTENDANCE_SMS_POLICY=always`
+  — SMS checking starts at 08:00 (first 5-minute tick) and every employee
+  still eligible at send time gets an SMS **regardless of push delivery**.
+  Set these in the production env file (outside the repo); the code defaults
+  in `ReminderSettings` remain `15` / `fallback`.
 * SMS policy `ATTENDANCE_SMS_POLICY=fallback|always` — fallback sends SMS only
   when push was not delivered (no subscription / disabled / failed).
 * Before **every** SMS send, eligibility is re-evaluated fresh — an employee who
-  clocks in after the push can never receive the SMS.
+  clocks in after the push can never receive the SMS. At most ONE
+  `sms_fallback` message per employee per business day: the unique log row
+  blocks a second claim, and the router skips explicitly with
+  `Already sent today` when today's row is already `sent`.
+* The cron summary prints `clocked_in=N` (excluded because they had already
+  clocked in — batch + live re-check); `--dry-run` prints
+  `sms_fallback (dry) would_send=… clocked_in=…`, so a run at 08:00 shows who
+  would and would not receive an SMS.
 * Cost caps: `ATTENDANCE_MAX_SMS_PER_DAY` (2), retry budget per message
   `ATTENDANCE_MAX_SMS_ATTEMPTS` (3, temporary failures only).
 * Optional second push: `ATTENDANCE_SECOND_REMINDER_ENABLED=false` by default.

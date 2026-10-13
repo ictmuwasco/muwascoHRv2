@@ -168,6 +168,11 @@ class WorkplanController extends BaseController
             $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             $stmt->close();
 
+            // KPI & Team column data: which KPIs link to each activity on this
+            // page (id, name, max marks, assigned employee names). One batched
+            // fetch for the whole page — never a query per row (no N+1).
+            $rows = $this->attachLinkedKpis($rows);
+
             $this->success([
                 'workplans'       => $rows,
                 'can_manage'      => OrgScope::canManagePerformance($scope),
@@ -194,6 +199,109 @@ class WorkplanController extends BaseController
             \logger()->error('Workplan list error', ['error' => $e->getMessage()]);
             $this->error('Failed to retrieve workplans.', 500);
         }
+    }
+
+    /**
+     * Attach `linked_kpis` to each workplan row in ONE batched pass.
+     *
+     * For every activity on the page, resolve the active KPIs that link to it
+     * (performance_indicators.activity_ids contains the activity id), as
+     * [{id, name, max_score, assigned_employee_names[]}]. Implemented with two
+     * queries total for the whole page — a single scan of active indicators and
+     * a single scan of the referenced employees — so the "KPI & Team" column is
+     * never an N+1 against a 200-row page.
+     *
+     * @param  array<int,array<string,mixed>> $rows
+     * @return array<int,array<string,mixed>>
+     */
+    private function attachLinkedKpis(array $rows): array
+    {
+        if ($rows === []) {
+            return $rows;
+        }
+
+        // Activity ids on this page.
+        $activityIds = [];
+        foreach ($rows as $row) {
+            $activityIds[(int) $row['id']] = true;
+        }
+        if ($activityIds === []) {
+            return $rows;
+        }
+
+        // 1. All active KPIs that link to at least one activity (small table).
+        $res = $this->db->query(
+            "SELECT id, name, max_score, activity_ids, assigned_to_employee_ids
+             FROM performance_indicators
+             WHERE is_active = 1"
+        );
+        if (!$res) {
+            return $rows;
+        }
+
+        // Collect the union of referenced employee ids for one name lookup.
+        $employeeIds = [];
+        $byActivity = []; // activity_id => [kpi, ...]
+        while ($kpi = $res->fetch_assoc()) {
+            $linkedActivities = array_filter(array_map('intval', explode(',', (string) $kpi['activity_ids'])));
+            $assigned = array_filter(array_map('intval', explode(',', (string) $kpi['assigned_to_employee_ids'])));
+            foreach ($assigned as $eid) {
+                $employeeIds[$eid] = true;
+            }
+            $entry = [
+                'id'         => (int) $kpi['id'],
+                'name'       => (string) $kpi['name'],
+                'max_score'  => (float) $kpi['max_score'],
+                '_employees' => $assigned,
+            ];
+            foreach ($linkedActivities as $aid) {
+                if (isset($activityIds[$aid])) {
+                    $byActivity[$aid][] = $entry;
+                }
+            }
+        }
+        $res->close();
+
+        // 2. Resolve employee names in one query.
+        $employeeNames = [];
+        if ($employeeIds !== []) {
+            $ids = array_keys($employeeIds);
+            $ph = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $this->db->prepare(
+                "SELECT id, CONCAT_WS(' ', first_name, last_name, surname) AS full_name
+                 FROM employees WHERE id IN ({$ph})"
+            );
+            $stmt->bind_param(str_repeat('i', count($ids)), ...$ids);
+            $stmt->execute();
+            $nameRes = $stmt->get_result();
+            while ($emp = $nameRes->fetch_assoc()) {
+                $employeeNames[(int) $emp['id']] = trim((string) $emp['full_name']);
+            }
+            $stmt->close();
+        }
+
+        // 3. Shape each row's linked_kpis (drop the internal _employees key).
+        foreach ($rows as $i => $row) {
+            $kpis = $byActivity[(int) $row['id']] ?? [];
+            $out = [];
+            foreach ($kpis as $kpi) {
+                $names = [];
+                foreach ($kpi['_employees'] as $eid) {
+                    if (isset($employeeNames[$eid]) && $employeeNames[$eid] !== '') {
+                        $names[] = $employeeNames[$eid];
+                    }
+                }
+                $out[] = [
+                    'id'                     => $kpi['id'],
+                    'name'                   => $kpi['name'],
+                    'max_score'              => $kpi['max_score'],
+                    'assigned_employee_names' => $names,
+                ];
+            }
+            $rows[$i]['linked_kpis'] = $out;
+        }
+
+        return $rows;
     }
 
     /**

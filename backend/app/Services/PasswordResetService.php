@@ -518,6 +518,75 @@ class PasswordResetService
         }
     }
 
+    /**
+     * Issue a first-login credential for a newly created user and email it.
+     *
+     * Reuses the exact password_resets row + link + OTP machinery as a normal
+     * reset (see request()/sendLink): the "Set My Password" button points at
+     * the SAME /reset-password?token= page the reset email uses, so there is
+     * no second verification flow to secure, no /setup-password route to
+     * build, and the OTP the new hire types is actually verifiable because
+     * its hash is persisted like every other reset.
+     *
+     * @return bool  Whether the email was accepted by the mailer.
+     */
+    public function sendWelcomeEmail(int $userId, string $email, string $name): bool
+    {
+        $email = $this->normaliseEmail($email);
+        $name = trim($name) !== '' ? trim($name) : 'there';
+        if ($email === '' || $userId <= 0) {
+            return false;
+        }
+
+        $token = bin2hex(random_bytes(32));
+        $otp = $this->generateOtp();
+        $expires = date('Y-m-d H:i:s', time() + self::TTL_MINUTES * 60);
+
+        // Exactly one live link per account, same as request().
+        $this->consumeOpenRowsForUser($userId);
+
+        $sql = "INSERT INTO password_resets
+                    (user_id, email, token_hash, otp_hash, otp_attempts, otp_verified, expires_at, created_at)
+                VALUES (?, ?, ?, ?, 0, 0, ?, ?)";
+        $stmt = $this->db->prepare($sql);
+        // bind_param takes arguments BY REFERENCE, so every value needs its own
+        // variable - an inline expression is rejected outright.
+        $pUser = $userId;
+        $pEmail = $email;
+        $pToken = hash('sha256', $token);
+        $pOtp = hash('sha256', $otp);
+        $pExpires = $expires;
+        $pNow = date('Y-m-d H:i:s');
+        $stmt->bind_param('isssss', $pUser, $pEmail, $pToken, $pOtp, $pExpires, $pNow);
+        $ok = $stmt->execute();
+        $stmt->close();
+
+        if (!$ok) {
+            \logger()->error('Welcome reset row could not be created', [
+                'user_id' => $userId,
+                'error'   => $this->db->error,
+            ]);
+            return false;
+        }
+
+        $frontend = rtrim((string) \env('FRONTEND_URL', 'http://localhost:5173'), '/');
+        $link = $frontend . '/reset-password?token=' . rawurlencode($token);
+
+        try {
+            return \App\Services\NotificationService::getInstance()->sendEmail(
+                $email,
+                'Welcome to MUWASCO — set your password',
+                $this->renderWelcomeEmail($name, $link, $otp),
+                true
+            );
+        } catch (\Throwable $e) {
+            \logger()->error('Welcome email could not be sent', [
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
     /** Branded HTML email. The code and the link are the only actionable parts. */
     private function renderEmail(string $name, string $link, string $otp): string
     {
@@ -543,6 +612,45 @@ class PasswordResetService
             . '<p style="color:#64748b;font-size:13px">This link and code expire in ' . $minutes
             . ' minutes and can be used once. If you did not request this, you can ignore this email - '
             . 'your password will not change.</p>'
+            . '<p style="color:#94a3b8;font-size:12px;margin-top:24px">If the button does not work, copy this '
+            . 'link into your browser:<br>' . $safeLink . '</p>'
+            . '</div>';
+    }
+    /**
+     * Render the branded welcome email HTML for a newly-created employee account.
+     *
+     * Fixed company copy: welcome message, "Set My Password" button carrying
+     * the verifiable token link, then the signature. The 6-digit code MUST
+     * stay: complete() refuses to set a password until otp_verified = 1, so
+     * without the code in this email a new hire could never finish setup.
+     * $name is intentionally unused (copy is company-level) but kept in the
+     * signature so the (userId, email, name) call shape the tests pin holds.
+     */
+    private function renderWelcomeEmail(string $name, string $link, string $otp): string
+    {
+        // Every interpolated value is escaped: the link carries a token and the
+        // OTP is generated server-side, so neither is trusted markup.
+        $safeLink = htmlspecialchars($link, ENT_QUOTES, 'UTF-8');
+        $safeOtp = htmlspecialchars($otp, ENT_QUOTES, 'UTF-8');
+        $minutes = (int) self::TTL_MINUTES;
+
+        return '<div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px">'
+            . '<h2 style="color:#1e293b;margin:0 0 16px">Welcome to Murang\'a Water and Sanitation Company Ltd.</h2>'
+            . '<p style="color:#334155;font-size:15px">Your employee account has been created successfully. '
+            . 'To get started, please set up your password using the Set My Password link below.</p>'
+            . '<p style="margin:24px 0">'
+            . '<a href="' . $safeLink . '" style="background:#4f46e5;color:#ffffff;text-decoration:none;'
+            . 'padding:12px 20px;border-radius:8px;display:inline-block;font-weight:600">Set My Password</a>'
+            . '</p>'
+            . '<p style="color:#334155;font-size:15px">Once your password is set, you can log in to the '
+            . 'MUWASCO Employee Portal and access the services available to you.</p>'
+            . '<p style="color:#334155;font-size:15px">We\'re delighted to have you on board!</p>'
+            . '<p style="color:#1e293b;font-size:15px;font-weight:600">MUWASCO — Together, We Serve Our Community Better.</p>'
+            . '<p style="color:#334155;font-size:15px;margin-top:24px">Your verification code:</p>'
+            . '<p style="font-size:30px;letter-spacing:8px;font-weight:700;color:#1e293b;margin:8px 0 16px">'
+            . $safeOtp . '</p>'
+            . '<p style="color:#64748b;font-size:13px">This link and code expire in ' . $minutes
+            . ' minutes and can be used once. If you did not expect this email, you can ignore it.</p>'
             . '<p style="color:#94a3b8;font-size:12px;margin-top:24px">If the button does not work, copy this '
             . 'link into your browser:<br>' . $safeLink . '</p>'
             . '</div>';

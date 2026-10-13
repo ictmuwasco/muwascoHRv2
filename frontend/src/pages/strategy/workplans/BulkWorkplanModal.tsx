@@ -33,8 +33,6 @@ const inputCls =
 
 interface RowState {
   objective: string;
-  kpi: string;
-  measure: string;
   section_id: string;
   subsection_id: string;
   cycle_ids: number[];
@@ -98,8 +96,6 @@ export default function BulkWorkplanModal({
       ...r,
       {
         objective: '',
-        kpi: '',
-        measure: '',
         section_id: '',
         subsection_id: '',
         // Typed explicitly: a bare [] infers never[], which is not assignable to
@@ -134,14 +130,8 @@ export default function BulkWorkplanModal({
         onError(`Activity #${i + 1}: choose the responsible section.`);
         return;
       }
-      if (row.cycle_ids.length === 0) {
-        onError(`Activity #${i + 1}: select at least one appraisal cycle.`);
-        return;
-      }
       items.push({
         objective: row.objective.trim(),
-        kpi: '',
-        measure_unit: '',
         section_id: Number(row.section_id),
         subsection_id: row.subsection_id ? Number(row.subsection_id) : null,
         cycle_ids: row.cycle_ids.join(','),
@@ -152,8 +142,11 @@ export default function BulkWorkplanModal({
     setSaving(true);
     try {
       await workplanService.bulkCreate({ performance_contract_id: cid, items });
+      const noCycle = items.some((it) => it.cycle_ids === '');
       onSaved(
-        `${items.length} activit${items.length === 1 ? 'y' : 'ies'} saved under the selected contract.`,
+        noCycle
+          ? `${items.length} activit${items.length === 1 ? 'y' : 'ies'} saved. Some have no appraisal cycle — KPIs linked to them will not appear in any appraisal.`
+          : `${items.length} activit${items.length === 1 ? 'y' : 'ies'} saved under the selected contract.`,
       );
       onClose();
     } catch (err: any) {
@@ -258,7 +251,10 @@ export default function BulkWorkplanModal({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>Appraisal Cycle(s) *</label>
+                <label className={labelCls}>Appraisal Cycle(s)</label>
+                <p className="text-xs text-gray-400 mb-1">
+                  Optional — leave unchecked and linked KPIs will not appear in any appraisal.
+                </p>
                 <div className="flex flex-wrap gap-x-4 gap-y-2 rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 min-h-[42px] items-center">
                   {allCycles.length === 0 ? (
                     <span className="text-sm text-gray-400">
