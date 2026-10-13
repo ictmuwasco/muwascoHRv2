@@ -69,8 +69,7 @@ const sections: Section[] = [
           <ul className="list-disc list-inside space-y-1">
             <li>Email address and login identifier used to sign in</li>
             <li>
-              A password, stored only as a secure one-way hash — we never store your actual
-              password
+              A password, stored only as a secure one-way hash — we never store your actual password
             </li>
             <li>
               Your assigned system role/permissions, and one-time codes used for verification or
@@ -181,8 +180,8 @@ const sections: Section[] = [
       <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
         <p>
           Certain fields are treated as sensitive — including your <strong>National ID</strong>,
-          <strong> date of birth</strong>, <strong>next of kin</strong>, <strong>dependants</strong>,
-          personal <strong>documents</strong> and <strong>salary</strong> information.
+          <strong> date of birth</strong>, <strong>next of kin</strong>, <strong>dependants</strong>
+          , personal <strong>documents</strong> and <strong>salary</strong> information.
         </p>
         <p>
           Where available, you may move these into the optional <strong>Private Vault</strong>. When
@@ -198,8 +197,8 @@ const sections: Section[] = [
             of your vault.
           </li>
           <li>
-            You control access: you may grant a named HR user time-limited, revocable access, and you
-            decide whether to approve or deny each access request.
+            You control access: you may grant a named HR user time-limited, revocable access, and
+            you decide whether to approve or deny each access request.
           </li>
           <li>
             If you do not set up the vault, this sensitive information continues to be stored in the
