@@ -204,10 +204,12 @@ final class EmployeeServiceCreateTransactionTest extends TestCase
     /** Satisfies validateEmployeeData() and the employees NOT NULL columns. */
     private function payload(): array
     {
-        // employees.national_id is INT(10): derive a unique int from the run
-        // marker (crc32 -> 8 digits, fits int(10)). The old string marker
-        // ('TXN…NID') died in STRICT mode on CI with "Incorrect integer value".
-        $nationalId = (int) sprintf('7%09d', abs(crc32($this->marker)) % 1000000000);
+        // employees.national_id is signed INT (max 2147483647): derive a
+        // unique int in [1000000000, 1999999999]. The old '7%09d' prefix
+        // built ~7e9 and died with "Out of range value for column
+        // 'national_id'"; the earlier string marker died with "Incorrect
+        // integer value" in STRICT mode.
+        $nationalId = 1000000000 + (abs(crc32($this->marker)) % 1000000000);
 
         return [
             'employee_id'     => $this->marker,
