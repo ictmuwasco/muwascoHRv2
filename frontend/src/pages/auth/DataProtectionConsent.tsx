@@ -29,25 +29,187 @@ const sections: Section[] = [
     id: 'collect',
     title: 'What information do we collect?',
     content: (
-      <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+      <div className="space-y-4 text-sm text-slate-600 dark:text-slate-300">
         <p>
-          The MUWASCO HR System collects and processes the following categories of personal
-          information for legitimate HR and organizational purposes:
+          This list reflects the actual information the MUWASCO HR System records about you across
+          its modules, organised by the part of your employment it relates to. You may not see every
+          category — some apply only to certain roles, offices or circumstances.
+        </p>
+
+        <div>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">
+            1. Identity and profile
+          </h4>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Full name (first name, surname, other/last name) and employee number/ID</li>
+            <li>National ID number (Kenyan national identity)</li>
+            <li>Date of birth and gender</li>
+            <li>Personal contact details — email address, phone number and residential address</li>
+            <li>Profile photograph / avatar</li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">
+            2. Employment and organisational information
+          </h4>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Department, section/sub-section and office or duty station</li>
+            <li>Job title, designation, position and salary scale</li>
+            <li>Employment type (e.g. permanent, contract) and employee category/grade</li>
+            <li>Hire date and, for fixed-term staff, contract start and end dates</li>
+            <li>Employment status (active, resigned, retired, etc.)</li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">
+            3. Account and sign-in information
+          </h4>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Email address and login identifier used to sign in</li>
+            <li>
+              A password, stored only as a secure one-way hash — we never store your actual
+              password
+            </li>
+            <li>
+              Your assigned system role/permissions, and one-time codes used for verification or
+              resetting your password
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">
+            4. Attendance and work hours
+          </h4>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Clock-in / clock-out times, dates and calculated work hours</li>
+            <li>GPS location and location accuracy when you use Clock In / Clock Out</li>
+            <li>
+              Network origin evidence — the IP address (and device/terminal lock identifier)
+              associated with an attendance record
+            </li>
+          </ul>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            See the "Location information and attendance" section below for how location is used.
+          </p>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">
+            5. Leave and time-off
+          </h4>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Leave applications, dates, type of leave, reason and approver/delegate</li>
+            <li>Leave balances (entitlement, days used, brought-forward and remaining days)</li>
+            <li>Supporting documents you attach to a leave application</li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">
+            6. Performance and appraisal
+          </h4>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Performance objectives, targets and appraisal scores/ratings</li>
+            <li>
+              Supervisor assessments, employee feedback and review outcomes by appraisal cycle
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">
+            7. Documents you upload or that are held about you
+          </h4>
+          <ul className="list-disc list-inside space-y-1">
+            <li>
+              Files and records you upload or that HR stores about you (e.g. letters, certificates
+              and supporting documents), including the file name, category and upload date
+            </li>
+            <li>Stored files are encrypted at rest on our servers</li>
+          </ul>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">
+            8. Next of kin and dependants (that you provide)
+          </h4>
+          <ul className="list-disc list-inside space-y-1">
+            <li>
+              Name, relationship and contact details of your next of kin and any dependants you
+              record, and where provided their date of birth, gender and identification number
+            </li>
+          </ul>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            These fields relate to other people. Please provide them only where you are entitled to
+            share that information.
+          </p>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-1">
+            9. Notifications, communications and technical / audit data
+          </h4>
+          <ul className="list-disc list-inside space-y-1">
+            <li>
+              Notification preferences and a device/endpoint subscription token if you enable push
+              notifications on this device
+            </li>
+            <li>
+              System activity and audit records — your user ID, the actions you perform, timestamps,
+              IP address and browser/device information where technically required
+            </li>
+            <li>Error and diagnostic reports that may contain route and device context</li>
+          </ul>
+        </div>
+
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+          <strong>Note on sensitive personal data:</strong> fields such as your National ID, date of
+          birth and salary are treated as sensitive. Where available, you may store these in the
+          optional <strong>Private Vault</strong>, which encrypts them in your browser before they
+          ever reach us — see the "Sensitive data & the Private Vault" section.
+        </div>
+      </div>
+    ),
+  },
+  {
+    id: 'vault',
+    title: 'Sensitive data & the Private Vault',
+    content: (
+      <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+        <p>
+          Certain fields are treated as sensitive — including your <strong>National ID</strong>,
+          <strong> date of birth</strong>, <strong>next of kin</strong>, <strong>dependants</strong>,
+          personal <strong>documents</strong> and <strong>salary</strong> information.
+        </p>
+        <p>
+          Where available, you may move these into the optional <strong>Private Vault</strong>. When
+          you do:
         </p>
         <ul className="list-disc list-inside space-y-1">
-          <li>Employee identification information (name, employee number/ID, national ID)</li>
-          <li>Contact information (email address, phone number)</li>
-          <li>Employment information (department, section, job title, employment type)</li>
-          <li>Attendance information (clock-in/out records, work hours)</li>
-          <li>Location information when you use Clock In/Clock Out for attendance verification</li>
-          <li>Leave information (leave applications, balances, approvals)</li>
-          <li>Performance and appraisal information</li>
-          <li>Login and authentication information (email, password hash)</li>
           <li>
-            System activity and audit information (IP address, browser/device information where
-            technically required)
+            The data is encrypted <strong>in your browser</strong> using keys protected by a
+            passphrase you choose, before it is ever sent to us.
+          </li>
+          <li>
+            We store only the encrypted content and wrapped keys — MUWASCO cannot read the contents
+            of your vault.
+          </li>
+          <li>
+            You control access: you may grant a named HR user time-limited, revocable access, and you
+            decide whether to approve or deny each access request.
+          </li>
+          <li>
+            If you do not set up the vault, this sensitive information continues to be stored in the
+            normal HR records described above, protected by the security measures outlined in the
+            retention and security section.
           </li>
         </ul>
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          The vault is optional. Using it does not change any of your rights described below.
+        </p>
       </div>
     ),
   },

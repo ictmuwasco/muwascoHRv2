@@ -23,7 +23,6 @@ export default function SectionHeadWorkplan() {
       title="Section Head Workplan"
       description="Review the departmental work cascaded to your section, plan section activities and cascade them to subsections."
       showSubsection
-      showOfficer
     />
   );
 }

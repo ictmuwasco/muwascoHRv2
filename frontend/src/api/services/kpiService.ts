@@ -10,6 +10,8 @@ export interface Kpi {
   id: number;
   name: string;
   description: string | null;
+  /** Optional unit of measure (Number, Percentage, ...). NULL = dimensionless. */
+  measure_unit?: string | null;
   max_score: number;
   activity_ids: string | null;
   role: string | null;
@@ -90,6 +92,8 @@ export interface KpiListPayload {
 export interface KpiFormData {
   name: string;
   description?: string;
+  /** Optional unit of measure (Number, Percentage, ...). */
+  measure_unit?: string | null;
   max_score: number;
   activity_ids: number[];
   assigned_to_employee_ids: number[];

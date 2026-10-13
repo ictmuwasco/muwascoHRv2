@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Modal from '../../../components/ui/Modal';
-import Combobox from '../../../components/ui/Combobox';
 import Button from '../../../components/ui/Button';
 import { workplanService } from '../../../api/services/workplanService';
 import type {
@@ -36,7 +35,6 @@ interface Props {
   allowContractless: boolean;
   showSection: boolean;
   showSubsection: boolean;
-  showOfficer: boolean;
   showIntegratedFlag: boolean;
   /** Legacy MD flow: goal perspective + organisational goal + quarters drive the form. */
   mdMode?: boolean;
@@ -47,8 +45,6 @@ interface Props {
   onSaved(message: string): void;
   onError(message: string): void;
 }
-
-const MEASURE_SUGGESTIONS = ['Percentage', 'Number', 'Days', 'KES', 'Rate', 'Score'];
 
 const labelCls =
   'block text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1';
@@ -68,11 +64,9 @@ export default function WorkplanActivityFormModal({
   refs,
   sections,
   subsections,
-  employees,
   allowContractless,
   showSection,
   showSubsection,
-  showOfficer,
   showIntegratedFlag,
   mdMode = false,
   cycles = [],
@@ -83,14 +77,11 @@ export default function WorkplanActivityFormModal({
   onError,
 }: Props) {
   const [objective, setObjective] = useState('');
-  const [kpi, setKpi] = useState('');
-  const [measure, setMeasure] = useState('');
   const [contractId, setContractId] = useState('');
   const [goalId, setGoalId] = useState('');
   const [targetId, setTargetId] = useState('');
   const [sectionId, setSectionId] = useState('');
   const [subsectionId, setSubsectionId] = useState('');
-  const [officerId, setOfficerId] = useState('');
   const [pStart, setPStart] = useState('');
   const [pEnd, setPEnd] = useState('');
   const [budget, setBudget] = useState('');
@@ -99,34 +90,15 @@ export default function WorkplanActivityFormModal({
   const [integrated, setIntegrated] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // The assignable-employee list is the whole unit's staff, so the
-  // responsible-employee picker gets type-to-filter. The staff number and
-  // unit ride along in `description`, so the filter matches those too.
-  const employeeOptions = useMemo(
-    () =>
-      employees.map((emp) => ({
-        value: emp.id,
-        label: `${emp.name ?? ''}${emp.employee_id ? ` (${emp.employee_id})` : ''}`.trim(),
-        description:
-          [emp.position, emp.subsection_name || emp.section_name || emp.department_name]
-            .filter(Boolean)
-            .join(' · ') || undefined,
-      })),
-    [employees],
-  );
-
   useEffect(() => {
     if (!isOpen) return;
     if (mode === 'edit' && record) {
       setObjective(record.objective);
-      setKpi(record.kpi);
-      setMeasure(record.measure_unit);
       setContractId(record.performance_contract_id ? String(record.performance_contract_id) : '');
       setGoalId(record.goal_id ? String(record.goal_id) : '');
       setTargetId(record.strategic_target_id ? String(record.strategic_target_id) : '');
       setSectionId(record.section_id ? String(record.section_id) : '');
       setSubsectionId(record.subsection_id ? String(record.subsection_id) : '');
-      setOfficerId(record.responsible_officer_id ? String(record.responsible_officer_id) : '');
       setPStart(record.planned_start_date?.slice(0, 10) ?? '');
       setPEnd(record.planned_end_date?.slice(0, 10) ?? '');
       setBudget(record.budget_amount ? String(record.budget_amount) : '');
@@ -140,14 +112,11 @@ export default function WorkplanActivityFormModal({
       setIntegrated(!!record.is_integrated);
     } else {
       setObjective('');
-      setKpi('');
-      setMeasure('');
       setContractId(presetContractId ? String(presetContractId) : '');
       setGoalId('');
       setTargetId('');
       setSectionId('');
       setSubsectionId('');
-      setOfficerId('');
       setPStart('');
       setPEnd('');
       setBudget('');
@@ -185,26 +154,15 @@ export default function WorkplanActivityFormModal({
   const allCycles = liveCycles ?? cycles;
 
   const submit = async () => {
-    // Legacy parity: departmental rows carry description + cycles; KPI/measure
-    // optional. MD assignments are driven by goal + organisational goal + quarters.
-    if (!mdMode && (!objective.trim() || !kpi.trim() || !measure.trim())) {
-      onError('Objective, KPI and measure unit are required.');
+    // WHAT/WHEN only. KPI, measure and responsible employee now live on the
+    // KPI (performance_indicators), linked from there — the workplan activity
+    // no longer collects them.
+    if (!mdMode && !objective.trim()) {
+      onError('Activity / Objective is required.');
       return;
-    }
-    if (mdMode) {
-      if (!objective.trim()) {
-        // Legacy MD assignments carried no free-text objective - only goal,
-        // organisational goal and quarters. Description stays optional.
-      } else {
-        // keep the typed objective when provided
-      }
     }
     if (mdMode && (!goalId || !targetId)) {
       onError('Select the Goal Perspective AND the Organisational Goal.');
-      return;
-    }
-    if (cycleIds.length === 0) {
-      onError('Select at least one appraisal cycle (quarter).');
       return;
     }
     if (!contractId && !allowContractless) {
@@ -215,14 +173,11 @@ export default function WorkplanActivityFormModal({
     try {
       const payload: Record<string, any> = {
         objective: objective.trim(),
-        kpi: kpi.trim(),
-        measure_unit: measure.trim(),
         performance_contract_id: contractId ? Number(contractId) : null,
         goal_id: goalId ? Number(goalId) : null,
         strategic_target_id: targetId ? Number(targetId) : null,
         section_id: showSection && sectionId ? Number(sectionId) : null,
         subsection_id: showSubsection && subsectionId ? Number(subsectionId) : null,
-        responsible_officer_id: showOfficer && officerId ? Number(officerId) : null,
         planned_start_date: pStart || null,
         planned_end_date: pEnd || null,
         budget_amount: budget === '' ? 0 : Number(budget),
@@ -231,12 +186,20 @@ export default function WorkplanActivityFormModal({
       };
       if (showIntegratedFlag) payload.is_integrated = integrated ? 1 : 0;
 
+      // An appraisal cycle is what pulls KPIs into a review. Saving a
+      // non-organisation-level activity with no cycle is allowed, but the KPIs
+      // linked to it will not appear in any appraisal — say so, non-blocking.
+      const cycleWarning =
+        cycleIds.length === 0 && !mdMode
+          ? 'No appraisal cycle selected, KPIs linked to this activity will not appear in any appraisal.'
+          : '';
+
       if (mode === 'edit' && record) {
         await workplanService.update(record.id, payload);
-        onSaved('Activity updated successfully.');
+        onSaved(cycleWarning || 'Activity updated successfully.');
       } else {
         await workplanService.create(payload);
-        onSaved('Activity created successfully.');
+        onSaved(cycleWarning || 'Activity created successfully.');
       }
       onClose();
     } catch (err: any) {
@@ -270,24 +233,6 @@ export default function WorkplanActivityFormModal({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label className={labelCls}>KPI / Indicator *</label>
-            <input className={inputCls} value={kpi} onChange={(e) => setKpi(e.target.value)} />
-          </div>
-          <div>
-            <label className={labelCls}>Measure Unit *</label>
-            <input
-              className={inputCls}
-              list="wp-measures"
-              value={measure}
-              onChange={(e) => setMeasure(e.target.value)}
-            />
-            <datalist id="wp-measures">
-              {MEASURE_SUGGESTIONS.map((m) => (
-                <option key={m} value={m} />
-              ))}
-            </datalist>
-          </div>
           <div>
             <label className={labelCls}>Target Date</label>
             <input
@@ -406,7 +351,7 @@ export default function WorkplanActivityFormModal({
           </div>
         )}
 
-        {(showSection || showSubsection || showOfficer) && (
+        {(showSection || showSubsection) && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {showSection && (
               <div>
@@ -447,19 +392,6 @@ export default function WorkplanActivityFormModal({
                       </option>
                     ))}
                 </select>
-              </div>
-            )}
-            {showOfficer && (
-              <div>
-                <label className={labelCls}>Responsible Employee</label>
-                <Combobox
-                  value={officerId}
-                  onChange={setOfficerId}
-                  options={employeeOptions}
-                  placeholder="Search employees"
-                  emptyMessage="No employee matches your search."
-                  noOptionsMessage="No employees available in your unit."
-                />
               </div>
             )}
           </div>

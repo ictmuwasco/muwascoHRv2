@@ -20,6 +20,7 @@ use App\Services\Contracts\AuthServiceInterface;
 use App\Services\Contracts\EmployeeServiceInterface;
 use App\Services\AuthService;
 use App\Services\EmployeeService;
+use App\Services\PasswordResetService;
 use App\Helpers\Database;
 use App\Helpers\Hash;
 use App\Helpers\Session;
@@ -83,6 +84,7 @@ class ServiceProvider
             $service->setSectionRepository($c->get(SectionRepositoryInterface::class));
             $service->setOfficeRepository($c->get(OfficeRepositoryInterface::class));
             $service->setUserRepository($c->get(UserRepositoryInterface::class));
+            $service->setPasswordResetService(new PasswordResetService());
             return $service;
         });
     }
