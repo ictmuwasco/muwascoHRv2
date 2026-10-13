@@ -204,12 +204,17 @@ final class EmployeeServiceCreateTransactionTest extends TestCase
     /** Satisfies validateEmployeeData() and the employees NOT NULL columns. */
     private function payload(): array
     {
+        // employees.national_id is INT(10): derive a unique int from the run
+        // marker (crc32 -> 8 digits, fits int(10)). The old string marker
+        // ('TXN…NID') died in STRICT mode on CI with "Incorrect integer value".
+        $nationalId = (int) sprintf('7%09d', abs(crc32($this->marker)) % 1000000000);
+
         return [
             'employee_id'     => $this->marker,
             'first_name'      => 'Tina',
             'last_name'       => 'Rollins',
             'email'           => strtolower($this->marker) . '.example@example.invalid',
-            'national_id'     => $this->marker . 'NID',
+            'national_id'     => $nationalId,
             'employee_type'   => 'officer',
             'employee_status' => 'active',
             'employment_type' => 'permanent',
