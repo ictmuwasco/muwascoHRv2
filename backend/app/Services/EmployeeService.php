@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Services\Contracts\EmployeeServiceInterface;
+use App\Services\PasswordResetService;
 use App\Repositories\Contracts\EmployeeRepositoryInterface;
 use App\Repositories\Contracts\DepartmentRepositoryInterface;
 use App\Repositories\Contracts\SectionRepositoryInterface;
@@ -24,6 +25,8 @@ class EmployeeService implements EmployeeServiceInterface
     private ?SectionRepositoryInterface $sectionRepository = null;
     private ?OfficeRepositoryInterface $officeRepository = null;
     private ?UserRepository $userRepository = null;
+    private ?PasswordResetService $passwordResetService = null;
+
     private array $dependencies = [];
 
     public function __construct(
@@ -71,6 +74,11 @@ class EmployeeService implements EmployeeServiceInterface
     public function getDependency(string $name): mixed
     {
         return $this->dependencies[$name] ?? null;
+    }
+
+    public function setPasswordResetService(PasswordResetService $service): void
+    {
+        $this->passwordResetService = $service;
     }
 
     // Alias methods for test compatibility
@@ -318,17 +326,44 @@ class EmployeeService implements EmployeeServiceInterface
         // Phase 7 (P7-8): mass-assignment guard (see EMPLOYEE_WRITABLE_FIELDS).
         $data = $this->filterWritable($data, self::EMPLOYEE_WRITABLE_FIELDS);
 
-        $employeeId = $this->employeeRepository->create($data);
+        // ONE transaction for every row a hire touches: employees, the initial
+        // contract (if any) and the auto-created users account. Without it any
+        // failure AFTER the employees INSERT left the row committed - the exact
+        // "phantom 500" that hit POST /employees: the employee and user rows
+        // survived, the response died, and every retry then bounced off
+        // validateEmployeeData()'s duplicate checks with a 400. Now a
+        // mid-flight failure rolls the whole hire back, so a retry re-creates
+        // it instead of colliding with a half-written record.
+        $db = \db();
+        $db->beginTransaction();
 
-        // Create initial contract record if this is a contract-based employee
-        // ('csuite' contracts are renewable just like plain 'contract' ones).
-        if ($this->isContractBased($data['employment_type'] ?? '')) {
-            $this->createEmployeeContract($employeeId, $data);
+        try {
+            $employeeId = $this->employeeRepository->create($data);
+
+            // Create initial contract record if this is a contract-based employee
+            // ('csuite' contracts are renewable just like plain 'contract' ones).
+            if ($this->isContractBased($data['employment_type'] ?? '')) {
+                $this->createEmployeeContract($employeeId, $data);
+            }
+
+            // Auto-create the linked user account so the employee can log in
+            // immediately using their customized email and employee number as password.
+            $welcome = $this->createUserForEmployee($data, $employeeId);
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            try {
+                $db->rollback();
+            } catch (\Throwable) {
+                // A failed rollback must not mask the original failure.
+            }
+            throw $e;
         }
 
-        // Auto-create the linked user account so the employee can log in
-        // immediately using their customized email and employee number as password.
-        $this->createUserForEmployee($data, $employeeId);
+        // Welcome mail goes out only AFTER the commit (never inside the
+        // transaction: no network I/O while locks are held, and no mail can
+        // announce an account a rollback would delete) and is non-fatal.
+        $this->sendWelcomeEmailForNewUser($welcome);
 
         return $employeeId;
     }
@@ -610,6 +645,19 @@ class EmployeeService implements EmployeeServiceInterface
             $errors[] = 'Hire date is required';
         }
 
+        // Business rule: date of birth, when provided, must be at least
+        // MIN_EMPLOYEE_AGE (18) years ago - the form caps its date picker with
+        // the same max date. Format shape alone is checked by
+        // EmployeeValidator::validateDate(); this is the age rule itself.
+        $dateOfBirth = trim((string)($data['date_of_birth'] ?? ''));
+        if ($dateOfBirth !== '') {
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth) || strtotime($dateOfBirth) === false) {
+                $errors[] = 'Date of birth must be a valid date';
+            } elseif (strtotime($dateOfBirth) > strtotime('-18 years')) {
+                $errors[] = 'Employee must be at least 18 years old';
+            }
+        }
+
         // Business rule: Contract dates validation for contract-based employees
         // ('contract' and 'csuite' both carry contract terms)
         if ($this->isContractBased($data['employment_type'] ?? '')) {
@@ -642,22 +690,29 @@ class EmployeeService implements EmployeeServiceInterface
      *  - password => employee number (employee_id)
      *
      * Role is derived from employee_type so RBAC works out of the box.
+     *
+     * @return array{user_id:int, email:string, name:string}|null what the
+     *         post-commit welcome mail needs, or null when no account was
+     *         created (no repository / email already linked). The mail itself
+     *         is deliberately NOT sent here - this runs inside createEmployee()'s
+     *         transaction, and a welcome mail must never leave before the hire
+     *         it announces is committed.
      */
-    private function createUserForEmployee(array $data, int $employeeId): void
+    private function createUserForEmployee(array $data, int $employeeId): ?array
     {
         if (!$this->userRepository) {
-            return;
+            return null;
         }
 
         $email = strtolower(trim((string)($data['email'] ?? '')));
         if ($email === '') {
-            return;
+            return null;
         }
 
         // Skip if a user account already exists for this email
         $existing = $this->userRepository->findByEmail($email);
         if ($existing) {
-            return;
+            return null;
         }
 
         $role = $this->mapEmployeeTypeToRole((string)($data['employee_type'] ?? 'officer'));
@@ -678,7 +733,62 @@ class EmployeeService implements EmployeeServiceInterface
             'updated_at' => date('Y-m-d H:i:s'),
         ];
 
-        $this->userRepository->createUser($userData);
+        $userId = $this->userRepository->createUser($userData);
+
+        return [
+            'user_id' => $userId,
+            'email'   => $email,
+            'name'    => trim((string)($data['first_name'] ?? '')) ?: 'there',
+        ];
+    }
+
+    /**
+     * Fire the branded "welcome + set your password" mail for a just-created
+     * account. Called by createEmployee() AFTER the transaction commits.
+     *
+     * Two guarantees, both learned from the incident this code replaces:
+     *   - Post-commit: an SMTP failure cannot roll back a hire that is already
+     *     durable, and no mail announces an account that never persisted.
+     *   - Non-fatal: delivery problems are logged (via logger() - the instance
+     *     accessor; Logger::error() is NOT static, and the old static call
+     *     threw an Error straight out of its own catch block, which is what
+     *     turned a soft failure into the silent 500 on POST /employees) and
+     *     never re-thrown.
+     *
+     * Signature matters: PasswordResetService::sendWelcomeEmail(int $userId,
+     * string $email, string $name) lives under declare(strict_types=1), so the
+     * retired (email, name, employee_id, otp) call shape raised a TypeError on
+     * every create.
+     */
+    private function sendWelcomeEmailForNewUser(?array $welcome): void
+    {
+        if ($welcome === null || $this->passwordResetService === null) {
+            return;
+        }
+
+        try {
+            $this->passwordResetService->sendWelcomeEmail(
+                $welcome['user_id'],
+                $welcome['email'],
+                $welcome['name']
+            );
+        } catch (\Throwable $e) {
+            try {
+                \logger()->error('Welcome email failed for new employee ' . $welcome['email'], [
+                    'email'      => $welcome['email'],
+                    'user_id'    => $welcome['user_id'],
+                    'error'      => $e->getMessage(),
+                ]);
+            } catch (\Throwable) {
+                // This block sits AFTER the commit - a throw here would 500 a
+                // hire that already persisted, which is the very incident this
+                // code replaces (bootstrap's set_error_handler turns even a
+                // failed mkdir() in the Logger constructor into an exception,
+                // so \logger() is NOT guaranteed harmless). Swallow it: the
+                // mail already failed for its own logged-or-not reason; losing
+                // the log line must never cost the response.
+            }
+        }
     }
 
     /**

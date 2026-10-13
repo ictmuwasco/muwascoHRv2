@@ -63,6 +63,18 @@ const EMPLOYMENT_TYPE_OPTIONS = Object.entries({
 // EmployeeService::isContractBased() on the backend.
 const CONTRACT_BASED_TYPES = ['contract', 'csuite'];
 
+// Minimum age for an employee. The date picker's max attribute caps the
+// selectable date at today-minus-18-years, handleSubmit re-checks the value
+// before any API call, and the backend enforces the same rule in
+// EmployeeService::validateEmployeeData() - the three must stay in sync.
+const MIN_EMPLOYEE_AGE_YEARS = 18;
+const MAX_DATE_OF_BIRTH = (() => {
+  const now = new Date();
+  const d = new Date(now.getFullYear() - MIN_EMPLOYEE_AGE_YEARS, now.getMonth(), now.getDate());
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+})();
+
 const EmployeeForm = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -290,6 +302,17 @@ const EmployeeForm = () => {
     setError('');
     setSuccess('');
 
+    // Business rule: employees must be at least 18 years old. Checked here
+    // for instant feedback and again server-side in
+    // EmployeeService::validateEmployeeData().
+    if (formData.date_of_birth && formData.date_of_birth > MAX_DATE_OF_BIRTH) {
+      setError(
+        `Employee must be at least ${MIN_EMPLOYEE_AGE_YEARS} years old - date of birth must be on or before ${MAX_DATE_OF_BIRTH}`,
+      );
+      setSaving(false);
+      return;
+    }
+
     try {
       const payload: Record<string, unknown> = {
         ...formData,
@@ -445,6 +468,12 @@ const EmployeeForm = () => {
               type="date"
               value={formData.date_of_birth}
               onChange={handleChange}
+              max={MAX_DATE_OF_BIRTH}
+              error={
+                formData.date_of_birth && formData.date_of_birth > MAX_DATE_OF_BIRTH
+                  ? `Employee must be at least ${MIN_EMPLOYEE_AGE_YEARS} years old`
+                  : undefined
+              }
             />
             <Input
               label="Address"

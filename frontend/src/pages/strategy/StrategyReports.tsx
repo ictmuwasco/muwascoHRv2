@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import apiClient from '../../api/client';
 import Card from '../../components/ui/Card';
 import Table from '../../components/ui/Table';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
+import StrategyTabs from '../../components/strategy/StrategyTabs';
 import { BarChart3, AlertTriangle, RefreshCw, Target, FileText, Users } from 'lucide-react';
 
 interface ReportPayload {
@@ -36,15 +36,7 @@ interface ReportPayload {
   workplan_summary: { total_objectives: number; with_year_targets: number; note: string | null };
 }
 
-const TABS = [
-  { to: '/strategy/strategic-plan', label: 'Strategic Plan' },
-  { to: '/strategy/performance-contracts', label: 'Performance Contracts' },
-  { to: '/strategy/workplans', label: 'Workplans' },
-  { to: '/strategy/reports', label: 'Performance Reports' },
-];
-
 export default function StrategyReports() {
-  const location = useLocation();
   const [data, setData] = useState<ReportPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -109,22 +101,8 @@ export default function StrategyReports() {
         </Button>
       </div>
 
-      {/* Strategy sub-navigation */}
-      <div className="flex space-x-1 border-b overflow-x-auto">
-        {TABS.map((tab) => (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              location.pathname === tab.to
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
+      {/* Strategy sub-navigation (shared — includes KPIs link) */}
+      <StrategyTabs />
 
       {error && (
         <div className="rounded-lg px-4 py-3 text-sm flex items-start gap-2 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300">

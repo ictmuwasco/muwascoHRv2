@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Modal from '../../../components/ui/Modal';
-import Combobox from '../../../components/ui/Combobox';
 import Button from '../../../components/ui/Button';
 import { Plus } from 'lucide-react';
 import { workplanService } from '../../../api/services/workplanService';
@@ -33,9 +32,6 @@ const inputCls =
 
 interface RowState {
   objective: string;
-  kpi: string;
-  measure: string;
-  officer_id: string;
   subsection_id: string;
   target_date: string;
   cycle_ids: number[];
@@ -64,18 +60,6 @@ export default function TierAddWorkplanModal({
   const [sourceId, setSourceId] = useState('');
   const [rows, setRows] = useState<RowState[]>([]);
   const [saving, setSaving] = useState(false);
-
-  // Each activity row gets a responsible-officer picker over the unit's staff,
-  // so the option list is built once and shared by every row.
-  const employeeOptions = useMemo(
-    () =>
-      employees.map((emp) => ({
-        value: emp.id,
-        label: `${emp.name ?? ''}${emp.employee_id ? ` (${emp.employee_id})` : ''}`.trim(),
-        description: emp.position ?? emp.department_name ?? undefined,
-      })),
-    [employees],
-  );
 
   const hasSubsections = subsections.length > 0;
   const allCycles = liveCycles ?? cycles;
@@ -111,9 +95,6 @@ export default function TierAddWorkplanModal({
       ...r,
       {
         objective: '',
-        kpi: '',
-        measure: '',
-        officer_id: '',
         subsection_id: '',
         target_date: '',
         cycle_ids: [],
@@ -138,10 +119,6 @@ export default function TierAddWorkplanModal({
         onError(`Activity #${i + 1}: the activity description is required.`);
         return;
       }
-      if (row.cycle_ids.length === 0) {
-        onError(`Activity #${i + 1}: select at least one appraisal cycle (quarter).`);
-        return;
-      }
     }
 
     setSaving(true);
@@ -149,11 +126,8 @@ export default function TierAddWorkplanModal({
       const items = rows.map((row) => {
         const payload: Record<string, any> = {
           objective: row.objective.trim(),
-          kpi: row.kpi.trim(),
-          measure_unit: row.measure.trim(),
           performance_contract_id: null,
           parent_objective_id: Number(sourceId),
-          responsible_officer_id: row.officer_id ? Number(row.officer_id) : null,
           planned_end_date: row.target_date || null,
           cycle_ids: row.cycle_ids.join(','),
         };
@@ -169,8 +143,11 @@ export default function TierAddWorkplanModal({
       for (const payload of items) {
         await workplanService.create(payload);
       }
+      const noCycle = items.some((it) => it.cycle_ids === '');
       onSaved(
-        `${items.length} activit${items.length === 1 ? 'y' : 'ies'} added under the selected source.`,
+        noCycle
+          ? `${items.length} activit${items.length === 1 ? 'y' : 'ies'} added. Some have no appraisal cycle — KPIs linked to them will not appear in any appraisal.`
+          : `${items.length} activit${items.length === 1 ? 'y' : 'ies'} added under the selected source.`,
       );
       onClose();
     } catch (err: any) {
@@ -242,37 +219,6 @@ export default function TierAddWorkplanModal({
                 onChange={(e) => updateRow(idx, { objective: e.target.value })}
                 placeholder="What must be delivered…"
               />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
-                <label className={labelCls}>KPI / Indicator</label>
-                <input
-                  className={inputCls}
-                  value={row.kpi}
-                  onChange={(e) => updateRow(idx, { kpi: e.target.value })}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Measure Unit</label>
-                <input
-                  className={inputCls}
-                  value={row.measure}
-                  onChange={(e) => updateRow(idx, { measure: e.target.value })}
-                  placeholder="Percentage, Number…"
-                />
-              </div>
-              <div>
-                <label className={labelCls}>Responsible Officer</label>
-                <Combobox
-                  value={row.officer_id}
-                  onChange={(v) => updateRow(idx, { officer_id: v })}
-                  options={employeeOptions}
-                  placeholder="Search employees"
-                  emptyMessage="No employee matches your search."
-                  noOptionsMessage="No employees available in your unit."
-                />
-              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

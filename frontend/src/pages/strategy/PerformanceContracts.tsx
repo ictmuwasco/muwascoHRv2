@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import apiClient from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import Button from '../../components/ui/Button';
 import Modal from '../../components/ui/Modal';
+import StrategyTabs from '../../components/strategy/StrategyTabs';
 import {
   FileText,
   Plus,
@@ -59,20 +59,12 @@ interface ContractPayload {
 type FormState =
   { open: false } | { open: true; mode: 'add' } | { open: true; mode: 'edit'; record: Contract };
 
-const TABS = [
-  { to: '/strategy/strategic-plan', label: 'Strategic Plan' },
-  { to: '/strategy/performance-contracts', label: 'Performance Contracts' },
-  { to: '/strategy/workplans', label: 'Workplans' },
-  { to: '/strategy/reports', label: 'Performance Reports' },
-];
-
 const fmt = (d: string | null) =>
   d
     ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     : 'N/A';
 
 export default function PerformanceContracts() {
-  const location = useLocation();
   // Phase 11 (§global rule): mutations come from the CENTRALIZED canEdit /
   // canDelete gates on the auth context, aliased here because the component
   // also exposes local `canEdit` / `canDelete` flags.
@@ -222,22 +214,8 @@ export default function PerformanceContracts() {
         </div>
       </div>
 
-      {/* Strategy sub-navigation */}
-      <div className="flex space-x-1 border-b overflow-x-auto">
-        {TABS.map((tab) => (
-          <Link
-            key={tab.to}
-            to={tab.to}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-              location.pathname === tab.to
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
+      {/* Strategy sub-navigation (shared — includes KPIs link) */}
+      <StrategyTabs />
 
       {(error || notice) && (
         <div

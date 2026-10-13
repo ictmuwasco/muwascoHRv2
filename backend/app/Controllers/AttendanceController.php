@@ -342,10 +342,46 @@ class AttendanceController extends BaseController
         }
 
         $employeeDbId = (int)$employee['id'];
-        $startDate = $_GET['start_date'] ?? date('Y-m-d', strtotime('-30 days'));
-        $endDate = $_GET['end_date'] ?? date('Y-m-d');
+
+        // Server-side pagination. The client sends page + limit, but the old
+        // handler ignored both and returned a single 30-day, 500-row slice - so
+        // older records (Jan/Feb...) were unreachable and the pager showed only
+        // one page. Honour page/limit and paginate over the FULL history.
+        $perPage = (int)($_GET['limit'] ?? $_GET['per_page'] ?? 50);
+        $perPage = min(max($perPage, 1), 100);
+        $page    = max((int)($_GET['page'] ?? 1), 1);
+
+        // Date range is optional: omit it to page the employee's FULL history
+        // (records older than 30 days included); supply start_date / end_date
+        // to narrow the window.
+        $startDate = $_GET['start_date'] ?? null;
+        $endDate   = $_GET['end_date'] ?? null;
+
+        $where  = 'a.employee_id = ?';
+        $types  = 'i';
+        $params = [$employeeDbId];
+        if ($startDate !== null && $startDate !== '') {
+            $where .= ' AND a.attendance_date >= ?';
+            $types .= 's';
+            $params[] = $startDate;
+        }
+        if ($endDate !== null && $endDate !== '') {
+            $where .= ' AND a.attendance_date <= ?';
+            $types .= 's';
+            $params[] = $endDate;
+        }
 
         $db = \db();
+        $total = (int) ($db->fetchValue(
+            "SELECT COUNT(*) FROM attendance a WHERE $where",
+            $types,
+            $params
+        ) ?? 0);
+
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $page     = min($page, $lastPage);
+        $offset   = ($page - 1) * $perPage;
+
         $records = $db->fetchAll(
             "SELECT a.*, e.first_name, e.last_name, d.name as department, o.name as office_name,
              DATE(a.clock_in) as date,
@@ -355,11 +391,11 @@ class AttendanceController extends BaseController
              JOIN employees e ON a.employee_id = e.id
              LEFT JOIN departments d ON e.department_id = d.id
              LEFT JOIN offices o ON a.office_id = o.id
-             WHERE a.employee_id = ? AND a.attendance_date BETWEEN ? AND ?
+             WHERE $where
              ORDER BY a.clock_in DESC
-             LIMIT 500",
-            'iss',
-            [$employeeDbId, $startDate, $endDate]
+             LIMIT " . (int) $perPage . ' OFFSET ' . (int) $offset,
+            $types,
+            $params
         );
 
         $formattedRecords = array_map(function($record) {
@@ -389,7 +425,17 @@ class AttendanceController extends BaseController
             ];
         }, $records);
 
-        $this->success($formattedRecords);
+        // Paginated envelope. The client reads either a bare array or
+        // { data, total, page, per_page, last_page }; emitting the object form
+        // is what makes "Showing X to Y of Z" and the pager reflect the real
+        // count instead of a single 30-day page.
+        $this->success([
+            'data'      => $formattedRecords,
+            'total'     => $total,
+            'page'      => $page,
+            'per_page'  => $perPage,
+            'last_page' => $lastPage,
+        ]);
     }
 
     /**

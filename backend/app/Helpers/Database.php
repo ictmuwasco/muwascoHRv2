@@ -120,26 +120,34 @@ class Database
 
     /**
      * Begin a transaction.
+     *
+     * Routed through getConnection() (not the raw $this->mysqli) so the
+     * transaction always lands on the SAME connection the repositories write
+     * to - otherwise a test-injected scratch connection (setConnection()) or a
+     * ping-reconnect would have writes autocommitting outside the very
+     * transaction meant to group them.
      */
     public function beginTransaction(): bool
     {
-        return $this->mysqli->begin_transaction();
+        return $this->getConnection()->begin_transaction();
     }
 
     /**
-     * Commit the current transaction.
+     * Commit the current transaction. See beginTransaction() for why
+     * getConnection() is used rather than the raw handle.
      */
     public function commit(): bool
     {
-        return $this->mysqli->commit();
+        return $this->getConnection()->commit();
     }
 
     /**
-     * Rollback the current transaction.
+     * Rollback the current transaction. See beginTransaction() for why
+     * getConnection() is used rather than the raw handle.
      */
     public function rollback(): bool
     {
-        return $this->mysqli->rollback();
+        return $this->getConnection()->rollback();
     }
 
     /**

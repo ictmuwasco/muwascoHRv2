@@ -6,6 +6,14 @@ export type WorkplanLevel = 'organisation' | 'department' | 'section' | 'subsect
 
 export type WorkplanView = 'md' | 'department' | 'section' | 'subsection' | 'integrated';
 
+/** A KPI linked to a workplan activity, for the "KPI & Team" column. */
+export interface LinkedKpi {
+  id: number;
+  name: string;
+  max_score: number;
+  assigned_employee_names: string[];
+}
+
 export interface WorkplanObjective {
   id: number;
   performance_contract_id: number | null;
@@ -43,6 +51,8 @@ export interface WorkplanObjective {
   created_by_name?: string | null;
   officer_name?: string | null;
   children_count?: number;
+  /** KPIs linked to this activity (id, name, max marks, assigned employees). */
+  linked_kpis?: LinkedKpi[];
   Y1: string | null;
   Y2: string | null;
   Y3: string | null;

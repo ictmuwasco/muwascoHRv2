@@ -162,6 +162,16 @@ function ScoreEditor({
   onComment: (id: number, value: string) => void;
   onSupervisorComment: (value: string) => void;
 }) {
+  if (indicators.length === 0) {
+    return (
+      <div className="rounded-lg border border-gray-200 bg-gray-50 p-6 text-center dark:border-slate-700 dark:bg-slate-800/50">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          No KPIs are linked to this cycle for this employee. Link activities with this cycle to a
+          KPI assigned to them.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-slate-700">
       <table className="min-w-full divide-y divide-gray-200 text-sm dark:divide-slate-700">

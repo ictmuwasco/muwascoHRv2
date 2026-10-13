@@ -14,7 +14,6 @@ export default function ManagingDirectorWorkplan() {
       title="Managing Director Workplan"
       description="Plan organisation-wide activities against the strategic goals and cascade them to departments."
       allowContractless
-      showOfficer
       showIntegratedFlag
     />
   );

@@ -347,16 +347,52 @@ class AppraisalWorkflowService
         return $rows ?: [];
     }
 
-    private function indicatorsForEmployee(int $employeeId): array
+    /**
+     * KPIs that belong in ONE appraisal: the ones assigned to $employeeId
+     * AND relevant to $cycleId.
+     *
+     * An indicator is included when it is active, assigned to the employee,
+     * AND at least one of:
+     *   (a) a linked, non-soft-deleted workplan activity carries this cycle
+     *       (workplan_objectives.cycle_ids contains $cycleId),
+     *   (b) the indicator is recurrent (is_recurrent = 1) — by definition a
+     *       recurrent KPI applies to every cycle,
+     *   (c) it already has a saved appraisal_scores row for THIS appraisal —
+     *       so an in-progress or completed appraisal never loses a line or a
+     *       score when the underlying activity's cycle later changes.
+     *
+     * Prepared statements throughout; max_score cast and activities list are
+     * unchanged from the previous single-query version so scoring/report
+     * consumers behave identically.
+     *
+     * @param int $cycleId     employee_appraisals.appraisal_cycle_id
+     * @param int $appraisalId employee_appraisals.id (for the saved-score rule)
+     */
+    private function indicatorsForAppraisal(int $employeeId, int $cycleId, int $appraisalId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT id, name, max_score, activity_ids, role, department_id,
-                    section_id, subsection_id, is_active
-             FROM performance_indicators
-             WHERE is_active = 1 AND FIND_IN_SET(?, assigned_to_employee_ids) > 0
-             ORDER BY name"
+            "SELECT pi.id, pi.name, pi.max_score, pi.activity_ids, pi.role, pi.department_id,
+                    pi.section_id, pi.subsection_id, pi.is_active
+             FROM performance_indicators pi
+             WHERE pi.is_active = 1
+               AND FIND_IN_SET(?, pi.assigned_to_employee_ids) > 0
+               AND (
+                    EXISTS (
+                        SELECT 1 FROM workplan_objectives wo
+                        WHERE wo.soft_deleted = 0
+                          AND FIND_IN_SET(wo.id, pi.activity_ids) > 0
+                          AND FIND_IN_SET(?, wo.cycle_ids) > 0
+                    )
+                    OR pi.is_recurrent = 1
+                    OR EXISTS (
+                        SELECT 1 FROM appraisal_scores s
+                        WHERE s.employee_appraisal_id = ?
+                          AND s.performance_indicator_id = pi.id
+                    )
+               )
+             ORDER BY pi.name"
         );
-        $stmt->bind_param('i', $employeeId);
+        $stmt->bind_param('iii', $employeeId, $cycleId, $appraisalId);
         $stmt->execute();
         $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
         $stmt->close();
@@ -556,7 +592,11 @@ class AppraisalWorkflowService
         $appraisal['employee_name'] = trim(($appraisal['first_name'] ?? '') . ' ' . ($appraisal['last_name'] ?? ''));
         $appraisal['appraiser_name'] = trim(($appraisal['appraiser_first_name'] ?? '') . ' ' . ($appraisal['appraiser_last_name'] ?? ''));
         $appraisal['status_label'] = ucwords(str_replace('_', ' ', (string) $appraisal['status']));
-        $indicators = $this->indicatorsForEmployee((int) $appraisal['employee_id']);
+        $indicators = $this->indicatorsForAppraisal(
+            (int) $appraisal['employee_id'],
+            (int) $appraisal['appraisal_cycle_id'],
+            (int) $id
+        );
         $stmt = $this->db->prepare(
             "SELECT s.id, s.performance_indicator_id, s.score, s.appraiser_comment,
                     s.created_at, s.updated_at
@@ -681,7 +721,11 @@ class AppraisalWorkflowService
         }
 
         $indicators = [];
-        foreach ($this->indicatorsForEmployee((int) $appraisal['employee_id']) as $indicator) {
+        foreach ($this->indicatorsForAppraisal(
+            (int) $appraisal['employee_id'],
+            (int) $appraisal['appraisal_cycle_id'],
+            (int) $id
+        ) as $indicator) {
             $indicators[(int) $indicator['id']] = $indicator;
         }
         $missingIds = array_diff(array_keys($indicators), array_map('intval', array_keys($scores)));
@@ -804,7 +848,11 @@ class AppraisalWorkflowService
     public function myDetail(int $id): array
     {
         $appraisal = $this->assertOwner($id);
-        $indicators = $this->indicatorsForEmployee((int) $appraisal['employee_id']);
+        $indicators = $this->indicatorsForAppraisal(
+            (int) $appraisal['employee_id'],
+            (int) $appraisal['appraisal_cycle_id'],
+            (int) $id
+        );
         $stmt = $this->db->prepare("SELECT performance_indicator_id, score, appraiser_comment FROM appraisal_scores WHERE employee_appraisal_id = ? ORDER BY performance_indicator_id, updated_at, id");
         $stmt->bind_param('i', $id);
         $stmt->execute();
