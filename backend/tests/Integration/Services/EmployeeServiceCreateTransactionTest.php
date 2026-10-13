@@ -53,6 +53,14 @@ final class EmployeeServiceCreateTransactionTest extends TestCase
     {
         parent::setUp();
 
+        // Guarantee the application database, even if an earlier scratch-DB
+        // test leaked a (possibly closed) injection: this test owns the full
+        // production schema and must never run against a scratch database.
+        // Cleared BEFORE getConnection() so a stale closed handle can neither
+        // poison us with "mysqli object is already closed" nor silently point
+        // our writes at the wrong database.
+        \App\Helpers\Database::getInstance()->setConnection(null);
+
         try {
             $this->conn = \db()->getConnection();
         } catch (\Throwable $e) {

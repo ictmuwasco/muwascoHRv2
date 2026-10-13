@@ -89,6 +89,28 @@ class Database
         // test's scratch database back to the configured one, which is exactly
         // the accident the seam exists to prevent.
         if ($this->injected !== null) {
+            // Validate the injected handle WITHOUT reconnecting: a reconnect
+            // would silently swap a test's scratch database back to the
+            // configured one. A closed handle (previous test closed its scratch
+            // mysqli without setConnection(null)) is reported explicitly so the
+            // leak is obvious instead of surfacing as a cryptic
+            // "mysqli object is already closed" deep inside a repository.
+            try {
+                $alive = $this->injected->ping();
+            } catch (\Throwable $e) {
+                throw new \RuntimeException(
+                    'Injected DB connection is closed: a prior test closed its scratch ' .
+                    'mysqli without calling Database::setConnection(null) first.',
+                    0,
+                    $e
+                );
+            }
+            if ($alive !== true) {
+                throw new \RuntimeException(
+                    'Injected DB connection is not alive: a prior test left an unusable ' .
+                    'scratch mysqli injected; call Database::setConnection(null) in tearDown.'
+                );
+            }
             return $this->injected;
         }
 
