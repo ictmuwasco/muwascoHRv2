@@ -108,7 +108,7 @@ final class EmployeeServiceAgeValidationTest extends TestCase
             'first_name'      => 'Tina',
             'last_name'       => 'Rollins',
             'email'           => 'tina.age18@example.invalid',
-            'national_id'     => 'NIDAGE18TEST',
+            'national_id'     => 18000101, // employees.national_id is INT(10)
             'employee_type'   => 'officer',
             'employee_status' => 'active',
             'employment_type' => 'permanent',

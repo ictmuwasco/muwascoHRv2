@@ -151,7 +151,7 @@ final class EmployeeServiceWelcomeEmailTest extends TestCase
             'first_name'      => 'Tina',
             'last_name'       => 'Rollins',
             'email'           => 'tina.rollins@example.invalid',
-            'national_id'     => 'NID716TEST',
+            'national_id'     => 71600101, // employees.national_id is INT(10)
             'employee_type'   => 'officer',
             'employee_status' => 'active',
             'employment_type' => 'permanent',
