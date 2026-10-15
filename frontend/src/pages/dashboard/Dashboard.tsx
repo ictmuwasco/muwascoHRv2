@@ -500,6 +500,41 @@ const Dashboard = () => {
   };
 
   /**
+   * Whether a clock-in failure is worth re-verifying against server truth.
+   * Definitive business denials (geofence, device lock, validation, leave,
+   * auth) must NEVER be masked as success — only 500s, timeouts (status 0)
+   * and network errors qualify, because those are the cases where the row
+   * may have committed while the response was lost.
+   */
+  const isRetryableClockError = (error: any, resp: any): boolean => {
+    if (resp?.code === 'OUTSIDE_RADIUS') return false;
+    if (resp?.error?.code === 'DEVICE_LOCKED') return false;
+    const status = (error as any)?.response?.status;
+    if (status === 400 || status === 401 || status === 403 || status === 404 || status === 409)
+      return false;
+    return true;
+  };
+
+  /**
+   * Re-read the authoritative attendance state. Returns true when the
+   * employee is clocked in (the earlier POST committed server-side even
+   * though its response reported failure), and syncs the card state.
+   */
+  const confirmClockInState = async (): Promise<boolean> => {
+    try {
+      const res = await api.get('/attendance/dashboard');
+      const data = res.data?.data;
+      if (data?.is_clocked_in || data?.current_session) {
+        setAttendanceData(data);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
+  /**
    * Shared submit path for clock-in / clock-out. A device fix is
    * MANDATORY: the caller must resolve coordinates (startClock blocks
    * submission when no fix or when outside the geofence) before this
@@ -592,6 +627,21 @@ const Dashboard = () => {
           setActionMessage(`Device lock expires at ${unlocksAt.toLocaleString()}.`);
         }
       } else {
+        // Non-definitive failure (500 / timeout / network): the row may have
+        // committed server-side while the response was lost (the production
+        // "Failed to record your clock-in" that vanishes on refresh). Re-read
+        // authoritative state before showing an error — if the employee IS
+        // clocked in, report success and sync the card instead of lying.
+        if (action === 'clock-in' && isRetryableClockError(error, resp)) {
+          const confirmed = await confirmClockInState();
+          if (confirmed) {
+            setActionMessage('Clocked in successfully.');
+            if (can('dashboard', 'hr_insights')) {
+              fetchStats();
+            }
+            return;
+          }
+        }
         setLocationError(getErrorMessage(error));
       }
     } finally {
