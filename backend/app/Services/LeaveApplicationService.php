@@ -47,9 +47,16 @@ class LeaveApplicationService
         $reason = trim($data['reason'] ?? '');
         $userId = (int) ($data['user_id'] ?? 0);
         $delegateEmpId = (int) ($data['delegate_emp_id'] ?? 0);
+        $requiresDelegate = $leaveTypeId === LeaveTypePolicy::TYPE_ANNUAL;
 
-        if (!$employeeId || !$leaveTypeId || !$startDate || !$endDate || !$delegateEmpId) {
-            return ['success' => false, 'message' => 'Missing required fields, including delegate.'];
+        if (!$employeeId || !$leaveTypeId || !$startDate || !$endDate) {
+            return ['success' => false, 'message' => 'Missing required fields.'];
+        }
+
+        // Delegate is mandatory for Annual Leave only; all other leave types
+        // submit without one.
+        if ($requiresDelegate && !$delegateEmpId) {
+            return ['success' => false, 'message' => 'A delegate employee is required for Annual Leave.'];
         }
 
         // Authorization check: verify user can submit leave for this employee
@@ -58,25 +65,29 @@ class LeaveApplicationService
             return ['success' => false, 'message' => 'Access denied: You are not authorized to submit leave for this employee.'];
         }
 
-        // Authorization check: verify user can select this delegate
-        $delegateAuthCheck = $this->verifyDelegateAuthorization($userId, $delegateEmpId);
-        if (!$delegateAuthCheck['authorized']) {
-            return ['success' => false, 'message' => 'Access denied: You are not authorized to select this delegate.'];
-        }
+        // Delegate authorization + availability apply to Annual Leave only —
+        // other types carry no delegate, so there is nothing to authorize.
+        if ($requiresDelegate) {
+            // Authorization check: verify user can select this delegate
+            $delegateAuthCheck = $this->verifyDelegateAuthorization($userId, $delegateEmpId);
+            if (!$delegateAuthCheck['authorized']) {
+                return ['success' => false, 'message' => 'Access denied: You are not authorized to select this delegate.'];
+            }
 
-        // Availability check: a delegate can act for only ONE colleague at a
-        // time, so refuse the application up front if this person is already
-        // committed across the requested window.
-        //
-        // Enforcing here as well as at approval time is deliberate. The
-        // approval-time guard (DelegationService::createFromApprovedLeave) is
-        // the hard boundary, but by then the leave is already approved and
-        // balances are deducted — telling the applicant afterwards would leave
-        // them on leave with nobody covering. Rejecting at submission lets them
-        // simply nominate somebody else.
-        $availability = $this->checkDelegateAvailability($delegateEmpId, $startDate, $endDate);
-        if (!$availability['available']) {
-            return ['success' => false, 'message' => $availability['message']];
+            // Availability check: a delegate can act for only ONE colleague at a
+            // time, so refuse the application up front if this person is already
+            // committed across the requested window.
+            //
+            // Enforcing here as well as at approval time is deliberate. The
+            // approval-time guard (DelegationService::createFromApprovedLeave) is
+            // the hard boundary, but by then the leave is already approved and
+            // balances are deducted — telling the applicant afterwards would leave
+            // them on leave with nobody covering. Rejecting at submission lets them
+            // simply nominate somebody else.
+            $availability = $this->checkDelegateAvailability($delegateEmpId, $startDate, $endDate);
+            if (!$availability['available']) {
+                return ['success' => false, 'message' => $availability['message']];
+            }
         }
 
         $leaveType = $this->getLeaveType($leaveTypeId);
@@ -212,9 +223,12 @@ class LeaveApplicationService
             // Log history
             $this->logHistory($applicationId, $userId, $initialStatus, $eligibleDays);
 
-            // Notify delegate about the assignment
-            $delegateService = new DelegateService();
-            $delegateService->notifyDelegate($applicationId, $delegateEmpId, $userId);
+            // Notify delegate about the assignment (Annual Leave only — other
+            // types carry no delegate).
+            if ($delegateEmpId > 0) {
+                $delegateService = new DelegateService();
+                $delegateService->notifyDelegate($applicationId, $delegateEmpId, $userId);
+            }
 
             $this->db->commit();
 
