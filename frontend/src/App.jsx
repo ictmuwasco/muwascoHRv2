@@ -65,9 +65,9 @@ const LeaveReports = lazy(() => import('./pages/reports/LeaveReports'));
 const AppraisalReport = lazy(() => import('./pages/reports/AppraisalReport'));
 const StrategicPlan = lazy(() => import('./pages/strategic-plan/StrategicPlan'));
 
-// Lazy loaded - HR Policy & Procedures module
-const HrPolicies = lazy(() => import('./pages/hr-policies/HrPolicyReader'));
-const HrPolicyAdmin = lazy(() => import('./pages/settings/HrPolicies'));
+// Lazy loaded - HR Policy & Procedures module (TEMP-DISABLED: routes hidden — uncomment to restore)
+// const HrPolicies = lazy(() => import('./pages/hr-policies/HrPolicyReader'));
+// const HrPolicyAdmin = lazy(() => import('./pages/settings/HrPolicies'));
 
 // Lazy loaded - Strategy & Performance pages
 const PerformanceContracts = lazy(() => import('./pages/strategy/PerformanceContracts'));
@@ -97,7 +97,7 @@ const CompletedAppraisals = lazy(() => import('./pages/appraisal/CompletedApprai
 import SettingsLayout, { SettingsIndexRedirect } from './components/settings/SettingsLayout';
 import SettingsProfileTab from './components/settings/SettingsProfileTab';
 import SettingsNotificationsTab from './components/settings/SettingsNotificationsTab';
-import SettingsSecurityTab from './components/settings/SettingsSecurityTab';
+// import SettingsSecurityTab from './components/settings/SettingsSecurityTab';
 import SettingsUsersTab from './components/settings/SettingsUsersTab';
 import SettingsPermissionsTab from './components/settings/SettingsPermissionsTab';
 
@@ -690,6 +690,7 @@ function App() {
               }
             />
 
+            {/* TEMP-DISABLED: HR Policies reader route hidden — uncomment to restore.
             <Route
               path="hr/policies"
               element={
@@ -709,7 +710,7 @@ function App() {
                   </Suspense>
                 </Guarded>
               }
-            />
+            /> */}
 
             <Route
               path="settings"
@@ -736,6 +737,7 @@ function App() {
                   </Guarded>
                 }
               />
+              {/* TEMP-DISABLED: Security tab hidden — uncomment route to restore.
               <Route
                 path="security"
                 element={
@@ -743,7 +745,7 @@ function App() {
                     <SettingsSecurityTab />
                   </Guarded>
                 }
-              />
+              /> */}
               <Route
                 path="audit"
                 element={
@@ -784,6 +786,7 @@ function App() {
                   </Guarded>
                 }
               />
+              {/* TEMP-DISABLED: HR Policies admin tab hidden — uncomment route to restore.
               <Route
                 path="hr-policies"
                 element={
@@ -793,7 +796,7 @@ function App() {
                     </Suspense>
                   </Guarded>
                 }
-              />
+              /> */}
             </Route>
           </Route>
 

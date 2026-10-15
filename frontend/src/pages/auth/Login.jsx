@@ -52,11 +52,11 @@ const Login = () => {
       ? 'Please enter a valid email address'
       : '';
   // Inline hint only — length is enforced on submit via freshPasswordError
-  // below. An 8-char minimum on LOGIN would lock out real users with older
-  // short passwords; the server (password_verify) is authoritative.
+  // below. A 3-char minimum on LOGIN restores the legacy behaviour; the
+  // server (password_verify) is authoritative.
   const passwordError =
-    touched.password && password.length > 0 && password.length < 8
-      ? 'Password must be at least 8 characters'
+    touched.password && password.length > 0 && password.length < 3
+      ? 'Password must be at least 3 characters'
       : '';
   const emptyPasswordError = touched.password && !password ? 'Please enter your password' : '';
 
@@ -72,11 +72,11 @@ const Login = () => {
     const freshEmailError = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
       ? 'Please enter a valid email address'
       : '';
-    // Login must accept ANY non-empty password: length is a signup/reset
-    // rule, not a login rule. Blocking <8 chars here only stops real users
-    // with old/short passwords from signing in — the server is authoritative.
+    // Login accepts short legacy passwords (3-char minimum, as before):
+    // length is a signup/reset rule, not a login rule. The server is
+    // authoritative via password_verify.
     const freshPasswordError =
-      !password || password.length < 8 ? 'Password must be at least 8 characters' : '';
+      !password || password.length < 3 ? 'Password must be at least 3 characters' : '';
 
     if (freshEmailError || freshPasswordError) {
       setError(freshEmailError || freshPasswordError);
