@@ -325,8 +325,9 @@ const Dashboard = () => {
   // permissions array has been refreshed from /auth/user on login.
   const showMyPending = can('leave', 'approve') || hasRole(SUPERVISOR_ROLES);
 
-  // HR Policy & Procedures Manual dashboard card (§3)
-  const [currentPolicy, setCurrentPolicy] = useState<CurrentPolicyResponse['policy']>(null);
+  // TEMP-DISABLED: HR Policy card hidden — state unused while card is commented.
+  // const [currentPolicy, setCurrentPolicy] = useState<CurrentPolicyResponse['policy']>(null);
+  const [, setCurrentPolicy] = useState<CurrentPolicyResponse['policy']>(null);
 
   // HR Insights widget + the org-wide analytics charts (Attendance, Leave,
   // Department, Employee statistics) are HR-restricted surfaces - only
@@ -1286,7 +1287,7 @@ const Dashboard = () => {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-        {/* HR Policy & Procedures Manual card (§3) — visible to all employees */}
+        {/* TEMP-DISABLED: HR Policy & Procedures Manual card hidden — uncomment to restore.
         <Card>
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <div className="flex items-start space-x-4 min-w-0">
@@ -1322,6 +1323,7 @@ const Dashboard = () => {
             </Button>
           </div>
         </Card>
+        */}
 
         <Card>
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
