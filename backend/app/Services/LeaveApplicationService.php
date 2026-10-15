@@ -254,9 +254,16 @@ class LeaveApplicationService
             ];
         } catch (\Exception $e) {
             $this->db->rollback();
+            // Log the full exception detail (class, file:line, trace) — the
+            // HTTP response stays generic, but the server log must be able to
+            // show WHAT failed (a bare message made a production FK violation
+            // indistinguishable from a balance problem for days).
             \logger()->error('Leave application submission failed', [
                 'employee_id' => $data['employee_id'] ?? null,
                 'error' => $e->getMessage(),
+                'exception' => get_class($e),
+                'location' => $e->getFile() . ':' . $e->getLine(),
+                'trace' => $e->getTraceAsString(),
             ]);
             return ['success' => false, 'message' => 'Unable to submit your leave application. Please try again.'];
         }
@@ -287,6 +294,15 @@ class LeaveApplicationService
         // MD snapshot so pending_managing_director rows (dept_head / hr_manager
         // self-leave) resolve a name instead of "Not Assigned".
         $mdEmpId = $managers['md_emp_id'] ?? null;
+        // Types other than Annual Leave carry NO delegate. The column is
+        // INT NULL with a foreign key to employees(id) (migrations 012 /
+        // baseline), so the integer sentinel 0 MUST be converted to SQL NULL
+        // here: binding 0 raises "Cannot add or update a child row: a foreign
+        // key constraint fails" (errno 1452), which the catch block above
+        // turned into the generic 400 "Unable to submit your leave
+        // application" for every non-Annual submission (Error Group seen on
+        // production right after the annual-only delegate change deployed).
+        $delegateBind = $delegateEmpId > 0 ? $delegateEmpId : null;
 
         $stmt->bind_param(
             'iiississiiiiiiii',
@@ -302,7 +318,7 @@ class LeaveApplicationService
             $sectionHeadEmpId,
             $deptHeadEmpId,
             $mdEmpId,
-            $delegateEmpId,
+            $delegateBind,
             $primaryDays,
             $annualDays,
             $userId
