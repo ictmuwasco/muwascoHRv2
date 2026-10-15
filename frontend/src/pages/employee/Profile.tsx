@@ -256,11 +256,17 @@ const Profile = () => {
       // Force image refresh with cache-busting
       setProfileImage(`${API_BASE}/profile/profile-image?t=${Date.now()}`);
     } catch (err: any) {
-      setError(
-        err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          'Failed to upload profile picture',
-      );
+      // The API failure envelope is { message, error: { code, ... } } — the
+      // `error` key is an OBJECT, so passing it straight into setError()
+      // crashes the render with minified React error #31 (objects are not
+      // valid children). Always reduce to the string message.
+      const apiError = err?.response?.data?.error;
+      const message =
+        (typeof apiError === 'string' && apiError) ||
+        err?.response?.data?.message ||
+        (err?.message as string) ||
+        'Failed to upload profile picture';
+      setError(message);
       console.error('Failed to upload profile picture:', err);
     } finally {
       setProfileImageUploading(false);

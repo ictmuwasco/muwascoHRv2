@@ -1194,8 +1194,16 @@ class EmployeeController extends BaseController
      */
     private function handleProfileImageUpload(int $employeeId): void
     {
-        if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-            $this->error('Please select a valid image file to upload', 400);
+        // PHP-level upload failures (size over upload_max_filesize/post_max_size,
+        // partial write, no tmp dir) arrive here — NOT as a valid file. Report
+        // the concrete UPLOAD_ERR_* cause so production 400s are diagnosable
+        // instead of the generic "select a valid image" message.
+        if (!isset($_FILES['file'])) {
+            $this->error('No file received. The upload may have exceeded the server limit — try a smaller image.', 400, 'NO_FILE');
+            return;
+        }
+        if (($_FILES['file']['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            $this->error($this->uploadErrorMessage((int) $_FILES['file']['error']), 400, 'UPLOAD_ERROR');
             return;
         }
 
@@ -1371,6 +1379,26 @@ class EmployeeController extends BaseController
             \logger()->error('Employee profile image stream error', ['error' => $e->getMessage(), 'id' => $id]);
             $this->error('Failed to load profile picture. Please try again.', 500);
         }
+    }
+
+    /**
+     * Human-readable message for a PHP file-upload error code, including the
+     * configured server limits so the employee knows what to do next.
+     */
+    private function uploadErrorMessage(int $code): string
+    {
+        $maxUpload = ini_get('upload_max_filesize') ?: 'unknown';
+        $maxPost = ini_get('post_max_size') ?: 'unknown';
+        return match ($code) {
+            UPLOAD_ERR_INI_SIZE => "Image exceeds the server upload limit ({$maxUpload}). Please use a smaller image.",
+            UPLOAD_ERR_FORM_SIZE => 'Image exceeds the form upload limit. Please use a smaller image.',
+            UPLOAD_ERR_PARTIAL => 'Upload was interrupted. Please try again.',
+            UPLOAD_ERR_NO_FILE => 'Please select a valid image file to upload',
+            UPLOAD_ERR_NO_TMP_DIR => 'Server upload folder is misconfigured. Please contact your administrator.',
+            UPLOAD_ERR_CANT_WRITE => 'Server could not save the image. Please try again.',
+            UPLOAD_ERR_EXTENSION => 'Upload blocked by a server extension. Please try a different image.',
+            default => "Upload failed (code {$code}). Server limits: upload {$maxUpload}, post {$maxPost}. Try a smaller image.",
+        };
     }
 
     /**
