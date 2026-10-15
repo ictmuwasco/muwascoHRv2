@@ -314,20 +314,9 @@ class AttendanceClockService
                     ],
                 ];
             }
-            \logger()->error('Clock-in failed', [
-                'employee_id' => $employeeDbId,
-                'error' => $e->getMessage(),
-            ]);
-            $this->audit(
-                $request,
-                $office,
-                $geo,
-                AuditService::ACTION_CLOCK_IN,
-                AuditService::STATUS_FAILED,
-                'Clock-in failed: ' . $e->getMessage(),
-                ['target_type' => 'Attendance', 'metadata' => ['error' => $e->getMessage()]]
-            );
-            throw new \RuntimeException('Failed to record your clock-in. Please try again.');
+            // Failure tail: full exception context + server-truth recovery —
+            // see failClockIn(). A duplicate key (1062) was handled above.
+            return $this->failClockIn($e, $employeeDbId, $today, $now, $request, $office, $geo);
         } catch (DeviceLockedException $e) {
             // MUST be re-thrown verbatim. The catch-all \Throwable below would
             // otherwise convert this business-rule denial into an opaque 500,
@@ -340,20 +329,9 @@ class AttendanceClockService
             if ($inTransaction) {
                 $this->safeRollback();
             }
-            \logger()->error('Clock-in failed', [
-                'employee_id' => $employeeDbId,
-                'error' => $e->getMessage(),
-            ]);
-            $this->audit(
-                $request,
-                $office,
-                $geo,
-                AuditService::ACTION_CLOCK_IN,
-                AuditService::STATUS_FAILED,
-                'Clock-in failed: ' . $e->getMessage(),
-                ['target_type' => 'Attendance', 'metadata' => ['error' => $e->getMessage()]]
-            );
-            throw new \RuntimeException('Failed to record your clock-in. Please try again.');
+            // Failure tail: full exception context + server-truth recovery —
+            // see failClockIn().
+            return $this->failClockIn($e, $employeeDbId, $today, $now, $request, $office, $geo);
         }
     }
 
@@ -465,15 +443,27 @@ class AttendanceClockService
             $request['ip_address'] ?? null
         );
 
-        $this->audit(
-            $request,
-            $office,
-            $geo,
-            AuditService::ACTION_CLOCK_OUT,
-            AuditService::STATUS_SUCCESS,
-            'Employee clock-out recorded',
-            ['target_type' => 'Attendance', 'target_id' => (int) $session['id']]
-        );
+        // Post-update work must NEVER convert a durable clock-out into a
+        // 500: the UPDATE already applied (autocommit), so an audit failure
+        // here previously surfaced as "Failed to record your clock-out"
+        // while a refresh proved the employee was clocked out.
+        try {
+            $this->audit(
+                $request,
+                $office,
+                $geo,
+                AuditService::ACTION_CLOCK_OUT,
+                AuditService::STATUS_SUCCESS,
+                'Employee clock-out recorded',
+                ['target_type' => 'Attendance', 'target_id' => (int) $session['id']]
+            );
+        } catch (\Throwable $auditError) {
+            \logger()->error('Clock-out audit write failed (clock-out itself applied)', [
+                'employee_id' => $employeeDbId,
+                'attendance_id' => (int) $session['id'],
+                'error' => $auditError->getMessage(),
+            ]);
+        }
 
         return [
             'outcome' => 'created',
@@ -587,14 +577,22 @@ class AttendanceClockService
      *
      * @param array<string,mixed> $office
      * @param array{has_coordinates:bool, latitude:?float, longitude:?float, accuracy:?float} $geoInput
-     * @return array{within:bool, distance:float|null, allowed_radius:float, has_coordinates:bool}
+     * @return array{within:bool, distance:float|null, allowed_radius:float,
+     *               has_coordinates:bool, latitude:float|null, longitude:float|null}
      */
     public function evaluateGeofence(array $office, array $geoInput): array
     {
         $allowedRadius = (float) ($office['geo_fence_radius'] ?? self::DEFAULT_RADIUS_METERS);
 
         if (!$geoInput['has_coordinates']) {
-            return ['within' => true, 'distance' => null, 'allowed_radius' => $allowedRadius, 'has_coordinates' => false];
+            return [
+                'within' => true,
+                'distance' => null,
+                'allowed_radius' => $allowedRadius,
+                'has_coordinates' => false,
+                'latitude' => null,
+                'longitude' => null,
+            ];
         }
 
         $radiusCheck = GeoLocation::isWithinRadius(
@@ -611,6 +609,11 @@ class AttendanceClockService
             'distance' => $radiusCheck['distance'],
             'allowed_radius' => $allowedRadius,
             'has_coordinates' => true,
+            // The measured coordinates ride along so audit() can record where
+            // the attempt happened — the keys were previously missing, which
+            // made every audit() call with GPS coords trip the error handler.
+            'latitude' => (float) $geoInput['latitude'],
+            'longitude' => (float) $geoInput['longitude'],
         ];
     }
 
@@ -682,13 +685,138 @@ class AttendanceClockService
                 'employee_id' => $request['employee_db_id'] ?? null,
                 'office_id' => (int) ($request['office_id'] ?? 0) ?: null,
                 'office_name' => $office['name'] ?? null,
-                'latitude' => $geo['has_coordinates'] ? $geo['latitude'] : null,
-                'longitude' => $geo['has_coordinates'] ? $geo['longitude'] : null,
+                // ?? null guards: a missing key here would raise a warning,
+                // which bootstrap converts to ErrorException — turning a
+                // routine audit entry into a failed/absent request.
+                'latitude' => $geo['has_coordinates'] ? ($geo['latitude'] ?? null) : null,
+                'longitude' => $geo['has_coordinates'] ? ($geo['longitude'] ?? null) : null,
                 'location_source' => $geo['has_coordinates'] ? 'GPS' : 'UNVERIFIED',
                 'ip_address' => $request['ip_address'] ?? null,
                 'channel' => $request['channel'] ?? 'WEB',
             ], $extra)
         );
+    }
+
+    /**
+     * Shared tail for the two failure paths in clockIn().
+     *
+     * Logs the failure with full exception context (class / file:line /
+     * trace, so production incidents are diagnosable from the log alone)
+     * and then consults server truth BEFORE declaring failure: when the
+     * exception fired at or after COMMIT (mysqli can throw from commit()
+     * itself, and the rollback then no-ops), today's row is already durable
+     * — answering the generic 500 in that state is what produced the false
+     * "Failed to record your clock-in" that a manual refresh contradicted.
+     *
+     * @param array<string,mixed> $e         failure being reported
+     * @param int                 $employeeDbId employees.id
+     * @param string              $today     Y-m-d business date
+     * @param string              $now       request-generated timestamp
+     * @param array<string,mixed> $request   clock request context
+     * @param array<string,mixed> $office    resolved office row
+     * @param array<string,mixed> $geo       geofence evaluation
+     * @return array{outcome:'idempotent', payload:array<string,mixed>} recovered success
+     * @throws \RuntimeException when no row exists — a genuine persistence failure
+     */
+    private function failClockIn(
+        \Throwable $e,
+        int $employeeDbId,
+        string $today,
+        string $now,
+        array $request,
+        array $office,
+        array $geo
+    ): array {
+        \logger()->error('Clock-in failed', [
+            'employee_id' => $employeeDbId,
+            'exception' => get_class($e),
+            'location' => $e->getFile() . ':' . $e->getLine(),
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        $recovered = $this->recoverClockInPayload($employeeDbId, $today, $now, $geo);
+        if ($recovered !== null) {
+            \logger()->warning('Clock-in recovered: row is durable despite the reported failure', [
+                'employee_id' => $employeeDbId,
+                'attendance_id' => $recovered['payload']['record']['id'] ?? null,
+            ]);
+            try {
+                $this->audit(
+                    $request,
+                    $office,
+                    $geo,
+                    AuditService::ACTION_CLOCK_IN,
+                    AuditService::STATUS_SUCCESS,
+                    'Clock-in recovered: row committed despite a downstream error',
+                    [
+                        'target_type' => 'Attendance',
+                        'target_id' => (int) ($recovered['payload']['record']['id'] ?? 0),
+                    ]
+                );
+            } catch (\Throwable $auditError) {
+                \logger()->error('Clock-in recovery audit write failed (clock-in itself committed)', [
+                    'employee_id' => $employeeDbId,
+                    'error' => $auditError->getMessage(),
+                ]);
+            }
+            return $recovered;
+        }
+
+        $this->audit(
+            $request,
+            $office,
+            $geo,
+            AuditService::ACTION_CLOCK_IN,
+            AuditService::STATUS_FAILED,
+            'Clock-in failed: ' . $e->getMessage(),
+            ['target_type' => 'Attendance', 'metadata' => ['error' => $e->getMessage()]]
+        );
+        throw new \RuntimeException('Failed to record your clock-in. Please try again.');
+    }
+
+    /**
+     * Authoritative truth check used after a failed clock-in attempt.
+     *
+     * @param int                 $employeeDbId employees.id
+     * @param string              $today     Y-m-d business date
+     * @param string              $now       request-generated timestamp
+     * @param array<string,mixed> $geo       geofence evaluation
+     * @return array{outcome:'idempotent', payload:array<string,mixed>}|null
+     *         success payload when today's row exists; null when it does not
+     *         (a genuine failure) or the check itself cannot run.
+     */
+    private function recoverClockInPayload(int $employeeDbId, string $today, string $now, array $geo): ?array
+    {
+        try {
+            $ref = $this->findTodayRecord($employeeDbId, $today);
+        } catch (\Throwable $ignored) {
+            return null;
+        }
+        if (!$ref) {
+            return null;
+        }
+
+        // The timestamp matching this request's $now means the row was
+        // written by THIS attempt; otherwise a concurrent/idempotent record
+        // already answered for the employee.
+        $isThisAttempt = (string) ($ref['clock_in'] ?? '') === $now;
+
+        return [
+            'outcome' => 'idempotent',
+            'payload' => [
+                'success' => true,
+                'message' => $isThisAttempt
+                    ? 'Clock In successful.'
+                    : 'You have already clocked in today.',
+                'clock_in' => $ref['clock_in'] ?? $now,
+                'is_late' => (bool) ($ref['is_late'] ?? 0),
+                'distance' => $geo['distance'] ?? null,
+                'record' => $ref,
+                'idempotent' => !$isThisAttempt,
+                'recovered' => true,
+            ],
+        ];
     }
 
     private function safeRollback(): void

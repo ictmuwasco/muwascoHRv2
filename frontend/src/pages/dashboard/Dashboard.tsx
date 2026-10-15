@@ -516,27 +516,69 @@ const Dashboard = () => {
   };
 
   /**
-   * Re-read the authoritative attendance state. Returns true when the
-   * employee is clocked in (the earlier POST committed server-side even
-   * though its response reported failure), and syncs the card state.
+   * Success text built from SERVER truth, including the recorded time.
+   * Used for both the normal success response and the recovery path so the
+   * employee always sees when their attendance was actually written.
    */
-  const confirmClockInState = async (): Promise<boolean> => {
-    try {
-      const res = await api.get('/attendance/dashboard');
-      // Narrow the untyped envelope to the known dashboard shape before
-      // touching its fields — response.data is `any`, so an un-narrowed
-      // access trips TS2339/TS2345 under strict typecheck.
-      const raw: unknown = res.data?.data;
-      if (!raw || typeof raw !== 'object') return false;
-      const data = raw as AttendanceData;
-      if (data.is_clocked_in || data.current_session) {
-        setAttendanceData(data);
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
+  const clockedSuccessMessage = (
+    action: 'clock-in' | 'clock-out',
+    data: AttendanceData,
+  ): string => {
+    const recordedAt =
+      action === 'clock-in'
+        ? (data.current_session?.clock_in ?? data.today_record?.clock_in)
+        : data.today_record?.clock_out;
+    const time =
+      typeof recordedAt === 'string' && recordedAt.length >= 16 ? recordedAt.slice(11, 16) : null;
+    if (action === 'clock-in') {
+      return time ? `Clocked in successfully at ${time}.` : 'Clocked in successfully.';
     }
+    return time ? `Clocked out successfully at ${time}.` : 'Clocked out successfully.';
+  };
+
+  /**
+   * Re-read the authoritative attendance state after a non-definitive
+   * failure (500 / timeout / network). The earlier POST may have committed
+   * server-side even though its response reported failure, so this returns
+   * the synced payload when the requested action IS in effect — and, because
+   * a failure response can race the commit's visibility on the very next
+   * read, re-checks once after a short delay before giving up.
+   */
+  const confirmClockState = async (
+    action: 'clock-in' | 'clock-out',
+  ): Promise<AttendanceData | null> => {
+    const readState = async (): Promise<AttendanceData | null> => {
+      try {
+        const res = await api.get('/attendance/dashboard');
+        // Narrow the untyped envelope to the known dashboard shape before
+        // touching its fields — response.data is `any`, so an un-narrowed
+        // access trips TS2339/TS2345 under strict typecheck.
+        const raw: unknown = res.data?.data;
+        if (!raw || typeof raw !== 'object') return null;
+        const data = raw as AttendanceData;
+        const inEffect =
+          action === 'clock-in'
+            ? !!(data.is_clocked_in || data.current_session)
+            : !!(
+                data.has_clocked_in_today &&
+                (data.today_record?.clock_out || data.today_record?.status === 'clocked_out')
+              );
+        if (inEffect) {
+          // Sync the card from server truth so the button/status flip
+          // immediately instead of waiting for a manual refresh.
+          setAttendanceData(data);
+          return data;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const first = await readState();
+    if (first) return first;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    return readState();
   };
 
   /**
@@ -590,10 +632,20 @@ const Dashboard = () => {
       );
 
       if (response.data.success) {
-        setActionMessage(
+        // Real server message, plus the server-recorded time when the
+        // payload carries it — so success is specific, not generic.
+        const baseMessage =
           response.data.message ||
-            (action === 'clock-in' ? 'Clocked in successfully.' : 'Clocked out successfully.'),
-        );
+          (action === 'clock-in' ? 'Clocked in successfully.' : 'Clocked out successfully.');
+        // Raw clock payload (not part of ApiResponse<T>): clock_in for the
+        // clock-in branch, clock_out for clock-out.
+        const payload = response.data as { clock_in?: unknown; clock_out?: unknown };
+        const recordedAt: unknown = action === 'clock-in' ? payload.clock_in : payload.clock_out;
+        const time =
+          typeof recordedAt === 'string' && recordedAt.length >= 16
+            ? recordedAt.slice(11, 16)
+            : null;
+        setActionMessage(time ? `${baseMessage} Recorded at ${time}.` : baseMessage);
         fetchAttendanceDashboard();
         // HR-restricted analytics feed — only hr_manager / managing_director /
         // super_admin consume /dashboard/stats (see fetchAnalytics).
@@ -635,17 +687,24 @@ const Dashboard = () => {
         // Non-definitive failure (500 / timeout / network): the row may have
         // committed server-side while the response was lost (the production
         // "Failed to record your clock-in" that vanishes on refresh). Re-read
-        // authoritative state before showing an error — if the employee IS
-        // clocked in, report success and sync the card instead of lying.
-        if (action === 'clock-in' && isRetryableClockError(error, resp)) {
-          const confirmed = await confirmClockInState();
+        // authoritative state before showing an error — if the action IS in
+        // effect, report success with the server-recorded time and sync the
+        // card instead of lying.
+        if (isRetryableClockError(error, resp)) {
+          setActionMessage(
+            action === 'clock-in'
+              ? 'Confirming your clock-in with the server…'
+              : 'Confirming your clock-out with the server…',
+          );
+          const confirmed = await confirmClockState(action);
           if (confirmed) {
-            setActionMessage('Clocked in successfully.');
+            setActionMessage(clockedSuccessMessage(action, confirmed));
             if (can('dashboard', 'hr_insights')) {
               fetchStats();
             }
             return;
           }
+          setActionMessage('');
         }
         setLocationError(getErrorMessage(error));
       }
