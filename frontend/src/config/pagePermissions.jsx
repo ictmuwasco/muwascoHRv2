@@ -120,7 +120,8 @@ export const PAGE_PERMISSIONS = {
   '/settings': { id: 'settings', permission: 'settings:view' },
   '/settings/profile': { id: 'settings_profile', permission: 'settings:profile' },
   '/settings/notifications': { id: 'settings_notifications', permission: 'settings:notifications' },
-  '/settings/security': { id: 'settings_security', permission: 'settings:security' },
+  // TEMP-DISABLED: Security settings route hidden — uncomment to restore.
+  // '/settings/security': { id: 'settings_security', permission: 'settings:security' },
   '/settings/audit': { id: 'settings_audit', permission: 'settings:audit' },
   '/settings/users': { id: 'settings_users', permission: 'settings:users' },
   '/settings/permissions': { id: 'settings_permissions', permission: 'settings:permissions' },
@@ -130,8 +131,8 @@ export const PAGE_PERMISSIONS = {
   '/hr/policies': { id: 'hr_policies', permission: 'hr_policies:view' },
   '/hr/policies/sections/:id': { id: 'hr_policies', permission: 'hr_policies:view' },
 
-  // --- Settings: HR Policy administration (Phase 8) ----------------------------------
-  '/settings/hr-policies': { id: 'hr_policies_admin', permission: 'hr_policies:manage' },
+  // TEMP-DISABLED: HR Policies admin settings route hidden — uncomment to restore.
+  // '/settings/hr-policies': { id: 'hr_policies_admin', permission: 'hr_policies:manage' },
   '/settings/hr-policies/:id/history': {
     id: 'hr_policies_admin',
     permission: 'hr_policies:manage',
@@ -155,13 +156,16 @@ export const SETTINGS_TABS = [
     permission: 'settings:notifications',
     selfService: true,
   },
-  { id: 'security', name: 'Security', permission: 'settings:security', selfService: true },
+  // TEMP-DISABLED: Security tab hidden (commented so it can't be navigated
+  // via tab or URL). Uncomment to restore.
+  // { id: 'security', name: 'Security', permission: 'settings:security', selfService: true },
   { id: 'audit', name: 'Audit', permission: 'settings:audit' },
   { id: 'users', name: 'Users', permission: 'settings:users' },
   { id: 'permissions', name: 'Permissions', permission: 'settings:permissions' },
   { id: 'monitoring', name: 'System Monitor', permission: 'settings:monitoring' },
-  // HR Policy & Procedures manual administration (Phase 8 §8).
-  { id: 'hr-policies', name: 'HR Policies', permission: 'hr_policies:manage' },
+  // TEMP-DISABLED: HR Policies admin tab hidden (commented so it can't be
+  // navigated via tab or URL). Uncomment to restore.
+  // { id: 'hr-policies', name: 'HR Policies', permission: 'hr_policies:manage' },
 ];
 
 /**

@@ -97,7 +97,7 @@ const CompletedAppraisals = lazy(() => import('./pages/appraisal/CompletedApprai
 import SettingsLayout, { SettingsIndexRedirect } from './components/settings/SettingsLayout';
 import SettingsProfileTab from './components/settings/SettingsProfileTab';
 import SettingsNotificationsTab from './components/settings/SettingsNotificationsTab';
-import SettingsSecurityTab from './components/settings/SettingsSecurityTab';
+// import SettingsSecurityTab from './components/settings/SettingsSecurityTab';
 import SettingsUsersTab from './components/settings/SettingsUsersTab';
 import SettingsPermissionsTab from './components/settings/SettingsPermissionsTab';
 
@@ -690,6 +690,7 @@ function App() {
               }
             />
 
+            {/* TEMP-DISABLED: HR Policies reader route hidden — uncomment to restore.
             <Route
               path="hr/policies"
               element={
@@ -709,7 +710,7 @@ function App() {
                   </Suspense>
                 </Guarded>
               }
-            />
+            /> */}
 
             <Route
               path="settings"
@@ -736,6 +737,7 @@ function App() {
                   </Guarded>
                 }
               />
+              {/* TEMP-DISABLED: Security tab hidden — uncomment route to restore.
               <Route
                 path="security"
                 element={
@@ -743,7 +745,7 @@ function App() {
                     <SettingsSecurityTab />
                   </Guarded>
                 }
-              />
+              /> */}
               <Route
                 path="audit"
                 element={
@@ -784,6 +786,7 @@ function App() {
                   </Guarded>
                 }
               />
+              {/* TEMP-DISABLED: HR Policies admin tab hidden — uncomment route to restore.
               <Route
                 path="hr-policies"
                 element={
@@ -793,7 +796,7 @@ function App() {
                     </Suspense>
                   </Guarded>
                 }
-              />
+              /> */}
             </Route>
           </Route>
 
