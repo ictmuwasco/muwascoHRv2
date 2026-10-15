@@ -222,18 +222,52 @@ class AttendanceClockService
             }
 
             $attendanceId = $this->insertClockIn($record);
-            $db->commit();
+            $committed = $db->commit();
+            // A failed COMMIT is indistinguishable from a lost success without
+            // an explicit check: mysqli::commit() returns false (rather than
+            // throwing) when the commit itself cannot complete, and the row
+            // would then be neither durable nor reported. Treat it as a real
+            // persistence failure instead of falling through to the audit +
+            // success payload below, which would lie to the employee.
+            if ($committed === false) {
+                $this->safeRollback();
+                $this->audit(
+                    $request,
+                    $office,
+                    $geo,
+                    AuditService::ACTION_CLOCK_IN,
+                    AuditService::STATUS_FAILED,
+                    'Clock-in failed: database commit did not complete',
+                    ['target_type' => 'Attendance']
+                );
+                throw new \RuntimeException('Failed to record your clock-in. Please try again.');
+            }
             $inTransaction = false;
 
-            $this->audit(
-                $request,
-                $office,
-                $geo,
-                AuditService::ACTION_CLOCK_IN,
-                AuditService::STATUS_SUCCESS,
-                'Employee clock-in recorded',
-                ['target_type' => 'Attendance', 'target_id' => (int) $attendanceId]
-            );
+            // Post-commit work must NEVER convert a durable clock-in into a
+            // 500: the row is already committed, so any failure here (audit
+            // insert, request-id header, JSON serialisation) previously surfaced
+            // as "Failed to record your clock-in" while a refresh proved the
+            // employee was clocked in. AuditService::log() already swallows its
+            // own errors, but the call is still wrapped defensively so a future
+            // change to the audit path cannot reintroduce the false failure.
+            try {
+                $this->audit(
+                    $request,
+                    $office,
+                    $geo,
+                    AuditService::ACTION_CLOCK_IN,
+                    AuditService::STATUS_SUCCESS,
+                    'Employee clock-in recorded',
+                    ['target_type' => 'Attendance', 'target_id' => (int) $attendanceId]
+                );
+            } catch (\Throwable $auditError) {
+                \logger()->error('Clock-in audit write failed (clock-in itself committed)', [
+                    'employee_id' => $employeeDbId,
+                    'attendance_id' => (int) $attendanceId,
+                    'error' => $auditError->getMessage(),
+                ]);
+            }
 
             return [
                 'outcome' => 'created',
