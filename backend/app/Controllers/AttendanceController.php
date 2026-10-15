@@ -161,7 +161,30 @@ class AttendanceController extends BaseController
             $this->error($e->getMessage(), 400);
             return;
         } catch (\Throwable $e) {
-            \logger()->error('Clock-in request failed', ['error' => $e->getMessage()]);
+            \logger()->error('Clock-in request failed', [
+                'employee_id' => (int) ($employee['id'] ?? 0),
+                'exception' => get_class($e),
+                'location' => $e->getFile() . ':' . $e->getLine(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            // Server-truth check: when the failure fired at or after the
+            // commit, today's row IS durable and the generic 500 below would
+            // be the false "Failed to record your clock-in" the employee
+            // only disproved by refreshing. All typed business denials
+            // (geofence / leave / device lock / validation) are caught above,
+            // so an existing row here means the clock-in genuinely happened.
+            $row = $this->todayAttendanceFor((int) $employee['id']);
+            if ($row !== null) {
+                $this->json([
+                    'success' => true,
+                    'message' => 'Clock In successful.',
+                    'clock_in' => $row['clock_in'],
+                    'is_late' => (bool) ($row['is_late'] ?? 0),
+                    'recovered' => true,
+                ]);
+                return;
+            }
             $this->error('Failed to record your clock-in. Please try again.', 500);
             return;
         }
@@ -214,7 +237,27 @@ class AttendanceController extends BaseController
             $this->error($e->getMessage(), 400);
             return;
         } catch (\Throwable $e) {
-            \logger()->error('Clock-out request failed', ['error' => $e->getMessage()]);
+            \logger()->error('Clock-out request failed', [
+                'employee_id' => (int) ($employee['id'] ?? 0),
+                'exception' => get_class($e),
+                'location' => $e->getFile() . ':' . $e->getLine(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            // Mirror of the clock-in truth check: if today's clock-out is
+            // already applied, the update landed before the failure and the
+            // 500 would be a lie. An OPEN session (no clock_out) still means
+            // the clock-out genuinely failed, so that falls through to 500.
+            $row = $this->todayAttendanceFor((int) $employee['id']);
+            if ($row !== null && (!empty($row['clock_out']) || (string) ($row['status'] ?? '') === 'clocked_out')) {
+                $this->json([
+                    'success' => true,
+                    'message' => 'Clock Out successful.',
+                    'clock_out' => $row['clock_out'],
+                    'recovered' => true,
+                ]);
+                return;
+            }
             $this->error('Failed to record your clock-out. Please try again.', 500);
             return;
         }
@@ -802,6 +845,34 @@ class AttendanceController extends BaseController
      *
      * @return array<string,mixed>
      */
+    /**
+     * Today's attendance row for the employee — error-path truth check only.
+     *
+     * Used exclusively by the clock-in / clock-out catch-alls to decide
+     * between a recovered success and the generic 500, never on the happy
+     * path (the service owns idempotency there). Returns null both when no
+     * row exists and when the check itself cannot run, so a broken check can
+     * never mask a genuine failure.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function todayAttendanceFor(int $employeeDbId): ?array
+    {
+        try {
+            $row = \db()->fetchOne(
+                "SELECT a.id, a.clock_in, a.clock_out, a.is_late, a.status
+                 FROM attendance a
+                 WHERE a.employee_id = ? AND DATE(a.clock_in) = ?
+                 ORDER BY a.clock_in DESC LIMIT 1",
+                'is',
+                [$employeeDbId, date('Y-m-d')]
+            );
+        } catch (\Throwable $ignored) {
+            return null;
+        }
+        return $row ?: null;
+    }
+
     private function buildClockRequest(array $data): array
     {
         return [
