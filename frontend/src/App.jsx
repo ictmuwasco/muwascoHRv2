@@ -65,9 +65,9 @@ const LeaveReports = lazy(() => import('./pages/reports/LeaveReports'));
 const AppraisalReport = lazy(() => import('./pages/reports/AppraisalReport'));
 const StrategicPlan = lazy(() => import('./pages/strategic-plan/StrategicPlan'));
 
-// Lazy loaded - HR Policy & Procedures module
-const HrPolicies = lazy(() => import('./pages/hr-policies/HrPolicyReader'));
-const HrPolicyAdmin = lazy(() => import('./pages/settings/HrPolicies'));
+// Lazy loaded - HR Policy & Procedures module (TEMP-DISABLED: routes hidden — uncomment to restore)
+// const HrPolicies = lazy(() => import('./pages/hr-policies/HrPolicyReader'));
+// const HrPolicyAdmin = lazy(() => import('./pages/settings/HrPolicies'));
 
 // Lazy loaded - Strategy & Performance pages
 const PerformanceContracts = lazy(() => import('./pages/strategy/PerformanceContracts'));
