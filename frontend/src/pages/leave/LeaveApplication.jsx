@@ -36,13 +36,18 @@ const LeaveApplication = () => {
   }, []);
 
   useEffect(() => {
-    if (employeeId) {
+    // Delegate candidates only matter for Annual Leave — skip the fetch for
+    // every other type so the picker never appears for them.
+    if (employeeId && requiresDelegate) {
       loadDelegates();
+    }
+    if (!requiresDelegate) {
+      setDelegates([]);
     }
     // Re-fetch when the leave window changes too: delegate availability is
     // date-dependent (someone covering a colleague until Friday is free next
     // month), so the candidate list must be re-evaluated per window.
-  }, [employeeId, startDate, endDate]);
+  }, [employeeId, requiresDelegate, startDate, endDate]);
 
   useEffect(() => {
     if (employeeId) {
@@ -72,6 +77,25 @@ const LeaveApplication = () => {
     [leaveTypes, leaveTypeId],
   );
   const typePolicy = selectedLeaveType?.policy || {};
+
+  // Delegate is required ONLY for Annual Leave. All other leave types submit
+  // without a delegate (the backend enforces the same rule).
+  const requiresDelegate = useMemo(() => {
+    if (!selectedLeaveType) return false;
+    const name = String(
+      selectedLeaveType.leave_type_name || selectedLeaveType.name || '',
+    ).toLowerCase();
+    return name.includes('annual');
+  }, [selectedLeaveType]);
+
+  // When switching away from Annual Leave, drop any previously chosen
+  // delegate so a stale selection can never be submitted with a
+  // non-annual application.
+  useEffect(() => {
+    if (!requiresDelegate && delegateEmpId) {
+      setDelegateEmpId('');
+    }
+  }, [requiresDelegate, delegateEmpId]);
 
   // Backdating (past start dates) is allowed only for the leave types the
   // backend marks as allows_backdate (Sick, Study, Claim-a-Day).
@@ -324,13 +348,24 @@ const LeaveApplication = () => {
       return;
     }
 
+    // Business rule: a delegate is required ONLY for Annual Leave. All other
+    // leave types submit without one.
+    if (requiresDelegate && !delegateEmpId) {
+      setError('A delegate employee is required for Annual Leave.');
+      setLoading(false);
+      return;
+    }
+
     const formData = new FormData();
     formData.append('employee_id', employeeId);
     formData.append('leave_type_id', leaveTypeId);
     formData.append('start_date', startDate);
     formData.append('end_date', endDate);
-    formData.append('delegate_emp_id', delegateEmpId);
-    formData.append('reason', reason);
+    // Reason is optional — send it only when provided (backend accepts empty).
+    if (requiresDelegate) {
+      formData.append('delegate_emp_id', delegateEmpId);
+    }
+    formData.append('reason', reason || '');
     if (document) {
       formData.append('document', document);
     }
@@ -463,47 +498,51 @@ const LeaveApplication = () => {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Delegate *</label>
-              <select
-                value={delegateEmpId}
-                onChange={(e) => setDelegateEmpId(e.target.value)}
-                className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                required
-              >
-                <option value="">Select Delegate</option>
-                {delegates.map((delegate, index) => {
-                  // A delegate may hold only ONE acting assignment at a time.
-                  // Anyone already covering a colleague for this window is
-                  // disabled here so the clash is visible before submitting,
-                  // rather than rejected by the server afterwards.
-                  const unavailable = delegate.is_available === false;
-                  return (
-                    <option
-                      key={`${delegate.id}-${index}`}
-                      value={delegate.id}
-                      disabled={unavailable}
-                    >
-                      {delegate.first_name} {delegate.last_name} ({delegate.employee_id}) -{' '}
-                      {delegate.role}
-                      {unavailable ? ` — unavailable: ${delegate.unavailable_reason}` : ''}
-                    </option>
-                  );
-                })}
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                This person will temporarily take over your duties and approvals while on leave.
-                They gain those pages automatically once the leave is approved, for the leave period
-                only.
-              </p>
-              {delegates.some((d) => d.is_available === false) && (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-300 rounded px-2 py-1 mt-1">
-                  One person can only act for one colleague at a time. Delegates already covering
-                  someone else during these dates are unavailable — please choose another, or pick
-                  dates after their current assignment ends.
+            {/* Delegate picker — Annual Leave ONLY. All other leave types
+                submit without a delegate. */}
+            {requiresDelegate && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Delegate *</label>
+                <select
+                  value={delegateEmpId}
+                  onChange={(e) => setDelegateEmpId(e.target.value)}
+                  className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  required
+                >
+                  <option value="">Select Delegate</option>
+                  {delegates.map((delegate, index) => {
+                    // A delegate may hold only ONE acting assignment at a time.
+                    // Anyone already covering a colleague for this window is
+                    // disabled here so the clash is visible before submitting,
+                    // rather than rejected by the server afterwards.
+                    const unavailable = delegate.is_available === false;
+                    return (
+                      <option
+                        key={`${delegate.id}-${index}`}
+                        value={delegate.id}
+                        disabled={unavailable}
+                      >
+                        {delegate.first_name} {delegate.last_name} ({delegate.employee_id}) -{' '}
+                        {delegate.role}
+                        {unavailable ? ` — unavailable: ${delegate.unavailable_reason}` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  This person will temporarily take over your duties and approvals while on leave.
+                  They gain those pages automatically once the leave is approved, for the leave
+                  period only.
                 </p>
-              )}
-            </div>
+                {delegates.some((d) => d.is_available === false) && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-300 rounded px-2 py-1 mt-1">
+                    One person can only act for one colleague at a time. Delegates already covering
+                    someone else during these dates are unavailable — please choose another, or pick
+                    dates after their current assignment ends.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Supporting Document (requirement owned by the backend policy) */}
@@ -528,13 +567,15 @@ const LeaveApplication = () => {
           )}
 
           <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Reason for Leave</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Reason for Leave <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
+              placeholder="Optionally describe the reason for this leave"
               className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-              required
             />
           </div>
         </Card>

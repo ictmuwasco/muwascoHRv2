@@ -183,8 +183,11 @@ class LeaveController extends BaseController
             'reason'        => $reason,
         ]);
 
-        if (!$delegateEmpId) {
-            \App\Helpers\ApiResponse::error('A delegate employee is required.', 'VALIDATION_ERROR', ['delegate_emp_id' => 'Delegate is required.'], 422);
+        // Business rule: a delegate is required ONLY for Annual Leave. All
+        // other leave types submit without one.
+        $requiresDelegate = ((int) $leaveTypeId) === \App\Services\Leave\LeaveTypePolicy::TYPE_ANNUAL;
+        if ($requiresDelegate && !$delegateEmpId) {
+            \App\Helpers\ApiResponse::error('A delegate employee is required for Annual Leave.', 'VALIDATION_ERROR', ['delegate_emp_id' => 'Delegate is required for Annual Leave.'], 422);
             return;
         }
 
