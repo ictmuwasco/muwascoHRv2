@@ -523,8 +523,13 @@ const Dashboard = () => {
   const confirmClockInState = async (): Promise<boolean> => {
     try {
       const res = await api.get('/attendance/dashboard');
-      const data = res.data?.data;
-      if (data?.is_clocked_in || data?.current_session) {
+      // Narrow the untyped envelope to the known dashboard shape before
+      // touching its fields — response.data is `any`, so an un-narrowed
+      // access trips TS2339/TS2345 under strict typecheck.
+      const raw: unknown = res.data?.data;
+      if (!raw || typeof raw !== 'object') return false;
+      const data = raw as AttendanceData;
+      if (data.is_clocked_in || data.current_session) {
         setAttendanceData(data);
         return true;
       }
