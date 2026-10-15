@@ -381,7 +381,10 @@ const LeaveApplication = () => {
       setSubmitted(true);
       setTimeout(() => navigate('/leave'), 1500);
     } catch (err) {
-      console.error('Submit error:', err);
+      // Log the response body too — a bare Axios/fetch Error prints as
+      // "[object Object]" and tells you nothing about which rule rejected
+      // the submission.
+      console.error('Submit error:', err?.response?.data ?? err);
       setError(err.response?.data?.message || 'Failed to submit application');
     } finally {
       setLoading(false);

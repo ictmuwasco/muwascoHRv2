@@ -312,7 +312,15 @@ const performRequest = async (endpoint, options = {}) => {
         },
       });
     }
-    const message = data.error || data.message || `Request failed with status ${response.status}`;
+    // `error` is a STRING in the legacy envelope ({ error: 'msg' }) but an
+    // OBJECT ({ code, request_id, reference }) in the central ApiResponse
+    // envelope. Coercing the object with || produced
+    // `new Error([object Object])` and hid the real message from every
+    // console/crash report — prefer the string `message` first.
+    const message =
+      data.message ||
+      (typeof data.error === 'string' ? data.error : '') ||
+      `Request failed with status ${response.status}`;
     const error = new Error(message);
     error.response = { data, status: response.status, statusText: response.statusText };
     throw error;
