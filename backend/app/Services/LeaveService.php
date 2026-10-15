@@ -249,12 +249,8 @@ class LeaveService implements LeaveServiceInterface
             $errors[] = 'Start date cannot be after end date';
         }
 
-        // Business rule: Reason is required
-        if (empty($data['reason'])) {
-            $errors[] = 'Reason for leave is required';
-        }
-
-        // Business rule: Reason must be at least 10 characters
+        // Business rule: Reason is optional. When provided it must be at
+        // least 10 characters (legacy guard kept for callers that send one).
         if (!empty($data['reason']) && strlen($data['reason']) < 10) {
             $errors[] = 'Reason must be at least 10 characters';
         }
