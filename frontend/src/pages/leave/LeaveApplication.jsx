@@ -35,6 +35,28 @@ const LeaveApplication = () => {
     loadEmployees();
   }, []);
 
+  // Policy flags for the selected leave type (delivered by the backend).
+  // DECLARED EARLY: the delegate effects below close over selectedLeaveType
+  // / requiresDelegate, and const/let bindings live in the temporal dead
+  // zone until their declaration runs — referencing them from an effect
+  // placed above this point crashes the render with
+  // "Cannot access 'm' before initialization" (minified Error Group #173).
+  const selectedLeaveType = useMemo(
+    () => leaveTypes.find((t) => Number(t.leave_type_id) === Number(leaveTypeId)),
+    [leaveTypes, leaveTypeId],
+  );
+  const typePolicy = selectedLeaveType?.policy || {};
+
+  // Delegate is required ONLY for Annual Leave. All other leave types submit
+  // without a delegate (the backend enforces the same rule).
+  const requiresDelegate = useMemo(() => {
+    if (!selectedLeaveType) return false;
+    const name = String(
+      selectedLeaveType.leave_type_name || selectedLeaveType.name || '',
+    ).toLowerCase();
+    return name.includes('annual');
+  }, [selectedLeaveType]);
+
   useEffect(() => {
     // Delegate candidates only matter for Annual Leave — skip the fetch for
     // every other type so the picker never appears for them.
@@ -48,6 +70,15 @@ const LeaveApplication = () => {
     // date-dependent (someone covering a colleague until Friday is free next
     // month), so the candidate list must be re-evaluated per window.
   }, [employeeId, requiresDelegate, startDate, endDate]);
+
+  // When switching away from Annual Leave, drop any previously chosen
+  // delegate so a stale selection can never be submitted with a
+  // non-annual application.
+  useEffect(() => {
+    if (!requiresDelegate && delegateEmpId) {
+      setDelegateEmpId('');
+    }
+  }, [requiresDelegate, delegateEmpId]);
 
   useEffect(() => {
     if (employeeId) {
@@ -70,32 +101,6 @@ const LeaveApplication = () => {
     const dd = String(d.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   }, []);
-
-  // Policy flags for the selected leave type (delivered by the backend).
-  const selectedLeaveType = useMemo(
-    () => leaveTypes.find((t) => Number(t.leave_type_id) === Number(leaveTypeId)),
-    [leaveTypes, leaveTypeId],
-  );
-  const typePolicy = selectedLeaveType?.policy || {};
-
-  // Delegate is required ONLY for Annual Leave. All other leave types submit
-  // without a delegate (the backend enforces the same rule).
-  const requiresDelegate = useMemo(() => {
-    if (!selectedLeaveType) return false;
-    const name = String(
-      selectedLeaveType.leave_type_name || selectedLeaveType.name || '',
-    ).toLowerCase();
-    return name.includes('annual');
-  }, [selectedLeaveType]);
-
-  // When switching away from Annual Leave, drop any previously chosen
-  // delegate so a stale selection can never be submitted with a
-  // non-annual application.
-  useEffect(() => {
-    if (!requiresDelegate && delegateEmpId) {
-      setDelegateEmpId('');
-    }
-  }, [requiresDelegate, delegateEmpId]);
 
   // Backdating (past start dates) is allowed only for the leave types the
   // backend marks as allows_backdate (Sick, Study, Claim-a-Day).
