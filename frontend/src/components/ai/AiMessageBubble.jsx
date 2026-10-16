@@ -10,7 +10,7 @@ import { Bot, User, ThumbsUp, ThumbsDown, Database, BookOpen, Info } from 'lucid
 
 const SOURCE_ICONS = { data: Database, policy: BookOpen };
 
-const AiMessageBubble = ({ message, feedbackRating = null, onFeedback }) => {
+const AiMessageBubble = ({ message, feedbackRating = undefined, onFeedback }) => {
   if (message.role === 'user') {
     return (
       <div className="flex justify-start" data-role="user">

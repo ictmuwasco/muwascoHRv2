@@ -226,7 +226,7 @@ const HrPolicyReader = () => {
       return;
     }
     const sectionId = parseInt(sectionIdParam, 10);
-    if (isNaN(sectionId)) return;
+    if (Number.isNaN(sectionId)) return;
 
     const loadSection = async () => {
       setSectionLoading(true);
@@ -598,7 +598,6 @@ const HrPolicyReader = () => {
                 className="flex-1 bg-transparent outline-none text-gray-900 dark:text-gray-100"
                 value={searchQuery}
                 onChange={(e) => handleSearch(e.target.value)}
-                autoFocus
               />
               <Button variant="outline" size="sm" onClick={() => setShowSearch(false)}>
                 Close

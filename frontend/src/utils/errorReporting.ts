@@ -28,7 +28,7 @@ function generateRequestId(): string {
   if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
     crypto.getRandomValues(bytes);
   } else {
-    for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256);
+    // crypto unavailable - bytes remain zero-filled (Uint8Array default)
   }
   bytes.forEach((b) => {
     rand += B32[b % 32];
@@ -55,10 +55,16 @@ export function setRequestId(id: string | null | undefined): void {
 
 /** Browser-visible unique id for a single client error report. */
 export function newFrontendErrorId(): string {
-  return `FE-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.random()
-    .toString(36)
-    .slice(2, 8)
-    .toUpperCase()}`;
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  let rand = '';
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint8Array(4);
+    crypto.getRandomValues(bytes);
+    rand = Array.from(bytes, (b) => b.toString(36)).join('');
+  } else {
+    rand = Date.now().toString(36).slice(-6);
+  }
+  return `FE-${datePart}-${rand.toUpperCase()}`;
 }
 
 // ---------------------------------------------------------------------------

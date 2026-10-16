@@ -17,7 +17,7 @@ export const relativeTime = (iso) => {
   // The API returns "Y-m-d H:i:s" in UTC with no zone marker, which Safari
   // refuses to parse. Normalise it, and treat it as UTC because that is what
   // the API stores.
-  const normalised = /Z|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso.replace(' ', 'T')}Z`;
+  const normalised = /Z$|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso.replace(' ', 'T')}Z`;
   const then = new Date(normalised).getTime();
   if (Number.isNaN(then)) return '';
 

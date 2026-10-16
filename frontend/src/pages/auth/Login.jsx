@@ -48,7 +48,7 @@ const Login = () => {
   }, [isAuthenticated, user?.consent_accepted, navigate]);
 
   const emailError =
-    touched.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    touched.email && !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)
       ? 'Please enter a valid email address'
       : '';
   // Inline hint only — length is enforced on submit via freshPasswordError
@@ -69,7 +69,7 @@ const Login = () => {
     // were computed before setTouched took effect, so an untouched short
     // password submits anyway (the production bypass you saw). Recompute
     // from the current values instead of trusting the rendered errors.
-    const freshEmailError = !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    const freshEmailError = !/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email)
       ? 'Please enter a valid email address'
       : '';
     // Login accepts short legacy passwords (3-char minimum, as before):

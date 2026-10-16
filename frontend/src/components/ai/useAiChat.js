@@ -66,7 +66,7 @@ const normalizeHistoryMessage = (raw) => {
   if (!content) return null;
   const role = raw.role === 'user' ? 'user' : 'assistant';
   return {
-    id: raw.id != null ? `srv-${raw.id}` : `srv-${Math.random().toString(36).slice(2)}`,
+    id: raw.id != null ? `srv-${raw.id}` : `srv-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`,
     serverId: raw.id ?? null,
     role,
     content,

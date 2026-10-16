@@ -444,7 +444,7 @@ const MeetingsDashboard = () => {
       if (name && name !== 'Unknown') unique.add(name);
     });
     return Array.from(unique)
-      .sort()
+      .sort((a, b) => a.localeCompare(b))
       .map((name) => ({ value: name, label: name }));
   }, [meetings]);
 
@@ -454,7 +454,7 @@ const MeetingsDashboard = () => {
       if (m.location) unique.add(m.location);
     });
     return Array.from(unique)
-      .sort()
+      .sort((a, b) => a.localeCompare(b))
       .map((loc) => ({ value: loc, label: loc }));
   }, [meetings]);
 
