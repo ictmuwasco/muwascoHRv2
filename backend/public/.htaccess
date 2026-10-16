@@ -88,11 +88,23 @@
 </IfModule>
 
 <IfModule mod_headers.c>
+    # Security headers for every response served from this docroot.
+    # Covers static files (SPA shell, service worker, manifest) served
+    # directly by Apache (never touch PHP/SecurityMiddleware).
+    Header always set X-Frame-Options "DENY"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(self), microphone=(), camera=()"
+    Header always unset X-Powered-By
+    Header always set Strict-Transport-Security "max-age=31536000" env=HTTPS
+
     # The SPA shell names the current hashed bundle: revalidate it always.
     # (Vite's fingerprinted files under /assets get a one-year immutable
     # lifetime from assets/.htaccess.)
     <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest)$">
         Header set Cache-Control "no-cache, must-revalidate"
+        # Same-origin CSP, mirrors SecurityMiddleware::secureCryptoHeaders().
+        Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests;"
     </FilesMatch>
     <FilesMatch "\.(woff2?|ttf|png|jpe?g|gif|svg|webp|ico|avif)$">
         Header append Vary Accept-Encoding

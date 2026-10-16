@@ -33,6 +33,11 @@ declare(strict_types=1);
 
 @ini_set('display_errors', '0');
 
+// Bootstrap so SecurityMiddleware is available for security headers on SPA
+// shell requests (used when DocumentRoot is the repository root).
+require_once __DIR__ . '/backend/bootstrap.php';
+\App\Middleware\SecurityMiddleware::run();
+
 $shell = __DIR__ . '/index.html';
 if (!is_file($shell)) {
     // The frontend has not been built yet (fresh clone, or a failed build).
