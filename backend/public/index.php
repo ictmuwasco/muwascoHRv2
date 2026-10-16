@@ -16,10 +16,14 @@
  */
 @ini_set('display_errors', '0');
 
+// Bootstrap so SecurityMiddleware is available for security headers on SPA
+// shell requests (this file is the production docroot front controller).
+require_once __DIR__ . '/../bootstrap.php';
+\App\Middleware\SecurityMiddleware::run();
+
 $shell = __DIR__ . '/index.html';
 if (is_file($shell)) {
     header('Content-Type: text/html; charset=utf-8');
-    header('X-Content-Type-Options: nosniff');
     readfile($shell);
     exit;
 }
