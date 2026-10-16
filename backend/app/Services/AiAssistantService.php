@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Exceptions\AiAssistantException;
 use App\Repositories\AiConversationRepository;
 use App\Services\AI\AiProviderManager;
 use App\Services\AI\ChatMessage;

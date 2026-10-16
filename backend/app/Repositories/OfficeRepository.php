@@ -6,6 +6,7 @@ namespace App\Repositories;
 
 use App\Repositories\Contracts\OfficeRepositoryInterface;
 use App\Helpers\Database;
+use \InvalidArgumentException;
 
 /**
  * Office Repository
@@ -16,6 +17,11 @@ use App\Helpers\Database;
 class OfficeRepository implements OfficeRepositoryInterface
 {
     private \mysqli $conn;
+
+    /** Columns allowed for INSERT/UPDATE on the offices table (interpolated into SQL). */
+    private const OFFICE_COLUMNS = [
+        'id', 'name', 'address', 'phone', 'email', 'created_at', 'updated_at',
+    ];
 
     public function __construct()
     {
@@ -50,7 +56,10 @@ class OfficeRepository implements OfficeRepositoryInterface
 
     public function create(array $data): int
     {
+        $this->validateWriteColumns($data, 'offices');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -71,7 +80,7 @@ class OfficeRepository implements OfficeRepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO offices (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `offices` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -83,8 +92,15 @@ class OfficeRepository implements OfficeRepositoryInterface
 
     public function update(int $id, array $data): bool
     {
+        if (empty($data)) {
+            return false;
+        }
+
+        $this->validateWriteColumns($data, 'offices');
+
         $fields = array_keys($data);
-        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
+        $setClause = implode(' = ?, ', $quotedFields) . ' = ?';
         $types = '';
         $values = [];
 
@@ -107,7 +123,7 @@ class OfficeRepository implements OfficeRepositoryInterface
         $values[] = $id;
         $types .= 'i';
 
-        $sql = "UPDATE offices SET {$setClause} WHERE id = ?";
+        $sql = "UPDATE `offices` SET {$setClause} WHERE `id` = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $result = $stmt->execute();
@@ -153,6 +169,24 @@ class OfficeRepository implements OfficeRepositoryInterface
         ");
 
         return $result->fetch_all(MYSQLI_ASSOC);
+    }
+
+    /**
+     * Validate that every column name in $data is a whitelisted, safe identifier
+     * for the given table. Throws \InvalidArgumentException on any unknown key.
+     */
+    private function validateWriteColumns(array $data, string $table): void
+    {
+        $allowed = match ($table) {
+            'offices' => self::OFFICE_COLUMNS,
+            default => throw new \InvalidArgumentException("Unknown table '$table' for write validation."),
+        };
+
+        foreach (array_keys($data) as $field) {
+            if (!is_string($field) || !in_array($field, $allowed, true)) {
+                throw new \InvalidArgumentException("Invalid column '$field' for table '$table'.");
+            }
+        }
     }
 
     public function nameExists(string $name, ?int $excludeId = null): bool

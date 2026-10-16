@@ -6,6 +6,7 @@ namespace App\Repositories;
 
 use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Helpers\Database;
+use \InvalidArgumentException;
 
 /**
  * User Repository
@@ -16,6 +17,12 @@ use App\Helpers\Database;
 class UserRepository implements UserRepositoryInterface
 {
     private \mysqli $conn;
+
+    /** Columns allowed for INSERT/UPDATE on the users table (interpolated into SQL). */
+    private const USER_COLUMNS = [
+        'id', 'email', 'password', 'role', 'first_name', 'last_name', 'employee_id',
+        'designation', 'is_active', 'last_activity', 'phone', 'address', 'created_at', 'updated_at',
+    ];
 
     public function __construct()
     {
@@ -61,7 +68,10 @@ class UserRepository implements UserRepositoryInterface
 
     public function create(array $data): int
     {
+        $this->validateWriteColumns($data, 'users');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -82,7 +92,7 @@ class UserRepository implements UserRepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO users (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `users` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -94,8 +104,15 @@ class UserRepository implements UserRepositoryInterface
 
     public function update(int $id, array $data): bool
     {
+        if (empty($data)) {
+            return false;
+        }
+
+        $this->validateWriteColumns($data, 'users');
+
         $fields = array_keys($data);
-        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
+        $setClause = implode(' = ?, ', $quotedFields) . ' = ?';
         $types = '';
         $values = [];
 
@@ -118,7 +135,7 @@ class UserRepository implements UserRepositoryInterface
         $values[] = $id;
         $types .= 'i';
 
-        $sql = "UPDATE users SET {$setClause} WHERE id = ?";
+        $sql = "UPDATE `users` SET {$setClause} WHERE `id` = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $result = $stmt->execute();
@@ -389,7 +406,10 @@ class UserRepository implements UserRepositoryInterface
 
     public function createUser(array $data): int
     {
+        $this->validateWriteColumns($data, 'users');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -410,7 +430,7 @@ class UserRepository implements UserRepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO users (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `users` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -439,5 +459,23 @@ class UserRepository implements UserRepositoryInterface
         $stmt->close();
 
         return $employee ?: null;
+    }
+
+    /**
+     * Validate that every column name in $data is a whitelisted, safe identifier
+     * for the given table. Throws \InvalidArgumentException on any unknown key.
+     */
+    private function validateWriteColumns(array $data, string $table): void
+    {
+        $allowed = match ($table) {
+            'users' => self::USER_COLUMNS,
+            default => throw new \InvalidArgumentException("Unknown table '$table' for write validation."),
+        };
+
+        foreach (array_keys($data) as $field) {
+            if (!is_string($field) || !in_array($field, $allowed, true)) {
+                throw new \InvalidArgumentException("Invalid column '$field' for table '$table'.");
+            }
+        }
     }
 }

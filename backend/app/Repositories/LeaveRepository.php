@@ -6,6 +6,7 @@ namespace App\Repositories;
 
 use App\Repositories\Contracts\LeaveRepositoryInterface;
 use App\Helpers\Database;
+use \InvalidArgumentException;
 
 /**
  * Leave Repository
@@ -16,6 +17,12 @@ use App\Helpers\Database;
 class LeaveRepository implements LeaveRepositoryInterface
 {
     private \mysqli $conn;
+
+    /** Columns allowed for INSERT/UPDATE on the leave_applications table (interpolated into SQL). */
+    private const LEAVE_COLUMNS = [
+        'id', 'employee_id', 'leave_type_id', 'start_date', 'end_date', 'days_requested',
+        'reason', 'status', 'applied_by_user_id', 'applied_at', 'approved_at', 'approved_by',
+    ];
 
     public function __construct()
     {
@@ -62,7 +69,10 @@ class LeaveRepository implements LeaveRepositoryInterface
 
     public function create(array $data): int
     {
+        $this->validateWriteColumns($data, 'leave_applications');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -83,7 +93,7 @@ class LeaveRepository implements LeaveRepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO leave_applications (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `leave_applications` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -95,8 +105,15 @@ class LeaveRepository implements LeaveRepositoryInterface
 
     public function update(int $id, array $data): bool
     {
+        if (empty($data)) {
+            return false;
+        }
+
+        $this->validateWriteColumns($data, 'leave_applications');
+
         $fields = array_keys($data);
-        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
+        $setClause = implode(' = ?, ', $quotedFields) . ' = ?';
         $types = '';
         $values = [];
 
@@ -119,7 +136,7 @@ class LeaveRepository implements LeaveRepositoryInterface
         $values[] = $id;
         $types .= 'i';
 
-        $sql = "UPDATE leave_applications SET {$setClause} WHERE id = ?";
+        $sql = "UPDATE `leave_applications` SET {$setClause} WHERE `id` = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $result = $stmt->execute();
@@ -433,5 +450,23 @@ class LeaveRepository implements LeaveRepositoryInterface
         $stmt->close();
 
         return (int)$result['count'] > 0;
+    }
+
+    /**
+     * Validate that every column name in $data is a whitelisted, safe identifier
+     * for the given table. Throws \InvalidArgumentException on any unknown key.
+     */
+    private function validateWriteColumns(array $data, string $table): void
+    {
+        $allowed = match ($table) {
+            'leave_applications' => self::LEAVE_COLUMNS,
+            default => throw new \InvalidArgumentException("Unknown table '$table' for write validation."),
+        };
+
+        foreach (array_keys($data) as $field) {
+            if (!is_string($field) || !in_array($field, $allowed, true)) {
+                throw new \InvalidArgumentException("Invalid column '$field' for table '$table'.");
+            }
+        }
     }
 }

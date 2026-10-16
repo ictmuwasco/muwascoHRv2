@@ -6,6 +6,7 @@ namespace App\Repositories;
 
 use App\Repositories\Contracts\DepartmentRepositoryInterface;
 use App\Helpers\Database;
+use \InvalidArgumentException;
 
 /**
  * Department Repository
@@ -16,6 +17,11 @@ use App\Helpers\Database;
 class DepartmentRepository implements DepartmentRepositoryInterface
 {
     private \mysqli $conn;
+
+    /** Columns allowed for INSERT/UPDATE on the departments table (interpolated into SQL). */
+    private const DEPARTMENT_COLUMNS = [
+        'id', 'name', 'description', 'created_at', 'updated_at',
+    ];
 
     public function __construct()
     {
@@ -50,7 +56,10 @@ class DepartmentRepository implements DepartmentRepositoryInterface
 
     public function create(array $data): int
     {
+        $this->validateWriteColumns($data, 'departments');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -71,7 +80,7 @@ class DepartmentRepository implements DepartmentRepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO departments (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `departments` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -83,8 +92,15 @@ class DepartmentRepository implements DepartmentRepositoryInterface
 
     public function update(int $id, array $data): bool
     {
+        if (empty($data)) {
+            return false;
+        }
+
+        $this->validateWriteColumns($data, 'departments');
+
         $fields = array_keys($data);
-        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
+        $setClause = implode(' = ?, ', $quotedFields) . ' = ?';
         $types = '';
         $values = [];
 
@@ -107,7 +123,7 @@ class DepartmentRepository implements DepartmentRepositoryInterface
         $values[] = $id;
         $types .= 'i';
 
-        $sql = "UPDATE departments SET {$setClause} WHERE id = ?";
+        $sql = "UPDATE `departments` SET {$setClause} WHERE `id` = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $result = $stmt->execute();
@@ -224,6 +240,24 @@ class DepartmentRepository implements DepartmentRepositoryInterface
         $stmt->close();
 
         return (int)$result['count'] > 0;
+    }
+
+    /**
+     * Validate that every column name in $data is a whitelisted, safe identifier
+     * for the given table. Throws \InvalidArgumentException on any unknown key.
+     */
+    private function validateWriteColumns(array $data, string $table): void
+    {
+        $allowed = match ($table) {
+            'departments' => self::DEPARTMENT_COLUMNS,
+            default => throw new \InvalidArgumentException("Unknown table '$table' for write validation."),
+        };
+
+        foreach (array_keys($data) as $field) {
+            if (!is_string($field) || !in_array($field, $allowed, true)) {
+                throw new \InvalidArgumentException("Invalid column '$field' for table '$table'.");
+            }
+        }
     }
 
     public function getHierarchy(): array

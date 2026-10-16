@@ -924,7 +924,7 @@ class DashboardController extends BaseController
         }
 
         $cnt = function (string $sql, array $p = [], string $t = '') use ($db, $where, $params, $types): int {
-            $full = $p === [] ? $sql : $sql; // params handled below
+            $full = $sql; // params handled below
             $useParams = array_merge($params, $p);
             $useTypes  = $types . $t;
             $stmt = $db->prepare($full);

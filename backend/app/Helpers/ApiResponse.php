@@ -119,7 +119,7 @@ class ApiResponse
             $validator = $body;
         }
 
-        $etag = '"' . md5($validator) . '"';
+        $etag = '"' . hash('sha256', $validator) . '"';
 
         self::cacheHeaders($maxAge, $etag);
         self::sendRequestIdHeader();

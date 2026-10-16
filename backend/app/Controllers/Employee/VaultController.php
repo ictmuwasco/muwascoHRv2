@@ -117,6 +117,10 @@ final class VaultController extends BaseController
                 'groups'       => array_keys($this->vault->groups()),
                 'kdf'          => $keyRow['kdf_params'] ?? null,
                 'public_key'   => $keyRow['public_key'] ?? null,
+                // The vault salt is returned to the client so the browser can
+                // derive the data-encryption key locally (zero-knowledge
+                // design: the server never sees the passphrase or unwrapped
+                // key). This is NOT a server-side cryptographic secret.
                 'salt'         => isset($keyRow['salt']) ? bin2hex((string) $keyRow['salt']) : null,
                 'auto_lock_seconds' => (int) \config('vault.auto_lock_seconds', 300),
                 'requests'     => $hasVault ? $this->vault->requestsFor($employeeId) : [],

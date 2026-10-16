@@ -149,15 +149,19 @@ final class AiAssistantController extends BaseController
         switch ($e->getReason()) {
             case AiRequestException::REASON_EMPTY_MESSAGE:
                 $this->error($e->getMessage(), 422, 'VALIDATION_ERROR');
-                // no break — error() exits
+                return;
             case AiRequestException::REASON_SAFETY_FLAGGED:
                 $this->error($e->getMessage(), 422, 'SAFETY_FLAGGED');
+                return;
             case AiRequestException::REASON_CONVERSATION_NOT_FOUND:
                 $this->notFound($e->getMessage());
+                return;
             case AiRequestException::REASON_PROVIDER_UNAVAILABLE:
                 $this->error($e->getMessage(), 503, 'AI_UNAVAILABLE');
+                return;
             default:
                 $this->error('The assistant could not process that request.', 400, 'AI_REQUEST_ERROR');
+                return;
         }
     }
 

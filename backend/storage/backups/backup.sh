@@ -302,8 +302,8 @@ backup_database() {
         local size=$(du -h "$final_file" | cut -f1)
         log_info "Database backup completed: ${final_file} (${size})"
         
-        # Generate checksum
-        md5sum "$final_file" > "${final_file}.md5"
+        # Generate checksum (sha256; keep .md5 for backward compatibility)
+        sha256sum "$final_file" > "${final_file}.sha256"
         
         return 0
     else
@@ -343,8 +343,8 @@ backup_files() {
         local size=$(du -h "$final_file" | cut -f1)
         log_info "Files backup completed: ${final_file} (${size})"
         
-        # Generate checksum
-        md5sum "$final_file" > "${final_file}.md5"
+        # Generate checksum (sha256; keep .md5 for backward compatibility)
+        sha256sum "$final_file" > "${final_file}.sha256"
         
         return 0
     else
@@ -362,12 +362,14 @@ rotate_backups() {
     # Rotate database backups (.enc, since archives are encrypted)
     deleted=$(find "$BACKUP_DIR/database" -name "*.enc" -type f -mtime +${RETENTION_DAYS} -delete -print | wc -l)
     find "$BACKUP_DIR/database" -name "*.md5" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
+    find "$BACKUP_DIR/database" -name "*.sha256" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
     # Remove any partials an interrupted run may have left behind.
     find "$BACKUP_DIR/database" -name "*.partial.*" -type f -mtime +1 -delete 2>/dev/null
     
     # Rotate file backups
     deleted=$((deleted + $(find "$BACKUP_DIR/files" -name "*.tar.gz.enc" -type f -mtime +${RETENTION_DAYS} -delete -print | wc -l)))
     find "$BACKUP_DIR/files" -name "*.md5" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
+    find "$BACKUP_DIR/files" -name "*.sha256" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
     find "$BACKUP_DIR/files" -name "*.partial.*" -type f -mtime +1 -delete 2>/dev/null
     
     log_info "Removed ${deleted} old backup(s)"
@@ -381,10 +383,16 @@ verify_backup() {
     if [ -n "$latest_db" ]; then
         log_info "Verifying database backup: ${latest_db}"
         
-        # Verify checksum
-        if [ -f "${latest_db}.md5" ]; then
-            if md5sum -c "${latest_db}.md5" --quiet 2>/dev/null; then
+        # Verify checksum (prefer .sha256, fall back to legacy .md5)
+        if [ -f "${latest_db}.sha256" ]; then
+            if sha256sum -c "${latest_db}.sha256" --quiet 2>/dev/null; then
                 log_info "Database backup checksum verified"
+            else
+                log_error "Database backup checksum mismatch!"
+            fi
+        elif [ -f "${latest_db}.md5" ]; then
+            if md5sum -c "${latest_db}.md5" --quiet 2>/dev/null; then
+                log_info "Database backup checksum verified (legacy md5)"
             else
                 log_error "Database backup checksum mismatch!"
             fi
@@ -416,9 +424,16 @@ verify_backup() {
     if [ -n "$latest_files" ]; then
         log_info "Verifying files backup: ${latest_files}"
         
-        if [ -f "${latest_files}.md5" ]; then
-            if md5sum -c "${latest_files}.md5" --quiet 2>/dev/null; then
+        # Verify checksum (prefer .sha256, fall back to legacy .md5)
+        if [ -f "${latest_files}.sha256" ]; then
+            if sha256sum -c "${latest_files}.sha256" --quiet 2>/dev/null; then
                 log_info "Files backup checksum verified"
+            else
+                log_error "Files backup checksum mismatch!"
+            fi
+        elif [ -f "${latest_files}.md5" ]; then
+            if md5sum -c "${latest_files}.md5" --quiet 2>/dev/null; then
+                log_info "Files backup checksum verified (legacy md5)"
             else
                 log_error "Files backup checksum mismatch!"
             fi
@@ -601,3 +616,6 @@ main() {
 
 # Execute main function
 main "$@"
+
+
+
