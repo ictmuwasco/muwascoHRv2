@@ -66,6 +66,11 @@ class SecurityMiddleware
 
         // Permissions Policy
         header('Permissions-Policy: geolocation=(self), microphone=(), camera=()');
+
+        // Cache-Control: never store authenticated/API or SPA HTML responses.
+        // Fingerprinted assets under /assets/ get a public immutable lifetime
+        // from backend/public/assets/.htaccess instead.
+        header('Cache-Control: no-store, private');
     }
 
     /**
@@ -110,13 +115,19 @@ class SecurityMiddleware
      */
     public static function secureCryptoHeaders(): void
     {
-        // Content Security Policy (no 'unsafe-inline' for scripts)
+        // Content Security Policy — same-origin only. No CDN whitelisting
+        // (cdnjs / cdn.jsdelivr.net are not used by the built SPA). No
+        // 'unsafe-inline' for scripts; 'unsafe-inline' for styles is kept
+        // because Vite/Tailwind inject inline <style> tags.
         $csp = "default-src 'self'; "
-             . "script-src 'self' https://cdnjs.cloudflare.com; "
-             . "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+             . "base-uri 'self'; "
+             . "object-src 'none'; "
+             . "script-src 'self'; "
+             . "style-src 'self' 'unsafe-inline'; "
              . "img-src 'self' data:; "
-             . "font-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+             . "font-src 'self'; "
              . "connect-src 'self'; "
+             . "form-action 'self'; "
              . "frame-ancestors 'none'; "
              . "upgrade-insecure-requests;";
         header("Content-Security-Policy: {$csp}");
@@ -125,10 +136,10 @@ class SecurityMiddleware
         header('Cross-Origin-Opener-Policy: same-origin');
         header('Cross-Origin-Resource-Policy: same-origin');
 
-        // HTTP Strict Transport Security (only on HTTPS)
+        // HTTP Strict Transport Security (only on HTTPS, no subdomains/preload)
         $isSecure = self::isHttps();
         if ($isSecure) {
-            header('Strict-Transport-Security: max-age=31536000; includeSubDomains; preload');
+            header('Strict-Transport-Security: max-age=31536000');
         }
     }
 
