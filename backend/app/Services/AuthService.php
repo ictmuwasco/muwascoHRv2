@@ -690,7 +690,7 @@ class AuthService implements AuthServiceInterface
         $token = bin2hex(random_bytes(32));
         $expiry = time() + (30 * 24 * 60 * 60); // 30 days
 
-        setcookie('remember_me', $token, $expiry, '/', '', false, true);
+        setcookie('remember_me', $token, $expiry, '/', '', $this->isSecureRequest(), true);
     }
 
     /**
@@ -702,6 +702,6 @@ class AuthService implements AuthServiceInterface
             return;
         }
 
-        setcookie('remember_me', '', time() - 3600, '/', '', false, true);
+        setcookie('remember_me', '', time() - 3600, '/', '', $this->isSecureRequest(), true);
     }
 }

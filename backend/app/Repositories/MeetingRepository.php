@@ -13,9 +13,17 @@ use App\Helpers\Auth;
  *
  * Handles all database operations for meetings and meeting invitations.
  */
+use \InvalidArgumentException;
+
 class MeetingRepository implements RepositoryInterface
 {
     private \mysqli $conn;
+
+    /** Columns allowed for INSERT/UPDATE on the meetings table (interpolated into SQL). */
+    private const MEETING_COLUMNS = [
+        'title', 'description', 'agenda', 'meeting_date', 'start_time', 'end_time',
+        'location', 'status', 'created_by', 'attendance_token', 'notification_sent_at',
+    ];
 
     public function __construct()
     {
@@ -66,7 +74,10 @@ class MeetingRepository implements RepositoryInterface
      */
     public function create(array $data): int
     {
+        $this->validateWriteColumns($data, 'meetings');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -87,7 +98,7 @@ class MeetingRepository implements RepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO meetings (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `meetings` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -106,8 +117,11 @@ class MeetingRepository implements RepositoryInterface
             return false;
         }
 
+        $this->validateWriteColumns($data, 'meetings');
+
         $fields = array_keys($data);
-        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
+        $setClause = implode(' = ?, ', $quotedFields) . ' = ?';
         $types = '';
         $values = [];
 
@@ -130,7 +144,7 @@ class MeetingRepository implements RepositoryInterface
         $values[] = $id;
         $types .= 'i';
 
-        $sql = "UPDATE meetings SET {$setClause} WHERE id = ?";
+        $sql = "UPDATE `meetings` SET {$setClause} WHERE `id` = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $result = $stmt->execute();
@@ -664,5 +678,24 @@ class MeetingRepository implements RepositoryInterface
         }
 
         return trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? ''));
+    }
+
+    /**
+     * Validate that every column name in $data is a whitelisted, safe identifier
+     * for the given table. Throws \InvalidArgumentException on any unknown key,
+     * preventing SQL injection via interpolated column names.
+     */
+    private function validateWriteColumns(array $data, string $table): void
+    {
+        $allowed = match ($table) {
+            'meetings' => self::MEETING_COLUMNS,
+            default => throw new \InvalidArgumentException("Unknown table '$table' for write validation."),
+        };
+
+        foreach (array_keys($data) as $field) {
+            if (!is_string($field) || !in_array($field, $allowed, true)) {
+                throw new \InvalidArgumentException("Invalid column '$field' for table '$table'.");
+            }
+        }
     }
 }

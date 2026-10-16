@@ -6,6 +6,7 @@ namespace App\Repositories;
 
 use App\Repositories\Contracts\EmployeeRepositoryInterface;
 use App\Helpers\Database;
+use \InvalidArgumentException;
 
 /**
  * Employee Repository
@@ -16,6 +17,13 @@ use App\Helpers\Database;
 class EmployeeRepository implements EmployeeRepositoryInterface
 {
     private \mysqli $conn;
+
+    /** Columns allowed for INSERT/UPDATE on the employees table (interpolated into SQL). */
+    private const EMPLOYEE_COLUMNS = [
+        'id', 'employee_id', 'first_name', 'last_name', 'email', 'phone', 'department_id',
+        'section_id', 'office_id', 'designation', 'hire_date', 'contract_start_date',
+        'contract_end_date', 'total_contracts', 'status', 'created_at', 'updated_at',
+    ];
 
     public function __construct()
     {
@@ -64,7 +72,10 @@ class EmployeeRepository implements EmployeeRepositoryInterface
 
     public function create(array $data): int
     {
+        $this->validateWriteColumns($data, 'employees');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -85,7 +96,7 @@ class EmployeeRepository implements EmployeeRepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO employees (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `employees` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -97,8 +108,15 @@ class EmployeeRepository implements EmployeeRepositoryInterface
 
     public function update(int $id, array $data): bool
     {
+        if (empty($data)) {
+            return false;
+        }
+
+        $this->validateWriteColumns($data, 'employees');
+
         $fields = array_keys($data);
-        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
+        $setClause = implode(' = ?, ', $quotedFields) . ' = ?';
         $types = '';
         $values = [];
 
@@ -121,7 +139,7 @@ class EmployeeRepository implements EmployeeRepositoryInterface
         $values[] = $id;
         $types .= 'i';
 
-        $sql = "UPDATE employees SET {$setClause} WHERE id = ?";
+        $sql = "UPDATE `employees` SET {$setClause} WHERE `id` = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $result = $stmt->execute();
@@ -969,5 +987,23 @@ class EmployeeRepository implements EmployeeRepositoryInterface
         $stmt->close();
 
         return $result;
+    }
+
+    /**
+     * Validate that every column name in $data is a whitelisted, safe identifier
+     * for the given table. Throws \InvalidArgumentException on any unknown key.
+     */
+    private function validateWriteColumns(array $data, string $table): void
+    {
+        $allowed = match ($table) {
+            'employees' => self::EMPLOYEE_COLUMNS,
+            default => throw new \InvalidArgumentException("Unknown table '$table' for write validation."),
+        };
+
+        foreach (array_keys($data) as $field) {
+            if (!is_string($field) || !in_array($field, $allowed, true)) {
+                throw new \InvalidArgumentException("Invalid column '$field' for table '$table'.");
+            }
+        }
     }
 }

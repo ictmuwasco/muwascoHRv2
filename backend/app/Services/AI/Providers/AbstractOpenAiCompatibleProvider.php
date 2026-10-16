@@ -200,7 +200,7 @@ abstract class AbstractOpenAiCompatibleProvider implements AiProviderInterface
                 $tc = $message->toolCall();
                 $row['content']    = $message->content();
                 $row['tool_calls'] = [[
-                    'id'       => (string) ($tc['id'] ?? 'call_' . sha1($tc['name'] . $tc['arguments'])),
+                    'id'       => (string) ($tc['id'] ?? 'call_' . substr(hash('sha256', $tc['name'] . $tc['arguments']), 0, 40)),
                     'type'     => 'function',
                     'function' => [
                         'name'      => (string) $tc['name'],

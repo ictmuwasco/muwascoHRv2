@@ -33,8 +33,8 @@ class MeetingMinutesController extends BaseController
     /** GET /meetings/{id}/minutes/status — capability flags + minutes existence. */
     public function statusAction(int $id)
     {
-        return $this->guard(function () use ($id) {
-            return $this->success(
+        $this->guard(function () use ($id) {
+            $this->success(
                 $this->minutes()->status((int) $id, $this->getUserId())
             );
         });
@@ -43,8 +43,8 @@ class MeetingMinutesController extends BaseController
     /** GET /meetings/{id}/minutes/options — employee + department pickers. */
     public function optionsAction(int $id)
     {
-        return $this->guard(function () use ($id) {
-            return $this->success(
+        $this->guard(function () use ($id) {
+            $this->success(
                 $this->minutes()->options((int) $id)
             );
         });
@@ -53,8 +53,8 @@ class MeetingMinutesController extends BaseController
     /** GET /meetings/{id}/minutes — full minutes (draft for managers, published for confirmed attendees). */
     public function viewAction(int $id)
     {
-        return $this->guard(function () use ($id) {
-            return $this->success(
+        $this->guard(function () use ($id) {
+            $this->success(
                 $this->minutes()->view((int) $id, $this->getUserId())
             );
         });
@@ -63,13 +63,13 @@ class MeetingMinutesController extends BaseController
     /** POST /meetings/{id}/minutes — create draft minutes. */
     public function createAction(int $id)
     {
-        return $this->guard(function () use ($id) {
+        $this->guard(function () use ($id) {
             $userId = $this->getUserId();
             if (!$userId) {
                 return $this->unauthorized();
             }
             $raw = $this->getJsonBody() ?: [];
-            return $this->success(
+            $this->success(
                 $this->minutes()->create((int) $id, $raw, (int) $userId),
                 'Meeting minutes saved as draft.'
             );
@@ -79,13 +79,13 @@ class MeetingMinutesController extends BaseController
     /** PUT /meetings/{id}/minutes — update draft (or amend published with reason). */
     public function updateAction(int $id)
     {
-        return $this->guard(function () use ($id) {
+        $this->guard(function () use ($id) {
             $userId = $this->getUserId();
             if (!$userId) {
                 return $this->unauthorized();
             }
             $raw = $this->getJsonBody() ?: [];
-            return $this->success(
+            $this->success(
                 $this->minutes()->update((int) $id, $raw, (int) $userId),
                 'Meeting minutes updated.'
             );
@@ -95,13 +95,13 @@ class MeetingMinutesController extends BaseController
     /** POST /meetings/{id}/minutes/publish — publish draft minutes. */
     public function publishAction(int $id)
     {
-        return $this->guard(function () use ($id) {
+        $this->guard(function () use ($id) {
             $userId = $this->getUserId();
             if (!$userId) {
                 return $this->unauthorized();
             }
             $raw = $this->getJsonBody() ?: [];
-            return $this->success(
+            $this->success(
                 $this->minutes()->publish((int) $id, $raw, (int) $userId),
                 'Meeting minutes published.'
             );
@@ -111,14 +111,14 @@ class MeetingMinutesController extends BaseController
     /** POST /meetings/{id}/minutes/reopen — reopen published minutes for amendment. */
     public function reopenAction(int $id)
     {
-        return $this->guard(function () use ($id) {
+        $this->guard(function () use ($id) {
             $userId = $this->getUserId();
             if (!$userId) {
                 return $this->unauthorized();
             }
             $raw = $this->getJsonBody() ?: [];
             $reason = trim((string) ($raw['reason'] ?? ''));
-            return $this->success(
+            $this->success(
                 $this->minutes()->reopen((int) $id, $reason, (int) $userId),
                 'Meeting minutes reopened for amendment.'
             );

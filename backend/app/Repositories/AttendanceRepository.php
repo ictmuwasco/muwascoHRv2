@@ -6,6 +6,7 @@ namespace App\Repositories;
 
 use App\Repositories\Contracts\AttendanceRepositoryInterface;
 use App\Helpers\Database;
+use \InvalidArgumentException;
 
 /**
  * Attendance Repository
@@ -16,6 +17,12 @@ use App\Helpers\Database;
 class AttendanceRepository implements AttendanceRepositoryInterface
 {
     private \mysqli $conn;
+
+    /** Columns allowed for INSERT/UPDATE on the attendance table (interpolated into SQL). */
+    private const ATTENDANCE_COLUMNS = [
+        'id', 'employee_id', 'date', 'clock_in_time', 'clock_out_time', 'status',
+        'overtime_hours', 'notes', 'created_at', 'updated_at',
+    ];
 
     public function __construct()
     {
@@ -54,7 +61,10 @@ class AttendanceRepository implements AttendanceRepositoryInterface
 
     public function create(array $data): int
     {
+        $this->validateWriteColumns($data, 'attendance');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -75,7 +85,7 @@ class AttendanceRepository implements AttendanceRepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO attendance (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `attendance` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -87,8 +97,15 @@ class AttendanceRepository implements AttendanceRepositoryInterface
 
     public function update(int $id, array $data): bool
     {
+        if (empty($data)) {
+            return false;
+        }
+
+        $this->validateWriteColumns($data, 'attendance');
+
         $fields = array_keys($data);
-        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
+        $setClause = implode(' = ?, ', $quotedFields) . ' = ?';
         $types = '';
         $values = [];
 
@@ -111,7 +128,7 @@ class AttendanceRepository implements AttendanceRepositoryInterface
         $values[] = $id;
         $types .= 'i';
 
-        $sql = "UPDATE attendance SET {$setClause} WHERE id = ?";
+        $sql = "UPDATE `attendance` SET {$setClause} WHERE `id` = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $result = $stmt->execute();
@@ -357,5 +374,23 @@ class AttendanceRepository implements AttendanceRepositoryInterface
         $stmt->close();
 
         return $records;
+    }
+
+    /**
+     * Validate that every column name in $data is a whitelisted, safe identifier
+     * for the given table. Throws \InvalidArgumentException on any unknown key.
+     */
+    private function validateWriteColumns(array $data, string $table): void
+    {
+        $allowed = match ($table) {
+            'attendance' => self::ATTENDANCE_COLUMNS,
+            default => throw new \InvalidArgumentException("Unknown table '$table' for write validation."),
+        };
+
+        foreach (array_keys($data) as $field) {
+            if (!is_string($field) || !in_array($field, $allowed, true)) {
+                throw new \InvalidArgumentException("Invalid column '$field' for table '$table'.");
+            }
+        }
     }
 }

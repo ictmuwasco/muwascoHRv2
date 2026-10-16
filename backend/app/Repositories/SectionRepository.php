@@ -6,6 +6,7 @@ namespace App\Repositories;
 
 use App\Repositories\Contracts\SectionRepositoryInterface;
 use App\Helpers\Database;
+use \InvalidArgumentException;
 
 /**
  * Section Repository
@@ -16,6 +17,16 @@ use App\Helpers\Database;
 class SectionRepository implements SectionRepositoryInterface
 {
     private \mysqli $conn;
+
+    /** Columns allowed for INSERT/UPDATE on the sections table (interpolated into SQL). */
+    private const SECTION_COLUMNS = [
+        'id', 'name', 'department_id', 'created_at', 'updated_at',
+    ];
+
+    /** Columns allowed for INSERT/UPDATE on the subsections table (interpolated into SQL). */
+    private const SUBSECTION_COLUMNS = [
+        'id', 'name', 'section_id', 'created_at', 'updated_at',
+    ];
 
     public function __construct()
     {
@@ -54,7 +65,10 @@ class SectionRepository implements SectionRepositoryInterface
 
     public function create(array $data): int
     {
+        $this->validateWriteColumns($data, 'sections');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -75,7 +89,7 @@ class SectionRepository implements SectionRepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO sections (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `sections` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -87,8 +101,15 @@ class SectionRepository implements SectionRepositoryInterface
 
     public function update(int $id, array $data): bool
     {
+        if (empty($data)) {
+            return false;
+        }
+
+        $this->validateWriteColumns($data, 'sections');
+
         $fields = array_keys($data);
-        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
+        $setClause = implode(' = ?, ', $quotedFields) . ' = ?';
         $types = '';
         $values = [];
 
@@ -111,7 +132,7 @@ class SectionRepository implements SectionRepositoryInterface
         $values[] = $id;
         $types .= 'i';
 
-        $sql = "UPDATE sections SET {$setClause} WHERE id = ?";
+        $sql = "UPDATE `sections` SET {$setClause} WHERE `id` = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $result = $stmt->execute();
@@ -251,7 +272,10 @@ class SectionRepository implements SectionRepositoryInterface
 
     public function createSubsection(array $data): int
     {
+        $this->validateWriteColumns($data, 'subsections');
+
         $fields = array_keys($data);
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
         $placeholders = array_fill(0, count($fields), '?');
         $types = '';
         $values = [];
@@ -272,7 +296,7 @@ class SectionRepository implements SectionRepositoryInterface
             }
         }
 
-        $sql = "INSERT INTO subsections (" . implode(', ', $fields) . ") VALUES (" . implode(', ', $placeholders) . ")";
+        $sql = "INSERT INTO `subsections` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $stmt->execute();
@@ -284,8 +308,15 @@ class SectionRepository implements SectionRepositoryInterface
 
     public function updateSubsection(int $id, array $data): bool
     {
+        if (empty($data)) {
+            return false;
+        }
+
+        $this->validateWriteColumns($data, 'subsections');
+
         $fields = array_keys($data);
-        $setClause = implode(' = ?, ', $fields) . ' = ?';
+        $quotedFields = array_map(fn(string $f): string => "`$f`", $fields);
+        $setClause = implode(' = ?, ', $quotedFields) . ' = ?';
         $types = '';
         $values = [];
 
@@ -308,13 +339,32 @@ class SectionRepository implements SectionRepositoryInterface
         $values[] = $id;
         $types .= 'i';
 
-        $sql = "UPDATE subsections SET {$setClause} WHERE id = ?";
+        $sql = "UPDATE `subsections` SET {$setClause} WHERE `id` = ?";
         $stmt = $this->conn->prepare($sql);
         $stmt->bind_param($types, ...$values);
         $result = $stmt->execute();
         $stmt->close();
 
         return $result;
+    }
+
+    /**
+     * Validate that every column name in $data is a whitelisted, safe identifier
+     * for the given table. Throws \InvalidArgumentException on any unknown key.
+     */
+    private function validateWriteColumns(array $data, string $table): void
+    {
+        $allowed = match ($table) {
+            'sections' => self::SECTION_COLUMNS,
+            'subsections' => self::SUBSECTION_COLUMNS,
+            default => throw new \InvalidArgumentException("Unknown table '$table' for write validation."),
+        };
+
+        foreach (array_keys($data) as $field) {
+            if (!is_string($field) || !in_array($field, $allowed, true)) {
+                throw new \InvalidArgumentException("Invalid column '$field' for table '$table'.");
+            }
+        }
     }
 
     public function deleteSubsection(int $id): bool
