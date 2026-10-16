@@ -320,9 +320,9 @@ const Reports = () => {
 
   const departments = Array.from(
     new Set(records.map((e) => e.department_name ?? 'Unassigned')),
-  ).sort();
-  const statuses = Array.from(new Set(records.map((e) => e.employee_status))).sort();
-  const empTypes = Array.from(new Set(records.map((e) => e.employee_type))).sort();
+  ).sort((a, b) => a.localeCompare(b));
+  const statuses = Array.from(new Set(records.map((e) => e.employee_status))).sort((a, b) => a.localeCompare(b));
+  const empTypes = Array.from(new Set(records.map((e) => e.employee_type))).sort((a, b) => a.localeCompare(b));
 
   // Reset to first page when filters change
   useEffect(() => {

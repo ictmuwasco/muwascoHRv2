@@ -245,7 +245,7 @@ export default function WorkplanActivityFormModal({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className={allowContractless ? 'md:col-span-2' : 'md:col-span-2'}>
+          <div className="md:col-span-2">
             <label className={labelCls}>
               Source Performance Contract {allowContractless ? '(optional)' : '*'}
             </label>

@@ -20,7 +20,7 @@ const ForgotPassword = () => {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const emailValid = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email.trim());
   const emailError = touched && !emailValid ? 'Please enter a valid email address' : '';
 
   const send = async () => {
@@ -181,7 +181,6 @@ const ForgotPassword = () => {
                         id="reset-email"
                         type="email"
                         autoComplete="email"
-                        autoFocus
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
