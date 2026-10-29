@@ -1,7 +1,3 @@
-<#
-.SYNOPSIS
-036b: national_id type conversion (Phase 4 Wave 3 / F6).
-#>
 -- 036b: Convert employees.national_id INT -> VARCHAR(50) (Phase 4 Wave 3 / F6).
 --
 --   F6: national_id stored as INT (should be varchar) to support
