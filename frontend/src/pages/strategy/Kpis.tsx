@@ -29,10 +29,15 @@ const parseIds = (raw: string | null | undefined): number[] =>
 
 /** Unit-based activity <-> employee matching (department -> section -> subsection). */
 function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
-  if (act.department_id && emp.department_id && act.department_id !== emp.department_id)
+  if (
+    act.department_id &&
+    emp.department_id &&
+    Number(act.department_id) !== Number(emp.department_id)
+  )
     return false;
-  if (act.section_id && act.section_id !== (emp.section_id || 0)) return false;
-  if (act.subsection_id && act.subsection_id !== (emp.subsection_id || 0)) return false;
+  if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0)) return false;
+  if (act.subsection_id && Number(act.subsection_id) !== Number(emp.subsection_id || 0))
+    return false;
   return true;
 }
 
@@ -85,31 +90,40 @@ export default function Kpis() {
 
   const employees = data?.employees ?? [];
   const activities = data?.activities ?? [];
+  const linkedActivities = data?.linked_activities ?? [];
   const cycles = data?.cycles ?? [];
   const objectives = data?.objectives ?? [];
   const canManage = !!data?.can_manage;
   const role = data?.scope.role || '';
 
+  const activityById = useMemo(() => {
+    const byId = new Map<number, KpiActivity>();
+    [...activities, ...linkedActivities].forEach((activity) =>
+      byId.set(Number(activity.id), activity),
+    );
+    return byId;
+  }, [activities, linkedActivities]);
+
   const empName = useMemo(() => {
     const m = new Map<number, string>();
-    employees.forEach((e) => m.set(e.id, `${e.first_name} ${e.last_name}`.trim()));
+    employees.forEach((e) => m.set(Number(e.id), `${e.first_name} ${e.last_name}`.trim()));
     return m;
   }, [employees]);
 
   const activityLabel = useCallback(
     (id: number) => {
-      const act = activities.find((a) => a.id === id);
+      const act = activityById.get(id);
       if (!act) return null;
       let label = act.objective;
       if (act.parent_objective) label += ` -> ${act.parent_objective}`;
       return label;
     },
-    [activities],
+    [activityById],
   );
 
   const cycleNames = useMemo(() => {
     const m = new Map<number, string>();
-    cycles.forEach((c) => m.set(c.id, c.name));
+    cycles.forEach((c) => m.set(Number(c.id), c.name));
     return m;
   }, [cycles]);
 
@@ -127,7 +141,8 @@ export default function Kpis() {
     [empName],
   );
 
-  const canEditRow = (k: Kpi) => canManage || (!!k.created_by && k.created_by === userId);
+  const canEditRow = (k: Kpi) =>
+    canManage || (!!k.created_by && Number(k.created_by) === userId);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -144,11 +159,13 @@ export default function Kpis() {
   const modalActivities = useMemo(() => {
     if (!modal.open) return [];
     const selected = formEmpIds
-      .map((id) => employees.find((e) => e.id === id))
+      .map((id) => employees.find((e) => Number(e.id) === id))
       .filter((e): e is KpiEmployee => !!e);
     if (selected.length === 0) return [];
     return activities.filter(
-      (a) => formActIds.includes(a.id) || selected.some((emp) => activityMatchesEmployee(a, emp)),
+      (a) =>
+        formActIds.includes(Number(a.id)) ||
+        selected.some((emp) => activityMatchesEmployee(a, emp)),
     );
   }, [modal.open, formEmpIds, formActIds, employees, activities]);
 
@@ -389,7 +406,7 @@ export default function Kpis() {
                         <div className="space-y-1">
                           {actIds.length === 0 && <span className="text-gray-400">—</span>}
                           {actIds.map((id) => {
-                            const act = activities.find((a) => a.id === id);
+                            const act = activityById.get(id);
                             return (
                               <div key={id} className="flex flex-wrap items-center gap-1">
                                 <span>{activityLabel(id) || `#${id}`}</span>
@@ -536,7 +553,7 @@ export default function Kpis() {
                   <button
                     type="button"
                     className="underline text-primary-600"
-                    onClick={() => setFormEmpIds(employees.map((e) => e.id))}
+                    onClick={() => setFormEmpIds(employees.map((e) => Number(e.id)))}
                   >
                     Select All
                   </button>
@@ -561,8 +578,8 @@ export default function Kpis() {
                   >
                     <input
                       type="checkbox"
-                      checked={formEmpIds.includes(e.id)}
-                      onChange={() => toggleEmp(e.id)}
+                      checked={formEmpIds.includes(Number(e.id))}
+                      onChange={() => toggleEmp(Number(e.id))}
                       className="h-4 w-4 accent-primary-600"
                     />
                     <span className="text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
@@ -586,7 +603,7 @@ export default function Kpis() {
                   <button
                     type="button"
                     className="underline text-primary-600"
-                    onClick={() => setFormActIds(modalActivities.map((a) => a.id))}
+                    onClick={() => setFormActIds(modalActivities.map((a) => Number(a.id)))}
                   >
                     Select All
                   </button>
@@ -617,8 +634,8 @@ export default function Kpis() {
                   >
                     <input
                       type="checkbox"
-                      checked={formActIds.includes(a.id)}
-                      onChange={() => toggleAct(a.id)}
+                      checked={formActIds.includes(Number(a.id))}
+                      onChange={() => toggleAct(Number(a.id))}
                       className="h-4 w-4 mt-0.5 accent-primary-600"
                     />
                     <span className="flex-1 min-w-0">
