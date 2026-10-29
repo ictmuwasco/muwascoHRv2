@@ -204,7 +204,9 @@ final class EmployeeServiceCreateTransactionTest extends TestCase
     /** Satisfies validateEmployeeData() and the employees NOT NULL columns. */
     private function payload(): array
     {
-        $nationalId = 'MOW' . substr($this->marker, 3);
+        // The later employee-vault migration keeps the final national_id
+        // column as a nullable integer in the CI schema.
+        $nationalId = 1000000000 + (abs(crc32($this->marker)) % 1000000000);
 
         return [
             'employee_id'     => $this->marker,
