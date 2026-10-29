@@ -20,9 +20,12 @@ class EmployeeRepository implements EmployeeRepositoryInterface
 
     /** Columns allowed for INSERT/UPDATE on the employees table (interpolated into SQL). */
     private const EMPLOYEE_COLUMNS = [
-        'id', 'employee_id', 'first_name', 'last_name', 'email', 'phone', 'department_id',
-        'section_id', 'office_id', 'designation', 'hire_date', 'contract_start_date',
-        'contract_end_date', 'total_contracts', 'status', 'created_at', 'updated_at',
+        'id', 'employee_id', 'first_name', 'last_name', 'surname', 'gender', 'national_id',
+        'email', 'designation', 'phone', 'date_of_birth', 'address', 'department_id',
+        'section_id', 'subsection_id', 'office_id', 'position', 'hire_date', 'employment_type',
+        'employee_type', 'employee_status', 'scale_id', 'contract_start_date',
+        'contract_end_date', 'total_contracts', 'next_of_kin', 'dependants', 'status',
+        'created_at', 'updated_at',
     ];
 
     public function __construct()
