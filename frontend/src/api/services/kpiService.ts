@@ -79,6 +79,8 @@ export interface KpiListPayload {
   can_manage: boolean;
   employees: KpiEmployee[];
   activities: KpiActivity[];
+  /** Activities linked to visible KPIs, including activities outside assignment scope. */
+  linked_activities?: KpiActivity[];
   cycles: KpiCycle[];
   roles: string[];
   scope: {
