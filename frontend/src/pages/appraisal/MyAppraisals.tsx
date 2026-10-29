@@ -113,7 +113,11 @@ export default function MyAppraisals() {
       </div>
       {(error || notice) && (
         <div
-          className={`flex items-start gap-2 rounded-lg px-4 py-3 text-sm ${error ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300' : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'}`}
+          className={`flex items-start gap-2 rounded-lg px-4 py-3 text-sm ${
+            error
+              ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+              : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+          }`}
         >
           <span className="flex-1">{error || notice}</span>
           <button
@@ -169,7 +173,9 @@ export default function MyAppraisals() {
                       <p className="text-xs text-gray-400">Overall score</p>
                     </div>
                     <ChevronDown
-                      className={`h-5 w-5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+                      className={`h-5 w-5 text-gray-400 transition-transform ${
+                        open ? 'rotate-180' : ''
+                      }`}
                     />
                   </div>
                 </button>

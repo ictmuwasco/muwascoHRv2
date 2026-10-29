@@ -685,7 +685,13 @@ const LeaveReports = () => {
 
   const reportPeriodLabel = useMemo(() => {
     if (filters.from && filters.to) {
-      return `${new Date(filters.from).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })} – ${new Date(filters.to).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`;
+      return `${new Date(filters.from).toLocaleDateString('en-US', {
+        month: 'short',
+        year: 'numeric',
+      })} – ${new Date(filters.to).toLocaleDateString('en-US', {
+        month: 'short',
+        year: 'numeric',
+      })}`;
     }
     return 'All dates';
   }, [filters]);

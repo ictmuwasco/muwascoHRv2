@@ -74,7 +74,11 @@ export default function WorkplanDashboard({ summary }: { summary: WorkplanSummar
           label="Completed"
           value={t.completed}
           tone="text-green-600 dark:text-green-400"
-          hint={`${t.total_activities ? Math.round((t.completed / Math.max(1, t.total_activities)) * 100) : 0}% of total`}
+          hint={`${
+            t.total_activities
+              ? Math.round((t.completed / Math.max(1, t.total_activities)) * 100)
+              : 0
+          }% of total`}
         />
         <StatCard
           label="In Progress"

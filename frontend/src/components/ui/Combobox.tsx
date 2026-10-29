@@ -150,7 +150,7 @@ const Combobox = ({
             aria-autocomplete="list"
             aria-required={required}
             disabled={disabled || loading}
-            value={open ? query : (selected?.label ?? '')}
+            value={open ? query : selected?.label ?? ''}
             placeholder={selected ? selected.label : placeholder}
             onFocus={() => !disabled && setOpen(true)}
             onChange={(e) => {
@@ -214,7 +214,9 @@ const Combobox = ({
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => select(option)}
                   onMouseEnter={() => setActive(index)}
-                  className={`cursor-pointer px-3 py-2 text-sm ${index === active ? 'bg-primary-50 dark:bg-slate-700' : ''}`}
+                  className={`cursor-pointer px-3 py-2 text-sm ${
+                    index === active ? 'bg-primary-50 dark:bg-slate-700' : ''
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span

@@ -63,7 +63,10 @@ const PROFILE_TABS = [
 
 /** Format a Date as YYYY-MM-DD (local time) for date inputs and the API. */
 const toYMD = (d) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(
+    2,
+    '0',
+  )}`;
 
 /** Add N calendar months to a Date, clamping day-overflow (Jan 31 + 1m → Feb 28). */
 const addMonthsClamped = (date, months) => {
@@ -727,7 +730,9 @@ const EmployeeProfile = () => {
       await api.post(`/employees/${id}/convert-to-permanent`);
       setConvertedEmployee({ name: name || 'Employee' });
       setSuccess(
-        `${name || 'Employee'} converted to Permanent. Allocate their leave days in Financial Year.`,
+        `${
+          name || 'Employee'
+        } converted to Permanent. Allocate their leave days in Financial Year.`,
       );
       setConvertType('');
       fetchEmployee();
@@ -1246,7 +1251,11 @@ const EmployeeProfile = () => {
                         <span>Contract End</span>
                       </div>
                       <span
-                        className={`font-medium ${isContractExpired(employee.contract_end_date) ? 'text-red-600' : 'text-gray-900'}`}
+                        className={`font-medium ${
+                          isContractExpired(employee.contract_end_date)
+                            ? 'text-red-600'
+                            : 'text-gray-900'
+                        }`}
                       >
                         {employee.contract_end_date || 'Not specified'}
                       </span>
@@ -1298,7 +1307,9 @@ const EmployeeProfile = () => {
                       return (
                         <div
                           key={contract.id || index}
-                          className={`p-4 rounded-lg border ${isActive ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}
+                          className={`p-4 rounded-lg border ${
+                            isActive ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'
+                          }`}
                         >
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-sm font-medium text-gray-900">

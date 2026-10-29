@@ -107,6 +107,40 @@ final class LeaveTypePolicy
             'exempt_from_overlap_block' => self::exemptFromOverlapBlock($leaveTypeId),
             'requires_document'         => self::requiresDocument($leaveTypeId),
             'required_document_type'    => self::documentType($leaveTypeId),
+            'charges_annual_always'     => self::chargesAnnualAlways($leaveTypeId),
+            'overflows_to_annual_uncapped' => self::overflowsToAnnualUncapped($leaveTypeId),
         ];
+    }
+
+    /**
+     * Short Leave is ALWAYS charged to Annual Leave (HR policy confirmed
+     * Oct 2026) - including contract staff with a 0-day annual allocation,
+     * whose annual balance is allowed to go negative.
+     */
+    public static function chargesAnnualAlways(int $leaveTypeId): bool
+    {
+        return $leaveTypeId === self::TYPE_SHORT;
+    }
+
+    /**
+     * Study Leave: once its own allocation is exhausted, the overflow days are
+     * charged to Annual Leave, and Annual Leave may then go negative (never
+     * unpaid, never blocked). HR policy confirmed Oct 2026.
+     */
+    public static function overflowsToAnnualUncapped(int $leaveTypeId): bool
+    {
+        return $leaveTypeId === self::TYPE_STUDY;
+    }
+
+    /**
+     * Days a finalized application charges to the ANNUAL balance. Single
+     * authority shared by submission, final approval, reversal and the
+     * leave-profile ledger so they can never disagree. For Short Leave it is
+     * the requested days (older rows stored annual_days = 0); for every
+     * other type it is the stored overflow-to-annual figure.
+     */
+    public static function annualDaysCharged(int $leaveTypeId, float $storedAnnualDays, float $daysRequested): float
+    {
+        return self::chargesAnnualAlways($leaveTypeId) ? $daysRequested : $storedAnnualDays;
     }
 }

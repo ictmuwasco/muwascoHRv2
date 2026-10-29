@@ -143,8 +143,12 @@ export default function TierAddWorkplanModal({
       const noCycle = items.some((it) => it.cycle_ids === '');
       onSaved(
         noCycle
-          ? `${items.length} activit${items.length === 1 ? 'y' : 'ies'} added. Some have no appraisal cycle — KPIs linked to them will not appear in any appraisal.`
-          : `${items.length} activit${items.length === 1 ? 'y' : 'ies'} added under the selected source.`,
+          ? `${items.length} activit${
+              items.length === 1 ? 'y' : 'ies'
+            } added. Some have no appraisal cycle — KPIs linked to them will not appear in any appraisal.`
+          : `${items.length} activit${
+              items.length === 1 ? 'y' : 'ies'
+            } added under the selected source.`,
       );
       onClose();
     } catch (err: any) {

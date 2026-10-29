@@ -127,7 +127,11 @@ const Notifications = () => {
             key={f.key}
             onClick={() => setFilter(f.key)}
             aria-pressed={filter === f.key}
-            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${filter === f.key ? 'bg-primary-600 border-primary-600 text-white' : 'border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700'}`}
+            className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
+              filter === f.key
+                ? 'bg-primary-600 border-primary-600 text-white'
+                : 'border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-700'
+            }`}
           >
             {f.label}
           </button>
@@ -185,7 +189,9 @@ const Notifications = () => {
                 <button
                   onClick={() => handleOpen(item)}
                   disabled={busyId === item.id}
-                  className={`w-full text-left px-4 py-3.5 flex items-start gap-3 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-60 ${!item.is_read ? 'bg-primary-50/40 dark:bg-primary-900/10' : ''}`}
+                  className={`w-full text-left px-4 py-3.5 flex items-start gap-3 transition-colors hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-60 ${
+                    !item.is_read ? 'bg-primary-50/40 dark:bg-primary-900/10' : ''
+                  }`}
                 >
                   <span
                     className={`mt-1.5 shrink-0 h-2.5 w-2.5 rounded-full ${toneClass(item.type)}`}
@@ -194,7 +200,11 @@ const Notifications = () => {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-3">
                       <p
-                        className={`text-sm truncate ${item.is_read ? 'font-normal text-gray-700 dark:text-gray-300' : 'font-semibold text-gray-900 dark:text-gray-100'}`}
+                        className={`text-sm truncate ${
+                          item.is_read
+                            ? 'font-normal text-gray-700 dark:text-gray-300'
+                            : 'font-semibold text-gray-900 dark:text-gray-100'
+                        }`}
                       >
                         {item.title}
                         {!item.is_read && <span className="sr-only"> (unread)</span>}

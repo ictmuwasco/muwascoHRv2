@@ -384,7 +384,12 @@ const LeaveProfile = () => {
             {sign}
             {fmtDays(movement.days)}
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
+          <div className="text-[10px] text-gray-500 dark:text-gray-400">
+            {movement.movement_type === 'CREDIT'
+              ? 'Annual Leave remaining'
+              : `${movement.leave_type_name || 'Leave'} remaining`}
+          </div>
+          <div className="text-xs font-mono text-gray-600 dark:text-gray-300">
             {fmtDays(movement.balance_before)} → {fmtDays(movement.balance_after)}
           </div>
         </div>
@@ -892,7 +897,10 @@ const LeaveProfile = () => {
                   const appMovements = movementsByApp[app.id] || [];
                   const hasMovements = appMovements.length > 0;
                   const primaryDays = Number(app.primary_days) || 0;
-                  const annualDays = Number(app.annual_days) || 0;
+                  const annualDays =
+                    Number(app.leave_type_id) === 6
+                      ? Number(app.days_requested) || 0
+                      : Number(app.annual_days) || 0;
                   const unpaidDays = Number(app.unpaid_days) || 0;
                   const isApproved = app.status === 'approved';
                   const isPending = app.status?.startsWith('pending') || app.status === 'pending';
@@ -901,7 +909,9 @@ const LeaveProfile = () => {
                   const impactParts = [];
                   if (isApproved) {
                     if (Number(app.leave_type_id) === 9) {
-                      impactParts.push(`+${fmtDays(app.days_requested)} Annual`);
+                      impactParts.push(
+                        `+${fmtDays(primaryDays > 0 ? primaryDays : app.days_requested)} Annual`,
+                      );
                     } else if (Number(app.leave_type_id) === 8) {
                       impactParts.push('No deduction');
                     } else {

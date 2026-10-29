@@ -8,6 +8,7 @@ import {
   Lock,
   Activity,
   ShieldAlert,
+  Wallet,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { SETTINGS_TABS, parsePermission, firstPermittedRoute } from '../../config/pagePermissions';
@@ -39,6 +40,7 @@ const TAB_ICONS = {
   permissions: <Shield className="h-4 w-4" />,
   monitoring: <Activity className="h-4 w-4" />,
   'hr-policies': <FileText className="h-4 w-4" />,
+  'leave-balances': <Wallet className="h-4 w-4" />,
 };
 
 /**
@@ -47,8 +49,10 @@ const TAB_ICONS = {
  * first permitted route (never a redirect loop).
  */
 export function SettingsIndexRedirect() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const isSuperAdmin = String(user?.role || '').toLowerCase() === 'super_admin';
   const allowed = SETTINGS_TABS.filter((tab) => {
+    if (tab.id === 'leave-balances' && !isSuperAdmin) return false;
     const [module, action] = parsePermission(tab.permission);
     return can(module, action);
   });
@@ -60,10 +64,12 @@ export function SettingsIndexRedirect() {
 }
 
 const SettingsLayout = () => {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const isSuperAdmin = String(user?.role || '').toLowerCase() === 'super_admin';
 
   // Permission-driven tab visibility (replaces the hardcoded role list).
   const tabs = SETTINGS_TABS.filter((tab) => {
+    if (tab.id === 'leave-balances' && !isSuperAdmin) return false;
     const [module, action] = parsePermission(tab.permission);
     return can(module, action);
   });

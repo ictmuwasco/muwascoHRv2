@@ -214,7 +214,9 @@ const LeaveRoster = () => {
 
   const handleDelete = async (emp) => {
     const confirmed = window.confirm(
-      `Remove Leave Roster Entry?\n\n${emp.employee_name}\n${emp.emp_code}\nPlanned month: ${emp.scheduled_month || '—'}\n\nThis will remove the planned leave allocation from the roster.\nIt will NOT delete or affect any actual leave application.`,
+      `Remove Leave Roster Entry?\n\n${emp.employee_name}\n${emp.emp_code}\nPlanned month: ${
+        emp.scheduled_month || '—'
+      }\n\nThis will remove the planned leave allocation from the roster.\nIt will NOT delete or affect any actual leave application.`,
     );
     if (!confirmed) return;
 

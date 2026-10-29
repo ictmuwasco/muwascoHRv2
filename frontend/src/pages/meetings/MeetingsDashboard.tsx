@@ -74,7 +74,13 @@ interface SortConfig {
 }
 
 type DateFilterValue =
-  'all' | 'today' | 'tomorrow' | 'this_week' | 'next_week' | 'this_month' | 'custom';
+  | 'all'
+  | 'today'
+  | 'tomorrow'
+  | 'this_week'
+  | 'next_week'
+  | 'this_month'
+  | 'custom';
 
 interface Filters {
   status: string;
