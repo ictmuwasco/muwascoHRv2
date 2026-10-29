@@ -6,6 +6,7 @@ namespace App\Services;
 
 use App\Helpers\Database;
 use App\Helpers\Auth;
+use App\Services\Leave\LeaveTypePolicy;
 
 /**
  * LeaveProfileService
@@ -616,6 +617,58 @@ class LeaveProfileService
             return strcmp($a['applied_at'] ?? '', $b['applied_at'] ?? '');
         });
 
+        // The balance table stores the current closing values, not the
+        // financial-year opening values. Reverse this year's approved
+        // application movements first so replaying the ledger ends at the
+        // authoritative stored balances instead of deducting them twice.
+        $netMovements = [];
+        $netUsedMovements = [];
+        foreach ($applications as $app) {
+            if (($app['status'] ?? '') !== 'approved') {
+                continue;
+            }
+
+            $leaveTypeId = (int) $app['leave_type_id'];
+            $daysRequested = (float) ($app['days_requested'] ?? 0);
+            if ($leaveTypeId === self::LEAVE_TYPE_CLAIM_A_DAY) {
+                $creditDays = (float) (($app['primary_days'] ?? 0) > 0
+                    ? $app['primary_days']
+                    : $daysRequested);
+                $netMovements[$annualTypeId] = ($netMovements[$annualTypeId] ?? 0) + $creditDays;
+                continue;
+            }
+
+            if ($leaveTypeId === self::LEAVE_TYPE_ABSENCE) {
+                continue;
+            }
+
+            $breakdown = $this->resolveMovementBreakdown($app, $annualTypeId, $balanceMap);
+            if ($breakdown['primary_days'] > 0) {
+                $netMovements[$leaveTypeId] =
+                    ($netMovements[$leaveTypeId] ?? 0) - $breakdown['primary_days'];
+                $netUsedMovements[$leaveTypeId] =
+                    ($netUsedMovements[$leaveTypeId] ?? 0) + $breakdown['primary_days'];
+            }
+            if ($breakdown['annual_days'] > 0) {
+                $netMovements[$annualTypeId] =
+                    ($netMovements[$annualTypeId] ?? 0) - $breakdown['annual_days'];
+                $netUsedMovements[$annualTypeId] =
+                    ($netUsedMovements[$annualTypeId] ?? 0) + $breakdown['annual_days'];
+            }
+        }
+
+        foreach ($openingBalances as $ltId => &$openingBalance) {
+            $openingBalance['remaining'] = round(
+                $openingBalance['remaining'] - ($netMovements[$ltId] ?? 0),
+                2
+            );
+            $openingBalance['used'] = round(
+                $openingBalance['used'] - ($netUsedMovements[$ltId] ?? 0),
+                2
+            );
+        }
+        unset($openingBalance);
+
         $movements = [];
         $pendingCount = 0;
         $approvedCount = 0;
@@ -653,45 +706,30 @@ class LeaveProfileService
             $isApproved = ($status === 'approved');
             $isLegacy = false;
 
-            // ── Determine deduction breakdown ────────────────────────
-            $primaryDays = $app['primary_days'] ?? null;
-            $annualDays = $app['annual_days'] ?? null;
-            $unpaidDays = $app['unpaid_days'] ?? null;
-
-            // Check if this is a legacy record (primary_days / annual_days / unpaid_days are NULL)
-            if ($primaryDays === null && $annualDays === null && $unpaidDays === null) {
-                $isLegacy = true;
-                // Reconstruct the breakdown based on leave type and available data
-                $reconstruction = $this->reconstructLegacyDeduction(
-                    $app, $leaveTypeId, $daysRequested, $annualTypeId, $balanceMap
-                );
-                $primaryDays = $reconstruction['primary_days'];
-                $annualDays = $reconstruction['annual_days'];
-                $unpaidDays = $reconstruction['unpaid_days'];
-            }
-
-            // Ensure numeric values
-            $primaryDays = (float) ($primaryDays ?? 0);
-            $annualDays = (float) ($annualDays ?? 0);
-            $unpaidDays = (float) ($unpaidDays ?? 0);
+            $breakdown = $this->resolveMovementBreakdown($app, $annualTypeId, $balanceMap);
+            $isLegacy = $breakdown['is_legacy'];
+            $primaryDays = $breakdown['primary_days'];
+            $annualDays = $breakdown['annual_days'];
+            $unpaidDays = $breakdown['unpaid_days'];
 
             // ── Build movement entries ───────────────────────────────
             $movementDate = $startDate;
 
             // Special handling for Claim a Day (id 9) — credits Annual Leave
             if ($leaveTypeId === self::LEAVE_TYPE_CLAIM_A_DAY) {
+                $creditDays = (float) ($primaryDays > 0 ? $primaryDays : $daysRequested);
                 if ($isApproved) {
                     $beforeAnnual = $runningBalances[$annualTypeId] ?? 0;
-                    $runningBalances[$annualTypeId] = $beforeAnnual + $daysRequested;
+                    $runningBalances[$annualTypeId] = $beforeAnnual + $creditDays;
                     $movements[] = [
                         'application_id'   => $appId,
                         'leave_type_id'    => $annualTypeId,
                         'leave_type_name'  => $typeMap[$annualTypeId]['name'] ?? 'Annual Leave',
                         'movement_type'    => 'CREDIT',
-                        'days'             => $daysRequested,
+                        'days'             => $creditDays,
                         'balance_before'   => $beforeAnnual,
                         'balance_after'    => $runningBalances[$annualTypeId],
-                        'explanation'      => "Claim a Day — {$daysRequested} day(s) credited to Annual Leave",
+                        'explanation'      => "Claim a Day — {$creditDays} day(s) credited to Annual Leave",
                         'date'             => $movementDate,
                         'status'           => $status,
                         'is_approved'      => true,
@@ -705,7 +743,7 @@ class LeaveProfileService
                         'leave_type_id'    => $annualTypeId,
                         'leave_type_name'  => $typeMap[$annualTypeId]['name'] ?? 'Annual Leave',
                         'movement_type'    => 'CREDIT',
-                        'days'             => $daysRequested,
+                        'days'             => $creditDays,
                         'balance_before'   => $runningBalances[$annualTypeId] ?? 0,
                         'balance_after'    => $runningBalances[$annualTypeId] ?? 0,
                         'explanation'      => "Claim a Day — pending approval, no credit applied yet",
@@ -847,6 +885,52 @@ class LeaveProfileService
             'pending_count'     => $pendingCount,
             'approved_count'    => $approvedCount,
             'rejected_count'    => $rejectedCount,
+        ];
+    }
+
+    /**
+     * Resolve the balance movement for an application, including legacy
+     * deductions and Short Leave's policy-based Annual Leave charge.
+     */
+    private function resolveMovementBreakdown(array $app, int $annualTypeId, array $balanceMap): array
+    {
+        $leaveTypeId = (int) $app['leave_type_id'];
+        $daysRequested = (int) ($app['days_requested'] ?? 0);
+        $primaryDays = $app['primary_days'] ?? null;
+        $annualDays = $app['annual_days'] ?? null;
+        $unpaidDays = $app['unpaid_days'] ?? null;
+        $isLegacy = $primaryDays === null && $annualDays === null && $unpaidDays === null;
+
+        if ($isLegacy) {
+            if ($leaveTypeId === self::LEAVE_TYPE_SHORT) {
+                $primaryDays = 0;
+                $annualDays = $daysRequested;
+                $unpaidDays = 0;
+            } else {
+                $reconstruction = $this->reconstructLegacyDeduction(
+                    $app,
+                    $leaveTypeId,
+                    $daysRequested,
+                    $annualTypeId,
+                    $balanceMap
+                );
+                $primaryDays = $reconstruction['primary_days'];
+                $annualDays = $reconstruction['annual_days'];
+                $unpaidDays = $reconstruction['unpaid_days'];
+            }
+        }
+
+        $annualDays = LeaveTypePolicy::annualDaysCharged(
+            $leaveTypeId,
+            (float) ($annualDays ?? 0),
+            (float) $daysRequested
+        );
+
+        return [
+            'primary_days' => (float) ($primaryDays ?? 0),
+            'annual_days' => $annualDays,
+            'unpaid_days' => (float) ($unpaidDays ?? 0),
+            'is_legacy' => $isLegacy,
         ];
     }
 

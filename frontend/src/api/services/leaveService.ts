@@ -9,6 +9,49 @@ import type {
   Holiday,
 } from '../../types';
 
+export interface SavedLeaveBalance {
+  id: number;
+  employee_id: number;
+  leave_type_id: number;
+  financial_year_id: number;
+  allocated_days: number;
+  used_days: number;
+  brought_forward_days: number;
+  accumulated_days: number;
+  remaining_days: number;
+}
+
+export interface ManagedLeaveBalance extends SavedLeaveBalance {
+  employee_code: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  surname: string | null;
+  employee_status: string | null;
+  leave_type: string | null;
+  year_name: string | null;
+}
+
+export interface LeaveBalanceManagementData {
+  financial_years: Array<{
+    id: number;
+    year_name: string;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+  }>;
+  leave_types: Array<{ id: number; name: string; is_active: boolean }>;
+  employees: Array<{
+    id: number;
+    employee_id: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    surname: string | null;
+    employee_status: string;
+  }>;
+  selected_financial_year_id: number;
+  balances: ManagedLeaveBalance[];
+}
+
 export const leaveService = {
   // List own leaves (uses /leave — same as Leave.jsx fetch).
   getAll: async (params?: Record<string, any>): Promise<PaginatedResponse<LeaveRequest>> => {
@@ -234,6 +277,67 @@ export const leaveService = {
 
   getRosterFinancialYears: async (): Promise<ApiResponse<any[]>> => {
     const response = await apiClient.get<ApiResponse<any[]>>('/leave/roster/financial-years');
+    return response.data;
+  },
+
+  getManagedBalances: async (
+    financialYearId?: number,
+  ): Promise<ApiResponse<LeaveBalanceManagementData>> => {
+    const response = await apiClient.get<ApiResponse<LeaveBalanceManagementData>>(
+      '/leave/balances',
+      { params: financialYearId ? { financial_year_id: financialYearId } : undefined },
+    );
+    return response.data;
+  },
+
+  updateManagedBalance: async (data: {
+    employee_id: number;
+    leave_type_id: number;
+    financial_year_id: number;
+    allocated_days: number;
+    brought_forward_days: number;
+    used_days: number;
+  }): Promise<ApiResponse<{ balance: SavedLeaveBalance }>> => {
+    const response = await apiClient.put<ApiResponse<{ balance: SavedLeaveBalance }>>(
+      '/leave/balances/update',
+      data,
+    );
+    return response.data;
+  },
+
+  addManagedAllocation: async (data: {
+    employee_id: number;
+    leave_type_id: number;
+    financial_year_id: number;
+    days: number;
+  }): Promise<ApiResponse<{ balance: SavedLeaveBalance }>> => {
+    const response = await apiClient.post<ApiResponse<{ balance: SavedLeaveBalance }>>(
+      '/leave/balances/add-allocation',
+      data,
+    );
+    return response.data;
+  },
+
+  carryForwardManagedBalances: async (
+    financialYearId: number,
+  ): Promise<
+    ApiResponse<{
+      source_financial_year: string;
+      target_financial_year: string;
+      updated: number;
+      created: number;
+      total: number;
+    }>
+  > => {
+    const response = await apiClient.post<
+      ApiResponse<{
+        source_financial_year: string;
+        target_financial_year: string;
+        updated: number;
+        created: number;
+        total: number;
+      }>
+    >('/leave/balances/carry-forward', { financial_year_id: financialYearId });
     return response.data;
   },
 

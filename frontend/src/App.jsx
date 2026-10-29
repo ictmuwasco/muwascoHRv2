@@ -57,6 +57,7 @@ const MyMeetings = lazy(() => import('./pages/meetings/MyMeetings'));
 const Admin = lazy(() => import('./pages/settings/Admin'));
 const Audit = lazy(() => import('./pages/settings/Audit'));
 const ErrorMonitoring = lazy(() => import('./pages/settings/ErrorMonitoring'));
+const LeaveBalances = lazy(() => import('./pages/settings/LeaveBalances'));
 
 // Lazy loaded - Report pages
 const Reports = lazy(() => import('./pages/reports/Reports'));
@@ -782,6 +783,16 @@ function App() {
                   <Guarded route="/settings/monitoring">
                     <Suspense fallback={<PageLoader />}>
                       <ErrorMonitoring />
+                    </Suspense>
+                  </Guarded>
+                }
+              />
+              <Route
+                path="leave-balances"
+                element={
+                  <Guarded route="/settings/leave-balances">
+                    <Suspense fallback={<PageLoader />}>
+                      <LeaveBalances />
                     </Suspense>
                   </Guarded>
                 }

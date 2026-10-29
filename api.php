@@ -26,6 +26,7 @@ use App\Controllers\Employee\EmployeeController;
 use App\Controllers\Employee\VaultController;
 use App\Controllers\HR\DepartmentController;
 use App\Controllers\Leave\LeaveController;
+use App\Controllers\Leave\LeaveBalancesController;
 use App\Controllers\Leave\LeaveRosterController;
 use App\Controllers\Leave\LeaveReportController;
 use App\Controllers\Leave\DelegationController;
@@ -433,6 +434,7 @@ $router->add('GET', '/leave/delegates', LeaveController::class, 'delegates', 'le
 $router->add('POST', '/leave/calculate', LeaveController::class, 'calculate', 'leave:view');
 $router->add('GET', '/leave/{id}/documents', LeaveController::class, 'listDocuments');
 $router->add('GET', '/leave/{id}/documents/{documentId}', LeaveController::class, 'viewDocument');
+$router->add('GET', '/leave/balance/{employee_id}', LeaveController::class, 'balance', 'leave:view');
 $router->add('PUT', '/leave/{id}/approve', LeaveController::class, 'approve', 'leave:approve', '120:300');
 $router->add('PUT', '/leave/{id}/reject', LeaveController::class, 'reject', 'leave:reject', '120:300');
 $router->add('PUT', '/leave/{id}/invalidate', LeaveController::class, 'invalidate', 'leave:invalidate', '120:300');
@@ -463,6 +465,13 @@ $router->add('GET', '/leave/profile/{id}/applications', LeaveController::class, 
 $router->add('GET', '/leave/profile/{id}/timeline', LeaveController::class, 'profileTimeline', 'leave:view');
 $router->add('GET', '/leave/profile/{id}/summary', LeaveController::class, 'profileSummary', 'leave:view');
 $router->add('GET', '/leave/profile/{id}/export', LeaveController::class, 'profileExport', 'leave:view', '20:300');
+
+// Super-admin balance maintenance. The controller also enforces the role
+// explicitly; leave:manage alone does not grant access to this surface.
+$router->add('GET', '/leave/balances', LeaveBalancesController::class, 'index', 'leave:manage');
+$router->add('PUT', '/leave/balances/update', LeaveBalancesController::class, 'update', 'leave:manage', '30:300');
+$router->add('POST', '/leave/balances/carry-forward', LeaveBalancesController::class, 'carryForward', 'leave:manage', '5:300');
+$router->add('POST', '/leave/balances/add-allocation', LeaveBalancesController::class, 'addAllocation', 'leave:manage', '30:300');
 
 // Leave Roster routes - static sub-resource routes must be registered before /leave/roster/{id}.
 // Roster planning is an approver/HR function (§33 page matrix): the roster

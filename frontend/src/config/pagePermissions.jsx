@@ -126,6 +126,7 @@ export const PAGE_PERMISSIONS = {
   '/settings/users': { id: 'settings_users', permission: 'settings:users' },
   '/settings/permissions': { id: 'settings_permissions', permission: 'settings:permissions' },
   '/settings/monitoring': { id: 'settings_monitoring', permission: 'settings:monitoring' },
+  '/settings/leave-balances': { id: 'leave_balances', permission: 'leave:manage' },
 
   // --- HR Policy & Procedures (module 081) -------------------------------------------
   '/hr/policies': { id: 'hr_policies', permission: 'hr_policies:view' },
@@ -163,6 +164,7 @@ export const SETTINGS_TABS = [
   { id: 'users', name: 'Users', permission: 'settings:users' },
   { id: 'permissions', name: 'Permissions', permission: 'settings:permissions' },
   { id: 'monitoring', name: 'System Monitor', permission: 'settings:monitoring' },
+  { id: 'leave-balances', name: 'Leave Balances', permission: 'leave:manage' },
   // TEMP-DISABLED: HR Policies admin tab hidden (commented so it can't be
   // navigated via tab or URL). Uncomment to restore.
   // { id: 'hr-policies', name: 'HR Policies', permission: 'hr_policies:manage' },

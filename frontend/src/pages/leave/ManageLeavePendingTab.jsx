@@ -112,6 +112,67 @@ const PendingTab = () => {
       closeModal();
       setOffset(0);
       await fetchRows();
+
+      // BALANCE UPDATE ON APPROVAL — fetch refreshed balances and surface them
+      if (modal.action === 'approve' && modal.row) {
+        try {
+          const empId =
+            modal.row.employee_id || modal.row.first_name || modal.row.emp_no;
+          const daysRequested = Number(modal.row.days_requested || 0);
+          const leaveTypeName = modal.row.leave_type_name || '';
+
+          const balanceResp = await api.get(`/leave/balance/${empId}`);
+          const balanceData = balanceResp.data?.data || [];
+
+          const typeBalance = balanceData.find(
+            (b) =>
+              b.leave_type_id === modal.row.leave_type_id ||
+              b.leave_type_name === leaveTypeName,
+          );
+
+          if (typeBalance) {
+            const currentUsed = typeBalance.used_days || 0;
+            const currentRemaining = typeBalance.remaining_days || 0;
+
+            let newUsed, newRemaining;
+            if (leaveTypeName === 'Claim a Day') {
+              newUsed = currentUsed;
+              newRemaining = currentRemaining + daysRequested;
+            } else if (leaveTypeName === 'Short Leave') {
+              newUsed = currentUsed;
+              newRemaining = currentRemaining - daysRequested;
+              setBanner({
+                kind: 'success',
+                message: 'Short leave approved. Annual leave deducted.',
+              });
+            } else {
+              newUsed = currentUsed + daysRequested;
+              newRemaining = currentRemaining - daysRequested;
+            }
+
+            const infoText =
+              leaveTypeName === 'Claim a Day'
+                ? 'Claim a day approved. Annual balance credited. '
+                : leaveTypeName === 'Short Leave'
+                  ? 'Short leave approved. '
+                  : `${leaveTypeName} approved. `;
+
+            setBanner((prev) => ({
+              ...prev,
+              message:
+                prev.message +
+                infoText +
+                `Used: ${newUsed} days, Remaining: ${newRemaining} days.`,
+            }));
+          }
+        } catch (balanceErr) {
+          setBanner((prev) => ({
+            ...prev,
+            message: prev.message + ' (Balance update pending)',
+          }));
+        }
+      }
+
       if (typeof refreshCounts === 'function') refreshCounts();
     } catch (err) {
       setBanner({
