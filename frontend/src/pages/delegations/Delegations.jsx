@@ -303,7 +303,9 @@ const Delegations = () => {
       action === 'approve'
         ? ''
         : window.prompt(
-            `Reason for ${action === 'reject' ? 'rejecting' : 'cancelling'} this delegation (optional):`,
+            `Reason for ${
+              action === 'reject' ? 'rejecting' : 'cancelling'
+            } this delegation (optional):`,
           ) || '';
     try {
       await api.put(`/delegations/${id}/${action}`, { reason });
@@ -473,7 +475,9 @@ const Delegations = () => {
                         </td>
                         <td className="px-4 py-2">
                           <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge(row.status)}`}
+                            className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadge(
+                              row.status,
+                            )}`}
                           >
                             {row.status}
                           </span>

@@ -339,7 +339,9 @@ const CompletedAppraisals = () => {
 
       {(error || notice) && (
         <div
-          className={`flex items-center rounded-lg px-4 py-3 text-sm ${error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}
+          className={`flex items-center rounded-lg px-4 py-3 text-sm ${
+            error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
+          }`}
         >
           <span className="flex-1">{error || notice}</span>
           <button
@@ -724,7 +726,9 @@ const CompletedAppraisals = () => {
                       </td>
                       <td className="px-3 py-2.5 text-right font-semibold">{detail.total_score}</td>
                       <td
-                        className={`px-3 py-2.5 text-right font-semibold ${scoreBand(detail.score_percentage)}`}
+                        className={`px-3 py-2.5 text-right font-semibold ${scoreBand(
+                          detail.score_percentage,
+                        )}`}
                       >
                         {detail.score_percentage}%
                       </td>

@@ -59,7 +59,9 @@ import('./utils/errorReporting')
         reportClientError({
           kind: 'uncaught',
           message: isResource
-            ? `Resource failed to load: ${event.target?.tagName} ${event.target?.src || event.target?.href || ''}`
+            ? `Resource failed to load: ${event.target?.tagName} ${
+                event.target?.src || event.target?.href || ''
+              }`
             : String(event?.message ?? 'Unknown window error'),
           stack: typeof event?.error?.stack === 'string' ? event.error.stack : undefined,
           severity: isResource ? 'LOW' : 'HIGH',

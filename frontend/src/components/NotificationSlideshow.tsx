@@ -175,7 +175,9 @@ const NotificationSlideshow = ({ pendingLeaveApprovals = 0 }: NotificationSlides
         id: 'leave-approvals',
         tone: 'approvals',
         count: pendingLeaveApprovals,
-        headline: `Pending leave request${pendingLeaveApprovals === 1 ? '' : 's'} awaiting your approval`,
+        headline: `Pending leave request${
+          pendingLeaveApprovals === 1 ? '' : 's'
+        } awaiting your approval`,
         detail: 'Open Manage Leave to review the queue.',
         target: '/leave/manage/pending',
       });
@@ -267,7 +269,9 @@ const NotificationSlideshow = ({ pendingLeaveApprovals = 0 }: NotificationSlides
   return (
     <section
       aria-label="Notification summary slideshow"
-      className={`group relative overflow-hidden rounded-xl bg-gradient-to-r text-white shadow-lg ring-1 ring-black/10 ${TONE_CLASSES[active.tone]}`}
+      className={`group relative overflow-hidden rounded-xl bg-gradient-to-r text-white shadow-lg ring-1 ring-black/10 ${
+        TONE_CLASSES[active.tone]
+      }`}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -287,7 +291,9 @@ const NotificationSlideshow = ({ pendingLeaveApprovals = 0 }: NotificationSlides
             navigate(active.target);
           }
         }}
-        className={`flex w-full cursor-pointer items-center gap-4 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/80 sm:px-5 ${reduceMotion ? '' : 'notification-slide-in'}`}
+        className={`flex w-full cursor-pointer items-center gap-4 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/80 sm:px-5 ${
+          reduceMotion ? '' : 'notification-slide-in'
+        }`}
       >
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/40">
           <Icon className="h-5 w-5" aria-hidden="true" />

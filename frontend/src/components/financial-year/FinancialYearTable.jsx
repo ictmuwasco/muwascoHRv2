@@ -90,7 +90,9 @@ const FinancialYearTable = ({ financialYears }) => {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span
-                    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPeriodBadge(fy.period_status)}`}
+                    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPeriodBadge(
+                      fy.period_status,
+                    )}`}
                   >
                     {fy.period_status
                       ? fy.period_status.charAt(0).toUpperCase() + fy.period_status.slice(1)

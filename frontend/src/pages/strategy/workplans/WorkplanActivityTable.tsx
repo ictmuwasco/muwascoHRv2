@@ -68,7 +68,13 @@ function ProgressControl({
       <div className="flex items-center gap-2">
         <div className="w-14 h-1.5 bg-gray-200 dark:bg-slate-600 rounded-full overflow-hidden flex-none">
           <div
-            className={`h-full ${row.status === 'completed' ? 'bg-green-500' : value >= 50 ? 'bg-blue-500' : 'bg-amber-500'}`}
+            className={`h-full ${
+              row.status === 'completed'
+                ? 'bg-green-500'
+                : value >= 50
+                  ? 'bg-blue-500'
+                  : 'bg-amber-500'
+            }`}
             style={{ width: `${value}%` }}
           />
         </div>
@@ -259,7 +265,9 @@ export default function WorkplanActivityTable({
                     </span>
                     {row.parent_objective_id ? (
                       <span
-                        title={`Cascaded from: ${row.parent_objective ?? `#${row.parent_objective_id}`}`}
+                        title={`Cascaded from: ${
+                          row.parent_objective ?? `#${row.parent_objective_id}`
+                        }`}
                         className="inline-flex items-center gap-1 rounded bg-indigo-50 dark:bg-indigo-900/40 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 dark:text-indigo-300"
                       >
                         <GitBranch className="h-3 w-3" />
@@ -325,7 +333,9 @@ export default function WorkplanActivityTable({
                 </td>
                 <td className={`${td} text-center`}>
                   <span
-                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium border ${getCascadeColor(getCascadeStatus(row, view))}`}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium border ${getCascadeColor(
+                      getCascadeStatus(row, view),
+                    )}`}
                     title={getCascadeTooltip(getCascadeStatus(row, view), row)}
                   >
                     {getCascadeIcon(getCascadeStatus(row, view))}

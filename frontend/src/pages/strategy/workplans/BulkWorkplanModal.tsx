@@ -145,8 +145,12 @@ export default function BulkWorkplanModal({
       const noCycle = items.some((it) => it.cycle_ids === '');
       onSaved(
         noCycle
-          ? `${items.length} activit${items.length === 1 ? 'y' : 'ies'} saved. Some have no appraisal cycle — KPIs linked to them will not appear in any appraisal.`
-          : `${items.length} activit${items.length === 1 ? 'y' : 'ies'} saved under the selected contract.`,
+          ? `${items.length} activit${
+              items.length === 1 ? 'y' : 'ies'
+            } saved. Some have no appraisal cycle — KPIs linked to them will not appear in any appraisal.`
+          : `${items.length} activit${
+              items.length === 1 ? 'y' : 'ies'
+            } saved under the selected contract.`,
       );
       onClose();
     } catch (err: any) {

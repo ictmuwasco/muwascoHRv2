@@ -329,7 +329,9 @@ function DecisionButton({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center justify-center gap-2 rounded-md border p-2 text-sm font-medium ${active ? colors[tone] : 'border-gray-200 text-gray-500'}`}
+      className={`flex items-center justify-center gap-2 rounded-md border p-2 text-sm font-medium ${
+        active ? colors[tone] : 'border-gray-200 text-gray-500'
+      }`}
     >
       {icon}
       {label}

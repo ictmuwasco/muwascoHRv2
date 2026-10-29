@@ -491,7 +491,7 @@ export default function TierWorkplanPage({
         objectiveId={historyId}
         onClose={() => setHistoryId(null)}
         objectiveTitle={
-          historyId !== null ? (rows.find((r) => r.id === historyId)?.objective ?? null) : null
+          historyId !== null ? rows.find((r) => r.id === historyId)?.objective ?? null : null
         }
       />
     </div>

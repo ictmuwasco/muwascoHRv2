@@ -186,7 +186,11 @@ const SecurityTab = () => {
               if (tab === 'ai-analyst') loadAiThreats();
               if (tab === 'vulnerabilities') loadVulnerabilities();
             }}
-            className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${selectedTab === tab ? 'bg-white dark:bg-slate-700 text-primary-600 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'}`}
+            className={`px-4 py-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors ${
+              selectedTab === tab
+                ? 'bg-white dark:bg-slate-700 text-primary-600 shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:text-gray-900'
+            }`}
           >
             {tab.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
           </button>
@@ -206,7 +210,9 @@ const SecurityTab = () => {
                 </p>
               </div>
               <div
-                className={`px-4 py-2 rounded-lg border font-bold text-lg ${postureColor(overview.posture?.posture)}`}
+                className={`px-4 py-2 rounded-lg border font-bold text-lg ${postureColor(
+                  overview.posture?.posture,
+                )}`}
               >
                 {overview.posture?.posture?.replace('_', ' ') || 'GOOD'}
               </div>
@@ -422,7 +428,11 @@ const SecurityTab = () => {
                   <tr key={i} className="border-b dark:border-slate-800">
                     <td className="py-2">
                       <span
-                        className={`px-2 py-0.5 rounded text-xs font-bold ${ep.method === 'GET' ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'}`}
+                        className={`px-2 py-0.5 rounded text-xs font-bold ${
+                          ep.method === 'GET'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}
                       >
                         {ep.method}
                       </span>
@@ -523,7 +533,9 @@ const SecurityTab = () => {
                           <td className="px-3 py-2">{p.role}</td>
                           <td className="px-3 py-2">{p.action}</td>
                           <td
-                            className={`px-3 py-2 font-medium ${Number(p.is_granted) ? 'text-green-600' : 'text-red-600'}`}
+                            className={`px-3 py-2 font-medium ${
+                              Number(p.is_granted) ? 'text-green-600' : 'text-red-600'
+                            }`}
                           >
                             {Number(p.is_granted) ? 'Granted' : 'Denied'}
                           </td>
@@ -559,7 +571,9 @@ const SecurityTab = () => {
                   </div>
                 </div>
                 <span
-                  className={`px-2 py-0.5 rounded text-xs font-medium ${v.status === 'OPEN' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}
+                  className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    v.status === 'OPEN' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+                  }`}
                 >
                   {v.status || 'OPEN'}
                 </span>
@@ -597,7 +611,13 @@ const SecurityTab = () => {
                   <div className="flex items-start justify-between">
                     <div className="flex items-start space-x-3">
                       <AlertOctagon
-                        className={`h-5 w-5 mt-0.5 ${t.confidence > 0.8 ? 'text-red-500' : t.confidence > 0.5 ? 'text-orange-500' : 'text-yellow-500'}`}
+                        className={`h-5 w-5 mt-0.5 ${
+                          t.confidence > 0.8
+                            ? 'text-red-500'
+                            : t.confidence > 0.5
+                              ? 'text-orange-500'
+                              : 'text-yellow-500'
+                        }`}
                       />
                       <div>
                         <p className="font-medium">{t.classification?.replace(/_/g, ' ')}</p>
@@ -655,7 +675,11 @@ const SecurityTab = () => {
               copilotMessages.map((msg, i) => (
                 <div
                   key={i}
-                  className={`p-3 rounded-lg ${msg.role === 'user' ? 'bg-primary-50 dark:bg-slate-700 ml-auto max-w-[80%]' : 'bg-gray-100 dark:bg-slate-800 mr-auto max-w-[80%]'}`}
+                  className={`p-3 rounded-lg ${
+                    msg.role === 'user'
+                      ? 'bg-primary-50 dark:bg-slate-700 ml-auto max-w-[80%]'
+                      : 'bg-gray-100 dark:bg-slate-800 mr-auto max-w-[80%]'
+                  }`}
                 >
                   <p className="text-sm">{msg.content}</p>
                   <span className="text-xs text-gray-400">

@@ -223,7 +223,9 @@ export default function StrategicPlan() {
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {data.active_financial_year
-              ? `${fmt(data.active_financial_year.start_date)} – ${fmt(data.active_financial_year.end_date)} · Financial years run 1 July – 30 June`
+              ? `${fmt(data.active_financial_year.start_date)} – ${fmt(
+                  data.active_financial_year.end_date,
+                )} · Financial years run 1 July – 30 June`
               : 'Set an active financial year under HR Admin → Financial Year.'}
           </p>
         </div>
@@ -386,7 +388,9 @@ export default function StrategicPlan() {
                 label: 'Baseline → Target',
                 render: (_v, row: StrategicTarget) =>
                   row.target_value || row.baseline_value
-                    ? `${row.baseline_value || '—'} → ${row.target_value || '—'}${row.unit ? ` ${row.unit}` : ''}`
+                    ? `${row.baseline_value || '—'} → ${row.target_value || '—'}${
+                        row.unit ? ` ${row.unit}` : ''
+                      }`
                     : 'Not set',
               },
               { key: 'contract_count', label: 'Contracts' },

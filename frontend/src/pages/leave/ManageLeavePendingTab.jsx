@@ -116,8 +116,7 @@ const PendingTab = () => {
       // BALANCE UPDATE ON APPROVAL — fetch refreshed balances and surface them
       if (modal.action === 'approve' && modal.row) {
         try {
-          const empId =
-            modal.row.employee_id || modal.row.first_name || modal.row.emp_no;
+          const empId = modal.row.employee_id || modal.row.first_name || modal.row.emp_no;
           const daysRequested = Number(modal.row.days_requested || 0);
           const leaveTypeName = modal.row.leave_type_name || '';
 
@@ -126,8 +125,7 @@ const PendingTab = () => {
 
           const typeBalance = balanceData.find(
             (b) =>
-              b.leave_type_id === modal.row.leave_type_id ||
-              b.leave_type_name === leaveTypeName,
+              b.leave_type_id === modal.row.leave_type_id || b.leave_type_name === leaveTypeName,
           );
 
           if (typeBalance) {
@@ -160,9 +158,7 @@ const PendingTab = () => {
             setBanner((prev) => ({
               ...prev,
               message:
-                prev.message +
-                infoText +
-                `Used: ${newUsed} days, Remaining: ${newRemaining} days.`,
+                prev.message + infoText + `Used: ${newUsed} days, Remaining: ${newRemaining} days.`,
             }));
           }
         } catch (balanceErr) {

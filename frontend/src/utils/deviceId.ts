@@ -29,7 +29,11 @@ export const getDeviceId = (): string => {
   const generated =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
-      : `dev-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)}`;
+      : `dev-${
+          typeof crypto !== 'undefined' && crypto.randomUUID
+            ? crypto.randomUUID()
+            : Date.now().toString(36)
+        }`;
 
   try {
     localStorage.setItem(DEVICE_ID_STORAGE_KEY, generated);

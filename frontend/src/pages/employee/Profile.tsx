@@ -672,7 +672,11 @@ const Profile = () => {
                         return (
                           <div
                             key={contract.id}
-                            className={`p-4 rounded-lg border ${isActive ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}
+                            className={`p-4 rounded-lg border ${
+                              isActive
+                                ? 'border-green-200 bg-green-50'
+                                : 'border-gray-200 bg-gray-50'
+                            }`}
                           >
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-sm font-medium text-gray-900">
