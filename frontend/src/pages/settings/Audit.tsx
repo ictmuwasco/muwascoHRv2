@@ -552,7 +552,10 @@ const Audit = () => {
                   <div
                     className="bg-primary-600 h-full rounded-full transition-all duration-300"
                     style={{
-                      width: `${Math.min(100, (item.count / (statistics?.total_logs || 1)) * 100)}%`,
+                      width: `${Math.min(
+                        100,
+                        (item.count / (statistics?.total_logs || 1)) * 100,
+                      )}%`,
                     }}
                   />
                 </div>

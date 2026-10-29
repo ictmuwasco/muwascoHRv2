@@ -163,7 +163,7 @@ export default function CascadeActivityDialog({
         performance_contract_id:
           parentLevel === 'organisation'
             ? Number(contractId)
-            : (parent.performance_contract_id ?? null),
+            : parent.performance_contract_id ?? null,
         section_id: sectionId ? Number(sectionId) : null,
         subsection_id: subsectionId ? Number(subsectionId) : null,
         responsible_officer_id: officerId ? Number(officerId) : null,
@@ -209,7 +209,9 @@ export default function CascadeActivityDialog({
         </div>
 
         <div
-          className={`grid grid-cols-1 gap-3 ${parentLevel === 'subsection' ? '' : 'md:grid-cols-2'}`}
+          className={`grid grid-cols-1 gap-3 ${
+            parentLevel === 'subsection' ? '' : 'md:grid-cols-2'
+          }`}
         >
           <div>
             <label className={labelCls}>Child Activity / Task *</label>

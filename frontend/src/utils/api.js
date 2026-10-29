@@ -241,7 +241,9 @@ const performRequest = async (endpoint, options = {}) => {
 
   const toTimeoutError = () => {
     const error = new Error(
-      `Request timed out after ${Math.round(timeout / 1000)}s. Check your connection and try again.`,
+      `Request timed out after ${Math.round(
+        timeout / 1000,
+      )}s. Check your connection and try again.`,
     );
     error.isTimeout = true;
     error.response = { data: {}, status: 0, statusText: 'Timeout' };
@@ -257,7 +259,9 @@ const performRequest = async (endpoint, options = {}) => {
     // axios client so every page benefits from System Monitoring reports.
     reportClientError({
       kind: 'network',
-      message: `Network failure calling ${method.toUpperCase()} ${url}: ${err?.message || String(err)}`,
+      message: `Network failure calling ${method.toUpperCase()} ${url}: ${
+        err?.message || String(err)
+      }`,
       endpoint: url,
       severity: 'HIGH',
     });
@@ -302,7 +306,9 @@ const performRequest = async (endpoint, options = {}) => {
     if (response.status >= 500 && !url.includes('/system/client-errors')) {
       reportClientError({
         kind: 'api',
-        message: `API ${response.status} on ${method.toUpperCase()} ${url}: ${data?.message || 'Internal Server Error'}`,
+        message: `API ${response.status} on ${method.toUpperCase()} ${url}: ${
+          data?.message || 'Internal Server Error'
+        }`,
         stack: data?.error?.details ?? undefined,
         endpoint: url,
         status_code: response.status,

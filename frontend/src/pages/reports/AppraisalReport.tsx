@@ -836,7 +836,9 @@ const AppraisalReport = () => {
         subtitle={
           loadingRows
             ? undefined
-            : `${total} appraisal${total === 1 ? '' : 's'} match the current filters - every scored appraisal in your scope`
+            : `${total} appraisal${
+                total === 1 ? '' : 's'
+              } match the current filters - every scored appraisal in your scope`
         }
       >
         {loadingRows ? (

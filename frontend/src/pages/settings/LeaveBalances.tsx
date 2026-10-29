@@ -33,11 +33,17 @@ const LeaveBalances = () => {
   const isSuperAdmin = String(user?.role || '').toLowerCase() === 'super_admin';
   const [balances, setBalances] = useState<ManagedLeaveBalance[]>([]);
   const [financialYears, setFinancialYears] = useState<
-    Array<{ id: number; year_name: string; start_date: string; end_date: string; is_active: boolean }>
+    Array<{
+      id: number;
+      year_name: string;
+      start_date: string;
+      end_date: string;
+      is_active: boolean;
+    }>
   >([]);
-  const [leaveTypes, setLeaveTypes] = useState<Array<{ id: number; name: string; is_active: boolean }>>(
-    [],
-  );
+  const [leaveTypes, setLeaveTypes] = useState<
+    Array<{ id: number; name: string; is_active: boolean }>
+  >([]);
   const [employees, setEmployees] = useState<
     Array<{
       id: number;
@@ -346,14 +352,18 @@ const LeaveBalances = () => {
                       <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
                         {balance.leave_type || `Type ${balance.leave_type_id}`}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-sm">{formatDays(balance.allocated_days)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                        {formatDays(balance.allocated_days)}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm">
                         {formatDays(balance.brought_forward_days)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-sm">
                         {formatDays(balance.accumulated_days)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-sm">{formatDays(balance.used_days)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                        {formatDays(balance.used_days)}
+                      </td>
                       <td
                         className={`whitespace-nowrap px-4 py-3 text-sm font-semibold ${
                           balance.remaining_days < 0
@@ -368,7 +378,9 @@ const LeaveBalances = () => {
                           variant="outline"
                           size="sm"
                           onClick={() => openUpdate(balance)}
-                          aria-label={`Update ${employeeName(balance)} ${balance.leave_type} balance`}
+                          aria-label={`Update ${employeeName(balance)} ${
+                            balance.leave_type
+                          } balance`}
                         >
                           <Pencil className="mr-1 h-3.5 w-3.5" />
                           Edit
@@ -384,7 +396,10 @@ const LeaveBalances = () => {
               <span>
                 {filteredBalances.length === 0
                   ? '0'
-                  : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filteredBalances.length)}`}{' '}
+                  : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(
+                      page * PAGE_SIZE,
+                      filteredBalances.length,
+                    )}`}{' '}
                 of {filteredBalances.length}
               </span>
               <div className="flex gap-2">
@@ -503,12 +518,13 @@ const LeaveBalances = () => {
             onChange={(event) => setAllocationEmployeeId(event.target.value)}
             options={employees.map((employee) => ({
               value: employee.id,
-              label: [employee.first_name, employee.last_name, employee.surname]
-                .filter(Boolean)
-                .join(' ')
-                .trim()
-                + ` (${employee.employee_id ?? employee.id})`
-                + (employee.employee_status === 'active' ? '' : ` — ${employee.employee_status}`),
+              label:
+                [employee.first_name, employee.last_name, employee.surname]
+                  .filter(Boolean)
+                  .join(' ')
+                  .trim() +
+                ` (${employee.employee_id ?? employee.id})` +
+                (employee.employee_status === 'active' ? '' : ` — ${employee.employee_status}`),
             }))}
           />
           <Select
@@ -534,8 +550,8 @@ const LeaveBalances = () => {
             onChange={(event) => setAllocationDays(event.target.value)}
           />
           <p className="text-xs text-gray-500">
-            This adds to the selected employee’s allocation for {selectedYear?.year_name ?? 'the selected year'}.
-            Used days are preserved.
+            This adds to the selected employee’s allocation for{' '}
+            {selectedYear?.year_name ?? 'the selected year'}. Used days are preserved.
           </p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={closeModal} disabled={saving}>
@@ -556,13 +572,14 @@ const LeaveBalances = () => {
       >
         <form onSubmit={handleCarryForward} className="space-y-4">
           <p className="text-sm text-gray-700 dark:text-gray-300">
-            Carry each employee’s annual leave remaining in <strong>{selectedYear?.year_name}</strong>{' '}
-            into brought-forward days for <strong>{nextFinancialYear?.year_name}</strong>.
+            Carry each employee’s annual leave remaining in{' '}
+            <strong>{selectedYear?.year_name}</strong> into brought-forward days for{' '}
+            <strong>{nextFinancialYear?.year_name}</strong>.
           </p>
           <p className="text-sm text-amber-700 dark:text-amber-300">
             This overwrites brought-forward days on existing target annual balances. Target
-            allocations and used days are preserved; accumulated and remaining days are recalculated.
-            Other leave types are not changed.
+            allocations and used days are preserved; accumulated and remaining days are
+            recalculated. Other leave types are not changed.
           </p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={closeModal} disabled={saving}>

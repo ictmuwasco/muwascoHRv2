@@ -179,7 +179,9 @@ const HrPolicyReader = () => {
         const axiosErr = err as { response?: { status?: number }; message?: string };
         reportClientError({
           kind: 'api',
-          message: `HR policy reader: failed to fetch current policy: ${axiosErr?.message || 'Unknown error'}`,
+          message: `HR policy reader: failed to fetch current policy: ${
+            axiosErr?.message || 'Unknown error'
+          }`,
           stack: err instanceof Error ? err.stack : undefined,
           component: 'HrPolicyReader/loadCurrentPolicy',
           endpoint: '/hr-policies/current',
@@ -203,7 +205,9 @@ const HrPolicyReader = () => {
         const axiosErr = err as { response?: { status?: number }; message?: string };
         reportClientError({
           kind: 'api',
-          message: `HR policy reader: failed to fetch sections for document ${documentId}: ${axiosErr?.message || 'Unknown error'}`,
+          message: `HR policy reader: failed to fetch sections for document ${documentId}: ${
+            axiosErr?.message || 'Unknown error'
+          }`,
           stack: err instanceof Error ? err.stack : undefined,
           component: 'HrPolicyReader/loadSections',
           endpoint: `/hr-policies/${documentId}/sections`,
@@ -239,7 +243,9 @@ const HrPolicyReader = () => {
         const axiosErr = err as { response?: { status?: number }; message?: string };
         reportClientError({
           kind: 'api',
-          message: `HR policy reader: failed to fetch section ${sectionId}: ${axiosErr?.message || 'Unknown error'}`,
+          message: `HR policy reader: failed to fetch section ${sectionId}: ${
+            axiosErr?.message || 'Unknown error'
+          }`,
           stack: err instanceof Error ? err.stack : undefined,
           component: 'HrPolicyReader/loadSection',
           endpoint: `/hr-policies/sections/${sectionId}`,
@@ -268,7 +274,9 @@ const HrPolicyReader = () => {
       const axiosErr = err as { response?: { status?: number }; message?: string };
       reportClientError({
         kind: 'api',
-        message: `HR policy reader: search failed for "${query.slice(0, 80)}": ${axiosErr?.message || 'Unknown error'}`,
+        message: `HR policy reader: search failed for "${query.slice(0, 80)}": ${
+          axiosErr?.message || 'Unknown error'
+        }`,
         stack: err instanceof Error ? err.stack : undefined,
         component: 'HrPolicyReader/handleSearch',
         endpoint: '/hr-policies/search',
@@ -295,7 +303,9 @@ const HrPolicyReader = () => {
       const axiosErr = err as { response?: { status?: number }; message?: string };
       reportClientError({
         kind: 'api',
-        message: `HR policy reader: bookmark toggle failed for section ${currentSection.id}: ${axiosErr?.message || 'Unknown error'}`,
+        message: `HR policy reader: bookmark toggle failed for section ${currentSection.id}: ${
+          axiosErr?.message || 'Unknown error'
+        }`,
         stack: err instanceof Error ? err.stack : undefined,
         component: 'HrPolicyReader/toggleBookmark',
         endpoint: '/hr-policies/bookmarks',
@@ -373,7 +383,9 @@ const HrPolicyReader = () => {
   // Ask AI about current section (§19)
   const askAiAboutSection = () => {
     if (!currentSection) return;
-    const question = `What does section ${currentSection.section_number || ''} — "${currentSection.title}" mean?`;
+    const question = `What does section ${currentSection.section_number || ''} — "${
+      currentSection.title
+    }" mean?`;
     window.dispatchEvent(
       new CustomEvent('muwasco:ask-ai', {
         detail: { question, section: currentSection.section_number },
@@ -426,7 +438,9 @@ const HrPolicyReader = () => {
 
       {/* Left navigation: section tree (hidden on mobile when reading) */}
       <div
-        className={`${mobileView === 'contents' ? 'flex' : 'hidden'} md:flex w-full md:w-64 lg:w-72 flex-1 md:flex-none min-h-0 flex-col overflow-hidden border-r border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg`}
+        className={`${
+          mobileView === 'contents' ? 'flex' : 'hidden'
+        } md:flex w-full md:w-64 lg:w-72 flex-1 md:flex-none min-h-0 flex-col overflow-hidden border-r border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 rounded-lg`}
       >
         <div className="p-4 border-b dark:border-slate-700 flex-shrink-0">
           <h2 className="font-semibold text-gray-900 dark:text-gray-100">Table of Contents</h2>
@@ -447,7 +461,9 @@ const HrPolicyReader = () => {
       {/* Main content (hidden on mobile when browsing contents) */}
       <div
         ref={contentScrollRef}
-        className={`${mobileView === 'section' ? 'block' : 'hidden'} md:block flex-1 min-h-0 min-w-0 overflow-y-auto`}
+        className={`${
+          mobileView === 'section' ? 'block' : 'hidden'
+        } md:block flex-1 min-h-0 min-w-0 overflow-y-auto`}
       >
         {!currentSection ? (
           <div className="p-6 text-center">

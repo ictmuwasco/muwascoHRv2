@@ -97,9 +97,7 @@ const LeaveApplication = () => {
         try {
           const resp = await api.get(`/leave/balance/${employeeId}`);
           const balances = resp.data?.data || [];
-          const typeBalance = balances.find(
-            (b) => b.leave_type_id === Number(leaveTypeId),
-          );
+          const typeBalance = balances.find((b) => b.leave_type_id === Number(leaveTypeId));
           if (typeBalance) {
             setRemainingDaysFromBalance(typeBalance.remaining_days);
           }
@@ -235,7 +233,11 @@ const LeaveApplication = () => {
         year: 'numeric',
       });
 
-    return `The requested dates overlap an existing leave application (${fmt(conflicting.start_date)} to ${fmt(conflicting.end_date)}). Overlapping leave dates cannot be submitted. Please choose different dates or contact HR if this sick leave occurred during an existing approved leave.`;
+    return `The requested dates overlap an existing leave application (${fmt(
+      conflicting.start_date,
+    )} to ${fmt(
+      conflicting.end_date,
+    )}). Overlapping leave dates cannot be submitted. Please choose different dates or contact HR if this sick leave occurred during an existing approved leave.`;
   };
 
   const loadEmployees = async () => {
@@ -250,9 +252,7 @@ const LeaveApplication = () => {
       const currentEmployee =
         empList.find((employee) => employee.is_current_user) ||
         (user?.employee_id
-          ? empList.find(
-              (employee) => String(employee.employee_id) === String(user.employee_id),
-            )
+          ? empList.find((employee) => String(employee.employee_id) === String(user.employee_id))
           : null);
 
       if (currentEmployee) {
@@ -273,7 +273,8 @@ const LeaveApplication = () => {
       setEmployees([]);
       setEmployeeId('');
       setEmployeeLoadError(
-        err?.response?.data?.message || 'Could not load eligible employees. Please refresh and try again.',
+        err?.response?.data?.message ||
+          'Could not load eligible employees. Please refresh and try again.',
       );
     } finally {
       setEmployeesLoading(false);
@@ -663,7 +664,9 @@ const LeaveApplication = () => {
                   <span>Eligible Leave Days:</span>
                   <span className="font-medium">{eligibleDays}</span>
                   {remainingDaysFromBalance > 0 && remainingDaysFromBalance !== eligibleDays && (
-                    <span className="text-xs text-gray-500 ml-2">(Study balance: {remainingDaysFromBalance} days)</span>
+                    <span className="text-xs text-gray-500 ml-2">
+                      (Study balance: {remainingDaysFromBalance} days)
+                    </span>
                   )}
                 </div>
                 {primaryDeduction > 0 && (

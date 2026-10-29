@@ -57,13 +57,17 @@ const statusLabel = (status) => STATUS_META[status]?.label || status;
 
 const todayStr = () => {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
 };
 
 const yesterdayStr = () => {
   const d = new Date();
   d.setDate(d.getDate() - 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`;
 };
 
 const formatDisplayDate = (dateStr) =>
@@ -206,7 +210,9 @@ const AttendanceDashboard = () => {
       const end = todayStr();
       const d = new Date();
       d.setDate(d.getDate() - 30);
-      const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+        d.getDate(),
+      ).padStart(2, '0')}`;
       const response = await api.get('/attendance/hr-employee-history', {
         params: {
           employee_id: employee.employee_db_id,
@@ -662,7 +668,9 @@ const AttendanceDashboard = () => {
       {/* Stat cards */}
       {!error && (
         <div
-          className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 transition-opacity ${refreshing ? 'opacity-70' : ''}`}
+          className={`grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4 transition-opacity ${
+            refreshing ? 'opacity-70' : ''
+          }`}
         >
           {cards.map((card) => {
             const Wrapper = card.onClick ? 'button' : 'div';
@@ -681,7 +689,9 @@ const AttendanceDashboard = () => {
                   card.active
                     ? 'border-primary-500 ring-2 ring-primary-500'
                     : 'border-primary-600/40 dark:border-slate-700'
-                } bg-white dark:bg-slate-800 ${card.onClick ? 'hover:shadow-lg cursor-pointer' : 'cursor-default'}`}
+                } bg-white dark:bg-slate-800 ${
+                  card.onClick ? 'hover:shadow-lg cursor-pointer' : 'cursor-default'
+                }`}
               >
                 <span
                   className={`inline-flex h-9 w-9 items-center justify-center rounded-lg ${card.accent}`}
@@ -929,7 +939,11 @@ const AttendanceDashboard = () => {
                           d.department_id
                             ? 'cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50'
                             : ''
-                        } ${departmentId && String(departmentId) === String(d.department_id ?? '') ? 'bg-primary-50 dark:bg-slate-700' : ''}`}
+                        } ${
+                          departmentId && String(departmentId) === String(d.department_id ?? '')
+                            ? 'bg-primary-50 dark:bg-slate-700'
+                            : ''
+                        }`}
                       >
                         <td className="px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-100">
                           {d.department}
@@ -980,8 +994,14 @@ const AttendanceDashboard = () => {
                           className="mt-1 w-full flex flex-col-reverse rounded-t-sm overflow-hidden"
                           style={{ height: '120px' }}
                           role="img"
-                          aria-label={`${day.label}: ${day.present} present, ${day.absent} absent, ${day.on_leave} on leave${day.is_holiday ? `, holiday (${day.holiday_name})` : ''}${day.is_non_working_day ? ', non-working day' : ''}`}
-                          title={`${day.label}\nPresent: ${day.present}\nAbsent: ${day.absent}\nOn Leave: ${day.on_leave}${
+                          aria-label={`${day.label}: ${day.present} present, ${
+                            day.absent
+                          } absent, ${day.on_leave} on leave${
+                            day.is_holiday ? `, holiday (${day.holiday_name})` : ''
+                          }${day.is_non_working_day ? ', non-working day' : ''}`}
+                          title={`${day.label}\nPresent: ${day.present}\nAbsent: ${
+                            day.absent
+                          }\nOn Leave: ${day.on_leave}${
                             day.is_holiday
                               ? `\nHoliday: ${day.holiday_name}`
                               : day.is_non_working_day
@@ -1018,7 +1038,11 @@ const AttendanceDashboard = () => {
                           )}
                         </div>
                         <span
-                          className={`mt-1 text-xs whitespace-nowrap ${day.is_today ? 'font-bold text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'}`}
+                          className={`mt-1 text-xs whitespace-nowrap ${
+                            day.is_today
+                              ? 'font-bold text-primary-600 dark:text-primary-400'
+                              : 'text-gray-500 dark:text-gray-400'
+                          }`}
                         >
                           {day.label}
                         </span>

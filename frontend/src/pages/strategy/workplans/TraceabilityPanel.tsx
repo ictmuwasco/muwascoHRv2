@@ -112,7 +112,9 @@ export default function TraceabilityPanel({ objectiveId, onClose }: Props) {
         {
           label: 'Performance Contract',
           value: ctx.performance_contract
-            ? `${ctx.performance_contract}${ctx.financial_year ? ` · FY ${ctx.financial_year}` : ''}`
+            ? `${ctx.performance_contract}${
+                ctx.financial_year ? ` · FY ${ctx.financial_year}` : ''
+              }`
             : null,
         },
       ].filter((c) => c.value)
