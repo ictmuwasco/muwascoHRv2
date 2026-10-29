@@ -351,6 +351,38 @@ class SectionalObjectiveController extends BaseController
         return $activities;
     }
 
+    /**
+     * Resolve activity details for KPI links independently of assignment scope.
+     * A caller may view a KPI whose existing links are no longer selectable.
+     */
+    private function linkedActivities(array $rows): array
+    {
+        $activityIds = [];
+        foreach ($rows as $row) {
+            foreach ($this->parseEmployeeIds($row['activity_ids'] ?? null) as $activityId) {
+                $activityIds[$activityId] = $activityId;
+            }
+        }
+
+        if ($activityIds === []) {
+            return [];
+        }
+
+        $ids = array_values($activityIds);
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->db->prepare(
+            self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . "
+                WHERE wo.id IN ($placeholders)
+                ORDER BY d.name, pc.name, wo.objective"
+        );
+        $stmt->bind_param(str_repeat('i', count($ids)), ...$ids);
+        $stmt->execute();
+        $activities = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        return $activities;
+    }
+
     // =====================================================================
     // Endpoints
     // =====================================================================
@@ -414,6 +446,7 @@ class SectionalObjectiveController extends BaseController
                 'can_manage' => OrgScope::canManagePerformance($scope),
                 'employees'  => $emp['employees'],
                 'activities' => $this->scopedActivities($scope),
+                'linked_activities' => $this->linkedActivities($rows),
                 'cycles'     => $cycles,
                 'roles'      => $roles,
                 'scope'      => [

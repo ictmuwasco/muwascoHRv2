@@ -26,7 +26,12 @@ import Modal from '../../components/ui/Modal';
 import { auditService } from '../../api/services/auditService';
 import { userService } from '../../api/services/userService';
 import { employeeService } from '../../api/services/employeeService';
-import type { AuditLog, AuditStatus, User as UserType } from '../../types';
+import type {
+  AuditLog,
+  AuditLeaveApplicationDetails,
+  AuditStatus,
+  User as UserType,
+} from '../../types';
 
 interface AuditStatistics {
   total_logs: number;
@@ -387,18 +392,25 @@ const Audit = () => {
   /**
    * The employees.id this audit row is really about, if any.
    *
-   * Two shapes matter:
-   *   - target_type 'Employee'            -> target_id IS the employees PK
-   *   - target_type 'EmployeeAppraisal'   -> new_values.employee_id is the PK
-   *     (the target is the appraisal row; the person is carried alongside it)
-   * Everything else has no resolvable person.
+   * The API resolves employee-owned targets to affected_employee_id; the
+   * metadata fallback supports audit rows written before that field existed.
    */
   const targetEmployeeKey = (log: AuditLog): number | null => {
-    if (log.target_type === 'Employee' && log.target_id) return log.target_id;
-    if (log.target_type === 'EmployeeAppraisal') {
-      const raw = (log as any).new_values?.employee_id;
-      const n = Number(raw);
-      return Number.isFinite(n) && n > 0 ? n : null;
+    const affectedEmployeeId = Number(log.affected_employee_id);
+    if (Number.isFinite(affectedEmployeeId) && affectedEmployeeId > 0) {
+      return affectedEmployeeId;
+    }
+    if (log.target_type === 'Employee' && log.target_id) return Number(log.target_id);
+    if (
+      log.target_type === 'EmployeeAppraisal' ||
+      log.target_type === 'EmployeeLeaveBalance' ||
+      log.target_type === 'LeaveRoster'
+    ) {
+      const values = [log.metadata, log.new_values, log.old_values];
+      for (const value of values) {
+        const employeeId = Number(value?.employee_id);
+        if (Number.isFinite(employeeId) && employeeId > 0) return employeeId;
+      }
     }
     return null;
   };
@@ -426,8 +438,8 @@ const Audit = () => {
           employee_code: e?.employee_id ? String(e.employee_id) : '',
         };
         setResolvedEmployees((prev) => ({ ...prev, [employeeId]: resolved }));
-      } catch {
-        /* enrichment only - never block the details modal */
+      } catch (error) {
+        console.error(`Failed to resolve affected employee ${employeeId}:`, error);
       }
     },
     [resolvedEmployees],
@@ -501,6 +513,62 @@ const Audit = () => {
       return ts;
     }
   };
+
+  const formatDateOnly = (date: string | null) => {
+    if (!date) return '—';
+    const parsed = new Date(`${date.slice(0, 10)}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? date : parsed.toLocaleDateString();
+  };
+
+  const renderLeaveApplicationDetails = (details: AuditLeaveApplicationDetails) => (
+    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div>
+        <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">Employee</dt>
+        <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          {details.employee_name || 'Employee details unavailable'}
+        </dd>
+        {details.employee_code && (
+          <dd className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Staff No: {details.employee_code}
+          </dd>
+        )}
+      </div>
+      <div>
+        <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">Leave Type</dt>
+        <dd className="text-sm text-gray-900 dark:text-gray-100">{details.leave_type || '—'}</dd>
+      </div>
+      <div>
+        <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">Leave Period</dt>
+        <dd className="text-sm text-gray-900 dark:text-gray-100">
+          {formatDateOnly(details.start_date)} – {formatDateOnly(details.end_date)}
+          {details.days_requested !== null && ` (${details.days_requested} days)`}
+        </dd>
+      </div>
+      <div>
+        <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">Application Status</dt>
+        <dd className="text-sm text-gray-900 dark:text-gray-100">
+          {details.status ? humanizeTargetType(details.status) : '—'}
+        </dd>
+      </div>
+      <div>
+        <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">Submitted</dt>
+        <dd className="text-sm text-gray-900 dark:text-gray-100">
+          {details.applied_at ? formatTimestamp(details.applied_at) : '—'}
+        </dd>
+        {details.submitted_by && (
+          <dd className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Submitted by: {details.submitted_by}
+          </dd>
+        )}
+      </div>
+      <div className="sm:col-span-2">
+        <dt className="text-xs text-gray-500 dark:text-gray-400 mb-1">Reason</dt>
+        <dd className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
+          {details.reason?.trim() || 'No reason provided'}
+        </dd>
+      </div>
+    </dl>
+  );
 
   // --- Loading state ---
   if (loading && !logs.length && statsLoading) {
@@ -885,52 +953,70 @@ const Audit = () => {
                   </h4>
                 </div>
                 <div className="bg-gray-50 dark:bg-slate-700/30 rounded-lg p-4 border border-gray-200 dark:border-slate-700">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {selectedLog.target_type && (
+                  {selectedLog.target_type === 'LeaveApplication' ? (
+                    <div className="space-y-4">
                       <div>
                         <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Type</div>
                         <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {humanizeTargetType(selectedLog.target_type)}
+                          Leave Application
                         </div>
                       </div>
-                    )}
-                    {selectedLog.target_id && (
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">ID</div>
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {selectedLog.target_id}
-                        </div>
-                      </div>
-                    )}
-                    <div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Name</div>
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {getTargetDisplayName(selectedLog)}
-                      </div>
-                      {/* Staff number, so the person is identifiable at a glance
-                          even when the name is missing from the log itself. */}
-                      {getTargetDisplayCode(selectedLog) && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          Staff No: {getTargetDisplayCode(selectedLog)}
-                        </p>
-                      )}
-                      {getTargetDisplayEmail(selectedLog) && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          {getTargetDisplayEmail(selectedLog)}
-                        </p>
-                      )}
-                      {getTargetDisplayDesignation(selectedLog) && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          {getTargetDisplayDesignation(selectedLog)}
-                        </p>
-                      )}
-                      {getTargetDisplayRole(selectedLog) && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          Role: {getTargetDisplayRole(selectedLog)}
+                      {selectedLog.target_details ? (
+                        renderLeaveApplicationDetails(selectedLog.target_details)
+                      ) : (
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                          Leave application details are unavailable.
                         </p>
                       )}
                     </div>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {selectedLog.target_type && (
+                        <div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Type</div>
+                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {humanizeTargetType(selectedLog.target_type)}
+                          </div>
+                        </div>
+                      )}
+                      {selectedLog.target_id && (
+                        <div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">ID</div>
+                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {selectedLog.target_id}
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Name</div>
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                          {getTargetDisplayName(selectedLog)}
+                        </div>
+                        {/* Staff number, so the person is identifiable at a glance
+                            even when the name is missing from the log itself. */}
+                        {getTargetDisplayCode(selectedLog) && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            Staff No: {getTargetDisplayCode(selectedLog)}
+                          </p>
+                        )}
+                        {getTargetDisplayEmail(selectedLog) && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {getTargetDisplayEmail(selectedLog)}
+                          </p>
+                        )}
+                        {getTargetDisplayDesignation(selectedLog) && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {getTargetDisplayDesignation(selectedLog)}
+                          </p>
+                        )}
+                        {getTargetDisplayRole(selectedLog) && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            Role: {getTargetDisplayRole(selectedLog)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
