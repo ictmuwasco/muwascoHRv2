@@ -883,20 +883,22 @@ class LeaveApprovalService
         $employeeId = (int) $app['employee_id'];
         $financialYearId = (int) $app['financial_year_id'];
         $primaryDays = (float) ($app['primary_days'] ?? 0);
-        $annualDays = (float) ($app['annual_days'] ?? 0);
+        $daysRequested = (float) ($app['days_requested'] ?? 0);
+        $storedAnnualDays = (float) ($app['annual_days'] ?? 0);
 
-        // Claim a Day — credit annual leave
+        // Claim a Day — credit only remaining_days (annual leave credited for the
+        // current financial year). Does NOT touch allocated_days, accumulated_days,
+        // or used_days — the day was already worked, so it simply adds to the
+        // employee's remaining annual balance for this financial year.
         if ($leaveTypeId === LeaveTypePolicy::TYPE_CLAIM_A_DAY) {
             $annualTypeId = $this->getAnnualLeaveTypeId();
-            $daysToAdd = (float) ($primaryDays > 0 ? $primaryDays : ($app['days_requested'] ?? 0));
+            $daysToAdd = (float) ($primaryDays > 0 ? $primaryDays : $daysRequested);
             $stmt = $this->db->prepare("
                 UPDATE employee_leave_balances
-                SET allocated_days = allocated_days + ?,
-                    accumulated_days = accumulated_days + ?,
-                    remaining_days = remaining_days + ?
+                SET remaining_days = remaining_days + ?
                 WHERE employee_id = ? AND leave_type_id = ? AND financial_year_id = ?
             ");
-            $stmt->bind_param('dddiii', $daysToAdd, $daysToAdd, $daysToAdd, $employeeId, $annualTypeId, $financialYearId);
+            $stmt->bind_param('diii', $daysToAdd, $employeeId, $annualTypeId, $financialYearId);
             $stmt->execute();
             $stmt->close();
             return;
@@ -919,7 +921,13 @@ class LeaveApprovalService
             $stmt->close();
         }
 
-        // Deduct from annual leave if applicable
+        // Deduct from annual leave if applicable.
+        // Use LeaveTypePolicy::annualDaysCharged() as the single authority:
+        //   - Short Leave: charges $daysRequested (even if stored annual_days = 0)
+        //   - Study Leave overflow: charges stored overflow figure
+        //   - All other types: charges stored annual_days
+        $annualDays = LeaveTypePolicy::annualDaysCharged($leaveTypeId, $storedAnnualDays, $daysRequested);
+
         if ($annualDays > 0) {
             $annualTypeId = $this->getAnnualLeaveTypeId();
             $stmt = $this->db->prepare("

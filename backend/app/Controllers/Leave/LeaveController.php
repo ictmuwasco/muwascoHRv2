@@ -165,23 +165,19 @@ class LeaveController extends BaseController
             return;
         }
 
-        $employeeId = (int) ($_POST['employee_id'] ?? 0);
-        $leaveTypeId = (int) ($_POST['leave_type_id'] ?? 0);
-        $startDate = $_POST['start_date'] ?? '';
-        $endDate = $_POST['end_date'] ?? '';
-        $reason = trim($_POST['reason'] ?? '');
-        $delegateEmpId = (int) ($_POST['delegate_emp_id'] ?? 0);
+        $requestData = $this->readApplyRequestData();
 
         // Request validation: shape and format only. Business rules (leave
         // balance, eligibility, overlapping applications) are enforced by
         // LeaveApplicationService and intentionally not duplicated here.
-        $this->validateRequest(new \App\Validators\LeaveValidator(), [
-            'employee_id'   => $employeeId,
-            'leave_type_id' => $leaveTypeId,
-            'start_date'    => $startDate,
-            'end_date'      => $endDate,
-            'reason'        => $reason,
-        ]);
+        $this->validateRequest(new \App\Validators\LeaveValidator(), $requestData);
+
+        $employeeId = (int) $requestData['employee_id'];
+        $leaveTypeId = (int) $requestData['leave_type_id'];
+        $startDate = (string) $requestData['start_date'];
+        $endDate = (string) $requestData['end_date'];
+        $reason = trim((string) ($requestData['reason'] ?? ''));
+        $delegateEmpId = (int) ($requestData['delegate_emp_id'] ?? 0);
 
         // Business rule: a delegate is required ONLY for Annual Leave. All
         // other leave types submit without one.
@@ -218,6 +214,74 @@ class LeaveController extends BaseController
         } else {
             \App\Helpers\ApiResponse::error($result['message'] ?? 'Unable to submit leave application.', 'BUSINESS_RULE', ['eligible_days' => $result['eligible_days'] ?? 0], 400);
         }
+    }
+
+    /**
+     * Read leave application fields from JSON, parsed form fields, or raw
+     * multipart bodies where PHP did not populate $_POST.
+     *
+     * @return array<string,mixed>
+     */
+    private function readApplyRequestData(): array
+    {
+        if ($_POST !== []) {
+            return $_POST;
+        }
+
+        $rawBody = file_get_contents('php://input');
+        if ($rawBody === false || trim($rawBody) === '') {
+            return [];
+        }
+
+        $contentType = (string) ($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '');
+        if (stripos($contentType, 'application/json') !== false) {
+            $decoded = \App\Helpers\Json::decodeRequest($rawBody, [], 'leave application body');
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        if (preg_match('/boundary=(?:"([^"]+)"|([^;]+))/i', $contentType, $matches)) {
+            $boundary = trim(($matches[1] ?? '') !== '' ? $matches[1] : ($matches[2] ?? ''));
+        } elseif (preg_match('/\A--([^\r\n]+)/', $rawBody, $matches)) {
+            $boundary = trim($matches[1]);
+        } else {
+            parse_str($rawBody, $formData);
+            return $formData;
+        }
+
+        return self::parseMultipartFields($rawBody, $boundary);
+    }
+
+    /**
+     * Extract text fields from a raw multipart body; uploaded files remain
+     * handled by PHP's normal $_FILES upload validation.
+     *
+     * @return array<string,string>
+     */
+    private static function parseMultipartFields(string $rawBody, string $boundary): array
+    {
+        $fields = [];
+        foreach (explode('--' . $boundary, $rawBody) as $part) {
+            $part = ltrim($part, "\r\n");
+            if ($part === '' || $part === '--' || str_starts_with($part, '--')) {
+                continue;
+            }
+
+            $separator = strpos($part, "\r\n\r\n");
+            if ($separator === false) {
+                continue;
+            }
+
+            $headers = substr($part, 0, $separator);
+            $value = substr($part, $separator + 4);
+            if (
+                preg_match('/content-disposition:[^\r\n]*\bname="([^"]+)"/i', $headers, $nameMatch) &&
+                !preg_match('/\bfilename="/i', $headers)
+            ) {
+                $fields[$nameMatch[1]] = preg_replace('/\r\n\z/', '', $value);
+            }
+        }
+
+        return $fields;
     }
 
     /**
@@ -560,6 +624,14 @@ class LeaveController extends BaseController
                     ];
             }
 
+            $currentEmployeeRecordId = (int) $currentEmployee['id'];
+            foreach ($employees as &$eligibleEmployee) {
+                $eligibleEmployee['id'] = (int) $eligibleEmployee['id'];
+                $eligibleEmployee['is_current_user'] =
+                    $eligibleEmployee['id'] === $currentEmployeeRecordId;
+            }
+            unset($eligibleEmployee);
+
             \App\Helpers\ApiResponse::success($employees);
         } catch (\Exception $e) {
             error_log('Error in eligibleEmployeesAction: ' . $e->getMessage());
@@ -882,6 +954,62 @@ class LeaveController extends BaseController
                 $isTransition ? 409 : 400
             );
         }
+    }
+
+    /**
+     * GET /api/leave/balance/{employee_id}
+     * Get all leave balances for an employee in the current financial year.
+     */
+    public function balanceAction(int $employeeId): void
+    {
+        $userId = Auth::getInstance()->id();
+        if (!$userId) {
+            http_response_code(401);
+            \App\Helpers\ApiResponse::error('Unauthenticated', 'UNAUTHENTICATED', [], 401);
+            return;
+        }
+
+        $db = \App\Helpers\Database::getInstance()->getConnection();
+
+        // Resolve current financial year
+        $fyId = $this->getCurrentFinancialYearId();
+
+        // Fetch all leave balances for this employee in the current financial year,
+        // joined with leave type names for the frontend to match by leave_type_id or name.
+        $query = "
+            SELECT elb.leave_type_id,
+                   lt.name               AS leave_type_name,
+                   elb.allocated_days,
+                   elb.brought_forward_days,
+                   elb.used_days,
+                   elb.accumulated_days,
+                   elb.remaining_days
+            FROM employee_leave_balances elb
+            JOIN leave_types lt ON elb.leave_type_id = lt.id
+            WHERE elb.employee_id = ?
+              AND elb.financial_year_id = ?
+              AND lt.is_active = 1
+            ORDER BY lt.name
+        ";
+        $stmt = $db->prepare($query);
+        $stmt->bind_param('ii', $employeeId, $fyId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+
+        $balances = [];
+        while ($row = $result->fetch_assoc()) {
+            $balances[] = [
+                'leave_type_id'        => (int) $row['leave_type_id'],
+                'leave_type_name'      => $row['leave_type_name'],
+                'allocated_days'       => (float) $row['allocated_days'],
+                'brought_forward_days' => (float) $row['brought_forward_days'],
+                'used_days'            => (float) $row['used_days'],
+                'accumulated_days'     => (float) $row['accumulated_days'],
+                'remaining_days'       => (float) $row['remaining_days'],
+            ];
+        }
+
+        \App\Helpers\ApiResponse::success($balances);
     }
 
     /**
@@ -1470,5 +1598,3 @@ class LeaveController extends BaseController
         exit;
     }
 }
-
-
