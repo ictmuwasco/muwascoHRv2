@@ -150,9 +150,11 @@ const StatCard: React.FC<StatCardProps> = ({
       onClick={onClick}
       disabled={!onClick}
       title={onClick ? 'Click to filter the employees table' : undefined}
-      className={`rounded-xl p-4 flex items-center gap-3 text-left transition-all ${variantClasses[variant]} ${
-        onClick ? 'cursor-pointer hover:shadow-md' : 'cursor-default'
-      } ${selected ? 'ring-2 ring-primary-500' : ''}`}
+      className={`rounded-xl p-4 flex items-center gap-3 text-left transition-all ${
+        variantClasses[variant]
+      } ${onClick ? 'cursor-pointer hover:shadow-md' : 'cursor-default'} ${
+        selected ? 'ring-2 ring-primary-500' : ''
+      }`}
     >
       <div className={`p-2 rounded-lg ${iconBg[variant]}`}>
         <Icon className={`h-5 w-5 ${iconColor[variant]}`} />
@@ -321,8 +323,12 @@ const Reports = () => {
   const departments = Array.from(
     new Set(records.map((e) => e.department_name ?? 'Unassigned')),
   ).sort((a, b) => a.localeCompare(b));
-  const statuses = Array.from(new Set(records.map((e) => e.employee_status))).sort((a, b) => a.localeCompare(b));
-  const empTypes = Array.from(new Set(records.map((e) => e.employee_type))).sort((a, b) => a.localeCompare(b));
+  const statuses = Array.from(new Set(records.map((e) => e.employee_status))).sort((a, b) =>
+    a.localeCompare(b),
+  );
+  const empTypes = Array.from(new Set(records.map((e) => e.employee_type))).sort((a, b) =>
+    a.localeCompare(b),
+  );
 
   // Reset to first page when filters change
   useEffect(() => {
@@ -658,7 +664,9 @@ const Reports = () => {
             retirement (retired employees excluded).
             {atRetirement.length > 0 && ` ${atRetirement.length} at/over ${RETIREMENT_AGE}.`}
             {approachingRetirement.length > 0 &&
-              ` ${approachingRetirement.length} between ${RETIREMENT_AGE - RETIREMENT_WINDOW_YEARS}–${RETIREMENT_AGE - 1}.`}
+              ` ${approachingRetirement.length} between ${
+                RETIREMENT_AGE - RETIREMENT_WINDOW_YEARS
+              }–${RETIREMENT_AGE - 1}.`}
           </p>
           {nearRetirement.length === 0 ? (
             <p className="text-gray-400">

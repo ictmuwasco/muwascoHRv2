@@ -831,7 +831,13 @@ const ErrorMonitoring = () => {
                   label: 'Duration',
                   render: (v: any) => (
                     <span
-                      className={`font-semibold ${Number(v) >= th.critical_ms ? 'text-red-600' : Number(v) >= th.slow_ms ? 'text-orange-500' : 'text-gray-900'}`}
+                      className={`font-semibold ${
+                        Number(v) >= th.critical_ms
+                          ? 'text-red-600'
+                          : Number(v) >= th.slow_ms
+                            ? 'text-orange-500'
+                            : 'text-gray-900'
+                      }`}
                     >
                       {num(v)} ms
                     </span>

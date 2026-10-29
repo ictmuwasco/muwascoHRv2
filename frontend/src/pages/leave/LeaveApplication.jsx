@@ -23,11 +23,14 @@ const LeaveApplication = () => {
   const [primaryDeduction, setPrimaryDeduction] = useState(0);
   const [annualDeduction, setAnnualDeduction] = useState(0);
   const [unpaidDays, setUnpaidDays] = useState(0);
+  const [remainingDaysFromBalance, setRemainingDaysFromBalance] = useState(0);
   const [calendarDays, setCalendarDays] = useState(0);
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [delegates, setDelegates] = useState([]);
   const [delegateEmpId, setDelegateEmpId] = useState('');
   const [employees, setEmployees] = useState([]);
+  const [employeesLoading, setEmployeesLoading] = useState(true);
+  const [employeeLoadError, setEmployeeLoadError] = useState('');
   const [existingApplications, setExistingApplications] = useState([]);
 
   // Load employees and delegates on mount
@@ -86,6 +89,24 @@ const LeaveApplication = () => {
       loadExistingApplications();
     }
   }, [employeeId]);
+
+  // Fetch remaining days from the balance ledger for the selected leave type.
+  useEffect(() => {
+    if (employeeId && leaveTypeId) {
+      (async () => {
+        try {
+          const resp = await api.get(`/leave/balance/${employeeId}`);
+          const balances = resp.data?.data || [];
+          const typeBalance = balances.find((b) => b.leave_type_id === Number(leaveTypeId));
+          if (typeBalance) {
+            setRemainingDaysFromBalance(typeBalance.remaining_days);
+          }
+        } catch (e) {
+          // Ignore errors — balance is informational only.
+        }
+      })();
+    }
+  }, [employeeId, leaveTypeId]);
 
   useEffect(() => {
     if (employeeId && leaveTypeId && startDate && endDate) {
@@ -212,35 +233,51 @@ const LeaveApplication = () => {
         year: 'numeric',
       });
 
-    return `The requested dates overlap an existing leave application (${fmt(conflicting.start_date)} to ${fmt(conflicting.end_date)}). Overlapping leave dates cannot be submitted. Please choose different dates or contact HR if this sick leave occurred during an existing approved leave.`;
+    return `The requested dates overlap an existing leave application (${fmt(
+      conflicting.start_date,
+    )} to ${fmt(
+      conflicting.end_date,
+    )}). Overlapping leave dates cannot be submitted. Please choose different dates or contact HR if this sick leave occurred during an existing approved leave.`;
   };
 
   const loadEmployees = async () => {
+    setEmployeesLoading(true);
+    setEmployeeLoadError('');
     try {
       // Get eligible employees based on logged-in user's role
       const response = await api.get('/leave/eligible-employees');
-      const empList = response.data.data || [];
+      const empList = Array.isArray(response.data?.data) ? response.data.data : [];
       setEmployees(empList);
 
-      // Pre-fill with current user if available
-      // Try multiple ways to find the current user
-      if (empList.length > 0) {
-        // First try: match by user.employee_id
-        if (user?.employee_id) {
-          const currentUserEmp = empList.find((emp) => emp.employee_id === user.employee_id);
-          if (currentUserEmp) {
-            setEmployeeId(currentUserEmp.id);
-            return;
-          }
-        }
+      const currentEmployee =
+        empList.find((employee) => employee.is_current_user) ||
+        (user?.employee_id
+          ? empList.find((employee) => String(employee.employee_id) === String(user.employee_id))
+          : null);
 
-        // Second try: if only one employee, select it (likely the user themselves)
-        if (empList.length === 1) {
-          setEmployeeId(empList[0].id);
-        }
+      if (currentEmployee) {
+        setEmployeeId(String(currentEmployee.id));
+      } else if (empList.length === 1) {
+        setEmployeeId(String(empList[0].id));
+      } else {
+        setEmployeeId('');
+      }
+
+      if (empList.length === 0) {
+        setEmployeeLoadError(
+          'No eligible active employees were returned. Please contact HR to check your employee record and leave permissions.',
+        );
       }
     } catch (err) {
       console.error('Failed to load employees:', err);
+      setEmployees([]);
+      setEmployeeId('');
+      setEmployeeLoadError(
+        err?.response?.data?.message ||
+          'Could not load eligible employees. Please refresh and try again.',
+      );
+    } finally {
+      setEmployeesLoading(false);
     }
   };
 
@@ -329,6 +366,14 @@ const LeaveApplication = () => {
     setError('');
     setSuccess('');
 
+    // Business rule: employee must be selected before any calculation/submission.
+    const selectedEmployeeId = Number(employeeId);
+    if (!Number.isInteger(selectedEmployeeId) || selectedEmployeeId <= 0) {
+      setError('Please select an employee.');
+      setLoading(false);
+      return;
+    }
+
     if (eligibleDays <= 0) {
       setError('No eligible leave days. Please select a valid date range.');
       setLoading(false);
@@ -361,22 +406,29 @@ const LeaveApplication = () => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append('employee_id', employeeId);
-    formData.append('leave_type_id', leaveTypeId);
-    formData.append('start_date', startDate);
-    formData.append('end_date', endDate);
-    // Reason is optional — send it only when provided (backend accepts empty).
+    const applicationData = {
+      employee_id: selectedEmployeeId,
+      leave_type_id: Number(leaveTypeId),
+      start_date: startDate,
+      end_date: endDate,
+      reason: reason || '',
+    };
     if (requiresDelegate) {
-      formData.append('delegate_emp_id', delegateEmpId);
+      applicationData.delegate_emp_id = Number(delegateEmpId);
     }
-    formData.append('reason', reason || '');
+
+    let requestBody = applicationData;
     if (document) {
+      const formData = new FormData();
+      Object.entries(applicationData).forEach(([key, value]) => {
+        formData.append(key, String(value));
+      });
       formData.append('document', document);
+      requestBody = formData;
     }
 
     try {
-      await api.post('/leave/apply', formData);
+      await api.post('/leave/apply', requestBody);
       setSuccess('Leave application submitted successfully!');
       setSubmitted(true);
       setTimeout(() => navigate('/leave'), 1500);
@@ -433,16 +485,24 @@ const LeaveApplication = () => {
               <select
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
+                disabled={employeesLoading || employees.length === 0}
                 className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 required
               >
-                <option value="">Select Employee</option>
+                <option value="">
+                  {employeesLoading ? 'Loading employees...' : 'Select Employee'}
+                </option>
                 {employees.map((employee, index) => (
                   <option key={`${employee.id}-${index}`} value={employee.id}>
                     {employee.first_name} {employee.last_name} ({employee.employee_id})
                   </option>
                 ))}
               </select>
+              {employeeLoadError && (
+                <p className="mt-1 text-sm text-red-600" role="alert">
+                  {employeeLoadError}
+                </p>
+              )}
             </div>
 
             <div>
@@ -603,6 +663,11 @@ const LeaveApplication = () => {
                 <div className="flex justify-between">
                   <span>Eligible Leave Days:</span>
                   <span className="font-medium">{eligibleDays}</span>
+                  {remainingDaysFromBalance > 0 && remainingDaysFromBalance !== eligibleDays && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      (Study balance: {remainingDaysFromBalance} days)
+                    </span>
+                  )}
                 </div>
                 {primaryDeduction > 0 && (
                   <div className="flex justify-between">
@@ -636,7 +701,13 @@ const LeaveApplication = () => {
         <div className="flex space-x-4">
           <Button
             type="submit"
-            disabled={loading || eligibleDays <= 0}
+            disabled={
+              loading ||
+              employeesLoading ||
+              !Number.isInteger(Number(employeeId)) ||
+              Number(employeeId) <= 0 ||
+              eligibleDays <= 0
+            }
             loading={loading}
             className={eligibleDays <= 0 ? 'opacity-50 cursor-not-allowed' : ''}
           >

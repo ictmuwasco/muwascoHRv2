@@ -232,7 +232,9 @@ const HrPolicies = () => {
     const MAX_CLIENT_BYTES = 100 * 1024 * 1024;
     if (file.size > MAX_CLIENT_BYTES) {
       toast.error(
-        `This file is ${(file.size / 1048576).toFixed(1)}MB, over the ~100MB policy limit. Compress the PDF or split it, then try again.`,
+        `This file is ${(file.size / 1048576).toFixed(
+          1,
+        )}MB, over the ~100MB policy limit. Compress the PDF or split it, then try again.`,
         { duration: 8000 },
       );
       return;
@@ -877,7 +879,9 @@ const HrPolicies = () => {
                         </span>
                         <span className="mx-2 text-gray-400">•</span>
                         <span
-                          className={`text-xs px-2 py-0.5 rounded-full ${STATUS_CONFIG[v.status].color}`}
+                          className={`text-xs px-2 py-0.5 rounded-full ${
+                            STATUS_CONFIG[v.status].color
+                          }`}
                         >
                           {STATUS_CONFIG[v.status].label}
                         </span>

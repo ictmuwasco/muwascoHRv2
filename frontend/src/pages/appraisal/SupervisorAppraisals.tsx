@@ -85,8 +85,9 @@ export default function SupervisorAppraisals() {
     () =>
       (workspace?.employees ?? []).map((e) => ({
         value: e.id,
-        label:
-          `${(e.first_name || '').trim()} ${(e.last_name || '').trim()} (${e.employee_id})`.trim(),
+        label: `${(e.first_name || '').trim()} ${(e.last_name || '').trim()} (${
+          e.employee_id
+        })`.trim(),
         description: [e.department_name, e.employee_type?.replace(/_/g, ' ')]
           .filter(Boolean)
           .join(' · '),
@@ -204,7 +205,9 @@ export default function SupervisorAppraisals() {
 
       {(error || notice) && (
         <div
-          className={`rounded-lg px-4 py-3 text-sm ${error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}
+          className={`rounded-lg px-4 py-3 text-sm ${
+            error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
+          }`}
         >
           <span className="flex-1">{error || notice}</span>
           <button
@@ -226,7 +229,11 @@ export default function SupervisorAppraisals() {
               setTab(id);
               setDetail(null);
             }}
-            className={`rounded-xl border p-4 text-left ${tab === id ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800'}`}
+            className={`rounded-xl border p-4 text-left ${
+              tab === id
+                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800'
+            }`}
           >
             <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
             <p className="mt-1 text-2xl font-bold text-primary-600">{workspace?.counts[id] ?? 0}</p>

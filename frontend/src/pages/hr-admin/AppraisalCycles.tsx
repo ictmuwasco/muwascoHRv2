@@ -146,7 +146,7 @@ export default function AppraisalCycles() {
       <Card
         title={`Quarterly Cycles — ${
           fyFilter
-            ? (financialYears.find((f) => String(f.id) === fyFilter)?.year_name ?? 'Selected FY')
+            ? financialYears.find((f) => String(f.id) === fyFilter)?.year_name ?? 'Selected FY'
             : 'All Financial Years'
         }`}
       >
@@ -326,7 +326,12 @@ function CycleFormModal({ mode, record, financialYears, onClose, onSubmit }: Cyc
       (startDate < selectedFy.start_date.slice(0, 10) || endDate > selectedFy.end_date.slice(0, 10))
     ) {
       return setErr(
-        `The cycle dates must fall inside the ${selectedFy.year_name} financial year (${selectedFy.start_date.slice(0, 10)} to ${selectedFy.end_date.slice(0, 10)}).`,
+        `The cycle dates must fall inside the ${
+          selectedFy.year_name
+        } financial year (${selectedFy.start_date.slice(0, 10)} to ${selectedFy.end_date.slice(
+          0,
+          10,
+        )}).`,
       );
     }
     setErr('');

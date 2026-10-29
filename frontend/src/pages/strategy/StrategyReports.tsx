@@ -140,7 +140,9 @@ export default function StrategyReports() {
                 key: 'period',
                 label: 'Period',
                 render: (_v, row) =>
-                  `${new Date(row.start_date).toLocaleDateString('en-GB')} – ${new Date(row.end_date).toLocaleDateString('en-GB')}`,
+                  `${new Date(row.start_date).toLocaleDateString('en-GB')} – ${new Date(
+                    row.end_date,
+                  ).toLocaleDateString('en-GB')}`,
               },
               { key: 'goals', label: 'Goals' },
               { key: 'targets', label: 'Org. Goals' },

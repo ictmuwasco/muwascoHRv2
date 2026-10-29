@@ -57,7 +57,9 @@ interface ContractPayload {
 }
 
 type FormState =
-  { open: false } | { open: true; mode: 'add' } | { open: true; mode: 'edit'; record: Contract };
+  | { open: false }
+  | { open: true; mode: 'add' }
+  | { open: true; mode: 'edit'; record: Contract };
 
 const fmt = (d: string | null) =>
   d
@@ -359,7 +361,9 @@ export default function PerformanceContracts() {
                           return (
                             <tr
                               key={row.id}
-                              className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${separator ? 'border-b-[3px] border-b-black dark:border-b-white' : ''}`}
+                              className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 ${
+                                separator ? 'border-b-[3px] border-b-black dark:border-b-white' : ''
+                              }`}
                             >
                               <td className="px-4 py-3 align-top">
                                 {isFirstOfGoal && (
@@ -372,7 +376,7 @@ export default function PerformanceContracts() {
                                 )}
                               </td>
                               <td className="px-4 py-3 align-top text-sm text-gray-900 dark:text-gray-100">
-                                {isFirstOfGoal ? (rows[0].target_name ?? '—') : ''}
+                                {isFirstOfGoal ? rows[0].target_name ?? '—' : ''}
                               </td>
                               <td className="px-4 py-3 align-top text-sm text-gray-900 dark:text-gray-100">
                                 {row.department_name ?? '—'}

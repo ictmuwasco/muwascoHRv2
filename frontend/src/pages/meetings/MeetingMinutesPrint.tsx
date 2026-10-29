@@ -42,7 +42,8 @@ const fmtTime = (t?: string | null): string => {
 
 const nameOf = (p: Record<string, unknown>): string => {
   const direct = [p.name, p.employee_name].find((v) => typeof v === 'string' && v.trim() !== '') as
-    string | undefined;
+    | string
+    | undefined;
   if (direct) return direct;
   const full = `${(p.first_name as string) ?? ''} ${(p.last_name as string) ?? ''}`.trim();
   return full || `Employee #${(p.employee_id as string) ?? '?'}`;

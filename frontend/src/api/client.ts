@@ -55,7 +55,9 @@ apiClient.interceptors.response.use(
         // Network failure: request never reached the server.
         reportClientError({
           kind: 'network',
-          message: `Network failure calling ${error.config?.method?.toUpperCase()} ${requestUrl}: ${error.message}`,
+          message: `Network failure calling ${error.config?.method?.toUpperCase()} ${requestUrl}: ${
+            error.message
+          }`,
           endpoint: requestUrl,
           severity: 'HIGH',
         });
@@ -64,7 +66,9 @@ apiClient.interceptors.response.use(
         const data = error.response?.data as any;
         reportClientError({
           kind: 'api',
-          message: `API ${status} on ${error.config?.method?.toUpperCase()} ${requestUrl}: ${data?.message ?? error.message}`,
+          message: `API ${status} on ${error.config?.method?.toUpperCase()} ${requestUrl}: ${
+            data?.message ?? error.message
+          }`,
           stack: data?.error?.details,
           endpoint: requestUrl,
           status_code: status,

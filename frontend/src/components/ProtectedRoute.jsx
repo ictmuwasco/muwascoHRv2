@@ -84,7 +84,9 @@ const ProtectedRoute = ({ children, permission, fallbackPermission, skipConsentC
   if (!skipConsentCheck && consentState === 'missing') {
     return (
       <Navigate
-        to={`/data-protection-consent?returnTo=${encodeURIComponent(location.pathname + location.search)}`}
+        to={`/data-protection-consent?returnTo=${encodeURIComponent(
+          location.pathname + location.search,
+        )}`}
         replace
       />
     );

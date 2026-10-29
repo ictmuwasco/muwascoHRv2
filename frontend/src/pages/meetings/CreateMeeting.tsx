@@ -143,7 +143,7 @@ const CreateMeeting = () => {
     try {
       const response = await api.get<any>('/meetings/eligible-employees');
       const payload: any = response.data?.data;
-      const list = Array.isArray(payload) ? payload : (payload?.data ?? []);
+      const list = Array.isArray(payload) ? payload : payload?.data ?? [];
       setEmployees(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error('Failed to load employees:', err);

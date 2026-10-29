@@ -1036,7 +1036,9 @@ const AttendanceReport = () => {
             value={summary.absent_employees ?? summary.absent_days}
             icon={UserX}
             variant="danger"
-            subtitle={`Expected but not recorded (${summary.absent_days} absent day${summary.absent_days !== 1 ? 's' : ''})`}
+            subtitle={`Expected but not recorded (${summary.absent_days} absent day${
+              summary.absent_days !== 1 ? 's' : ''
+            })`}
             onClick={() => toggleStatus('absent')}
             selected={filters.status === 'absent'}
           />
@@ -1429,7 +1431,11 @@ const AttendanceReport = () => {
           title="Attendance Compliance"
           subtitle={
             compliance
-              ? `${compliance.compliance_rate !== null ? `${compliance.compliance_rate}%` : 'N/A'} compliance · ${compliance.present_days} of ${compliance.expected_working_days} expected day(s)`
+              ? `${
+                  compliance.compliance_rate !== null ? `${compliance.compliance_rate}%` : 'N/A'
+                } compliance · ${compliance.present_days} of ${
+                  compliance.expected_working_days
+                } expected day(s)`
               : undefined
           }
         >

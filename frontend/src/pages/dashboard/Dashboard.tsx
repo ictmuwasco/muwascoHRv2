@@ -526,7 +526,7 @@ const Dashboard = () => {
   ): string => {
     const recordedAt =
       action === 'clock-in'
-        ? (data.current_session?.clock_in ?? data.today_record?.clock_in)
+        ? data.current_session?.clock_in ?? data.today_record?.clock_in
         : data.today_record?.clock_out;
     const time =
       typeof recordedAt === 'string' && recordedAt.length >= 16 ? recordedAt.slice(11, 16) : null;
@@ -1013,7 +1013,9 @@ const Dashboard = () => {
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {attendanceData.office_mode === 'manual'
                   ? 'No default office assigned to you - please select your current office.'
-                  : `Default office: ${attendanceData.default_office?.name ?? ''} - you may clock in from any listed office.`}
+                  : `Default office: ${
+                      attendanceData.default_office?.name ?? ''
+                    } - you may clock in from any listed office.`}
               </p>
             </div>
 
@@ -1635,7 +1637,9 @@ const Dashboard = () => {
           {/* Departments: horizontal headcount ranking (top six shown). */}
           <Card
             title="Department Distribution"
-            subtitle={`Top ${deptRows.length} of ${analytics.departments?.total_departments ?? deptRows.length} departments by headcount`}
+            subtitle={`Top ${deptRows.length} of ${
+              analytics.departments?.total_departments ?? deptRows.length
+            } departments by headcount`}
           >
             {deptRows.length > 0 ? (
               <div className="h-72">
