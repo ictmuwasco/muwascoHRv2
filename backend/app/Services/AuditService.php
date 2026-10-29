@@ -203,6 +203,149 @@ class AuditService
         }
     }
 
+    /**
+     * Attach the affected employee identity to audit rows whose target is an
+     * employee-owned record, without treating unrelated record IDs as employees.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function enrichAffectedEmployees(array $rows): array
+    {
+        $targetIdsByType = [
+            'LeaveApplication' => [],
+            'EmployeeAppraisal' => [],
+        ];
+        $employeeIds = [];
+        $leaveDetailsByTargetId = [];
+
+        foreach ($rows as $row) {
+            $type = (string) ($row['target_type'] ?? '');
+            $targetId = (int) ($row['target_id'] ?? 0);
+            if ($targetId > 0 && isset($targetIdsByType[$type])) {
+                $targetIdsByType[$type][$targetId] = $targetId;
+            }
+
+            if ($type === 'Employee' && $targetId > 0) {
+                $employeeIds[$targetId] = $targetId;
+            }
+
+            if (in_array($type, ['EmployeeLeaveBalance', 'LeaveRoster'], true)) {
+                $employeeId = (int) (($row['metadata']['employee_id'] ?? 0));
+                if ($employeeId > 0) {
+                    $employeeIds[$employeeId] = $employeeId;
+                }
+            }
+        }
+
+        $affectedEmployeeIds = [];
+        foreach ([
+            'LeaveApplication' => 'leave_applications',
+            'EmployeeAppraisal' => 'employee_appraisals',
+        ] as $targetType => $table) {
+            $targetIds = array_values($targetIdsByType[$targetType]);
+            if ($targetIds === []) {
+                continue;
+            }
+
+            $placeholders = implode(',', array_fill(0, count($targetIds), '?'));
+            if ($targetType === 'LeaveApplication') {
+                $records = db()->fetchAll(
+                    "SELECT la.id AS target_id, la.employee_id, la.start_date, la.end_date,
+                            la.days_requested, la.reason, la.status, la.applied_at,
+                            CONCAT_WS(' ', e.first_name, e.last_name, e.surname) AS employee_name,
+                            e.employee_id AS employee_code, lt.name AS leave_type,
+                            CONCAT_WS(' ', u.first_name, u.last_name, u.surname) AS submitted_by
+                     FROM leave_applications la
+                     LEFT JOIN employees e ON e.id = la.employee_id
+                     LEFT JOIN leave_types lt ON lt.id = la.leave_type_id
+                     LEFT JOIN users u ON u.id = la.applied_by_user_id
+                     WHERE la.id IN ({$placeholders})",
+                    str_repeat('i', count($targetIds)),
+                    $targetIds
+                );
+            } else {
+                $records = db()->fetchAll(
+                    "SELECT id AS target_id, employee_id FROM {$table} WHERE id IN ({$placeholders})",
+                    str_repeat('i', count($targetIds)),
+                    $targetIds
+                );
+            }
+            foreach ($records as $record) {
+                $employeeId = (int) ($record['employee_id'] ?? 0);
+                if ($employeeId > 0) {
+                    $affectedEmployeeIds[$targetType . ':' . (int) $record['target_id']] = $employeeId;
+                    $employeeIds[$employeeId] = $employeeId;
+                }
+                if ($targetType === 'LeaveApplication') {
+                    $leaveDetailsByTargetId[(int) $record['target_id']] = [
+                        'employee_name' => trim((string) ($record['employee_name'] ?? '')),
+                        'employee_code' => $record['employee_code'] ?? null,
+                        'leave_type' => $record['leave_type'] ?? null,
+                        'start_date' => $record['start_date'] ?? null,
+                        'end_date' => $record['end_date'] ?? null,
+                        'days_requested' => isset($record['days_requested'])
+                            ? (int) $record['days_requested']
+                            : null,
+                        'reason' => $record['reason'] ?? null,
+                        'status' => $record['status'] ?? null,
+                        'applied_at' => $record['applied_at'] ?? null,
+                        'submitted_by' => trim((string) ($record['submitted_by'] ?? '')),
+                    ];
+                }
+            }
+        }
+
+        $employeeNames = [];
+        $employeeIds = array_values($employeeIds);
+        if ($employeeIds !== []) {
+            $placeholders = implode(',', array_fill(0, count($employeeIds), '?'));
+            $employees = db()->fetchAll(
+                "SELECT id, CONCAT_WS(' ', first_name, last_name, surname) AS full_name
+                 FROM employees WHERE id IN ({$placeholders})",
+                str_repeat('i', count($employeeIds)),
+                $employeeIds
+            );
+            foreach ($employees as $employee) {
+                $employeeNames[(int) $employee['id']] = trim((string) $employee['full_name']);
+            }
+        }
+
+        foreach ($rows as &$row) {
+            $type = (string) ($row['target_type'] ?? '');
+            $targetId = (int) ($row['target_id'] ?? 0);
+            $employeeId = $affectedEmployeeIds[$type . ':' . $targetId] ?? 0;
+            if ($employeeId <= 0 && $type === 'Employee') {
+                $employeeId = $targetId;
+            }
+            if (
+                $employeeId <= 0 &&
+                in_array($type, ['EmployeeLeaveBalance', 'LeaveRoster'], true)
+            ) {
+                $employeeId = (int) (($row['metadata']['employee_id'] ?? 0));
+            }
+
+            if ($employeeId > 0) {
+                $row['affected_employee_id'] = $employeeId;
+                if (empty($row['target_name']) && !empty($employeeNames[$employeeId])) {
+                    $row['target_name'] = $employeeNames[$employeeId];
+                }
+            }
+            if ($type === 'LeaveApplication' && isset($leaveDetailsByTargetId[$targetId])) {
+                $row['target_details'] = $leaveDetailsByTargetId[$targetId];
+                if (
+                    empty($row['target_name']) &&
+                    !empty($leaveDetailsByTargetId[$targetId]['employee_name'])
+                ) {
+                    $row['target_name'] = $leaveDetailsByTargetId[$targetId]['employee_name'];
+                }
+            }
+        }
+        unset($row);
+
+        return $rows;
+    }
+
     // ------------------------------------------------------------------
     // Query methods used by AuditLogController (Phase 8)
     // ------------------------------------------------------------------
@@ -240,6 +383,11 @@ class AuditService
                 $row['metadata']   = $this->decodeJson($row['metadata']);
             }
             unset($row);
+            try {
+                $rows = $this->enrichAffectedEmployees($rows);
+            } catch (\Throwable $e) {
+                error_log('[AuditService] affected employee enrichment failed: ' . $e->getMessage());
+            }
 
             return [
                 'data'     => $rows,
@@ -264,6 +412,11 @@ class AuditService
             $row['old_values'] = $this->decodeJson($row['old_values']);
             $row['new_values'] = $this->decodeJson($row['new_values']);
             $row['metadata']   = $this->decodeJson($row['metadata']);
+            try {
+                $row = $this->enrichAffectedEmployees([$row])[0];
+            } catch (\Throwable $e) {
+                error_log('[AuditService] affected employee enrichment failed: ' . $e->getMessage());
+            }
             return $row;
         } catch (\Throwable $e) {
             error_log('[AuditService] getById failed: ' . $e->getMessage());

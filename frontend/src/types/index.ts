@@ -341,6 +341,19 @@ export interface Notification {
 // backend/database/migrations/013_audit_logs.sql
 export type AuditStatus = 'SUCCESS' | 'FAILED';
 
+export interface AuditLeaveApplicationDetails {
+  employee_name: string;
+  employee_code: string | null;
+  leave_type: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  days_requested: number | null;
+  reason: string | null;
+  status: string | null;
+  applied_at: string | null;
+  submitted_by: string;
+}
+
 export interface AuditLog {
   id: number;
   user_id: number | null;
@@ -352,6 +365,8 @@ export interface AuditLog {
   target_type: string | null;
   target_id: number | null;
   target_name: string | null;
+  affected_employee_id?: number | null;
+  target_details?: AuditLeaveApplicationDetails | null;
   ip_address: string | null;
   user_agent: string | null;
   location: string | null;
