@@ -42,9 +42,7 @@ function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
 }
 
 type ModalState =
-  | { open: false }
-  | { open: true; mode: 'add' }
-  | { open: true; mode: 'edit'; record: Kpi };
+  { open: false } | { open: true; mode: 'add' } | { open: true; mode: 'edit'; record: Kpi };
 
 const inputCls =
   'w-full rounded-md border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-200';
@@ -141,8 +139,7 @@ export default function Kpis() {
     [empName],
   );
 
-  const canEditRow = (k: Kpi) =>
-    canManage || (!!k.created_by && Number(k.created_by) === userId);
+  const canEditRow = (k: Kpi) => canManage || (!!k.created_by && Number(k.created_by) === userId);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
