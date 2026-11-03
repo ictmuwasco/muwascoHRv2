@@ -178,7 +178,9 @@ export default function SupervisorAppraisals() {
     } catch (err: any) {
       setCreateError(
         err.response?.data?.message ||
-          (editingId !== null ? 'Unable to update appraisal assignment.' : 'Unable to create appraisal.'),
+          (editingId !== null
+            ? 'Unable to update appraisal assignment.'
+            : 'Unable to create appraisal.'),
       );
     } finally {
       setBusy(false);
@@ -467,9 +469,7 @@ export default function SupervisorAppraisals() {
                     <div key={indicator.id} className="text-sm">
                       <div className="flex justify-between gap-3">
                         <span className="font-medium">{indicator.name}</span>
-                        <span className="shrink-0 text-gray-500">
-                          Max {indicator.max_score}
-                        </span>
+                        <span className="shrink-0 text-gray-500">Max {indicator.max_score}</span>
                       </div>
                       <p className="text-xs text-gray-500">
                         {indicator.activities.map((activity) => activity.name).join(' · ') ||
@@ -487,11 +487,7 @@ export default function SupervisorAppraisals() {
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={closeAssignmentEditor}
-            >
+            <Button type="button" variant="outline" onClick={closeAssignmentEditor}>
               Cancel
             </Button>
             <Button type="submit" loading={busy} disabled={previewLoading || !!previewError}>

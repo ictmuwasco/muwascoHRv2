@@ -916,7 +916,9 @@ const Dashboard = () => {
           {attendanceData.on_approved_leave && (
             <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-md">
               You are on approved
-              {attendanceData.approved_leave_type ? ` ${attendanceData.approved_leave_type}` : ''}{' '}
+              {attendanceData.approved_leave_type
+                ? ` ${attendanceData.approved_leave_type}`
+                : ''}{' '}
               leave today. If recalled to work, clock in here; your attendance will note that you
               clocked in while on leave.
             </div>
@@ -1021,7 +1023,9 @@ const Dashboard = () => {
                 value={selectedOffice}
                 onChange={(e) => setSelectedOffice(e.target.value)}
                 disabled={attendanceData.offices.length === 0}
-                aria-label={attendanceData.is_clocked_in ? 'Clock out location' : 'Clock in location'}
+                aria-label={
+                  attendanceData.is_clocked_in ? 'Clock out location' : 'Clock in location'
+                }
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 {attendanceData.offices.length === 0 && (
