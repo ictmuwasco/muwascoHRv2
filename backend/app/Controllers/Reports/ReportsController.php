@@ -259,6 +259,21 @@ class ReportsController extends BaseController
     /**
      * GET /api/reports/{type}/export/{format} - Export report data.
      */
+    public function exportEmployeesAction(string $format): void
+    {
+        $this->exportAction('employees', $format);
+    }
+
+    public function exportAttendanceAction(string $format): void
+    {
+        $this->exportAction('attendance', $format);
+    }
+
+    public function exportLeaveAction(string $format): void
+    {
+        $this->exportAction('leave', $format);
+    }
+
     public function exportAction(string $type, string $format): void
     {
         $type = strtolower($type);
