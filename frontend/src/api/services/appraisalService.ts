@@ -93,10 +93,7 @@ export const appraisalService = {
     const response = await apiClient.post<ApiResponse<{ id: number }>>('/appraisals', data);
     return response.data.data.id;
   },
-  previewKpis: async (
-    employeeId: number,
-    cycleId: number,
-  ): Promise<AppraisalKpiPreview[]> => {
+  previewKpis: async (employeeId: number, cycleId: number): Promise<AppraisalKpiPreview[]> => {
     const response = await apiClient.get<ApiResponse<AppraisalKpiPreview[]>>(
       '/appraisals/kpi-preview',
       { params: { employee_id: employeeId, appraisal_cycle_id: cycleId } },

@@ -643,9 +643,7 @@ export default function Kpis() {
                       const activityIds = modalActivities.map((a) => Number(a.id));
                       setFormActIds(activityIds);
                       setFormObjectiveMarks((marks) =>
-                        Object.fromEntries(
-                          activityIds.map((id) => [id, marks[id] ?? 0]),
-                        ),
+                        Object.fromEntries(activityIds.map((id) => [id, marks[id] ?? 0])),
                       );
                     }}
                   >
@@ -729,9 +727,7 @@ export default function Kpis() {
                               const parsed = Number.parseInt(event.target.value, 10);
                               setFormObjectiveMarks((marks) => ({
                                 ...marks,
-                                [Number(a.id)]: Number.isFinite(parsed)
-                                  ? Math.max(0, parsed)
-                                  : 0,
+                                [Number(a.id)]: Number.isFinite(parsed) ? Math.max(0, parsed) : 0,
                               }));
                             }}
                             className="w-20 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-700 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-200"
