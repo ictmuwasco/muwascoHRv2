@@ -63,14 +63,14 @@ import Button from './Button';
  *   leave/LeaveProfile                     leave                  export → manage (see note)
  *   leave/LeaveRoster | LeaveOversight     leave:roster           page perm doubles as write
  *   meetings/*                             meetings               create/edit/delete/export/confirm
- *   reports/*                              reports                view (read) + export
+ *   reports/*                              report-specific module  view + export
  *   attendance/AttendanceDashboard         attendance             manage (page + CSV export)
  *   strategy/*                             strategic_plan /       view + manage (single-write)
  *                                          workplan / kpi / …
  *
  * NOTE on exports: where the catalog HAS a dedicated export action
- * (reports:export, meetings:export, audit:export) it is used verbatim. Where it
- * does not, the export affordance is deliberately gated on the module's WRITE
+ * (report-specific `*:export`, meetings:export, audit:export) it is used
+ * verbatim. Where it does not, the export affordance is deliberately gated on the module's WRITE
  * action — leave profile CSV → leave:manage, attendance CSV → attendance:manage,
  * workplan CSV → workplan manage. That is stricter than the API route table
  * (which currently allows those exports on `<module>:view`) and is intentional:

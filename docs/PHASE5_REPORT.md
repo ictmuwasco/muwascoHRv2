@@ -139,9 +139,9 @@ P5-4). Violations return **409 `INVALID_TRANSITION`** (previously a misleading
   (pre-check + `uk_attendance_employee_date` 1062 backstop), clock-out only
   against today's session (`NOT_CLOCKED_IN` otherwise), late status by
   `ATTENDANCE_LATE_CUTOFF` (default 08:30, boundary preserved: 08:30 is NOT late).
-- **New business rule (§10, env-gated):** clock-in during APPROVED leave is
-  blocked with **409 `ON_APPROVED_LEAVE`**. Default enabled;
-  `ATTENDANCE_BLOCK_CLOCKIN_ON_LEAVE=false` restores pre-Phase-5 behaviour.
+- Approved-leave clock-in rule (§10) was updated: recalled employees may clock
+  in during approved leave, and the attendance row snapshots the leave flag
+  and type for audit and display in My Attendance.
 - `AttendanceCloseService`: the single missed-clock-out implementation
   (batch sweep + per-employee lazy reconcile). Idempotent by construction;
   batch sweeps audited. Consumers: `cron/auto_clockout.php`, ops endpoint,
@@ -179,7 +179,7 @@ delegate?) — deliberately not guessed.
   the main flow (AuditService contract).
 - Error handling: no service leaks `$e->getMessage()` to clients anymore
   (verified by grep); log-to-file keeps full context. New client-facing codes:
-  `INVALID_TRANSITION` (409), `ON_APPROVED_LEAVE` (409), `INVALID_ROSTER_MONTH`
+  `INVALID_TRANSITION` (409), `INVALID_ROSTER_MONTH`
   (422), `NOT_CLOCKED_IN` (400, pre-existing contract preserved).
 
 ## 7. Testing strategy and results

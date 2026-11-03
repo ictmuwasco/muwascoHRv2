@@ -89,6 +89,7 @@ class AuditService
     // denied to officer/employee/bod_chairman even if a stale user override
     // attempts to grant it; self-service feedback remains owner-scoped.
     public const ACTION_APPRAISAL_CREATED             = 'APPRAISAL_CREATED';
+    public const ACTION_APPRAISAL_UPDATED             = 'APPRAISAL_UPDATED';
     public const ACTION_APPRAISAL_SCORE_SAVED         = 'APPRAISAL_SCORE_SAVED';
     public const ACTION_APPRAISAL_SUBMITTED            = 'APPRAISAL_SUBMITTED';
     public const ACTION_APPRAISAL_FEEDBACK_SUBMITTED  = 'APPRAISAL_FEEDBACK_SUBMITTED';

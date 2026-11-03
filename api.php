@@ -512,59 +512,62 @@ $router->add('GET', '/dashboard/hr-insights', DashboardController::class, 'hrIns
 $router->add('GET', '/dashboard/my-pending-leaves', DashboardController::class, 'myPendingLeaves', 'dashboard:view');
 
 // Report routes
-$router->add('GET', '/reports/employees', ReportController::class, 'employees', 'reports:view');
-$router->add('GET', '/reports/leave', ReportController::class, 'leave', 'reports:view');
-$router->add('GET', '/reports/attendance', ReportController::class, 'attendance', 'reports:view');
-$router->add('GET', '/reports/appraisal', ReportController::class, 'appraisal', 'reports:view');
+$router->add('GET', '/reports/employees', ReportController::class, 'employees', 'employee_reports:view');
+$router->add('GET', '/reports/leave', ReportController::class, 'leave', 'leave_reports:view');
+$router->add('GET', '/reports/attendance', ReportController::class, 'attendance', 'attendance_reports:view');
+$router->add('GET', '/reports/appraisal', ReportController::class, 'appraisal', 'appraisal_reports:view');
 $router->add('GET', '/reports/documentation', ReportController::class, 'documentation', 'reports:view');
 
 // Leave Reports module - dedicated analytics + reporting endpoints.
 // Registered BEFORE the /reports/{type}/export/{format} wildcard so the
 // specific leave routes take precedence.
-$router->add('GET', '/reports/leave/options', LeaveReportController::class, 'options', 'reports:view');
-$router->add('GET', '/reports/leave/summary', LeaveReportController::class, 'summary', 'reports:view');
-$router->add('GET', '/reports/leave/trends', LeaveReportController::class, 'trends', 'reports:view');
-$router->add('GET', '/reports/leave/by-type', LeaveReportController::class, 'byType', 'reports:view');
-$router->add('GET', '/reports/leave/by-department', LeaveReportController::class, 'byDepartment', 'reports:view');
-$router->add('GET', '/reports/leave/by-status', LeaveReportController::class, 'byStatus', 'reports:view');
-$router->add('GET', '/reports/leave/duration', LeaveReportController::class, 'duration', 'reports:view');
-$router->add('GET', '/reports/leave/insights', LeaveReportController::class, 'insights', 'reports:view');
-$router->add('GET', '/reports/leave/records', LeaveReportController::class, 'records', 'reports:view');
-$router->add('GET', '/reports/leave/export', LeaveReportController::class, 'export', 'reports:export', '20:300');
+$router->add('GET', '/reports/leave/options', LeaveReportController::class, 'options', 'leave_reports:view');
+$router->add('GET', '/reports/leave/summary', LeaveReportController::class, 'summary', 'leave_reports:view');
+$router->add('GET', '/reports/leave/trends', LeaveReportController::class, 'trends', 'leave_reports:view');
+$router->add('GET', '/reports/leave/by-type', LeaveReportController::class, 'byType', 'leave_reports:view');
+$router->add('GET', '/reports/leave/by-department', LeaveReportController::class, 'byDepartment', 'leave_reports:view');
+$router->add('GET', '/reports/leave/by-status', LeaveReportController::class, 'byStatus', 'leave_reports:view');
+$router->add('GET', '/reports/leave/duration', LeaveReportController::class, 'duration', 'leave_reports:view');
+$router->add('GET', '/reports/leave/insights', LeaveReportController::class, 'insights', 'leave_reports:view');
+$router->add('GET', '/reports/leave/records', LeaveReportController::class, 'records', 'leave_reports:view');
+$router->add('GET', '/reports/leave/export', LeaveReportController::class, 'export', 'leave_reports:export', '20:300');
 
 // Attendance Reports module - dedicated analytics + reporting endpoints.
 // Registered BEFORE the /reports/{type}/export/{format} wildcard so the
 // specific attendance routes take precedence. The legacy aggregated endpoint
 // GET /reports/attendance (ReportsController::attendance) stays registered
 // above for backward compatibility.
-$router->add('GET', '/reports/attendance/options', AttendanceReportController::class, 'options', 'reports:view');
-$router->add('GET', '/reports/attendance/summary', AttendanceReportController::class, 'summary', 'reports:view');
-$router->add('GET', '/reports/attendance/trends', AttendanceReportController::class, 'trends', 'reports:view');
-$router->add('GET', '/reports/attendance/by-status', AttendanceReportController::class, 'byStatus', 'reports:view');
-$router->add('GET', '/reports/attendance/by-department', AttendanceReportController::class, 'byDepartment', 'reports:view');
-$router->add('GET', '/reports/attendance/late-arrivals', AttendanceReportController::class, 'lateArrivals', 'reports:view');
-$router->add('GET', '/reports/attendance/working-hours', AttendanceReportController::class, 'workingHours', 'reports:view');
-$router->add('GET', '/reports/attendance/insights', AttendanceReportController::class, 'insights', 'reports:view');
-$router->add('GET', '/reports/attendance/compliance', AttendanceReportController::class, 'compliance', 'reports:view');
-$router->add('GET', '/reports/attendance/employees', AttendanceReportController::class, 'employees', 'reports:view');
-$router->add('GET', '/reports/attendance/records', AttendanceReportController::class, 'records', 'reports:view');
-$router->add('GET', '/reports/attendance/export', AttendanceReportController::class, 'export', 'reports:export', '20:300');
+$router->add('GET', '/reports/attendance/options', AttendanceReportController::class, 'options', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/summary', AttendanceReportController::class, 'summary', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/trends', AttendanceReportController::class, 'trends', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/by-status', AttendanceReportController::class, 'byStatus', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/by-department', AttendanceReportController::class, 'byDepartment', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/late-arrivals', AttendanceReportController::class, 'lateArrivals', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/working-hours', AttendanceReportController::class, 'workingHours', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/insights', AttendanceReportController::class, 'insights', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/compliance', AttendanceReportController::class, 'compliance', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/employees', AttendanceReportController::class, 'employees', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/records', AttendanceReportController::class, 'records', 'attendance_reports:view');
+$router->add('GET', '/reports/attendance/export', AttendanceReportController::class, 'export', 'attendance_reports:export', '20:300');
 // Appraisal Reports module - company-wide appraisal analytics.
 // Registered BEFORE the /reports/{type}/export/{format} wildcard so
 // GET /reports/appraisal (ReportsController::appraisal) stays reachable.
-$router->add('GET', '/reports/appraisal/options',        \App\Controllers\Reports\AppraisalReportController::class, 'options',        'reports:view');
-$router->add('GET', '/reports/appraisal/summary',        \App\Controllers\Reports\AppraisalReportController::class, 'summary',        'reports:view');
-$router->add('GET', '/reports/appraisal/trends',         \App\Controllers\Reports\AppraisalReportController::class, 'trends',         'reports:view');
-$router->add('GET', '/reports/appraisal/by-department',  \App\Controllers\Reports\AppraisalReportController::class, 'byDepartment',   'reports:view');
-$router->add('GET', '/reports/appraisal/by-section',     \App\Controllers\Reports\AppraisalReportController::class, 'bySection',      'reports:view');
-$router->add('GET', '/reports/appraisal/by-subsection',  \App\Controllers\Reports\AppraisalReportController::class, 'bySubsection',   'reports:view');
-$router->add('GET', '/reports/appraisal/by-status',      \App\Controllers\Reports\AppraisalReportController::class, 'byStatus',       'reports:view');
-$router->add('GET', '/reports/appraisal/performers',     \App\Controllers\Reports\AppraisalReportController::class, 'performers',     'reports:view');
-$router->add('GET', '/reports/appraisal/insights',       \App\Controllers\Reports\AppraisalReportController::class, 'insights',       'reports:view');
-$router->add('GET', '/reports/appraisal/employees',      \App\Controllers\Reports\AppraisalReportController::class, 'employees',      'reports:view');
-$router->add('GET', '/reports/appraisal/appraisals',     \App\Controllers\Reports\AppraisalReportController::class, 'appraisals',     'reports:view');
-$router->add('GET', '/reports/appraisal/export',         \App\Controllers\Reports\AppraisalReportController::class, 'export',         'reports:export', '20:300');
+$router->add('GET', '/reports/appraisal/options',        \App\Controllers\Reports\AppraisalReportController::class, 'options',        'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/summary',        \App\Controllers\Reports\AppraisalReportController::class, 'summary',        'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/trends',         \App\Controllers\Reports\AppraisalReportController::class, 'trends',         'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/by-department',  \App\Controllers\Reports\AppraisalReportController::class, 'byDepartment',   'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/by-section',     \App\Controllers\Reports\AppraisalReportController::class, 'bySection',     'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/by-subsection',  \App\Controllers\Reports\AppraisalReportController::class, 'bySubsection',  'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/by-status',      \App\Controllers\Reports\AppraisalReportController::class, 'byStatus',      'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/performers',     \App\Controllers\Reports\AppraisalReportController::class, 'performers',     'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/insights',       \App\Controllers\Reports\AppraisalReportController::class, 'insights',       'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/employees',      \App\Controllers\Reports\AppraisalReportController::class, 'employees',      'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/appraisals',     \App\Controllers\Reports\AppraisalReportController::class, 'appraisals',     'appraisal_reports:view');
+$router->add('GET', '/reports/appraisal/export',         \App\Controllers\Reports\AppraisalReportController::class, 'export',         'appraisal_reports:export', '20:300');
 
+$router->add('GET', '/reports/employees/export/{format}', ReportController::class, 'export', 'employee_reports:export', '20:300');
+$router->add('GET', '/reports/attendance/export/{format}', ReportController::class, 'export', 'attendance_reports:export', '20:300');
+$router->add('GET', '/reports/leave/export/{format}', ReportController::class, 'export', 'leave_reports:export', '20:300');
 $router->add('GET', '/reports/{type}/export/{format}', ReportController::class, 'export', 'reports:export', '20:300');
 
 // Complaint routes — employees file and list their OWN complaints (self-scope
@@ -605,7 +608,9 @@ $router->add('GET',    '/appraisals/supervisor/regular/{id}',    AppraisalWorkfl
 $router->add('GET',    '/appraisals/supervisor/pending/{id}',    AppraisalWorkflowController::class, 'pendingDetailAction', 'performance:approve');
 $router->add('GET',    '/appraisals/supervisor/escalated/{id}',  AppraisalWorkflowController::class, 'escalatedDetailAction', 'performance:approve');
 $router->add('GET',    '/appraisals/supervisor/rejected/{id}',   AppraisalWorkflowController::class, 'rejectedDetailAction', 'performance:approve');
+$router->add('GET',    '/appraisals/kpi-preview',             AppraisalWorkflowController::class, 'kpiPreviewAction', 'performance:score');
 $router->add('POST',   '/appraisals',                       AppraisalWorkflowController::class, 'createAction', 'performance:score', '20:300');
+$router->add('PUT',    '/appraisals/{id}/assignment',        AppraisalWorkflowController::class, 'updateAssignmentAction', 'performance:score');
 $router->add('PUT',    '/appraisals/{id}/scores',          AppraisalWorkflowController::class, 'saveScoresAction', 'performance:score', '60:300');
 $router->add('PUT',    '/appraisals/{id}/decision',        AppraisalWorkflowController::class, 'decisionAction', 'performance:approve', '30:300');
 

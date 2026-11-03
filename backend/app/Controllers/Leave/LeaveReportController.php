@@ -12,7 +12,8 @@ use App\Services\LeaveReportService;
  * LeaveReportController
  *
  * HTTP layer for the Leave Reports module. Each action enforces the
- * `reports:view` permission (and `reports:export` for the CSV download),
+ * `leave_reports:view` permission (and `leave_reports:export` for the CSV
+ * download),
  * resolves the caller's organisational scope, then delegates to the
  * LeaveReportService. Role-scoping is always applied server-side.
  */
@@ -30,7 +31,7 @@ class LeaveReportController extends BaseController
      */
     public function optionsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
         $this->success($this->service->options(OrgScope::current()));
     }
 
@@ -39,7 +40,7 @@ class LeaveReportController extends BaseController
      */
     public function summaryAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
         $scope = OrgScope::current();
         $filters = $this->service->query()->normalizeFilters($_GET);
         $this->success($this->service->statistics()->summary($filters, $scope));
@@ -50,7 +51,7 @@ class LeaveReportController extends BaseController
      */
     public function trendsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
         $scope = OrgScope::current();
         $filters = $this->service->query()->normalizeFilters($_GET);
         $this->success($this->service->analytics()->trends($filters, $scope));
@@ -61,7 +62,7 @@ class LeaveReportController extends BaseController
      */
     public function byTypeAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
         $scope = OrgScope::current();
         $filters = $this->service->query()->normalizeFilters($_GET);
         $this->success($this->service->analytics()->byType($filters, $scope));
@@ -72,7 +73,7 @@ class LeaveReportController extends BaseController
      */
     public function byDepartmentAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
         $scope = OrgScope::current();
         $filters = $this->service->query()->normalizeFilters($_GET);
         $this->success($this->service->analytics()->byDepartment($filters, $scope));
@@ -83,7 +84,7 @@ class LeaveReportController extends BaseController
      */
     public function byStatusAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
         $scope = OrgScope::current();
         $filters = $this->service->query()->normalizeFilters($_GET);
         $this->success($this->service->analytics()->byStatus($filters, $scope));
@@ -94,7 +95,7 @@ class LeaveReportController extends BaseController
      */
     public function durationAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
         $scope = OrgScope::current();
         $filters = $this->service->query()->normalizeFilters($_GET);
         $this->success($this->service->analytics()->duration($filters, $scope));
@@ -105,7 +106,7 @@ class LeaveReportController extends BaseController
      */
     public function insightsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
         $scope = OrgScope::current();
         $filters = $this->service->query()->normalizeFilters($_GET);
         $this->success($this->service->insights($filters, $scope));
@@ -116,7 +117,7 @@ class LeaveReportController extends BaseController
      */
     public function recordsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
         $scope = OrgScope::current();
         $filters = $this->service->query()->normalizeFilters($_GET);
         $page = max(1, (int) ($_GET['page'] ?? 1));
@@ -129,7 +130,7 @@ class LeaveReportController extends BaseController
      */
     public function exportAction(): void
     {
-        $this->requirePermission('reports', 'export');
+        $this->requirePermission('leave_reports', 'export');
 
         $scope = OrgScope::current();
         $filters = $this->service->query()->normalizeFilters($_GET);

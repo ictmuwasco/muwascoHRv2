@@ -6,6 +6,7 @@ export interface AppraisalWorkflowRow {
   status: string;
   status_label?: string;
   employee_id: number;
+  appraisal_cycle_id?: number;
   employee_name?: string;
   employee_code?: string;
   employee_type?: string;
@@ -28,7 +29,15 @@ export interface AppraisalWorkflowRow {
   total_max_score?: number;
   score_percentage?: number;
   can_edit_scores?: boolean;
+  can_edit_assignment?: boolean;
   created_at?: string;
+}
+
+export interface AppraisalKpiPreview {
+  id: number;
+  name: string;
+  max_score: number;
+  activities: Array<{ id: number; name: string; contract_name?: string | null }>;
 }
 
 export interface AppraisalIndicator {
@@ -83,6 +92,22 @@ export const appraisalService = {
   create: async (data: { employee_id: number; appraisal_cycle_id: number }): Promise<number> => {
     const response = await apiClient.post<ApiResponse<{ id: number }>>('/appraisals', data);
     return response.data.data.id;
+  },
+  previewKpis: async (
+    employeeId: number,
+    cycleId: number,
+  ): Promise<AppraisalKpiPreview[]> => {
+    const response = await apiClient.get<ApiResponse<AppraisalKpiPreview[]>>(
+      '/appraisals/kpi-preview',
+      { params: { employee_id: employeeId, appraisal_cycle_id: cycleId } },
+    );
+    return response.data.data;
+  },
+  updateAssignment: async (
+    id: number,
+    data: { employee_id: number; appraisal_cycle_id: number },
+  ): Promise<void> => {
+    await apiClient.put(`/appraisals/${id}/assignment`, data);
   },
   saveScores: async (
     id: number,
