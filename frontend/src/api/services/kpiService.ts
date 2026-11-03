@@ -98,6 +98,8 @@ export interface KpiFormData {
   measure_unit?: string | null;
   max_score: number;
   activity_ids: number[];
+  /** Per-objective form marks; the API stores only their aggregate in max_score. */
+  objective_marks?: Record<number, number>;
   assigned_to_employee_ids: number[];
   is_active: boolean;
   is_recurrent: boolean;

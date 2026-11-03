@@ -177,6 +177,46 @@ class SectionalObjectiveController extends BaseController
         return $ids;
     }
 
+    /**
+     * The form submits marks for each linked objective, but only their sum is
+     * persisted in performance_indicators.max_score.
+     *
+     * @param array<int|string,mixed> $objectiveMarks
+     * @param array<int,int> $activityIds
+     */
+    private function aggregateObjectiveMarks(array $objectiveMarks, array $activityIds): int
+    {
+        $allowedIds = array_fill_keys(array_map('intval', $activityIds), true);
+        $total = 0;
+        foreach ($objectiveMarks as $activityId => $marks) {
+            $id = (int) $activityId;
+            if (!isset($allowedIds[$id])) {
+                $this->error('Marks were provided for an objective that is not linked to this KPI.', 422);
+            }
+            if (!is_int($marks) && !(is_string($marks) && ctype_digit($marks))) {
+                $this->error('Objective marks must be whole numbers greater than or equal to zero.', 422);
+            }
+            $value = (int) $marks;
+            if ($value < 0) {
+                $this->error('Objective marks must be whole numbers greater than or equal to zero.', 422);
+            }
+            if ($value > 2147483647 - $total) {
+                $this->error('The aggregate KPI max score is too large.', 422);
+            }
+            $total += $value;
+        }
+
+        foreach (array_keys($allowedIds) as $id) {
+            if (!array_key_exists($id, $objectiveMarks) && !array_key_exists((string) $id, $objectiveMarks)) {
+                $this->error('Assign marks to every linked objective.', 422);
+            }
+        }
+        if ($total <= 0) {
+            $this->error('The aggregate KPI max score must be greater than zero.', 422);
+        }
+        return $total;
+    }
+
 
     private static function roleOf(array $e): string
     {
@@ -564,6 +604,15 @@ class SectionalObjectiveController extends BaseController
         if (empty($validActivities)) {
             $this->error('Select at least one valid workplan activity.', 422);
         }
+        if (array_key_exists('objective_marks', $data)) {
+            if (!is_array($data['objective_marks'])) {
+                $this->error('Objective marks must be supplied as a collection.', 422);
+            }
+            $maxScore = $this->aggregateObjectiveMarks($data['objective_marks'], $validActivities);
+        }
+        if ($maxScore <= 0) {
+            $this->error('Max score must be a positive number.', 422);
+        }
         if (empty($validEmployees)) {
             $this->error('Select at least one valid employee.', 422);
         }
@@ -646,6 +695,19 @@ class SectionalObjectiveController extends BaseController
         $fields = [];
         $params = [];
         $types  = '';
+        $objectiveMarksProvided = array_key_exists('objective_marks', $data);
+        if ($objectiveMarksProvided) {
+            if (!is_array($data['objective_marks']) || !isset($data['activity_ids']) || !is_array($data['activity_ids'])) {
+                $this->error('Objective marks must be submitted with the linked objectives.', 422);
+            }
+            [$validActivities] = $this->validateAssignments($scope, $data['activity_ids'], []);
+            if (empty($validActivities)) {
+                $this->error('Select at least one valid workplan activity.', 422);
+            }
+            $fields[] = 'max_score = ?';
+            $params[] = $this->aggregateObjectiveMarks($data['objective_marks'], $validActivities);
+            $types .= 'i';
+        }
 
         foreach (['name', 'description', 'measure_unit', 'role'] as $f) {
             if (array_key_exists($f, $data)) {
@@ -655,7 +717,7 @@ class SectionalObjectiveController extends BaseController
                 $types   .= 's';
             }
         }
-        if (isset($data['max_score']) && (int) $data['max_score'] > 0) {
+        if (!$objectiveMarksProvided && isset($data['max_score']) && (int) $data['max_score'] > 0) {
             $fields[] = 'max_score = ?';
             $params[] = (int) $data['max_score'];
             $types   .= 'i';

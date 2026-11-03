@@ -118,6 +118,12 @@ const Attendance = () => {
             {row.auto_clocked_out && (
               <div className="text-xs text-red-600 dark:text-red-400 mt-1">Auto</div>
             )}
+            {row.on_approved_leave && (
+              <div className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                On leave
+                {row.approved_leave_type ? ` (${row.approved_leave_type})` : ''} — recalled to work
+              </div>
+            )}
           </div>
         );
       },

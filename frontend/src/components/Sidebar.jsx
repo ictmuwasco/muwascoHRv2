@@ -45,7 +45,12 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
   const canViewLeave = can('leave', 'view') || canManageLeave;
   const canViewAttendance = can('attendance', 'view');
   const canViewMeetings = can('meetings', 'view');
-  const canViewReports = can('reports', 'view');
+  const canViewReports = canAny([
+    ['employee_reports', 'view'],
+    ['attendance_reports', 'view'],
+    ['leave_reports', 'view'],
+    ['appraisal_reports', 'view'],
+  ]);
 
   // Employees page — registry-aligned (§18/§29): the link follows the SAME
   // permission as the route, employees:view (PAGE_PERMISSIONS['/employees']).
@@ -456,19 +461,19 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           name: 'Employee Reports',
           href: '/reports',
           icon: Users,
-          visible: () => can('reports', 'view'),
+          visible: () => can('employee_reports', 'view'),
         },
         {
           name: 'Attendance Reports',
           href: '/reports/attendance',
           icon: CalendarCheck,
-          visible: () => can('reports', 'view'),
+          visible: () => can('attendance_reports', 'view'),
         },
         {
           name: 'Leave Reports',
           href: '/leave/reports',
           icon: FileBarChart2,
-          visible: () => can('reports', 'view'),
+          visible: () => can('leave_reports', 'view'),
         },
         {
           // Company-wide appraisal analytics: performance trends, unit averages
@@ -478,7 +483,7 @@ const Sidebar = ({ isOpen = false, onClose = () => {} }) => {
           name: 'Appraisal Reports',
           href: '/reports/appraisal',
           icon: Star,
-          visible: () => can('reports', 'view'),
+          visible: () => can('appraisal_reports', 'view'),
         },
       ],
     },

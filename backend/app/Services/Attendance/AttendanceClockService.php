@@ -30,8 +30,8 @@ use App\Services\CalendarContextService;
  *    clocking out without an open session is rejected (NOT_CLOCKED_IN)
  *  - Late determination by configured cutoff (ATTENDANCE_LATE_CUTOFF, 08:30
  *    Africa/Nairobi default, preserved from the original implementation)
- *  - Optional hard block on clocking in during approved leave
- *    (ATTENDANCE_BLOCK_CLOCKIN_ON_LEAVE, default enabled — Phase 5 §10)
+ *  - Snapshot approved leave on the attendance row when an employee clocks
+ *    in while recalled from leave
  *  - Audit trail entries for every outcome (success / denied / failed / retry)
  *
  * All timestamps are server-authoritative (DB session runs at Africa/Nairobi).
@@ -80,7 +80,6 @@ class AttendanceClockService
      * @throws InvalidClockRequestException request shape / location unusable (HTTP 400)
      * @throws InvalidOfficeException       unknown office or unusable office coordinates (HTTP 400)
      * @throws OutsideGeofenceException     fix outside the office radius (HTTP 403, OUTSIDE_RADIUS)
-     * @throws OnApprovedLeaveException     blocking enabled + approved leave today (HTTP 409, ON_APPROVED_LEAVE)
      * @throws DeviceLockedException        device owned by another employee in the
      *                                      lock window (HTTP 409, DEVICE_LOCKED)
      * @throws \RuntimeException            persistence failure (HTTP 500)
@@ -132,6 +131,8 @@ class AttendanceClockService
                     'message' => 'You have already clocked in today.',
                     'clock_in' => $existing['clock_in'] ?? null,
                     'is_late' => (bool) ($existing['is_late'] ?? 0),
+                    'on_approved_leave' => (bool) ($existing['on_approved_leave'] ?? 0),
+                    'approved_leave_type' => $existing['approved_leave_type'] ?? null,
                     'distance' => $geo['distance'],
                     'record' => $existing,
                     'idempotent' => true,
@@ -139,28 +140,7 @@ class AttendanceClockService
             ];
         }
 
-        // Phase 5 §10: employees on approved leave must not clock in.
-        if ($this->blockClockInOnLeave()) {
-            $leaveType = $this->approvedLeaveTypeFor($employeeDbId, $today);
-            if ($leaveType !== null) {
-                $this->audit(
-                    $request,
-                    $office,
-                    $geo,
-                    AuditService::ACTION_CLOCK_IN,
-                    AuditService::STATUS_DENIED,
-                    'Clock-in denied: employee on approved leave today',
-                    [
-                        'target_type' => 'Attendance',
-                        'metadata' => ['code' => 'ON_APPROVED_LEAVE', 'leave_type' => $leaveType],
-                    ]
-                );
-                throw new OnApprovedLeaveException(
-                    'You are on approved leave today (' . $leaveType . '). Clock-in is not allowed while on leave.',
-                    ['code' => 'ON_APPROVED_LEAVE', 'leave_type' => $leaveType]
-                );
-            }
-        }
+        $leaveType = $this->approvedLeaveTypeFor($employeeDbId, $today);
 
         $now = date('Y-m-d H:i:s');
         $late = $this->resolveLateStatus($now);
@@ -212,6 +192,8 @@ class AttendanceClockService
                 'device_fingerprint' => $deviceFingerprint,
                 'status' => $late['status'],
                 'is_late' => $late['is_late'] ? 1 : 0,
+                'on_approved_leave' => $leaveType !== null ? 1 : 0,
+                'approved_leave_type' => $leaveType,
                 'created_at' => $now,
                 'updated_at' => $now,
             ];
@@ -259,7 +241,14 @@ class AttendanceClockService
                     AuditService::ACTION_CLOCK_IN,
                     AuditService::STATUS_SUCCESS,
                     'Employee clock-in recorded',
-                    ['target_type' => 'Attendance', 'target_id' => (int) $attendanceId]
+                    [
+                        'target_type' => 'Attendance',
+                        'target_id' => (int) $attendanceId,
+                        'metadata' => [
+                            'on_approved_leave' => $leaveType !== null,
+                            'approved_leave_type' => $leaveType,
+                        ],
+                    ]
                 );
             } catch (\Throwable $auditError) {
                 \logger()->error('Clock-in audit write failed (clock-in itself committed)', [
@@ -279,6 +268,8 @@ class AttendanceClockService
                     'clock_in' => $now,
                     'clock_in_id' => $attendanceId,
                     'distance' => $geo['distance'],
+                    'on_approved_leave' => $leaveType !== null,
+                    'approved_leave_type' => $leaveType,
                 ],
             ];
         } catch (\mysqli_sql_exception $e) {
@@ -308,6 +299,8 @@ class AttendanceClockService
                         'message' => 'You have already clocked in today.',
                         'clock_in' => $ref['clock_in'] ?? $now,
                         'is_late' => (bool) ($ref['is_late'] ?? ($late['is_late'] ? 1 : 0)),
+                        'on_approved_leave' => (bool) ($ref['on_approved_leave'] ?? 0),
+                        'approved_leave_type' => $ref['approved_leave_type'] ?? null,
                         'distance' => $geo['distance'],
                         'record' => $ref,
                         'idempotent' => true,
@@ -641,17 +634,6 @@ class AttendanceClockService
     }
 
     /**
-     * Phase 5 §10 switch: block clock-in while on approved leave.
-     * Default ENABLED; set ATTENDANCE_BLOCK_CLOCKIN_ON_LEAVE=false to revert
-     * to the pre-Phase-5 behaviour (clock-in allowed, dashboard still shows
-     * the employee as ON_LEAVE).
-     */
-    public function blockClockInOnLeave(): bool
-    {
-        return (bool) env('ATTENDANCE_BLOCK_CLOCKIN_ON_LEAVE', true);
-    }
-
-    /**
      * The approved leave type covering the employee on the given date, or null.
      * Delegates to the single shared calendar implementation
      * (CalendarContextService) — attendance never re-implements leave rules.
@@ -841,6 +823,7 @@ class AttendanceClockService
     {
         return \db()->fetchOne(
             "SELECT a.id, a.clock_in, a.clock_out, a.is_late, a.status,
+                    a.on_approved_leave, a.approved_leave_type,
                     o.name AS office_name
              FROM attendance a
              LEFT JOIN offices o ON a.office_id = o.id
