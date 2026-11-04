@@ -401,10 +401,11 @@ $router->add('POST', '/users/{id}/change-password', UserController::class, 'chan
 // users:* permissions on the /users endpoints.
 $router->add('GET', '/roles', RolesController::class, 'index');
 
-// Attendance routes — clock-in/out are self-service (own record enforced in
-// the controller); record administration requires attendance:manage.
+// Attendance routes — dashboard clock-in state and clock-in/out are
+// authenticated self-service (own record enforced in the controller);
+// record administration requires attendance:manage.
 $router->add('GET', '/attendance/today', AttendanceController::class, 'today', 'attendance:view');
-$router->add('GET', '/attendance/dashboard', AttendanceController::class, 'dashboard', 'attendance:view');
+$router->add('GET', '/attendance/dashboard', AttendanceController::class, 'dashboard');
 // HR attendance monitoring dashboard + employee history (before /attendance/{id} wildcard)
 // Org attendance monitoring is an administrative function: it requires
 // attendance:manage (officers/employees hold only attendance:view). Data

@@ -14,8 +14,8 @@ use App\Services\Contracts\CalendarContextServiceInterface;
  *     and AttendanceDashboardService).
  *   - Holidays come from the existing `holidays` table; recurring
  *     holidays match month+day regardless of year.
- *   - Approved leave comes from the existing `leave_applications`
- *     table with a BETWEEN check on start/end dates.
+ *   - Approved leave covers its start date up to, but not including, its
+ *     end date; the end date is the employee's return-to-work date.
  *
  * Notification code must never re-implement these rules.
  */
@@ -26,6 +26,11 @@ class CalendarContextService implements CalendarContextServiceInterface
 
     /** @var array<string,array<int,string>> per-process leave cache keyed by date */
     private array $leaveCache = [];
+
+    public static function approvedLeaveCoversDate(string $startDate, string $endDate, string $date): bool
+    {
+        return $startDate <= $date && $endDate > $date;
+    }
 
     /** {@inheritDoc} */
     public function isWeekend(string $date): bool
@@ -81,7 +86,7 @@ class CalendarContextService implements CalendarContextServiceInterface
              LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
              WHERE la.status = 'approved'
                AND la.start_date <= ?
-               AND la.end_date >= ?",
+               AND la.end_date > ?",
             'ss',
             [$date, $date]
         );

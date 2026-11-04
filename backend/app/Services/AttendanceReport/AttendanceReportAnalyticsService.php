@@ -406,7 +406,7 @@ final class AttendanceReportAnalyticsService
                 INNER JOIN employees e ON la.employee_id = e.id
                 WHERE la.status = 'approved'
                   AND la.start_date <= ?
-                  AND la.end_date   >= ?";
+                  AND la.end_date   > ?";
         $types  = 'ss' . $etypes;
         $params = array_merge([$filters['to'], $filters['from']], $eparams);
         if ($ewhere !== '') {
@@ -429,7 +429,7 @@ final class AttendanceReportAnalyticsService
     {
         $n = 0;
         foreach ($leaves as $l) {
-            if ($l['start_date'] <= $date && $l['end_date'] >= $date) {
+            if (CalendarContextService::approvedLeaveCoversDate($l['start_date'], $l['end_date'], $date)) {
                 $n++;
             }
         }

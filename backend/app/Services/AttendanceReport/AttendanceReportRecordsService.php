@@ -262,7 +262,7 @@ final class AttendanceReportRecordsService
 
                 $onLeave = false;
                 foreach ($leavesByEmp[$empId] ?? [] as $l) {
-                    if ($l['start_date'] <= $date && $l['end_date'] >= $date) {
+                    if ($l['start_date'] <= $date && $l['end_date'] > $date) {
                         $onLeave = true;
                         break;
                     }
