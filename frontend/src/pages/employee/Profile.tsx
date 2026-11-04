@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { isAxiosError } from 'axios';
 import apiClient from '../../api/client';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
@@ -50,6 +51,12 @@ const Profile = () => {
   const [activeTab, setActiveTab] = useState('personal');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [passwordChanging, setPasswordChanging] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    current: '',
+    new: '',
+    confirm: '',
+  });
 
   // View-only state for personal and employment info (managed by HR)
   const [personal, setPersonal] = useState({
@@ -225,6 +232,42 @@ const Profile = () => {
   useEffect(() => {
     fetchProfile();
   }, [fetchProfile]);
+
+  const handlePasswordChange = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (passwordForm.new.length < 8) {
+      setError('New password must be at least 8 characters.');
+      return;
+    }
+
+    if (passwordForm.new !== passwordForm.confirm) {
+      setError('New password and confirmation do not match.');
+      return;
+    }
+
+    setPasswordChanging(true);
+    try {
+      const response = await apiClient.post('/auth/change-password', {
+        current_password: passwordForm.current,
+        new_password: passwordForm.new,
+      });
+      setPasswordForm({ current: '', new: '', confirm: '' });
+      setSuccess(response.data?.message || 'Password changed successfully.');
+    } catch (err: unknown) {
+      const message = isAxiosError<{ message?: string }>(err)
+        ? err.response?.data?.message || err.message
+        : err instanceof Error
+          ? err.message
+          : 'Failed to change password. Please try again.';
+      setError(message);
+      console.error('Failed to change password:', err);
+    } finally {
+      setPasswordChanging(false);
+    }
+  };
 
   const handleProfileImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1016,11 +1059,39 @@ const Profile = () => {
       {/* Password Change */}
       {activeTab === 'password' && (
         <Card title="Change Password">
-          <form className="space-y-4 max-w-md">
-            <Input label="Current Password" type="password" placeholder="Enter current password" />
-            <Input label="New Password" type="password" placeholder="Enter new password" />
-            <Input label="Confirm Password" type="password" placeholder="Confirm new password" />
-            <Button type="submit">Update Password</Button>
+          <form className="space-y-4 max-w-md" onSubmit={handlePasswordChange}>
+            <Input
+              label="Current Password"
+              type="password"
+              autoComplete="current-password"
+              placeholder="Enter current password"
+              value={passwordForm.current}
+              onChange={(e) => setPasswordForm((form) => ({ ...form, current: e.target.value }))}
+              required
+            />
+            <Input
+              label="New Password"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Enter new password"
+              value={passwordForm.new}
+              onChange={(e) => setPasswordForm((form) => ({ ...form, new: e.target.value }))}
+              minLength={8}
+              required
+            />
+            <Input
+              label="Confirm Password"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Confirm new password"
+              value={passwordForm.confirm}
+              onChange={(e) => setPasswordForm((form) => ({ ...form, confirm: e.target.value }))}
+              minLength={8}
+              required
+            />
+            <Button type="submit" loading={passwordChanging} disabled={passwordChanging}>
+              Update Password
+            </Button>
           </form>
         </Card>
       )}

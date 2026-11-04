@@ -482,7 +482,7 @@ class AttendanceDashboardService
              LEFT JOIN leave_types lt ON la.leave_type_id = lt.id
              WHERE la.status = 'approved'
                AND la.start_date <= ?
-               AND la.end_date >= ?",
+               AND la.end_date > ?",
             'ss',
             [$date, $date]
         );
@@ -657,15 +657,15 @@ class AttendanceDashboardService
              JOIN employees e ON la.employee_id = e.id
              WHERE la.status = 'approved'
                AND la.start_date <= ?
-               AND la.end_date >= ?{$unitWhere}",
+               AND la.end_date > ?{$unitWhere}",
             'ss',
             [$endDate, $startDate]
         );
         $leaveByDay = [];
         foreach ($leaveRows as $r) {
             $from = max($startDate, (string)$r['start_date']);
-            $to = min($endDate, (string)$r['end_date']);
-            for ($ts = strtotime($from); $ts <= strtotime($to); $ts += 86400) {
+            $leaveEnd = strtotime((string)$r['end_date']);
+            for ($ts = strtotime($from); $ts <= strtotime($endDate) && $ts < $leaveEnd; $ts += 86400) {
                 $leaveByDay[date('Y-m-d', $ts)][(int)$r['employee_id']] = true;
             }
         }
@@ -773,8 +773,6 @@ class AttendanceDashboardService
         return (int)round(($out - $in) / 60);
     }
 }
-
-
 
 
 

@@ -55,6 +55,7 @@ return [
         'POST /attendance/clock-in',   // own attendance record
         'POST /attendance/clock-out',
         'POST /attendance/auto-clockout',
+        'GET /attendance/dashboard',   // own clock-in state + office choices
 
         'POST /consent/verify-employee', // onboarding self-service flow
         'POST /consent',
