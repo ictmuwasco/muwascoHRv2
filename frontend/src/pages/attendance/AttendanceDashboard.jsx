@@ -265,6 +265,7 @@ const AttendanceDashboard = () => {
         'Clock In',
         'Clock Out',
         'Status',
+        'Attendance Note',
         'Work Hours',
       ];
       const csv = toCsv(headers, rows, (row, header) => {
@@ -283,6 +284,8 @@ const AttendanceDashboard = () => {
             return row.clock_out_time || '-';
           case 'Status':
             return row.status_label;
+          case 'Attendance Note':
+            return row.recalled_from_leave ? 'Recalled to work from leave' : '';
           case 'Work Hours':
             return row.work_hours || '-';
           default:
@@ -395,9 +398,12 @@ const AttendanceDashboard = () => {
       key: 'status',
       label: 'Status',
       render: (_, row) => (
-        <Badge variant={STATUS_META[row.status]?.variant || 'default'}>
-          {statusLabel(row.status)}
-        </Badge>
+        <div className="flex flex-col items-start gap-1">
+          <Badge variant={STATUS_META[row.status]?.variant || 'default'}>
+            {statusLabel(row.status)}
+          </Badge>
+          {row.recalled_from_leave && <Badge variant="primary">Recalled to work from leave</Badge>}
+        </div>
       ),
     },
     workHours: {
@@ -459,6 +465,7 @@ const AttendanceDashboard = () => {
               tableColumnsBase.department,
               tableColumnsBase.clockIn,
               tableColumnsBase.clockOut,
+              tableColumnsBase.status,
               tableColumnsBase.workHours,
               tableColumnsBase.actions,
             ]
@@ -1143,6 +1150,11 @@ const AttendanceDashboard = () => {
                   <Badge variant={STATUS_META[detailEmployee.status]?.variant || 'default'}>
                     {statusLabel(detailEmployee.status)}
                   </Badge>
+                  {detailEmployee.recalled_from_leave && (
+                    <div className="mt-1">
+                      <Badge variant="primary">Recalled to work from leave</Badge>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400">Clock In</p>

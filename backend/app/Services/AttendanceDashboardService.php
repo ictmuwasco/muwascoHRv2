@@ -14,14 +14,15 @@ namespace App\Services;
  * Status resolution priority (per approved business rules):
  *   1. HOLIDAY            - date is a configured public holiday
  *   2. NON_WORKING_DAY    - Saturday/Sunday (matches LeaveCalculationService)
- *   3. ON_LEAVE           - approved leave application covering the date
- *   4. AUTO_CLOCKED_OUT   - session closed automatically at midnight
- *   5. LATE               - clocked in after the late cutoff (08:30 Africa/Nairobi)
- *   6. MISSING_CLOCK_OUT  - past-day record still missing clock-out (defensive)
- *   7. PRESENT            - valid clock-in, day/session in progress
- *   8. CLOCKED_OUT        - completed clock-in + clock-out
- *   9. NOT_CLOCKED_IN     - expected but not yet clocked in (grace policy only)
- *  10. ABSENT             - expected employee with no clock-in (IMMEDIATE per
+ *   3. Attendance record  - a clock-in takes precedence over approved leave
+ *   4. ON_LEAVE           - approved leave application and no attendance record
+ *   5. AUTO_CLOCKED_OUT   - session closed automatically at midnight
+ *   6. LATE               - clocked in after the late cutoff (08:30 Africa/Nairobi)
+ *   7. MISSING_CLOCK_OUT  - past-day record still missing clock-out (defensive)
+ *   8. PRESENT            - valid clock-in, day/session in progress
+ *   9. CLOCKED_OUT        - completed clock-in + clock-out
+ *  10. NOT_CLOCKED_IN     - expected but not yet clocked in (grace policy only)
+ *  11. ABSENT             - expected employee with no clock-in (IMMEDIATE per
  *                             business decision: no grace period; see
  *                             NOT_CLOCKED_IN_GRACE_ENABLED below)
  *
@@ -96,11 +97,6 @@ class AttendanceDashboardService
             return self::STATUS_NON_WORKING_DAY;
         }
 
-        // 3. Approved leave - never absent simply because there is no clock-in.
-        if (!empty($ctx['leave_type'])) {
-            return self::STATUS_ON_LEAVE;
-        }
-
         $record = $ctx['record'] ?? null;
         if ($record !== null && count($record) > 0) {
             // 4. Midnight auto-close flag (column or legacy status value).
@@ -127,6 +123,11 @@ class AttendanceDashboardService
 
             // 8. Completed session.
             return self::STATUS_CLOCKED_OUT;
+        }
+
+        // Approved leave without a clock-in is excused, not an absence.
+        if (!empty($ctx['leave_type'])) {
+            return self::STATUS_ON_LEAVE;
         }
 
         // No attendance record at all.
@@ -178,10 +179,14 @@ class AttendanceDashboardService
         // ---- Compute authoritative statuses ----
         $employees = [];
         foreach ($rows as $row) {
+            $leaveType = $leaves[(int)$row['id']]
+                ?? (!empty($row['on_approved_leave'])
+                    ? ((string)($row['approved_leave_type'] ?? '') ?: 'Approved Leave')
+                    : null);
             $status = $this->resolveEmployeeStatus([
                 'is_holiday'         => $isHoliday,
                 'is_non_working_day' => $isNonWorkingDay,
-                'leave_type'         => $leaves[(int)$row['id']] ?? null,
+                'leave_type'         => $leaveType,
                 'record'             => $row['attendance_id'] !== null ? [
                     'status'           => $row['attendance_status'],
                     'is_late'          => (int)$row['is_late'] === 1,
@@ -191,7 +196,7 @@ class AttendanceDashboardService
                 'is_today'           => $isToday,
             ]);
 
-            $employees[] = $this->formatEmployeeRow($row, $date, $status, $leaves[(int)$row['id']] ?? null);
+            $employees[] = $this->formatEmployeeRow($row, $date, $status, $leaveType);
         }
 
         // ---- Summary over the scoped set (dept/section filters applied,
@@ -431,7 +436,8 @@ class AttendanceDashboardService
                        a.id AS attendance_id,
                        a.clock_in, a.clock_out,
                        a.status AS attendance_status,
-                       a.is_late, a.auto_clocked_out
+                       a.is_late, a.auto_clocked_out,
+                       a.on_approved_leave, a.approved_leave_type
                 FROM employees e
                 LEFT JOIN departments d ON e.department_id = d.id
                 LEFT JOIN sections s ON e.section_id = s.id
@@ -512,6 +518,7 @@ class AttendanceDashboardService
             'date'             => $date,
             'has_record'       => $hasRecord,
             'leave_type'       => $leaveType,
+            'recalled_from_leave' => $hasRecord && $leaveType !== null,
             'clock_in_time'    => $row['clock_in'] ? date('H:i', strtotime($row['clock_in'])) : null,
             'clock_out_time'   => $row['clock_out'] ? date('H:i', strtotime($row['clock_out'])) : null,
             'work_hours'       => $hasRecord
@@ -773,7 +780,6 @@ class AttendanceDashboardService
         return (int)round(($out - $in) / 60);
     }
 }
-
 
 
 
