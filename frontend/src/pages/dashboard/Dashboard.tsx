@@ -397,22 +397,12 @@ const Dashboard = () => {
       const data = response.data.data as AttendanceData;
       setAttendanceData(data);
 
-      // The backend decides which office is pre-selected.
-      // States A/B: the employee's assigned office. State C (no assignment):
-      // keep the current pick while still valid, else fall back to the first
-      // recognised office so the card never sits without a selection.
-      // Functional update avoids reading a stale selectedOffice closure.
-      const defaultId = data.default_office?.id;
-      if (defaultId != null) {
-        setSelectedOffice(String(defaultId));
-      } else {
-        setSelectedOffice((prev) => {
-          if (data.offices?.some((o: Office) => String(o.id) === prev)) {
-            return prev;
-          }
-          return data.offices && data.offices.length > 0 ? String(data.offices[0].id) : '';
-        });
-      }
+      // Office assignment is optional. Preserve a valid user choice, but make
+      // the employee choose explicitly instead of silently selecting a
+      // default or the first office.
+      setSelectedOffice((prev) =>
+        data.offices?.some((office: Office) => String(office.id) === prev) ? prev : '',
+      );
 
       // Make an unlinked account explicit instead of letting it look like a
       // broken office dropdown. Clock-in itself will 404, so say why up front.
@@ -430,6 +420,7 @@ const Dashboard = () => {
       }
     } catch (error) {
       console.error('Failed to fetch attendance data:', error);
+      setActionMessage('Unable to load clock-in options. Please refresh the page and try again.');
     }
     try {
       const response = await hrPolicyService.getCurrent();
@@ -616,11 +607,7 @@ const Dashboard = () => {
       // ever prompting for GPS permission.
       const office = attendanceData.offices.find((o) => o.id.toString() === selectedOffice);
       if (!office) {
-        setLocationError(
-          attendanceData.office_mode === 'manual'
-            ? 'No default office is assigned to you - please select your current office.'
-            : 'Please select an office',
-        );
+        setLocationError('Please select the office where you are currently working.');
         return;
       }
 
@@ -1028,6 +1015,7 @@ const Dashboard = () => {
                 }
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
+                {attendanceData.offices.length > 0 && <option value="">Choose an office</option>}
                 {attendanceData.offices.length === 0 && (
                   <option value="">No GPS-enabled offices available</option>
                 )}
@@ -1038,11 +1026,8 @@ const Dashboard = () => {
                 ))}
               </select>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {attendanceData.office_mode === 'manual'
-                  ? 'No default office assigned to you - please select your current office.'
-                  : `Default office: ${
-                      attendanceData.default_office?.name ?? ''
-                    } - you may clock in from any listed office.`}
+                Choose the office where you are currently working. No default office assignment is
+                required.
               </p>
             </div>
 

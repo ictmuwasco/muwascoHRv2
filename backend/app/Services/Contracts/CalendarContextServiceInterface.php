@@ -28,8 +28,8 @@ interface CalendarContextServiceInterface
     public function isHoliday(string $date): bool;
 
     /**
-     * Approved leaves covering the date, keyed by employee_id.
-     * One BETWEEN query for the whole population - no N+1 lookups.
+     * Approved leave covering the date, keyed by employee_id.
+     * The start date is included and the end date is the return-to-work date.
      *
      * @return array<int,string> employee_id => leave type name
      */
