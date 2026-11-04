@@ -487,6 +487,8 @@ class AppraisalWorkflowService
     private function decorateRows(array $rows): array
     {
         $summaries = $this->scoreSummaries($rows);
+        $actor = $this->currentEmployee();
+        $canScore = Auth::getInstance()->hasPermission('performance', 'score');
         foreach ($rows as &$row) {
             $row['employee_name'] = trim(($row['first_name'] ?? $row['employee_first_name'] ?? '') . ' ' . ($row['last_name'] ?? $row['employee_last_name'] ?? ''));
             $row['appraiser_name'] = trim(($row['appraiser_first_name'] ?? '') . ' ' . ($row['appraiser_last_name'] ?? ''));
@@ -499,6 +501,13 @@ class AppraisalWorkflowService
             $row['total_max_score'] = (float) $summary['total_max_score'];
             $row['score_percentage'] = $row['total_max_score'] > 0
                 ? round(($row['total_score'] / $row['total_max_score']) * 100, 1) : 0;
+            $row['can_edit_assignment'] = (bool) $actor
+                && $canScore
+                && (int) $row['appraiser_id'] === (int) $actor['id']
+                && $row['status'] === 'draft'
+                && empty($row['has_scores'])
+                && empty($row['employee_comment_date']);
+            unset($row['has_scores']);
         }
         unset($row);
         return $rows;
@@ -512,6 +521,10 @@ class AppraisalWorkflowService
                        a.supervisors_comment_date, a.submitted_at, a.created_at,
                        a.escalated_to_dept_head, a.escalation_level, a.escalated_date,
                        a.dept_head_decision, a.dept_head_comment, a.dept_head_decision_date,
+                       EXISTS (
+                           SELECT 1 FROM appraisal_scores score_row
+                           WHERE score_row.employee_appraisal_id = a.id
+                       ) AS has_scores,
                        e.first_name, e.last_name, e.id AS employee_pk, e.employee_id AS employee_code,
                        e.employee_type, e.email AS employee_email,
                        d.name AS department_name, s.name AS section_name,
@@ -623,6 +636,10 @@ class AppraisalWorkflowService
         $appraisal['can_edit_scores'] = (bool) ($actor = $this->currentEmployee())
             && (int) $appraisal['appraiser_id'] === (int) $actor['id']
             && Auth::getInstance()->hasPermission('performance', 'score');
+        $appraisal['can_edit_assignment'] = $appraisal['can_edit_scores']
+            && $appraisal['status'] === 'draft'
+            && !$scoreRows
+            && empty($appraisal['employee_comment_date']);
         $appraisal['indicators'] = $indicators;
         $appraisal['scores'] = $scoreRows;
         $appraisal['total_score'] = $total;
@@ -692,6 +709,136 @@ class AppraisalWorkflowService
         $stmt->close();
         $this->audit($id, AuditService::ACTION_APPRAISAL_CREATED, 'Created performance appraisal draft.', ['new_values' => ['status' => 'draft', 'employee_id' => $employeeId, 'cycle_id' => $cycleId]]);
         return $id;
+    }
+
+    /**
+     * Preview the employee/cycle-specific KPIs before an appraisal is created
+     * or its draft assignment is changed.
+     */
+    public function previewIndicators(int $employeeId, int $cycleId): array
+    {
+        $employee = $this->fetchEmployee($employeeId);
+        if (!$employee || !$this->canSuperviseTarget($employee)) {
+            throw new \DomainException('Employee not found.');
+        }
+        $cycle = $this->activeCycle($cycleId);
+        if (!$cycle) {
+            throw new \InvalidArgumentException('Select an active appraisal cycle.');
+        }
+        return $this->indicatorsForAppraisal($employeeId, $cycleId, 0);
+    }
+
+    /**
+     * Change the employee and/or cycle on an unscored draft, refreshing its
+     * future KPI set from the selected employee and cycle.
+     */
+    public function updateAssignment(int $id, array $data): void
+    {
+        $employeeId = (int) ($data['employee_id'] ?? 0);
+        $cycleId = (int) ($data['appraisal_cycle_id'] ?? 0);
+        if ($employeeId <= 0 || $cycleId <= 0) {
+            throw new \InvalidArgumentException('Employee and appraisal cycle are required.');
+        }
+
+        $actor = $this->currentEmployee();
+        $appraisal = $this->assertAppraiserPermission($id);
+        if (!$actor || (int) $appraisal['appraiser_id'] !== (int) $actor['id']) {
+            throw new \DomainException('Appraisal not found.');
+        }
+
+        $employee = $this->fetchEmployee($employeeId);
+        if (!$employee || !$this->canSuperviseTarget($employee)) {
+            throw new \DomainException('Employee not found.');
+        }
+        $this->activeCycle($cycleId);
+
+        $this->db->begin_transaction();
+        try {
+            $lock = $this->db->prepare(
+                "SELECT status, appraiser_id, employee_comment_date
+                 FROM employee_appraisals WHERE id = ? FOR UPDATE"
+            );
+            $lock->bind_param('i', $id);
+            $lock->execute();
+            $current = $lock->get_result()->fetch_assoc();
+            $lock->close();
+            if (!$current || (int) $current['appraiser_id'] !== (int) $actor['id']) {
+                throw new \DomainException('Appraisal not found.');
+            }
+            if ($current['status'] !== 'draft' || $current['employee_comment_date'] !== null) {
+                throw new \RuntimeException('Only an unscored draft can be reassigned.');
+            }
+
+            $scores = $this->db->prepare(
+                "SELECT 1 FROM appraisal_scores WHERE employee_appraisal_id = ? LIMIT 1"
+            );
+            $scores->bind_param('i', $id);
+            $scores->execute();
+            $hasScores = (bool) $scores->get_result()->fetch_row();
+            $scores->close();
+            if ($hasScores) {
+                throw new \RuntimeException('This appraisal already has scores and cannot be reassigned.');
+            }
+
+            $duplicate = $this->db->prepare(
+                "SELECT id FROM employee_appraisals
+                 WHERE employee_id = ? AND appraisal_cycle_id = ? AND id <> ?
+                   AND status NOT IN ('cancelled','completed','rejected')
+                 LIMIT 1"
+            );
+            $duplicate->bind_param('iii', $employeeId, $cycleId, $id);
+            $duplicate->execute();
+            $hasDuplicate = (bool) $duplicate->get_result()->fetch_assoc();
+            $duplicate->close();
+            if ($hasDuplicate) {
+                throw new \RuntimeException('An active appraisal already exists for this employee and cycle.');
+            }
+
+            $departmentId = $employee['department_id'] !== null ? (int) $employee['department_id'] : null;
+            $update = $this->db->prepare(
+                "UPDATE employee_appraisals
+                 SET employee_id = ?, employee_department_id = ?, appraisal_cycle_id = ?, updated_at = NOW()
+                 WHERE id = ? AND status = 'draft'"
+            );
+            $update->bind_param('iiii', $employeeId, $departmentId, $cycleId, $id);
+            $update->execute();
+            $update->close();
+            $this->db->commit();
+        } catch (\Throwable $error) {
+            $this->db->rollback();
+            throw $error;
+        }
+
+        $this->audit(
+            $id,
+            AuditService::ACTION_APPRAISAL_UPDATED,
+            'Updated performance appraisal draft assignment.',
+            [
+                'old_values' => [
+                    'employee_id' => (int) $appraisal['employee_id'],
+                    'cycle_id' => (int) $appraisal['appraisal_cycle_id'],
+                ],
+                'new_values' => ['employee_id' => $employeeId, 'cycle_id' => $cycleId],
+            ]
+        );
+    }
+
+    private function activeCycle(int $cycleId): ?array
+    {
+        if ($cycleId <= 0) {
+            throw new \InvalidArgumentException('Select an active appraisal cycle.');
+        }
+        $stmt = $this->db->prepare(
+            "SELECT id FROM appraisal_cycles WHERE id = ? AND status = 'active' LIMIT 1"
+        );
+        $stmt->bind_param('i', $cycleId);
+        $stmt->execute();
+        $cycle = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if (!$cycle) {
+            throw new \InvalidArgumentException('Select an active appraisal cycle.');
+        }
+        return $cycle;
     }
 
     public function saveScores(int $id, array $data): void

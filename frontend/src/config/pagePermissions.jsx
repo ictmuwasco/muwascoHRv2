@@ -57,7 +57,7 @@ export const PAGE_PERMISSIONS = {
   // leave:manage, which heads hold for scoped Leave Management.
   '/leave/roster': { id: 'leave_roster', permission: 'leave:roster' },
   '/leave/oversight': { id: 'leave_oversight', permission: 'leave:roster' },
-  '/leave/reports': { id: 'leave_reports', permission: 'reports:view' },
+  '/leave/reports': { id: 'leave_reports', permission: 'leave_reports:view' },
 
   // --- Meetings ------------------------------------------------------------
   // /meetings and its details/confirm sub-routes render the ORG-WIDE
@@ -109,9 +109,9 @@ export const PAGE_PERMISSIONS = {
   '/strategy/reports': { id: 'strategy_reports', permission: 'strategic_plan:view' },
 
   // --- Reports ---------------------------------------------------------------------
-  '/reports': { id: 'reports', permission: 'reports:view' },
-  '/reports/attendance': { id: 'reports_attendance', permission: 'reports:view' },
-  '/reports/appraisal': { id: 'reports_appraisal', permission: 'reports:view' },
+  '/reports': { id: 'reports', permission: 'employee_reports:view' },
+  '/reports/attendance': { id: 'reports_attendance', permission: 'attendance_reports:view' },
+  '/reports/appraisal': { id: 'reports_appraisal', permission: 'appraisal_reports:view' },
 
   // --- Settings module (§27): the whole page is a protected module. The page
   // shell requires settings:view (super_admin by default); each tab requires

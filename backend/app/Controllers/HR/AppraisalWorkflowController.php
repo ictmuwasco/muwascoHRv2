@@ -87,6 +87,24 @@ class AppraisalWorkflowController extends BaseController
         $this->respond(fn () => ['id' => $this->workflow->create($data)], 'Appraisal created successfully.', 201);
     }
 
+    public function kpiPreviewAction(): void
+    {
+        $this->requirePermission('performance', 'score');
+        $employeeId = (int) ($_GET['employee_id'] ?? 0);
+        $cycleId = (int) ($_GET['appraisal_cycle_id'] ?? 0);
+        $this->respond(fn () => $this->workflow->previewIndicators($employeeId, $cycleId));
+    }
+
+    public function updateAssignmentAction(int $id): void
+    {
+        $this->requirePermission('performance', 'score');
+        $data = $this->getJsonBody();
+        $this->respond(function () use ($id, $data) {
+            $this->workflow->updateAssignment($id, $data);
+            return null;
+        }, 'Appraisal assignment updated successfully.');
+    }
+
     public function saveScoresAction(int $id): void
     {
         $this->requirePermission('performance', 'score');

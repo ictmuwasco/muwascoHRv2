@@ -23,9 +23,8 @@ import {
 } from 'lucide-react';
 import { toCsv, downloadCsv, csvFilenameWithDate } from '../../utils/csvUtils';
 import { Link } from 'react-router-dom';
-// Permission gate (§global rule): every download affordance requires
-// reports:export (the API gates /reports/*/export under it), so a view-only
-// user sees the data but no Export buttons.
+import { useAuth } from '../../context/AuthContext';
+// Each report has independent view and export permissions.
 import { Can } from '../../components/ui/PermissionGate';
 import type { ElementType } from 'react';
 
@@ -174,6 +173,7 @@ const StatCard: React.FC<StatCardProps> = ({
 
 // ---- Page ---------------------------------------------------------------
 const Reports = () => {
+  const { can } = useAuth();
   const [activeTab, setActiveTab] = useState('employees');
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -187,13 +187,44 @@ const Reports = () => {
   const [quickFilter, setQuickFilter] = useState('');
   const [exporting, setExporting] = useState(false);
 
-  const reportTypes: { id: string; label: string; icon: ElementType; to?: string }[] = [
-    { id: 'employees', label: 'Employee Reports', icon: FileText, to: '/reports' },
-    { id: 'attendance', label: 'Attendance Reports', icon: BarChart3, to: '/reports/attendance' },
-    { id: 'leave', label: 'Leave Reports', icon: FileText },
-    { id: 'appraisal', label: 'Appraisal Reports', icon: BarChart3, to: '/reports/appraisal' },
-    { id: 'documentation', label: 'Documentation', icon: FileText },
+  const reportTypes: {
+    id: string;
+    label: string;
+    icon: ElementType;
+    to?: string;
+    permission: string;
+  }[] = [
+    {
+      id: 'employees',
+      label: 'Employee Reports',
+      icon: FileText,
+      to: '/reports',
+      permission: 'employee_reports',
+    },
+    {
+      id: 'attendance',
+      label: 'Attendance Reports',
+      icon: BarChart3,
+      to: '/reports/attendance',
+      permission: 'attendance_reports',
+    },
+    {
+      id: 'leave',
+      label: 'Leave Reports',
+      icon: FileText,
+      to: '/leave/reports',
+      permission: 'leave_reports',
+    },
+    {
+      id: 'appraisal',
+      label: 'Appraisal Reports',
+      icon: BarChart3,
+      to: '/reports/appraisal',
+      permission: 'appraisal_reports',
+    },
+    { id: 'documentation', label: 'Documentation', icon: FileText, permission: 'reports' },
   ];
+  const visibleReportTypes = reportTypes.filter(({ permission }) => can(permission, 'view'));
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -745,7 +776,7 @@ const Reports = () => {
                 >
                   Clear
                 </Button>
-                <Can module="reports" action="export">
+                <Can module="employee_reports" action="export">
                   <Button variant="outline" onClick={handleCsvExport} className="flex-1">
                     <Download className="h-4 w-4 mr-1" /> CSV
                   </Button>
@@ -809,7 +840,7 @@ const Reports = () => {
         </Card>
 
         {/* Export (server) */}
-        <Can module="reports" action="export">
+        <Can module="employee_reports" action="export">
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={() => handleExport('csv')} disabled={exporting}>
               <Download className="h-4 w-4 mr-2" />{' '}
@@ -843,7 +874,7 @@ const Reports = () => {
 
       {/* Report Type Tabs - employees/attendance are real routes */}
       <div className="flex space-x-2 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
-        {reportTypes.map((tab) => {
+        {visibleReportTypes.map((tab) => {
           if (tab.to) {
             return (
               <Link

@@ -12,7 +12,8 @@ use App\Services\AttendanceReport\AttendanceReportService;
  * AttendanceReportController
  *
  * HTTP layer for the Attendance Analytics & Reporting module. Every action
- * enforces the `reports:view` permission (`reports:export` for the CSV
+ * enforces the `attendance_reports:view` permission
+ * (`attendance_reports:export` for the CSV
  * download), resolves the caller's organisational scope via OrgScope and
  * delegates to the AttendanceReportService. Role-scoping is ALWAYS applied
  * server-side - frontend filters can never widen it.
@@ -55,7 +56,7 @@ class AttendanceReportController extends BaseController
      */
     public function optionsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         $this->success($this->service->options(OrgScope::current()));
     }
 
@@ -64,7 +65,7 @@ class AttendanceReportController extends BaseController
      */
     public function summaryAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
         $this->success($this->service->analytics()->summary($filters, $scope));
     }
@@ -74,7 +75,7 @@ class AttendanceReportController extends BaseController
      */
     public function trendsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
         $this->success($this->service->analytics()->trends($filters, $scope));
     }
@@ -84,7 +85,7 @@ class AttendanceReportController extends BaseController
      */
     public function byStatusAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
         $this->success($this->service->analytics()->byStatus($filters, $scope));
     }
@@ -94,7 +95,7 @@ class AttendanceReportController extends BaseController
      */
     public function byDepartmentAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
         $this->success($this->service->analytics()->byDepartment($filters, $scope));
     }
@@ -104,7 +105,7 @@ class AttendanceReportController extends BaseController
      */
     public function lateArrivalsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
         $this->success($this->service->analytics()->lateArrivals($filters, $scope));
     }
@@ -114,7 +115,7 @@ class AttendanceReportController extends BaseController
      */
     public function workingHoursAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
         $this->success($this->service->analytics()->workingHours($filters, $scope));
     }
@@ -124,7 +125,7 @@ class AttendanceReportController extends BaseController
      */
     public function insightsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
         $this->success($this->service->analytics()->insights($filters, $scope));
     }
@@ -134,7 +135,7 @@ class AttendanceReportController extends BaseController
      */
     public function complianceAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
         $this->success($this->service->compliance()->overview($filters, $scope));
     }
@@ -147,7 +148,7 @@ class AttendanceReportController extends BaseController
      */
     public function employeesAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
 
         [$page, $perPage] = $this->getPaginationParams();
@@ -175,7 +176,7 @@ class AttendanceReportController extends BaseController
      */
     public function recordsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
         [$filters, $scope] = $this->context();
 
         $page    = max(1, (int) ($_GET['page'] ?? 1));
@@ -189,7 +190,7 @@ class AttendanceReportController extends BaseController
      */
     public function exportAction(): void
     {
-        $this->requirePermission('reports', 'export');
+        $this->requirePermission('attendance_reports', 'export');
 
         [$filters, $scope] = $this->context();
 

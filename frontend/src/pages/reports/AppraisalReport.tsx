@@ -49,8 +49,7 @@ import type {
   AppraisalTrendPoint,
   AppraisalUnitStat,
 } from '../../api/services/appraisalPerformanceReportService';
-// Permission gate (global rule): /reports/appraisal/export is gated by
-// reports:export - a view-only user reads the report but sees no Export button.
+// Appraisal report export is independently gated by appraisal_reports:export.
 
 /** Render a DB datetime as a short readable date; pass the raw value through on failure. */
 const formatDateCell = (value: string | null): string => {
@@ -475,7 +474,7 @@ const AppraisalReport = () => {
           >
             <RefreshCw className={`mr-1 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
-          <Can module="reports" action="export">
+          <Can module="appraisal_reports" action="export">
             <Button variant="primary" size="sm" onClick={handleExport} disabled={exporting}>
               {exporting ? (
                 <Loader2 className="mr-1 h-4 w-4 animate-spin" />

@@ -12,7 +12,8 @@ use App\Services\Reports\AppraisalPerformanceReportService;
  *
  * HTTP layer for the company-wide Appraisal Reports module.
  *
- * Every action enforces `reports:view` (and `reports:export` for the CSV), then
+ * Every action enforces `appraisal_reports:view`
+ * (and `appraisal_reports:export` for the CSV), then
  * delegates to AppraisalPerformanceReportService. All organisational scoping is
  * applied server-side inside that service, reusing the appraisal archive's own
  * scope rule - a frontend filter can never widen what a caller may see.
@@ -71,7 +72,7 @@ class AppraisalReportController extends BaseController
      */
     public function optionsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->options());
     }
 
@@ -80,7 +81,7 @@ class AppraisalReportController extends BaseController
      */
     public function summaryAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->summary($this->filters()));
     }
 
@@ -89,7 +90,7 @@ class AppraisalReportController extends BaseController
      */
     public function trendsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->trends($this->filters()));
     }
 
@@ -98,7 +99,7 @@ class AppraisalReportController extends BaseController
      */
     public function byDepartmentAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->byUnit('department', $this->filters()));
     }
 
@@ -107,7 +108,7 @@ class AppraisalReportController extends BaseController
      */
     public function bySectionAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->byUnit('section', $this->filters()));
     }
 
@@ -116,7 +117,7 @@ class AppraisalReportController extends BaseController
      */
     public function bySubsectionAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->byUnit('subsection', $this->filters()));
     }
 
@@ -125,7 +126,7 @@ class AppraisalReportController extends BaseController
      */
     public function byStatusAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->byStatus($this->filters()));
     }
 
@@ -134,7 +135,7 @@ class AppraisalReportController extends BaseController
      */
     public function performersAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->performers($this->filters(), 10));
     }
 
@@ -143,7 +144,7 @@ class AppraisalReportController extends BaseController
      */
     public function insightsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->insights($this->filters()));
     }
 
@@ -152,7 +153,7 @@ class AppraisalReportController extends BaseController
      */
     public function employeesAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->employees(
             $this->filters(),
             max(1, (int) ($_GET['page'] ?? 1)),
@@ -170,7 +171,7 @@ class AppraisalReportController extends BaseController
      */
     public function appraisalsAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
         $this->success($this->service->appraisals(
             $this->filters(),
             max(1, (int) ($_GET['page'] ?? 1)),
@@ -189,7 +190,7 @@ class AppraisalReportController extends BaseController
      */
     public function exportAction(): void
     {
-        $this->requirePermission('reports', 'export');
+        $this->requirePermission('appraisal_reports', 'export');
 
         $csv = $this->service->exportRegister($this->filters());
         $filename = 'appraisal-report-' . date('Y-m-d') . '.csv';
