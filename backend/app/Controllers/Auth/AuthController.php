@@ -289,7 +289,9 @@ class AuthController extends BaseController
             }
 
             // Update password (also revokes refresh tokens + enforces policy)
-            $this->authService->updatePassword($userId, $newPassword);
+            if (!$this->authService->updatePassword($userId, $newPassword)) {
+                throw new \RuntimeException('Password update did not persist');
+            }
 
             // Security: invalidate remaining token material and rotate the
             // current session id so other devices/sessions must re-authenticate.
@@ -319,4 +321,3 @@ class AuthController extends BaseController
         }
     }
 }
-

@@ -309,7 +309,7 @@ class DashboardController extends BaseController
                  JOIN employees e ON e.id = la.employee_id
                  LEFT JOIN departments d ON d.id = e.department_id
                  WHERE la.status = 'approved'
-                   AND la.start_date <= ? AND la.end_date >= ?
+                   AND la.start_date <= ? AND la.end_date > ?
                    AND e.employee_status = 'active'
                  ORDER BY e.first_name ASC
                  LIMIT 50",
@@ -319,7 +319,7 @@ class DashboardController extends BaseController
                 "SELECT COUNT(*) FROM leave_applications la
                  JOIN employees e ON e.id = la.employee_id
                  WHERE la.status = 'approved'
-                   AND la.start_date <= ? AND la.end_date >= ?
+                   AND la.start_date <= ? AND la.end_date > ?
                    AND e.employee_status = 'active'",
                 'ss', [$today, $today]
             );
