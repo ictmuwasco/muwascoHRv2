@@ -565,9 +565,9 @@ $router->add('GET', '/reports/appraisal/employees',      \App\Controllers\Report
 $router->add('GET', '/reports/appraisal/appraisals',     \App\Controllers\Reports\AppraisalReportController::class, 'appraisals',     'appraisal_reports:view');
 $router->add('GET', '/reports/appraisal/export',         \App\Controllers\Reports\AppraisalReportController::class, 'export',         'appraisal_reports:export', '20:300');
 
-$router->add('GET', '/reports/employees/export/{format}', ReportController::class, 'exportEmployees', 'employee_reports:export', '20:300');
-$router->add('GET', '/reports/attendance/export/{format}', ReportController::class, 'exportAttendance', 'attendance_reports:export', '20:300');
-$router->add('GET', '/reports/leave/export/{format}', ReportController::class, 'exportLeave', 'leave_reports:export', '20:300');
+$router->add('GET', '/reports/employees/export/{format}', \App\Controllers\Reports\ReportsController::class, 'exportEmployees', 'employee_reports:export', '20:300');
+$router->add('GET', '/reports/attendance/export/{format}', \App\Controllers\Reports\ReportsController::class, 'exportAttendance', 'attendance_reports:export', '20:300');
+$router->add('GET', '/reports/leave/export/{format}', \App\Controllers\Reports\ReportsController::class, 'exportLeave', 'leave_reports:export', '20:300');
 $router->add('GET', '/reports/{type}/export/{format}', ReportController::class, 'export', 'reports:export', '20:300');
 
 // Complaint routes — employees file and list their OWN complaints (self-scope
