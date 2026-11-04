@@ -117,6 +117,42 @@ return [
             ],
         ],
 
+        'employee_reports' => [
+            'key'     => 'employee_reports',
+            'label'   => 'Employee Reports',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'export', 'label' => 'Export', 'type' => 'action'],
+            ],
+        ],
+
+        'attendance_reports' => [
+            'key'     => 'attendance_reports',
+            'label'   => 'Attendance Reports',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'export', 'label' => 'Export', 'type' => 'action'],
+            ],
+        ],
+
+        'leave_reports' => [
+            'key'     => 'leave_reports',
+            'label'   => 'Leave Reports',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'export', 'label' => 'Export', 'type' => 'action'],
+            ],
+        ],
+
+        'appraisal_reports' => [
+            'key'     => 'appraisal_reports',
+            'label'   => 'Appraisal Reports',
+            'actions' => [
+                ['key' => 'view',   'label' => 'View',   'type' => 'page'],
+                ['key' => 'export', 'label' => 'Export', 'type' => 'action'],
+            ],
+        ],
+
         'users' => [
             'key'     => 'users',
             'label'   => 'User Management',

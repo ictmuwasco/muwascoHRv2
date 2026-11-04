@@ -34,7 +34,7 @@ const LeaveRoster = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState('matrix');
   const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [, setSelectedEmployeeForSchedule] = useState(null);
+  const [selectedEmployeeForSchedule, setSelectedEmployeeForSchedule] = useState(null);
   const [pagination, setPagination] = useState({
     total: 0,
     per_page: 20,
@@ -645,6 +645,7 @@ const LeaveRoster = () => {
         }}
         financialYearId={selectedFinancialYear}
         financialYears={financialYears}
+        initialEmployee={selectedEmployeeForSchedule}
         onSuccess={handleScheduleSuccess}
       />
     </div>

@@ -12,7 +12,7 @@ Employees clock in and out (with geo-location and IP capture); HR monitors organ
 | Services | `AttendanceService`, `AttendanceDashboardService`, `AttendanceReminderEligibilityService` (+ `EligibilityResult`), `CalendarContextService` |
 | Repositories | `AttendanceRepository` |
 | Helpers | `AppTime` (timezone consistency), `GeoLocation` (distance / geofence checks) |
-| Tables | `attendance` (see migrations 006, 020–022, 026; indexes 006 + 033) |
+| Tables | `attendance` (see migrations 006, 020–022, 026, 112; indexes 006 + 033) |
 | Tests | `tests/Unit/Services/AttendanceStatusResolutionTest.php`, `tests/AttendanceReportQueryServiceTest.php`; frontend `AttendanceDashboard.test.jsx`, `AttendanceReport.test.jsx` |
 | Frontend | attendance dashboard(s), **My Attendance**, HR employee history, Reports → Attendance |
 
@@ -39,6 +39,7 @@ Reporting endpoints live under `/reports/attendance/*` (options, summary, trends
 - `clockIn` refuses a second open session; `clockOut` closes the current one. Both record **where** (lat/lng — nullable per migration 021) and **from which IP** (migration 022).
 - `GeoLocation` validates the clock-in point against the configured office location (geofence distance check).
 - Status (e.g. present vs late) is resolved in `AttendanceService` from clock-in time against the configured grace window — the rules live in one place and are pinned by `AttendanceStatusResolutionTest`.
+- Employees may clock in when recalled during approved leave. The attendance record snapshots the leave flag and leave type, and My Attendance labels the record as recalled while on leave.
 - All day boundaries use `AppTime` so server timezone never skews "today".
 - Forgotten open sessions are closed by the scheduled `auto-clockout` job.
 - Migration 026 added audit fields (who created/updated a record) so manual corrections are attributable.
@@ -63,9 +64,9 @@ Reporting endpoints live under `/reports/attendance/*` (options, summary, trends
 
 - Clock-in/out business rules live in `Services/Attendance/AttendanceClockService`;
   the controller maps outcomes/exceptions to HTTP (200 with idempotent retries,
-  400, 403 `OUTSIDE_RADIUS` with distance/allowed_radius, 409 `ON_APPROVED_LEAVE`).
-- New rule (env-gated, default ON): clock-in is blocked while the employee has an
-  APPROVED leave application covering today (`ATTENDANCE_BLOCK_CLOCKIN_ON_LEAVE`).
+  400, 403 `OUTSIDE_RADIUS` with distance/allowed_radius, 409 `DEVICE_LOCKED`).
+- Clock-in is allowed during approved leave for recalled employees. Their record
+  snapshots the leave status and type for audit and display in My Attendance.
 - Late cutoff is configurable: `ATTENDANCE_LATE_CUTOFF` (default 08:30; 08:30
   exactly is NOT late — boundary preserved from the original implementation).
 - Missed clock-out has ONE implementation: `Services/Attendance/AttendanceCloseService`,
@@ -75,4 +76,3 @@ Reporting endpoints live under `/reports/attendance/*` (options, summary, trends
   removed (the controller never implemented those actions); the stale
   `AttendanceService`, `AttendanceValidator` and `Models/Attendance` were deleted.
 - Unit tests: `backend/tests/Unit/Services/Attendance/`.
-

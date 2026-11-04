@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart3, Plus, RefreshCw, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BarChart3, Loader2, Pencil, Plus, RefreshCw, Search } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
@@ -8,6 +8,7 @@ import Combobox from '../../components/ui/Combobox';
 import {
   appraisalService,
   type AppraisalDetail,
+  type AppraisalKpiPreview,
   type AppraisalWorkspace,
   type AppraisalWorkflowRow,
 } from '../../api/services/appraisalService';
@@ -40,12 +41,17 @@ export default function SupervisorAppraisals() {
   const [detail, setDetail] = useState<AppraisalDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [employeeId, setEmployeeId] = useState('');
   const [cycleId, setCycleId] = useState('');
   // Validation feedback for the create dialog. It has to live INSIDE the modal:
   // the page-level banner renders behind the overlay, so writing there made
   // the dialog look like it silently did nothing.
   const [createError, setCreateError] = useState('');
+  const [kpiPreview, setKpiPreview] = useState<AppraisalKpiPreview[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const previewRequestRef = useRef(0);
 
   const load = useCallback(async (next: Tab) => {
     setLoading(true);
@@ -69,6 +75,33 @@ export default function SupervisorAppraisals() {
   useEffect(() => {
     load(tab);
   }, [load, tab]);
+  useEffect(() => {
+    const requestId = ++previewRequestRef.current;
+    setKpiPreview([]);
+    setPreviewError('');
+    if ((!createOpen && editingId === null) || !employeeId || !cycleId) {
+      setPreviewLoading(false);
+      return undefined;
+    }
+
+    setPreviewLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const indicators = await appraisalService.previewKpis(+employeeId, +cycleId);
+        if (previewRequestRef.current === requestId) setKpiPreview(indicators);
+      } catch (err: any) {
+        if (previewRequestRef.current === requestId) {
+          setPreviewError(err.response?.data?.message || 'Unable to refresh the KPI list.');
+        }
+      } finally {
+        if (previewRequestRef.current === requestId) setPreviewLoading(false);
+      }
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      if (previewRequestRef.current === requestId) previewRequestRef.current += 1;
+    };
+  }, [createOpen, editingId, employeeId, cycleId]);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return q
@@ -123,18 +156,51 @@ export default function SupervisorAppraisals() {
     setCreateError('');
     setBusy(true);
     try {
-      await appraisalService.create({ employee_id: +employeeId, appraisal_cycle_id: +cycleId });
+      if (editingId !== null) {
+        await appraisalService.updateAssignment(editingId, {
+          employee_id: +employeeId,
+          appraisal_cycle_id: +cycleId,
+        });
+      } else {
+        await appraisalService.create({ employee_id: +employeeId, appraisal_cycle_id: +cycleId });
+      }
       setCreateOpen(false);
+      setEditingId(null);
       setEmployeeId('');
       setCycleId('');
-      setNotice('Appraisal draft created successfully.');
+      setNotice(
+        editingId !== null
+          ? 'Appraisal assignment updated. KPIs now match the selected employee and cycle.'
+          : 'Appraisal draft created successfully.',
+      );
       setTab('regular');
       await load('regular');
     } catch (err: any) {
-      setCreateError(err.response?.data?.message || 'Unable to create appraisal.');
+      setCreateError(
+        err.response?.data?.message ||
+          (editingId !== null
+            ? 'Unable to update appraisal assignment.'
+            : 'Unable to create appraisal.'),
+      );
     } finally {
       setBusy(false);
     }
+  };
+  const openAssignmentEditor = (row: AppraisalWorkflowRow) => {
+    setEmployeeId(String(row.employee_id));
+    setCycleId(String(row.appraisal_cycle_id ?? ''));
+    setCreateError('');
+    setEditingId(row.id);
+    setCreateOpen(false);
+  };
+  const closeAssignmentEditor = () => {
+    setCreateOpen(false);
+    setEditingId(null);
+    setEmployeeId('');
+    setCycleId('');
+    setCreateError('');
+    setPreviewError('');
+    setKpiPreview([]);
   };
   const save = async (
     scores: Record<number, number>,
@@ -313,9 +379,21 @@ export default function SupervisorAppraisals() {
                       <AppraisalStatus status={r.status} label={r.status_label} />
                     </td>
                     <td className="px-4 py-3">
-                      <Button size="sm" variant="outline" onClick={() => openDetail(r)}>
-                        Review
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openDetail(r)}>
+                          Review
+                        </Button>
+                        {canScore && r.can_edit_assignment && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openAssignmentEditor(r)}
+                          >
+                            <Pencil className="mr-1 h-3.5 w-3.5" />
+                            Edit
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -325,12 +403,9 @@ export default function SupervisorAppraisals() {
         )}
       </Card>
       <Modal
-        isOpen={createOpen}
-        onClose={() => {
-          setCreateOpen(false);
-          setCreateError('');
-        }}
-        title="Start Performance Appraisal"
+        isOpen={createOpen || editingId !== null}
+        onClose={closeAssignmentEditor}
+        title={editingId !== null ? 'Edit Appraisal Assignment' : 'Start Performance Appraisal'}
         size="md"
       >
         <form
@@ -340,6 +415,12 @@ export default function SupervisorAppraisals() {
             create();
           }}
         >
+          {editingId !== null && (
+            <p className="rounded-md bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:bg-blue-900/20 dark:text-blue-200">
+              Reassignment is available only before scoring or employee feedback begins. The KPI
+              preview refreshes for the selected employee and cycle.
+            </p>
+          )}
           <Combobox
             label="Employee"
             required
@@ -368,24 +449,49 @@ export default function SupervisorAppraisals() {
             noOptionsMessage="No active appraisal cycles are available."
             error={employeeId && !cycleId && createError ? createError : undefined}
           />
+          {employeeId && cycleId && (
+            <section className="rounded-lg border border-gray-200 p-3 dark:border-slate-700">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">KPIs for this employee and cycle</h3>
+                {previewLoading && <Loader2 className="h-4 w-4 animate-spin text-primary-600" />}
+              </div>
+              {previewError ? (
+                <p className="text-sm text-red-600 dark:text-red-400">{previewError}</p>
+              ) : previewLoading && kpiPreview.length === 0 ? (
+                <p className="text-sm text-gray-500">Refreshing KPI list…</p>
+              ) : kpiPreview.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  No active KPIs are assigned to this employee for the selected cycle.
+                </p>
+              ) : (
+                <div className="max-h-40 space-y-2 overflow-y-auto">
+                  {kpiPreview.map((indicator) => (
+                    <div key={indicator.id} className="text-sm">
+                      <div className="flex justify-between gap-3">
+                        <span className="font-medium">{indicator.name}</span>
+                        <span className="shrink-0 text-gray-500">Max {indicator.max_score}</span>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {indicator.activities.map((activity) => activity.name).join(' · ') ||
+                          'No linked activity'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
           {createError && employeeId && cycleId && (
             <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">
               {createError}
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setCreateOpen(false);
-                setCreateError('');
-              }}
-            >
+            <Button type="button" variant="outline" onClick={closeAssignmentEditor}>
               Cancel
             </Button>
-            <Button type="submit" loading={busy}>
-              Create
+            <Button type="submit" loading={busy} disabled={previewLoading || !!previewError}>
+              {editingId !== null ? 'Save changes' : 'Create'}
             </Button>
           </div>
         </form>

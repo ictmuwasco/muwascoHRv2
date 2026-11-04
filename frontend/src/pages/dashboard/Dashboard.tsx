@@ -73,6 +73,8 @@ interface CurrentSession {
 interface AttendanceData {
   is_clocked_in: boolean;
   has_clocked_in_today: boolean;
+  on_approved_leave: boolean;
+  approved_leave_type: string | null;
   current_session: CurrentSession | null;
   today_record: Record<string, any> | null;
   /** Employee's assigned office (State A). null when unassigned (State C). */
@@ -259,6 +261,8 @@ const Dashboard = () => {
   const [attendanceData, setAttendanceData] = useState<AttendanceData>({
     is_clocked_in: false,
     has_clocked_in_today: false,
+    on_approved_leave: false,
+    approved_leave_type: null,
     current_session: null,
     today_record: null,
     default_office: null,
@@ -401,15 +405,14 @@ const Dashboard = () => {
       const defaultId = data.default_office?.id;
       if (defaultId != null) {
         setSelectedOffice(String(defaultId));
-        return;
+      } else {
+        setSelectedOffice((prev) => {
+          if (data.offices?.some((o: Office) => String(o.id) === prev)) {
+            return prev;
+          }
+          return data.offices && data.offices.length > 0 ? String(data.offices[0].id) : '';
+        });
       }
-
-      setSelectedOffice((prev) => {
-        if (data.offices?.some((o: Office) => String(o.id) === prev)) {
-          return prev;
-        }
-        return data.offices && data.offices.length > 0 ? String(data.offices[0].id) : prev;
-      });
 
       // Make an unlinked account explicit instead of letting it look like a
       // broken office dropdown. Clock-in itself will 404, so say why up front.
@@ -418,6 +421,12 @@ const Dashboard = () => {
           'Your login is not linked to an employee record, so clock-in is unavailable. ' +
             'Please contact HR to have your account linked.',
         );
+      } else if (!Array.isArray(data.offices) || data.offices.length === 0) {
+        setActionMessage(
+          'No clock-in locations are available. Ask an administrator to add an office and configure its GPS coordinates.',
+        );
+      } else {
+        setActionMessage('');
       }
     } catch (error) {
       console.error('Failed to fetch attendance data:', error);
@@ -904,6 +913,17 @@ const Dashboard = () => {
             </div>
           )}
 
+          {attendanceData.on_approved_leave && (
+            <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-3 rounded-md">
+              You are on approved
+              {attendanceData.approved_leave_type
+                ? ` ${attendanceData.approved_leave_type}`
+                : ''}{' '}
+              leave today. If recalled to work, clock in here; your attendance will note that you
+              clocked in while on leave.
+            </div>
+          )}
+
           {locationFallback && !locationError && !locating && (
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 px-4 py-3 rounded-md">
               {locationFallback.code === 'OUTSIDE_RADIUS' ? (
@@ -1002,8 +1022,15 @@ const Dashboard = () => {
               <select
                 value={selectedOffice}
                 onChange={(e) => setSelectedOffice(e.target.value)}
+                disabled={attendanceData.offices.length === 0}
+                aria-label={
+                  attendanceData.is_clocked_in ? 'Clock out location' : 'Clock in location'
+                }
                 className="w-full px-3 py-2 border border-gray-300 dark:border-slate-600 rounded-md shadow-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
+                {attendanceData.offices.length === 0 && (
+                  <option value="">No GPS-enabled offices available</option>
+                )}
                 {attendanceData.offices.map((office) => (
                   <option key={office.id} value={office.id}>
                     {office.name}

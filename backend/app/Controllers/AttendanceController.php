@@ -10,9 +10,9 @@ use App\Services\Attendance\DeviceLockedException;
 use App\Services\Attendance\InvalidClockRequestException;
 use App\Services\Attendance\InvalidOfficeException;
 use App\Services\Attendance\NoOpenSessionException;
-use App\Services\Attendance\OnApprovedLeaveException;
 use App\Services\Attendance\OutsideGeofenceException;
 use App\Services\AuditService;
+use App\Services\CalendarContextService;
 
 /**
  * Attendance Controller - REST API for attendance management.
@@ -113,7 +113,7 @@ class AttendanceController extends BaseController
      *
      * Business rules live in AttendanceClockService::clockIn(). Outcomes:
      *   200 created | idempotent retry · 400 invalid request/office ·
-     *   403 OUTSIDE_RADIUS · 409 ON_APPROVED_LEAVE · 500 persistence failure.
+     *   403 OUTSIDE_RADIUS · 409 DEVICE_LOCKED · 500 persistence failure.
      */
     public function clockInAction(): void
     {
@@ -143,9 +143,6 @@ class AttendanceController extends BaseController
                 'allowed_radius' => $ctx['allowed_radius'],
                 'code' => 'OUTSIDE_RADIUS',
             ], 403);
-            return;
-        } catch (OnApprovedLeaveException $e) {
-            $this->error($e->getMessage(), 409, 'ON_APPROVED_LEAVE');
             return;
         } catch (DeviceLockedException $e) {
             // 409 Conflict: the device is validly registered to another
@@ -299,6 +296,8 @@ class AttendanceController extends BaseController
             'has_clocked_in_today' => false,
             'current_session' => null,
             'today_record' => null,
+            'on_approved_leave' => false,
+            'approved_leave_type' => null,
             'default_office' => null,
             'office_mode' => 'manual',
             ]);
@@ -308,6 +307,8 @@ class AttendanceController extends BaseController
         $db = \db();
         $today = date('Y-m-d');
         $employeeDbId = (int)$employee['id'];
+        $approvedLeaveType = (new CalendarContextService())
+            ->getApprovedLeavesOnDate($today)[$employeeDbId] ?? null;
 
         // Lazy midnight reconciliation for THIS employee (delegated to the
         // single close implementation shared with the scheduled cron job).
@@ -317,6 +318,7 @@ class AttendanceController extends BaseController
         $todayRecord = $db->fetchOne(
             "SELECT a.id, a.employee_id, a.office_id, a.clock_in, a.clock_out,
                     a.is_late, a.auto_clocked_out, a.status, a.created_at, a.updated_at,
+                    a.on_approved_leave, a.approved_leave_type,
                     o.name AS office_name
              FROM attendance a
              LEFT JOIN offices o ON a.office_id = o.id
@@ -361,6 +363,8 @@ class AttendanceController extends BaseController
         $this->success([
             'is_clocked_in' => $isClockedIn,
             'has_clocked_in_today' => $hasClockedInToday,
+            'on_approved_leave' => !empty($todayRecord['on_approved_leave']) || $approvedLeaveType !== null,
+            'approved_leave_type' => $todayRecord['approved_leave_type'] ?? $approvedLeaveType,
             'current_session' => $isClockedIn ? $todayRecord : null,
             'today_record' => $todayRecord,
             'default_office' => $defaultOffice,
@@ -458,6 +462,8 @@ class AttendanceController extends BaseController
                 'date' => $record['date'],
                 'status' => ucfirst(str_replace('_', ' ', $record['status'])),
                 'is_late' => (bool)$record['is_late'],
+                'on_approved_leave' => (bool)$record['on_approved_leave'],
+                'approved_leave_type' => $record['approved_leave_type'],
                 'auto_clocked_out' => (bool)$record['auto_clocked_out'],
                 'lat' => $record['lat'],
                 'lng' => $record['lng'],

@@ -24,7 +24,7 @@ class ReportsController extends BaseController
      */
     public function employeesAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('employee_reports', 'view');
 
         try {
             $stmt = $this->db->prepare("
@@ -87,7 +87,7 @@ class ReportsController extends BaseController
      */
     public function leaveAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('leave_reports', 'view');
 
         try {
             $stmt = $this->db->prepare("
@@ -129,7 +129,7 @@ class ReportsController extends BaseController
      */
     public function attendanceAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('attendance_reports', 'view');
 
         try {
             $startDate = (($_GET['start_date'] ?? '') !== '') ? (string)$_GET['start_date'] : date('Y-m-01');
@@ -210,7 +210,7 @@ class ReportsController extends BaseController
      */
     public function appraisalAction(): void
     {
-        $this->requirePermission('reports', 'view');
+        $this->requirePermission('appraisal_reports', 'view');
 
         $this->success([
             'summary' => [
@@ -259,12 +259,43 @@ class ReportsController extends BaseController
     /**
      * GET /api/reports/{type}/export/{format} - Export report data.
      */
+    public function exportEmployeesAction(string $format): void
+    {
+        $this->exportAction('employees', $format);
+    }
+
+    public function exportAttendanceAction(string $format): void
+    {
+        $this->exportAction('attendance', $format);
+    }
+
+    public function exportLeaveAction(string $format): void
+    {
+        $this->exportAction('leave', $format);
+    }
+
     public function exportAction(string $type, string $format): void
     {
-        $this->requirePermission('reports', 'view');
-
         $type = strtolower($type);
         $format = strtolower($format);
+
+        $reportModules = [
+            'employees' => 'employee_reports',
+            'attendance' => 'attendance_reports',
+            'leave' => 'leave_reports',
+        ];
+        if (isset($reportModules[$type])) {
+            $this->requirePermission($reportModules[$type], 'view');
+            $this->requirePermission($reportModules[$type], 'export');
+        } else {
+            $this->requirePermission('reports', 'view');
+            $this->requirePermission('reports', 'export');
+        }
+
+        if (!in_array($type, ['contracts', 'employees', 'leave', 'attendance', 'documentation'], true)) {
+            $this->notFound('Unsupported report export type');
+            return;
+        }
 
         $filename = "{$type}_report_" . date('Ymd_His');
 
