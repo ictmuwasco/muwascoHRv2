@@ -21,7 +21,7 @@ export default function SectionHeadWorkplan() {
     <TierWorkplanPage
       view="section"
       title="Section Head Workplan"
-      description="Review the departmental work cascaded to your section, plan section activities and cascade them to subsections."
+      description="Review work cascaded to your section, manage KPIs for your section team, and cascade activities to subsections."
       showSubsection
     />
   );

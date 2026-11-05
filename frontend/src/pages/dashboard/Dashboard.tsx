@@ -397,12 +397,20 @@ const Dashboard = () => {
       const data = response.data.data as AttendanceData;
       setAttendanceData(data);
 
-      // Office assignment is optional. Preserve a valid user choice, but make
-      // the employee choose explicitly instead of silently selecting a
-      // default or the first office.
-      setSelectedOffice((prev) =>
-        data.offices?.some((office: Office) => String(office.id) === prev) ? prev : '',
-      );
+      // Start with the employee's assigned office, while preserving any
+      // explicitly selected office when the dashboard refreshes.
+      setSelectedOffice((prev) => {
+        const offices = Array.isArray(data.offices) ? data.offices : [];
+        if (offices.some((office: Office) => String(office.id) === prev)) {
+          return prev;
+        }
+
+        const defaultOfficeId = data.default_office?.id;
+        return defaultOfficeId &&
+          offices.some((office) => String(office.id) === String(defaultOfficeId))
+          ? String(defaultOfficeId)
+          : '';
+      });
 
       // Make an unlinked account explicit instead of letting it look like a
       // broken office dropdown. Clock-in itself will 404, so say why up front.
@@ -526,7 +534,7 @@ const Dashboard = () => {
   ): string => {
     const recordedAt =
       action === 'clock-in'
-        ? data.current_session?.clock_in ?? data.today_record?.clock_in
+        ? (data.current_session?.clock_in ?? data.today_record?.clock_in)
         : data.today_record?.clock_out;
     const time =
       typeof recordedAt === 'string' && recordedAt.length >= 16 ? recordedAt.slice(11, 16) : null;
@@ -1026,8 +1034,8 @@ const Dashboard = () => {
                 ))}
               </select>
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Choose the office where you are currently working. No default office assignment is
-                required.
+                Your assigned office is selected automatically when available. You can change it to
+                the office where you are currently working.
               </p>
             </div>
 

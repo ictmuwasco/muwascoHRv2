@@ -1059,11 +1059,11 @@ const Profile = () => {
       {/* Password Change */}
       {activeTab === 'password' && (
         <Card title="Change Password">
-          <form className="space-y-4 max-w-md" onSubmit={handlePasswordChange}>
+          <form className="space-y-4 max-w-md" onSubmit={handlePasswordChange} autoComplete="off">
             <Input
               label="Current Password"
               type="password"
-              autoComplete="current-password"
+              autoComplete="off"
               placeholder="Enter current password"
               value={passwordForm.current}
               onChange={(e) => setPasswordForm((form) => ({ ...form, current: e.target.value }))}
