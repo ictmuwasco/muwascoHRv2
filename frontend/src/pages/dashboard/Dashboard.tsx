@@ -534,7 +534,7 @@ const Dashboard = () => {
   ): string => {
     const recordedAt =
       action === 'clock-in'
-        ? (data.current_session?.clock_in ?? data.today_record?.clock_in)
+        ? data.current_session?.clock_in ?? data.today_record?.clock_in
         : data.today_record?.clock_out;
     const time =
       typeof recordedAt === 'string' && recordedAt.length >= 16 ? recordedAt.slice(11, 16) : null;
