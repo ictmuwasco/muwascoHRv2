@@ -17,7 +17,6 @@ interface Props {
     department_name?: string | null;
   }[];
   sections: UnitRef[];
-  subsections: UnitRef[];
   employees: AssignableEmployee[];
   cycles: AppraisalCycle[];
   departmentId?: number | null;
@@ -34,7 +33,6 @@ const inputCls =
 interface RowState {
   objective: string;
   section_id: string;
-  subsection_id: string;
   cycle_ids: number[];
   planned_end_date: string;
 }
@@ -42,13 +40,13 @@ interface RowState {
 /**
  * Legacy-parity "Create Workplan" form for Department Heads:
  * ONE performance contract -> MANY activity rows, each targeted at its own
- * section (and optionally a subsection) with its own appraisal quarters.
+ * section with its own appraisal quarters. Section heads cascade further into
+ * subsections.
  */
 export default function BulkWorkplanModal({
   isOpen,
   contracts,
   sections,
-  subsections,
   cycles = [],
   departmentId,
   onClose,
@@ -97,7 +95,6 @@ export default function BulkWorkplanModal({
       {
         objective: '',
         section_id: '',
-        subsection_id: '',
         // Typed explicitly: a bare [] infers never[], which is not assignable to
         // RowState.cycle_ids (number[]).
         cycle_ids: [] as number[],
@@ -133,7 +130,6 @@ export default function BulkWorkplanModal({
       items.push({
         objective: row.objective.trim(),
         section_id: Number(row.section_id),
-        subsection_id: row.subsection_id ? Number(row.subsection_id) : null,
         cycle_ids: row.cycle_ids.join(','),
         planned_end_date: row.planned_end_date || null,
       });
@@ -221,9 +217,7 @@ export default function BulkWorkplanModal({
                 <select
                   className={inputCls}
                   value={row.section_id}
-                  onChange={(e) =>
-                    updateRow(idx, { section_id: e.target.value, subsection_id: '' })
-                  }
+                  onChange={(e) => updateRow(idx, { section_id: e.target.value })}
                 >
                   <option value="">— Select section —</option>
                   {sections.map((s) => (
@@ -231,24 +225,6 @@ export default function BulkWorkplanModal({
                       {s.name}
                     </option>
                   ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>Sub-section (optional)</label>
-                <select
-                  className={inputCls}
-                  value={row.subsection_id}
-                  onChange={(e) => updateRow(idx, { subsection_id: e.target.value })}
-                  disabled={!row.section_id}
-                >
-                  <option value="">— None —</option>
-                  {subsections
-                    .filter((ss) => String(ss.section_id ?? '') === row.section_id)
-                    .map((ss) => (
-                      <option key={ss.id} value={String(ss.id)}>
-                        {ss.name}
-                      </option>
-                    ))}
                 </select>
               </div>
             </div>

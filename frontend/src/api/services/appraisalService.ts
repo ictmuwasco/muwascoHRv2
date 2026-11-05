@@ -68,6 +68,7 @@ export interface AppraisalWorkspace {
   cycles: Array<{ id: number; name: string; start_date: string; end_date: string; status: string }>;
   counts: { regular: number; pending: number; escalated: number; rejected: number };
   permissions: { supervise: boolean; score: boolean; approve: boolean };
+  scope: { role: string };
 }
 
 export const appraisalService = {

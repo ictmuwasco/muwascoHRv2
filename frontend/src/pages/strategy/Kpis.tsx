@@ -95,6 +95,14 @@ export default function Kpis() {
   const objectives = data?.objectives ?? [];
   const canManage = !!data?.can_manage;
   const role = data?.scope.role || '';
+  const employeeScopeHint =
+    role === 'dept_head' || role === 'hr_manager'
+      ? 'Department heads can assign KPIs to section heads only. Section heads manage KPI assignments for subsection heads and staff.'
+      : role === 'section_head'
+        ? 'Select direct employees in your section. Subsection heads assign KPIs to employees in their own subsection.'
+        : role === 'sub_section_head'
+          ? 'Select employees assigned to your subsection.'
+          : '';
 
   const activityById = useMemo(() => {
     const byId = new Map<number, KpiActivity>();
@@ -603,6 +611,9 @@ export default function Kpis() {
                   <span className="text-gray-400">{formEmpIds.length} selected</span>
                 </div>
               </div>
+              {employeeScopeHint && (
+                <p className="mb-2 text-xs text-gray-500 dark:text-gray-400">{employeeScopeHint}</p>
+              )}
               <div className="max-h-56 overflow-y-auto border border-gray-200 dark:border-slate-600 rounded-md divide-y divide-gray-100 dark:divide-slate-700">
                 {employees.length === 0 && (
                   <p className="p-3 text-sm text-gray-400">No employees available in your scope.</p>
