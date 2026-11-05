@@ -129,15 +129,36 @@ class LeaveCalculationService
             return $deductionPlan;
         }
 
+        // Short Leave is always charged to Annual Leave, including when that
+        // balance becomes negative.
+        if (LeaveTypePolicy::chargesAnnualAlways($leaveTypeId)) {
+            $deductionPlan['annual_deduction'] = $eligibleDays;
+            $deductionPlan['warnings'][] = "{$eligibleDays} days will be deducted from Annual Leave.";
+            return $deductionPlan;
+        }
+
         $balance = $this->getLeaveBalance($employeeId, $leaveTypeId);
         $allocated = (float) ($balance['allocated_days'] ?? 0);
+        $remainingPrimary = (float) ($balance['remaining_days'] ?? 0);
+
+        // Study Leave overflow is charged to Annual Leave without an annual
+        // balance cap; any resulting negative balance is permitted by policy.
+        if (LeaveTypePolicy::overflowsToAnnualUncapped($leaveTypeId)) {
+            $deductionPlan['primary_deduction'] = min($eligibleDays, max(0, $remainingPrimary));
+            $deductionPlan['annual_deduction'] = $eligibleDays - $deductionPlan['primary_deduction'];
+            if ($deductionPlan['primary_deduction'] > 0) {
+                $deductionPlan['warnings'][] = "{$deductionPlan['primary_deduction']} days will be deducted from {$leaveType['name']}.";
+            }
+            if ($deductionPlan['annual_deduction'] > 0) {
+                $deductionPlan['warnings'][] = "{$deductionPlan['annual_deduction']} overflow days will be deducted from Annual Leave.";
+            }
+            return $deductionPlan;
+        }
 
         if ($allocated === 0.0) {
             $deductionPlan['warnings'][] = 'Unlimited leave — no balance deduction required.';
             return $deductionPlan;
         }
-
-        $remainingPrimary = (float) ($balance['remaining_days'] ?? 0);
 
         if ($eligibleDays <= $remainingPrimary) {
             $deductionPlan['primary_deduction'] = $eligibleDays;

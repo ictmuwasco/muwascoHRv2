@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Services;
 
 use App\Helpers\Database;
+use App\Services\Leave\LeaveTypePolicy;
 
 /**
  * LeaveReportService
@@ -180,6 +181,102 @@ final class LeaveReportService
             'page'      => $page,
             'per_page'  => $perPage,
             'last_page' => $lastPage,
+        ];
+    }
+
+    /**
+     * Current annual leave balances for the report's selected financial year,
+     * constrained by the same organisational scope as leave applications.
+     */
+    public function annualBalances(
+        array $scope,
+        ?int $financialYearId,
+        ?int $departmentId,
+        string $search
+    ): array {
+        $db = Database::getInstance()->getConnection();
+
+        if ($financialYearId === null) {
+            $activeYear = $db->query(
+                'SELECT id FROM financial_years
+                 WHERE is_active = 1 ORDER BY start_date DESC, id DESC LIMIT 1'
+            )->fetch_assoc();
+            $financialYearId = (int) ($activeYear['id'] ?? 0);
+        }
+
+        if ($financialYearId <= 0) {
+            return [
+                'financial_year_id' => null,
+                'financial_year_name' => null,
+                'items' => [],
+            ];
+        }
+
+        [$scopeSql, $scopeParams, $scopeTypes] = LeaveReportQueryService::scopeClause($scope);
+        $where = ['elb.financial_year_id = ?', 'elb.leave_type_id = ?', $scopeSql];
+        $params = array_merge(
+            [$financialYearId, LeaveTypePolicy::TYPE_ANNUAL],
+            $scopeParams
+        );
+        $types = 'ii' . (is_array($scopeTypes) ? implode('', $scopeTypes) : $scopeTypes);
+
+        if ($departmentId !== null) {
+            $where[] = 'e.department_id = ?';
+            $params[] = $departmentId;
+            $types .= 'i';
+        }
+        if ($search !== '') {
+            $where[] = '(e.first_name LIKE ? OR e.last_name LIKE ? OR e.surname LIKE ? OR e.employee_id LIKE ?)';
+            $like = '%' . $search . '%';
+            array_push($params, $like, $like, $like, $like);
+            $types .= 'ssss';
+        }
+
+        $sql = "
+            SELECT elb.employee_id,
+                   e.employee_id AS employee_number,
+                   CONCAT_WS(' ', NULLIF(e.first_name, ''), NULLIF(e.last_name, ''), NULLIF(e.surname, '')) AS employee_name,
+                   COALESCE(d.name, 'Unassigned') AS department,
+                   fy.id AS financial_year_id,
+                   fy.year_name AS financial_year_name,
+                   elb.allocated_days,
+                   elb.used_days,
+                   elb.remaining_days
+            FROM employee_leave_balances elb
+            JOIN employees e ON e.id = elb.employee_id
+            LEFT JOIN departments d ON d.id = e.department_id
+            JOIN financial_years fy ON fy.id = elb.financial_year_id
+            WHERE " . implode(' AND ', $where) . "
+            ORDER BY elb.remaining_days ASC, e.last_name ASC, e.first_name ASC
+        ";
+
+        $stmt = $db->prepare($sql);
+        if (!$stmt) {
+            throw new \RuntimeException('Failed to prepare annual leave balance report.');
+        }
+        $stmt->bind_param($types, ...$params);
+        $stmt->execute();
+        $rows = $stmt->get_result()->fetch_all(\MYSQLI_ASSOC);
+        $stmt->close();
+
+        $items = array_map(static function (array $row): array {
+            return [
+                'employee_id' => (int) $row['employee_id'],
+                'employee_number' => $row['employee_number'],
+                'employee_name' => trim((string) $row['employee_name']),
+                'department' => $row['department'],
+                'financial_year_id' => (int) $row['financial_year_id'],
+                'financial_year_name' => $row['financial_year_name'],
+                'allocated_days' => (float) $row['allocated_days'],
+                'used_days' => (float) $row['used_days'],
+                'remaining_days' => (float) $row['remaining_days'],
+            ];
+        }, $rows);
+
+        return [
+            'financial_year_id' => $items[0]['financial_year_id'] ?? $financialYearId,
+            'financial_year_name' => $items[0]['financial_year_name'] ?? null,
+            'items' => $items,
         ];
     }
 

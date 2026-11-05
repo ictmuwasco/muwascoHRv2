@@ -401,6 +401,15 @@ const LeaveReports = () => {
   const [insights, setInsights] = useState<string[]>([]);
 
   const [records, setRecords] = useState<any[]>([]);
+  const [annualBalanceReport, setAnnualBalanceReport] = useState<any>(null);
+  const [loadingAnnualBalances, setLoadingAnnualBalances] = useState(false);
+  const [exportingAnnualBalances, setExportingAnnualBalances] = useState(false);
+  const [annualBalanceError, setAnnualBalanceError] = useState('');
+  const [annualBalanceFilter, setAnnualBalanceFilter] = useState<
+    'all' | 'negative' | 'over_threshold'
+  >('all');
+  const [annualBalanceSort, setAnnualBalanceSort] = useState<'asc' | 'desc'>('asc');
+  const [annualBalanceThreshold, setAnnualBalanceThreshold] = useState('50');
   const [pagination, setPagination] = useState({
     total: 0,
     page: 1,
@@ -536,6 +545,79 @@ const LeaveReports = () => {
     };
   }, [filters, page, queryParams]);
 
+  // Annual leave balances are point-in-time totals, so they follow the
+  // selected financial year, department and employee search—not application
+  // date/status filters.
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingAnnualBalances(true);
+    setAnnualBalanceError('');
+    leaveReportService
+      .annualBalances({
+        ...(filters.financial_year_id ? { financial_year_id: filters.financial_year_id } : {}),
+        ...(filters.department_id ? { department_id: filters.department_id } : {}),
+        ...(filters.search ? { search: filters.search } : {}),
+      })
+      .then((report) => {
+        if (!cancelled) setAnnualBalanceReport(report);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error('Failed to load annual leave balances:', err);
+        setAnnualBalanceReport(null);
+        setAnnualBalanceError(
+          err?.response?.data?.message || 'Failed to load annual leave balances.',
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAnnualBalances(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.financial_year_id, filters.department_id, filters.search]);
+
+  const annualBalanceThresholdValue = Number(annualBalanceThreshold);
+  const hasValidAnnualBalanceThreshold =
+    annualBalanceThreshold.trim() !== '' &&
+    Number.isFinite(annualBalanceThresholdValue) &&
+    annualBalanceThresholdValue >= 0;
+
+  const annualBalanceCounts = useMemo(() => {
+    const items = Array.isArray(annualBalanceReport?.items) ? annualBalanceReport.items : [];
+    return {
+      negative: items.filter((row: any) => Number(row.remaining_days) < 0).length,
+      overThreshold: hasValidAnnualBalanceThreshold
+        ? items.filter((row: any) => Number(row.remaining_days) > annualBalanceThresholdValue)
+            .length
+        : 0,
+    };
+  }, [annualBalanceReport, annualBalanceThresholdValue, hasValidAnnualBalanceThreshold]);
+
+  const annualBalanceRows = useMemo(() => {
+    const items = Array.isArray(annualBalanceReport?.items) ? annualBalanceReport.items : [];
+    return items
+      .filter((row: any) => {
+        const remaining = Number(row.remaining_days);
+        if (annualBalanceFilter === 'negative') return remaining < 0;
+        if (annualBalanceFilter === 'over_threshold') {
+          return hasValidAnnualBalanceThreshold && remaining > annualBalanceThresholdValue;
+        }
+        return true;
+      })
+      .sort((a: any, b: any) => {
+        const diff = Number(a.remaining_days) - Number(b.remaining_days);
+        return annualBalanceSort === 'asc' ? diff : -diff;
+      });
+  }, [
+    annualBalanceReport,
+    annualBalanceFilter,
+    annualBalanceSort,
+    annualBalanceThresholdValue,
+    hasValidAnnualBalanceThreshold,
+  ]);
+
   const applyFilters = useCallback(
     (patch: Partial<Filters>) => {
       setFilters((prev) => {
@@ -618,6 +700,38 @@ const LeaveReports = () => {
       setExporting(false);
     }
   }, [filters, queryParams]);
+
+  const handleAnnualBalanceExport = useCallback(async () => {
+    if (!hasValidAnnualBalanceThreshold && annualBalanceFilter === 'over_threshold') {
+      toast.error('Enter a valid balance threshold before exporting.');
+      return;
+    }
+    setExportingAnnualBalances(true);
+    try {
+      const blob = await leaveReportService.exportAnnualBalancesCsv({
+        ...(filters.financial_year_id ? { financial_year_id: filters.financial_year_id } : {}),
+        ...(filters.department_id ? { department_id: filters.department_id } : {}),
+        ...(filters.search ? { search: filters.search } : {}),
+        threshold: hasValidAnnualBalanceThreshold ? annualBalanceThresholdValue : 50,
+        balance_filter: annualBalanceFilter,
+        sort: annualBalanceSort,
+      });
+      downloadBlob(blob, `annual_leave_balances_${today()}.csv`);
+      toast.success('Annual leave balance report exported');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Annual leave balance export failed.');
+    } finally {
+      setExportingAnnualBalances(false);
+    }
+  }, [
+    annualBalanceFilter,
+    annualBalanceSort,
+    annualBalanceThresholdValue,
+    filters.department_id,
+    filters.financial_year_id,
+    filters.search,
+    hasValidAnnualBalanceThreshold,
+  ]);
 
   const trendData = useMemo(() => {
     const points = Array.isArray(trends?.points) ? trends.points : [];
@@ -1030,6 +1144,180 @@ const LeaveReports = () => {
 
       {/* Detailed table */}
       {!loading && renderTable}
+
+      {/* Annual balance watchlist */}
+      <Card
+        title="Annual Leave Balances"
+        subtitle={`Current balances${
+          annualBalanceReport?.financial_year_name
+            ? ` · ${annualBalanceReport.financial_year_name}`
+            : ''
+        }`}
+      >
+        <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-wrap gap-3 text-sm">
+            <div className="rounded-md bg-red-50 px-3 py-2 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              Negative balances: <strong>{annualBalanceCounts.negative}</strong>
+            </div>
+            <div className="rounded-md bg-amber-50 px-3 py-2 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+              More than {hasValidAnnualBalanceThreshold ? annualBalanceThresholdValue : '—'} days:{' '}
+              <strong>{annualBalanceCounts.overThreshold}</strong>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <label className="text-xs text-gray-500 dark:text-gray-400">
+              Flag balances above (days)
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={annualBalanceThreshold}
+                onChange={(e) => setAnnualBalanceThreshold(e.target.value)}
+                aria-label="Annual leave balance threshold in days"
+                className="input ml-2 w-28"
+              />
+            </label>
+            <label className="text-xs text-gray-500 dark:text-gray-400">
+              Show
+              <select
+                value={annualBalanceFilter}
+                onChange={(e) =>
+                  setAnnualBalanceFilter(e.target.value as typeof annualBalanceFilter)
+                }
+                className="input ml-2 min-w-44"
+              >
+                <option value="all">All annual balances</option>
+                <option value="negative">Negative balances</option>
+                <option value="over_threshold">
+                  {hasValidAnnualBalanceThreshold
+                    ? `More than ${annualBalanceThresholdValue} days`
+                    : 'Above threshold'}
+                </option>
+              </select>
+            </label>
+            <label className="text-xs text-gray-500 dark:text-gray-400">
+              Sort by balance
+              <select
+                value={annualBalanceSort}
+                onChange={(e) => setAnnualBalanceSort(e.target.value as 'asc' | 'desc')}
+                className="input ml-2 min-w-36"
+              >
+                <option value="asc">Lowest to highest</option>
+                <option value="desc">Highest to lowest</option>
+              </select>
+            </label>
+            <Can module="leave_reports" action="export">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAnnualBalanceExport}
+                loading={exportingAnnualBalances}
+                disabled={loadingAnnualBalances || !!annualBalanceError}
+              >
+                <Download className="h-4 w-4 mr-1" /> Export CSV
+              </Button>
+            </Can>
+          </div>
+        </div>
+
+        {loadingAnnualBalances ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : annualBalanceError ? (
+          <p className="py-6 text-sm text-red-600">{annualBalanceError}</p>
+        ) : annualBalanceRows.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            {!hasValidAnnualBalanceThreshold && annualBalanceFilter === 'over_threshold'
+              ? 'Enter a valid threshold of zero or more days.'
+              : annualBalanceFilter === 'negative'
+                ? 'No employees have a negative annual leave balance.'
+                : annualBalanceFilter === 'over_threshold'
+                  ? `No employees have more than ${annualBalanceThresholdValue} annual leave days.`
+                  : 'No annual leave balances found for the selected filters.'}
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+              <thead className="bg-gray-50 dark:bg-slate-900">
+                <tr>
+                  {[
+                    'Employee',
+                    'Department',
+                    'Allocated',
+                    'Used',
+                    'Annual Leave Balance',
+                    'Flag',
+                  ].map((label) => (
+                    <th
+                      key={label}
+                      className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400"
+                    >
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 bg-white dark:divide-slate-700 dark:bg-slate-800">
+                {annualBalanceRows.map((row: any) => {
+                  const balance = Number(row.remaining_days);
+                  const isNegative = balance < 0;
+                  const isOverThreshold =
+                    hasValidAnnualBalanceThreshold && balance > annualBalanceThresholdValue;
+                  return (
+                    <tr
+                      key={`${row.employee_id}-${row.financial_year_id}`}
+                      className="hover:bg-gray-50 dark:hover:bg-slate-700/50"
+                    >
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                        <div className="font-medium text-gray-900 dark:text-gray-100">
+                          {row.employee_name}
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          {row.employee_number || '—'}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                        {row.department}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                        {row.allocated_days}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                        {row.used_days}
+                      </td>
+                      <td
+                        className={`whitespace-nowrap px-4 py-3 text-sm font-semibold ${
+                          isNegative
+                            ? 'text-red-700 dark:text-red-300'
+                            : isOverThreshold
+                              ? 'text-amber-700 dark:text-amber-300'
+                              : 'text-gray-900 dark:text-gray-100'
+                        }`}
+                      >
+                        {balance}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-sm">
+                        {isNegative ? (
+                          <Badge className="bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                            Negative
+                          </Badge>
+                        ) : isOverThreshold ? (
+                          <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                            Over {annualBalanceThresholdValue} days
+                          </Badge>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
     </div>
   );
 };

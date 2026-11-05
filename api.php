@@ -531,6 +531,8 @@ $router->add('GET', '/reports/leave/by-status', LeaveReportController::class, 'b
 $router->add('GET', '/reports/leave/duration', LeaveReportController::class, 'duration', 'leave_reports:view');
 $router->add('GET', '/reports/leave/insights', LeaveReportController::class, 'insights', 'leave_reports:view');
 $router->add('GET', '/reports/leave/records', LeaveReportController::class, 'records', 'leave_reports:view');
+$router->add('GET', '/reports/leave/annual-balances', LeaveReportController::class, 'annualBalances', 'leave_reports:view');
+$router->add('GET', '/reports/leave/annual-balances/export', LeaveReportController::class, 'exportAnnualBalances', 'leave_reports:export', '20:300');
 $router->add('GET', '/reports/leave/export', LeaveReportController::class, 'export', 'leave_reports:export', '20:300');
 
 // Attendance Reports module - dedicated analytics + reporting endpoints.
