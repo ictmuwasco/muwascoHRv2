@@ -171,7 +171,7 @@ class WorkplanController extends BaseController
             // KPI & Team column data: which KPIs link to each activity on this
             // page (id, name, max marks, assigned employee names). One batched
             // fetch for the whole page — never a query per row (no N+1).
-            $rows = $this->attachLinkedKpis($rows);
+            $rows = $this->attachLinkedKpis($rows, $scope);
 
             $this->success([
                 'workplans'       => $rows,
@@ -212,9 +212,10 @@ class WorkplanController extends BaseController
      * never an N+1 against a 200-row page.
      *
      * @param  array<int,array<string,mixed>> $rows
+     * @param  array<string,mixed> $scope
      * @return array<int,array<string,mixed>>
      */
-    private function attachLinkedKpis(array $rows): array
+    private function attachLinkedKpis(array $rows, array $scope): array
     {
         if ($rows === []) {
             return $rows;
@@ -263,19 +264,20 @@ class WorkplanController extends BaseController
         $res->close();
 
         // 2. Resolve employee names in one query.
-        $employeeNames = [];
+        $employeesById = [];
         if ($employeeIds !== []) {
             $ids = array_keys($employeeIds);
             $ph = implode(',', array_fill(0, count($ids), '?'));
             $stmt = $this->db->prepare(
-                "SELECT id, CONCAT_WS(' ', first_name, last_name, surname) AS full_name
+                "SELECT id, CONCAT_WS(' ', first_name, last_name, surname) AS full_name,
+                        employee_type, department_id, section_id, subsection_id
                  FROM employees WHERE id IN ({$ph})"
             );
             $stmt->bind_param(str_repeat('i', count($ids)), ...$ids);
             $stmt->execute();
             $nameRes = $stmt->get_result();
             while ($emp = $nameRes->fetch_assoc()) {
-                $employeeNames[(int) $emp['id']] = trim((string) $emp['full_name']);
+                $employeesById[(int) $emp['id']] = $emp;
             }
             $stmt->close();
         }
@@ -287,9 +289,17 @@ class WorkplanController extends BaseController
             foreach ($kpis as $kpi) {
                 $names = [];
                 foreach ($kpi['_employees'] as $eid) {
-                    if (isset($employeeNames[$eid]) && $employeeNames[$eid] !== '') {
-                        $names[] = $employeeNames[$eid];
+                    $employee = $employeesById[$eid] ?? null;
+                    if ($employee === null || !$this->isKpiEmployeeVisibleInWorkplan($employee, $scope)) {
+                        continue;
                     }
+                    $name = trim((string) ($employee['full_name'] ?? ''));
+                    if ($name !== '') {
+                        $names[] = $name;
+                    }
+                }
+                if ($this->hasUnitScopedKpiVisibility($scope) && $names === []) {
+                    continue;
                 }
                 $out[] = [
                     'id'                     => $kpi['id'],
@@ -302,6 +312,58 @@ class WorkplanController extends BaseController
         }
 
         return $rows;
+    }
+
+    /** @param array<string,mixed> $scope */
+    private function hasUnitScopedKpiVisibility(array $scope): bool
+    {
+        return !empty($scope['is_dept_head'])
+            || ($scope['role'] ?? '') === 'hr_manager'
+            || !empty($scope['is_section_head'])
+            || !empty($scope['is_sub_section_head']);
+    }
+
+    /**
+     * @param array<string,mixed> $employee
+     * @param array<string,mixed> $scope
+     */
+    private function isKpiEmployeeVisibleInWorkplan(array $employee, array $scope): bool
+    {
+        if (!empty($scope['is_dept_head']) || ($scope['role'] ?? '') === 'hr_manager') {
+            return $scope['department_id'] !== null
+                && (int) ($employee['department_id'] ?? 0) === (int) $scope['department_id']
+                && in_array(
+                    strtolower((string) ($employee['employee_type'] ?? '')),
+                    ['section_head', 'section_manager'],
+                    true
+                );
+        }
+
+        if (!empty($scope['is_sub_section_head'])) {
+            return $scope['subsection_id'] !== null
+                && (int) ($employee['subsection_id'] ?? 0) === (int) $scope['subsection_id']
+                && !in_array(
+                    strtolower((string) ($employee['employee_type'] ?? '')),
+                    ['sub_section_head', 'subsection_head'],
+                    true
+                );
+        }
+
+        if (!empty($scope['is_section_head'])) {
+            return $scope['section_id'] !== null
+                && (int) ($employee['section_id'] ?? 0) === (int) $scope['section_id']
+                && empty($employee['subsection_id'])
+                && !in_array(
+                    strtolower((string) ($employee['employee_type'] ?? '')),
+                    [
+                        'dept_head', 'head_of_department', 'department_head', 'manager',
+                        'section_head', 'section_manager', 'sub_section_head', 'subsection_head',
+                    ],
+                    true
+                );
+        }
+
+        return true;
     }
 
     /**
@@ -796,6 +858,10 @@ class WorkplanController extends BaseController
 
         [$where, $params] = $this->workplans->workplanScope($scope);
         $where .= ' AND w.soft_deleted = 0';
+        if ($scope['is_dept_head'] || $scope['is_hr']) {
+            $where .= " AND (w.level = 'department' OR w.created_by = ?)";
+            $params[] = (int) ($scope['user_id'] ?? 0);
+        }
         $types = str_repeat('i', count($params));
 
         $sql = "
@@ -1078,6 +1144,10 @@ class WorkplanController extends BaseController
 
         [$where, $params] = $this->workplans->workplanScope($scope);
         $where .= ' AND w.soft_deleted = 0';
+        if ($scope['is_dept_head'] || $scope['is_hr']) {
+            $where .= " AND (w.level = 'department' OR w.created_by = ?)";
+            $params[] = (int) ($scope['user_id'] ?? 0);
+        }
         $types = str_repeat('i', count($params));
 
         $sql = "

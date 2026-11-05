@@ -97,10 +97,10 @@ class AppraisalWorkflowService
         $subsectionId = $scope['subsection_id'] ?? null;
         $clauses = ['e.department_id = ?'];
         $params = [(int) $departmentId];
-        if ($role === 'section_head' && $sectionId !== null) {
+        if (in_array($role, ['section_head', 'section_manager'], true) && $sectionId !== null) {
             $clauses[] = 'e.section_id = ?';
             $params[] = (int) $sectionId;
-        } elseif ($role === 'sub_section_head' && $sectionId !== null && $subsectionId !== null) {
+        } elseif (in_array($role, ['sub_section_head', 'subsection_head'], true) && $sectionId !== null && $subsectionId !== null) {
             $clauses[] = 'e.section_id = ?';
             $params[] = (int) $sectionId;
             $clauses[] = 'e.subsection_id = ?';
@@ -132,10 +132,10 @@ class AppraisalWorkflowService
         $clauses = ['e.department_id = ?'];
         $params = [(int) $actor['department_id']];
         $role = $this->currentRole();
-        if ($role === 'section_head' && $actor['section_id'] !== null) {
+        if (in_array($role, ['section_head', 'section_manager'], true) && $actor['section_id'] !== null) {
             $clauses[] = 'e.section_id = ?';
             $params[] = (int) $actor['section_id'];
-        } elseif ($role === 'sub_section_head' && $actor['section_id'] !== null && $actor['subsection_id'] !== null) {
+        } elseif (in_array($role, ['sub_section_head', 'subsection_head'], true) && $actor['section_id'] !== null && $actor['subsection_id'] !== null) {
             $clauses[] = 'e.section_id = ?';
             $params[] = (int) $actor['section_id'];
             $clauses[] = 'e.subsection_id = ?';
@@ -162,7 +162,24 @@ class AppraisalWorkflowService
         }
         $actorLevel = $this->roleLevel($this->currentRole());
         $targetLevel = $this->roleLevel((string) ($target['employee_type'] ?? ''));
-        // Department heads supervise section/subsection heads, not officers or peers.
+        $actorRole = $this->currentRole();
+        $targetRole = strtolower((string) ($target['employee_type'] ?? ''));
+        if (
+            in_array($actorRole, ['section_head', 'section_manager'], true)
+            && (
+                !empty($target['subsection_id'])
+                || in_array($targetRole, ['sub_section_head', 'subsection_head'], true)
+            )
+        ) {
+            return false;
+        }
+        if (
+            in_array($actorRole, ['dept_head', 'head_of_department', 'department_head'], true)
+            && !in_array($targetRole, ['section_head', 'section_manager'], true)
+        ) {
+            return false;
+        }
+        // Department heads supervise direct section-head reports only.
         if ($actorLevel >= 80 && $actorLevel < 100 && ($targetLevel < 50 || $targetLevel >= 80)) {
             return false;
         }
@@ -591,6 +608,7 @@ class AppraisalWorkflowService
                 'score' => Auth::getInstance()->hasPermission('performance', 'score'),
                 'approve' => $this->isApprover(),
             ],
+            'scope' => ['role' => $this->currentRole()],
         ];
     }
 

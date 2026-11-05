@@ -44,8 +44,8 @@ class SectionalObjectiveController extends BaseController
 
     /**
      * KPI list scoping (role-based only): apex / managing director see every
-     * KPI; department heads (incl. hr_manager) their department; section and
-     * sub-section heads their own unit. No department-id special cases.
+     * KPI; department heads see KPIs assigned to direct section reports; section
+     * and sub-section heads see KPIs for their own unit.
      */
     private function kpiScopeWhere(array $scope): array
     {
@@ -58,12 +58,33 @@ class SectionalObjectiveController extends BaseController
         }
         $clauses = ['pi.department_id = ?'];
         $params  = [(int) $dept];
-        if ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null) {
+        if ($scope['is_dept_head'] || $scope['role'] === 'hr_manager') {
+            $clauses[] = "EXISTS (
+                SELECT 1
+                FROM employees assigned_employee
+                WHERE FIND_IN_SET(assigned_employee.id, pi.assigned_to_employee_ids) > 0
+                  AND assigned_employee.department_id = ?
+                  AND assigned_employee.employee_type IN ('section_head', 'section_manager')
+            )";
+            $params[] = (int) $dept;
+        } elseif ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null) {
             $clauses[] = 'pi.subsection_id = ?';
             $params[]  = (int) $scope['subsection_id'];
         } elseif ($scope['is_section_head'] && $scope['section_id'] !== null) {
             $clauses[] = 'pi.section_id = ?';
             $params[]  = (int) $scope['section_id'];
+            $clauses[] = "EXISTS (
+                SELECT 1
+                FROM employees assigned_employee
+                WHERE FIND_IN_SET(assigned_employee.id, pi.assigned_to_employee_ids) > 0
+                  AND assigned_employee.section_id = ?
+                  AND COALESCE(assigned_employee.subsection_id, 0) = 0
+                  AND LOWER(COALESCE(assigned_employee.employee_type, '')) NOT IN (
+                      'dept_head', 'head_of_department', 'department_head', 'manager',
+                      'section_head', 'section_manager', 'sub_section_head', 'subsection_head'
+                  )
+            )";
+            $params[] = (int) $scope['section_id'];
         }
         return [implode(' AND ', $clauses), $params];
     }
@@ -106,9 +127,10 @@ class SectionalObjectiveController extends BaseController
      * eligible for new assignments; its name must still remain readable.
      *
      * @param array<int, array<string, mixed>> $rows
+     * @param array<string, mixed> $scope
      * @return array<int, array<string, mixed>>
      */
-    private function withAssignedEmployeeNames(array $rows): array
+    private function withAssignedEmployeeNames(array $rows, array $scope): array
     {
         $employeeIds = [];
         foreach ($rows as $row) {
@@ -118,11 +140,13 @@ class SectionalObjectiveController extends BaseController
         }
 
         $namesById = [];
+        $knownEmployeeIds = [];
         if ($employeeIds !== []) {
             $ids = array_values($employeeIds);
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
             $stmt = $this->db->prepare(
-                "SELECT id, first_name, last_name
+                "SELECT id, first_name, last_name, employee_type,
+                        department_id, section_id, subsection_id
                  FROM employees
                  WHERE id IN ($placeholders)"
             );
@@ -130,13 +154,18 @@ class SectionalObjectiveController extends BaseController
             $stmt->execute();
             $result = $stmt->get_result();
             while ($employee = $result->fetch_assoc()) {
+                $employeeId = (int) $employee['id'];
+                $knownEmployeeIds[$employeeId] = true;
+                if (!$this->isKpiAssigneeVisible($employee, $scope)) {
+                    continue;
+                }
                 $name = trim(
                     implode(' ', array_filter([
                         $employee['first_name'] ?? '',
                         $employee['last_name'] ?? '',
                     ], static fn (string $part): bool => trim($part) !== ''))
                 );
-                $namesById[(int) $employee['id']] = $name !== '' ? $name : 'Unnamed employee';
+                $namesById[$employeeId] = $name !== '' ? $name : 'Unnamed employee';
             }
             $stmt->close();
         }
@@ -144,13 +173,53 @@ class SectionalObjectiveController extends BaseController
         foreach ($rows as &$row) {
             $names = [];
             foreach ($this->parseEmployeeIds($row['assigned_to_employee_ids'] ?? null) as $employeeId) {
-                $names[] = $namesById[$employeeId] ?? 'Employee unavailable';
+                if (isset($namesById[$employeeId])) {
+                    $names[] = $namesById[$employeeId];
+                } elseif (!isset($knownEmployeeIds[$employeeId])) {
+                    $names[] = 'Employee unavailable';
+                }
             }
             $row['assigned_employee_names'] = $names;
         }
         unset($row);
 
         return $rows;
+    }
+
+    /**
+     * @param array<string, mixed> $employee
+     * @param array<string, mixed> $scope
+     */
+    private function isKpiAssigneeVisible(array $employee, array $scope): bool
+    {
+        if ($scope['is_dept_head'] || $scope['role'] === 'hr_manager') {
+            return $scope['department_id'] !== null
+                && (int) ($employee['department_id'] ?? 0) === (int) $scope['department_id']
+                && in_array(
+                    self::roleOf($employee),
+                    ['section_head', 'section_manager'],
+                    true
+                );
+        }
+        if ($scope['is_sub_section_head']) {
+            return $scope['subsection_id'] !== null
+                && (int) ($employee['subsection_id'] ?? 0) === (int) $scope['subsection_id']
+                && !in_array(self::roleOf($employee), ['sub_section_head', 'subsection_head'], true);
+        }
+        if ($scope['is_section_head']) {
+            return $scope['section_id'] !== null
+                && (int) ($employee['section_id'] ?? 0) === (int) $scope['section_id']
+                && empty($employee['subsection_id'])
+                && !in_array(
+                    self::roleOf($employee),
+                    [
+                        'dept_head', 'head_of_department', 'department_head', 'manager',
+                        'section_head', 'section_manager', 'sub_section_head', 'subsection_head',
+                    ],
+                    true
+                );
+        }
+        return true;
     }
 
     /**
@@ -288,20 +357,26 @@ class SectionalObjectiveController extends BaseController
         }
 
         // Department head (incl. hr_manager as head of the HR and Admin
-        // department): section heads / sub-section heads / managers in own unit.
+        // department): direct section-head reports only. Section heads own
+        // KPI assignment for subsection heads and staff below them.
         if (($scope['is_dept_head'] || $scope['role'] === 'hr_manager') && $deptId !== null) {
             $rows = array_values(array_filter(
                 $this->fetchEmployees($deptId, null, null),
-                fn ($e) => in_array(self::roleOf($e), ['section_head', 'section_manager', 'sub_section_head', 'subsection_head', 'manager'], true)
+                fn ($e) => in_array(self::roleOf($e), ['section_head', 'section_manager'], true)
             ));
             return ['employees' => self::withoutSelf($rows, $selfId), 'employee_record' => $own];
         }
 
-        // Section head: junior staff + sub-section heads in own section.
+        // Section head: direct section employees only. Subsection employees and
+        // their head are assigned by the subsection head.
         if ($scope['is_section_head'] && $secId !== null) {
             $rows = array_values(array_filter(
                 $this->fetchEmployees(null, $secId, null),
-                fn ($e) => !in_array(self::roleOf($e), ['dept_head', 'head_of_department', 'department_head', 'manager', 'section_head', 'section_manager'], true)
+                fn ($e) => empty($e['subsection_id'])
+                    && !in_array(self::roleOf($e), [
+                        'dept_head', 'head_of_department', 'department_head', 'manager',
+                        'section_head', 'section_manager', 'sub_section_head', 'subsection_head',
+                    ], true)
             ));
             return ['employees' => self::withoutSelf($rows, $selfId), 'employee_record' => $own];
         }
@@ -364,7 +439,8 @@ class SectionalObjectiveController extends BaseController
 
         if ($scope['is_section_head'] && $scope['section_id'] !== null) {
             $sql = self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . '
-                WHERE wo.section_id = ? AND wo.parent_objective_id IS NOT NULL
+                WHERE wo.section_id = ? AND COALESCE(wo.subsection_id, 0) = 0
+                  AND wo.parent_objective_id IS NOT NULL
                 ORDER BY pc.name, wo.objective';
             $stmt = $this->db->prepare($sql);
             $sec = (int) $scope['section_id'];
@@ -377,7 +453,7 @@ class SectionalObjectiveController extends BaseController
 
         if (($scope['is_dept_head'] || $scope['role'] === 'hr_manager') && $scope['department_id'] !== null) {
             $sql = self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . '
-                WHERE pc.department_id = ?
+                WHERE pc.department_id = ? AND wo.level = \'department\'
                 ORDER BY pc.name, wo.objective';
             $stmt = $this->db->prepare($sql);
             $dept = (int) $scope['department_id'];
@@ -469,7 +545,7 @@ class SectionalObjectiveController extends BaseController
             $stmt->execute();
             $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             $stmt->close();
-            $rows = $this->withAssignedEmployeeNames($rows);
+            $rows = $this->withAssignedEmployeeNames($rows, $scope);
 
             $emp = $this->scopedEmployees($scope);
 
@@ -512,6 +588,7 @@ class SectionalObjectiveController extends BaseController
             $this->forbidden('You do not have permission to view sectional objectives.');
         }
 
+        [$where, $params] = $this->kpiScopeWhere($scope);
         $stmt = $this->db->prepare(
             "SELECT pi.*, d.name AS department_name, s.name AS section_name,
                     ss.name AS subsection_name
@@ -519,9 +596,10 @@ class SectionalObjectiveController extends BaseController
              LEFT JOIN departments d ON pi.department_id = d.id
              LEFT JOIN sections s ON pi.section_id = s.id
              LEFT JOIN subsections ss ON pi.subsection_id = ss.id
-             WHERE pi.id = ?"
+             WHERE pi.id = ? AND $where"
         );
-        $stmt->bind_param('i', $id);
+        $bindParams = array_merge([$id], $params);
+        $stmt->bind_param('i' . str_repeat('i', count($params)), ...$bindParams);
         $stmt->execute();
         $row = $stmt->get_result()->fetch_assoc();
         $stmt->close();

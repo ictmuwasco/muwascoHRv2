@@ -14,7 +14,7 @@ export default function SubsectionHeadWorkplan() {
     <TierWorkplanPage
       view="subsection"
       title="Subsection Head Workplan"
-      description="Break cascaded section work into employee-level tasks for your subsection and monitor completion."
+      description="Break section work into tasks for employees in your subsection and monitor their completion."
     />
   );
 }
