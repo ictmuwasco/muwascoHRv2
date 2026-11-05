@@ -574,8 +574,8 @@ function ContractFormModal({
 
   // Perspectives available for the chosen plan; org goals for the perspective.
   const perspectives =
-    planId === '' ? goals : goals.filter((g) => g.strategic_plan_id === Number(planId));
-  const orgGoals = goalId === '' ? [] : targets.filter((t) => t.goal_id === Number(goalId));
+    planId === '' ? goals : goals.filter((g) => Number(g.strategic_plan_id) === Number(planId));
+  const orgGoals = goalId === '' ? [] : targets.filter((t) => Number(t.goal_id) === Number(goalId));
 
   const changePlan = (value: number | '') => {
     setPlanId(value);

@@ -126,6 +126,106 @@ class LeaveReportController extends BaseController
     }
 
     /**
+     * GET /reports/leave/annual-balances - annual leave balance exceptions.
+     */
+    public function annualBalancesAction(): void
+    {
+        $this->requirePermission('leave_reports', 'view');
+        $scope = OrgScope::current();
+        $financialYearId = (int) ($_GET['financial_year_id'] ?? 0) ?: null;
+        $departmentId = (int) ($_GET['department_id'] ?? 0) ?: null;
+        $search = trim((string) ($_GET['search'] ?? ''));
+        $this->success(
+            $this->service->annualBalances($scope, $financialYearId, $departmentId, $search)
+        );
+    }
+
+    /**
+     * GET /reports/leave/annual-balances/export - standalone annual balance CSV.
+     */
+    public function exportAnnualBalancesAction(): void
+    {
+        $this->requirePermission('leave_reports', 'export');
+        $scope = OrgScope::current();
+        $financialYearId = (int) ($_GET['financial_year_id'] ?? 0) ?: null;
+        $departmentId = (int) ($_GET['department_id'] ?? 0) ?: null;
+        $search = trim((string) ($_GET['search'] ?? ''));
+        $thresholdRaw = $_GET['threshold'] ?? '50';
+        if (!is_scalar($thresholdRaw) || !is_numeric($thresholdRaw) || (float) $thresholdRaw < 0) {
+            $this->error('Threshold must be a number greater than or equal to zero.', 422);
+        }
+        $threshold = (float) $thresholdRaw;
+        $filter = (string) ($_GET['balance_filter'] ?? 'all');
+        if (!in_array($filter, ['all', 'negative', 'over_threshold'], true)) {
+            $this->error('Invalid annual balance filter.', 422);
+        }
+        $sort = (string) ($_GET['sort'] ?? 'asc');
+        if (!in_array($sort, ['asc', 'desc'], true)) {
+            $this->error('Invalid annual balance sort order.', 422);
+        }
+
+        $report = $this->service->annualBalances($scope, $financialYearId, $departmentId, $search);
+        $items = array_values(array_filter($report['items'], static function (array $item) use ($filter, $threshold): bool {
+            $remaining = (float) $item['remaining_days'];
+            if ($filter === 'negative') {
+                return $remaining < 0;
+            }
+            if ($filter === 'over_threshold') {
+                return $remaining > $threshold;
+            }
+            return true;
+        }));
+        usort($items, static function (array $a, array $b) use ($sort): int {
+            $comparison = (float) $a['remaining_days'] <=> (float) $b['remaining_days'];
+            return $sort === 'asc' ? $comparison : -$comparison;
+        });
+
+        $filename = 'annual_leave_balances_' . date('Ymd_His') . '.csv';
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Pragma: no-cache');
+        header('Expires: 0');
+
+        $out = fopen('php://output', 'w');
+        fprintf($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
+        fputcsv($out, ['Annual Leave Balance Report']);
+        fputcsv($out, ['Financial Year', $report['financial_year_name'] ?? 'N/A']);
+        fputcsv($out, ['Balance Filter', $filter]);
+        fputcsv($out, ['Flag Threshold (days)', $threshold]);
+        fputcsv($out, ['Sort Order', $sort === 'asc' ? 'Lowest to highest' : 'Highest to lowest']);
+        fputcsv($out, ['Generated On', date('Y-m-d H:i:s')]);
+        fputcsv($out, []);
+        fputcsv($out, [
+            'Employee Number',
+            'Employee Name',
+            'Department',
+            'Financial Year',
+            'Allocated Days',
+            'Used Days',
+            'Annual Leave Balance',
+            'Flag',
+        ]);
+        foreach ($items as $item) {
+            $remaining = (float) $item['remaining_days'];
+            $flag = $remaining < 0
+                ? 'Negative'
+                : ($remaining > $threshold ? 'Over ' . $threshold . ' days' : '');
+            fputcsv($out, [
+                $item['employee_number'],
+                $item['employee_name'],
+                $item['department'],
+                $item['financial_year_name'],
+                $item['allocated_days'],
+                $item['used_days'],
+                $remaining,
+                $flag,
+            ]);
+        }
+        fclose($out);
+        exit();
+    }
+
+    /**
      * GET /reports/leave/export - CSV respecting all active filters.
      */
     public function exportAction(): void

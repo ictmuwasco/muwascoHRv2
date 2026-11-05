@@ -53,6 +53,21 @@ export const leaveReportService = {
     return res.data?.data;
   },
 
+  annualBalances: async (params?: Record<string, any>): Promise<any> => {
+    const res = await apiClient.get<ApiResponse<any>>('/reports/leave/annual-balances', {
+      params,
+    });
+    return res.data?.data;
+  },
+
+  exportAnnualBalancesCsv: async (params?: Record<string, any>): Promise<Blob> => {
+    const res = await apiClient.get('/reports/leave/annual-balances/export', {
+      params,
+      responseType: 'blob',
+    });
+    return res.data;
+  },
+
   // CSV export respecting all active filters (blob download).
   exportCsv: async (params?: Record<string, any>): Promise<any> => {
     const res = await apiClient.get('/reports/leave/export', {
