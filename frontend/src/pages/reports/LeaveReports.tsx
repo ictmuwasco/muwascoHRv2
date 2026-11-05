@@ -1148,7 +1148,11 @@ const LeaveReports = () => {
       {/* Annual balance watchlist */}
       <Card
         title="Annual Leave Balances"
-        subtitle={`Current balances${annualBalanceReport?.financial_year_name ? ` · ${annualBalanceReport.financial_year_name}` : ''}`}
+        subtitle={`Current balances${
+          annualBalanceReport?.financial_year_name
+            ? ` · ${annualBalanceReport.financial_year_name}`
+            : ''
+        }`}
       >
         <div className="flex flex-col gap-3 mb-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-wrap gap-3 text-sm">
