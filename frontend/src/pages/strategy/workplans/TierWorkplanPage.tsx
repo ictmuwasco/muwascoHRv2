@@ -446,7 +446,6 @@ export default function TierWorkplanPage({
           contracts={deptContracts}
           departmentId={deptId}
           sections={tier.list?.sections ?? []}
-          subsections={tier.list?.subsections ?? []}
           employees={tier.list?.employees ?? []}
           cycles={cycles}
           onClose={() => setBulkOpen(false)}

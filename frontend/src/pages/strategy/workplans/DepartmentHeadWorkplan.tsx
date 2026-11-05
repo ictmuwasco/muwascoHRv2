@@ -10,9 +10,8 @@ export default function DepartmentHeadWorkplan() {
     <TierWorkplanPage
       view="department"
       title="Department Head Workplan"
-      description="Turn your department's performance-contract commitments into activities and cascade them to sections."
+      description="Plan department activities, view KPIs assigned to section-head reports, and cascade work to sections."
       showSection
-      showSubsection
       showCommitmentsPanel
     />
   );

@@ -120,34 +120,20 @@ class WorkplanService
      *
      * view=md          -> organisation-wide (MD / HR / super admin / PME / Audit
      *                     only; everyone else is pinned to their own department).
-     * view=department  -> the caller's department.
+     * view=department  -> department heads see department-level work and the
+     *                     section-assigned activities they created; other
+     *                     callers see their department scope.
      * view=section     -> section heads see their own section; department heads
-     *                     see every section in their department.
+     *                     cannot open this tier.
      * view=subsection  -> sub-section heads see their own subsection; section
-     *                     heads see their section's subsections; department heads
-     *                     see their department's subsections.
+     *                     heads see their section's subsections; department
+     *                     heads cannot open this tier.
      * view=integrated  -> same as department plus is_integrated = 1 (applied by
      *                     the caller).
      *
      * @return array{0: string, 1: array<int, int>}
      */
 
-    /**
-     * Role-aware scoping for the four legacy workplan tiers.
-     *
-     * view=md          -> organisation-wide (MD / HR / super admin / PME / Audit
-     *                     only; everyone else is pinned to their own department).
-     * view=department  -> the caller's department.
-     * view=section     -> section heads see their own section; department heads
-     *                     see every section in their department.
-     * view=subsection  -> sub-section heads see their own subsection; section
-     *                     heads see their section's subsections; department heads
-     *                     see their department's subsections.
-     * view=integrated  -> same as department plus is_integrated = 1 (applied by
-     *                     the caller).
-     *
-     * @return array{0: string, 1: array<int, int>}
-     */
     public function viewScope(array $scope, string $view): array
     {
         if ($this->isBroadWorkplan($scope) && !$this->isHrDeptHead($scope)) {
@@ -161,12 +147,25 @@ class WorkplanService
             return ['1=1', []];
         }
 
+        if ($view === 'department') {
+            if (($scope['is_dept_head'] || $this->isHrDeptHead($scope)) && $scope['department_id'] !== null) {
+                return [
+                    "c.department_id = ? AND (w.level = 'department' OR w.created_by = ?)",
+                    [
+                        (int) $scope['department_id'],
+                        (int) ($scope['user_id'] ?? 0),
+                    ],
+                ];
+            }
+            return $this->departmentWhere($scope);
+        }
+
         if ($view === 'section') {
             if ($scope['is_section_head'] && $scope['section_id'] !== null) {
                 return ['w.section_id = ?', [(int) $scope['section_id']]];
             }
-            if (($scope['is_dept_head'] || $this->isHrDeptHead($scope)) && $scope['department_id'] !== null) {
-                return ['w.section_id IN (SELECT id FROM sections WHERE department_id = ?)', [(int) $scope['department_id']]];
+            if ($scope['is_dept_head'] || $this->isHrDeptHead($scope)) {
+                return ['1=0', []];
             }
             return $this->departmentWhere($scope);
         }
@@ -178,8 +177,8 @@ class WorkplanService
             if ($scope['is_section_head'] && $scope['section_id'] !== null) {
                 return ['w.subsection_id IN (SELECT id FROM subsections WHERE section_id = ?)', [(int) $scope['section_id']]];
             }
-            if (($scope['is_dept_head'] || $this->isHrDeptHead($scope)) && $scope['department_id'] !== null) {
-                return ['w.subsection_id IN (SELECT id FROM subsections WHERE department_id = ?)', [(int) $scope['department_id']]];
+            if ($scope['is_dept_head'] || $this->isHrDeptHead($scope)) {
+                return ['1=0', []];
             }
             return $this->departmentWhere($scope);
         }
@@ -195,13 +194,6 @@ class WorkplanService
         }
         return ['1=0', []];
     }
-
-    /**
-     * Sections the caller may cascade objectives down to (dept heads cascade to
-     * sections; broad roles see every section in the organisation view).
-     *
-     * @return array<int, array{id:int, name:string, department_id:int}>
-     */
 
     /**
      * Sections the caller may cascade objectives down to (dept heads cascade to
@@ -230,18 +222,11 @@ class WorkplanService
     }
 
     /**
-     * Subsections the caller may cascade objectives down to (section heads
-     * cascade to their section's subsections; dept heads to their dept's).
+     * Subsections section heads may cascade objectives down to.
      *
      * @return array<int, array{id:int, name:string, section_id:int, department_id:int}>
      */
 
-    /**
-     * Subsections the caller may cascade objectives down to (section heads
-     * cascade to their section's subsections; dept heads to their dept's).
-     *
-     * @return array<int, array{id:int, name:string, section_id:int, department_id:int}>
-     */
     public function cascadeSubsections(array $scope, string $view): array
     {
         if ($this->isBroadWorkplan($scope) && !$this->isHrDeptHead($scope) && $view === 'md') {
@@ -251,12 +236,6 @@ class WorkplanService
             return $this->selectRows(
                 'SELECT id, name, section_id, department_id FROM subsections WHERE section_id = ? ORDER BY name',
                 'i', [(int) $scope['section_id']]
-            );
-        }
-        if (($scope['is_dept_head'] || $this->isHrDeptHead($scope)) && $scope['department_id'] !== null) {
-            return $this->selectRows(
-                'SELECT id, name, section_id, department_id FROM subsections WHERE department_id = ? ORDER BY name',
-                'i', [(int) $scope['department_id']]
             );
         }
         if ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null && $view === 'subsection') {
@@ -273,19 +252,17 @@ class WorkplanService
      * to a section / subsection. Returns an error string, or null when the
      * assignment is allowed.
      */
-
-    /**
-     * Enforces the cascade boundaries when a head assigns an objective down
-     * to a section / subsection. Returns an error string, or null when the
-     * assignment is allowed.
-     */
     public function validateCascadeAssignment(array $scope, array $data): ?string
     {
         if (($this->isBroadWorkplan($scope) && !$this->isHrDeptHead($scope)) || !OrgScope::canManagePerformance($scope)) {
             return null;
         }
 
-        if ($scope['is_section_head'] && isset($data['subsection_id'])) {
+        if (($scope['is_dept_head'] || $this->isHrDeptHead($scope)) && !empty($data['subsection_id'])) {
+            return 'Department heads may only cascade activities to sections. Section heads cascade work to subsections.';
+        }
+
+        if ($scope['is_section_head'] && !empty($data['subsection_id'])) {
             $sub = (int) $data['subsection_id'];
             $stmt = $this->db->prepare('SELECT section_id FROM subsections WHERE id = ?');
             $stmt->bind_param('i', $sub);
@@ -297,13 +274,13 @@ class WorkplanService
             }
         }
 
-        if ($scope['is_section_head'] && isset($data['section_id'])) {
+        if ($scope['is_section_head'] && !empty($data['section_id'])) {
             if ((int) $data['section_id'] !== (int) $scope['section_id']) {
                 return 'You may only place objectives inside your own section.';
             }
         }
 
-        if (($scope['is_dept_head'] || $this->isHrDeptHead($scope)) && isset($data['section_id'])) {
+        if (($scope['is_dept_head'] || $this->isHrDeptHead($scope)) && !empty($data['section_id'])) {
             $sec = (int) $data['section_id'];
             $stmt = $this->db->prepare('SELECT department_id FROM sections WHERE id = ?');
             $stmt->bind_param('i', $sec);
@@ -312,18 +289,6 @@ class WorkplanService
             $stmt->close();
             if (!$r || (int) $r['department_id'] !== (int) $scope['department_id']) {
                 return 'You may only cascade objectives to sections within your own department.';
-            }
-        }
-
-        if (($scope['is_dept_head'] || $this->isHrDeptHead($scope)) && isset($data['subsection_id'])) {
-            $sub = (int) $data['subsection_id'];
-            $stmt = $this->db->prepare('SELECT department_id FROM subsections WHERE id = ?');
-            $stmt->bind_param('i', $sub);
-            $stmt->execute();
-            $r = $stmt->get_result()->fetch_assoc();
-            $stmt->close();
-            if (!$r || (int) $r['department_id'] !== (int) $scope['department_id']) {
-                return 'You may only assign subsections within your own department.';
             }
         }
 
@@ -534,10 +499,19 @@ class WorkplanService
         if (!$this->isBroadWorkplan($scope) || $this->isHrDeptHead($scope)) {
             if ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null) {
                 $where .= ' AND e.subsection_id = ?';
+                $where .= " AND LOWER(COALESCE(e.employee_type, '')) NOT IN (
+                    'dept_head', 'head_of_department', 'department_head', 'manager',
+                    'section_head', 'section_manager', 'sub_section_head', 'subsection_head'
+                )";
                 $types .= 'i';
                 $params[] = (int) $scope['subsection_id'];
             } elseif ($scope['is_section_head'] && $scope['section_id'] !== null) {
                 $where .= ' AND e.section_id = ?';
+                $where .= ' AND COALESCE(e.subsection_id, 0) = 0';
+                $where .= " AND LOWER(COALESCE(e.employee_type, '')) NOT IN (
+                    'dept_head', 'head_of_department', 'department_head', 'manager',
+                    'section_head', 'section_manager', 'sub_section_head', 'subsection_head'
+                )";
                 $types .= 'i';
                 $params[] = (int) $scope['section_id'];
             } elseif ($scope['department_id'] !== null) {

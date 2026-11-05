@@ -127,6 +127,14 @@ export default function SupervisorAppraisals() {
       })),
     [workspace],
   );
+  const employeeScopeHint =
+    workspace?.scope.role === 'dept_head'
+      ? 'Department heads can appraise section heads only. Section heads handle appraisals for subsection heads and staff.'
+      : workspace?.scope.role === 'section_head'
+        ? 'Select direct employees in your section. Subsection heads handle appraisals for their own subsection employees.'
+        : workspace?.scope.role === 'sub_section_head'
+          ? 'Select employees assigned to your subsection.'
+          : '';
   const cycleOptions = useMemo(
     () =>
       (workspace?.cycles ?? []).map((c) => ({
@@ -420,6 +428,9 @@ export default function SupervisorAppraisals() {
               Reassignment is available only before scoring or employee feedback begins. The KPI
               preview refreshes for the selected employee and cycle.
             </p>
+          )}
+          {employeeScopeHint && (
+            <p className="text-xs text-gray-500 dark:text-gray-400">{employeeScopeHint}</p>
           )}
           <Combobox
             label="Employee"
