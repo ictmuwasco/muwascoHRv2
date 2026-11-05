@@ -57,9 +57,7 @@ interface ContractPayload {
 }
 
 type FormState =
-  | { open: false }
-  | { open: true; mode: 'add' }
-  | { open: true; mode: 'edit'; record: Contract };
+  { open: false } | { open: true; mode: 'add' } | { open: true; mode: 'edit'; record: Contract };
 
 const fmt = (d: string | null) =>
   d
@@ -376,7 +374,7 @@ export default function PerformanceContracts() {
                                 )}
                               </td>
                               <td className="px-4 py-3 align-top text-sm text-gray-900 dark:text-gray-100">
-                                {isFirstOfGoal ? rows[0].target_name ?? '—' : ''}
+                                {isFirstOfGoal ? (rows[0].target_name ?? '—') : ''}
                               </td>
                               <td className="px-4 py-3 align-top text-sm text-gray-900 dark:text-gray-100">
                                 {row.department_name ?? '—'}
@@ -574,8 +572,8 @@ function ContractFormModal({
 
   // Perspectives available for the chosen plan; org goals for the perspective.
   const perspectives =
-    planId === '' ? goals : goals.filter((g) => g.strategic_plan_id === Number(planId));
-  const orgGoals = goalId === '' ? [] : targets.filter((t) => t.goal_id === Number(goalId));
+    planId === '' ? goals : goals.filter((g) => Number(g.strategic_plan_id) === Number(planId));
+  const orgGoals = goalId === '' ? [] : targets.filter((t) => Number(t.goal_id) === Number(goalId));
 
   const changePlan = (value: number | '') => {
     setPlanId(value);

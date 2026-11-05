@@ -16,15 +16,19 @@ const LeaveApplication = () => {
   const [document, setDocument] = useState(null);
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [eligibleDays, setEligibleDays] = useState(0);
   const [primaryDeduction, setPrimaryDeduction] = useState(0);
   const [annualDeduction, setAnnualDeduction] = useState(0);
+  const [annualCredit, setAnnualCredit] = useState(0);
   const [unpaidDays, setUnpaidDays] = useState(0);
-  const [remainingDaysFromBalance, setRemainingDaysFromBalance] = useState(0);
   const [calendarDays, setCalendarDays] = useState(0);
+  const [leaveBalances, setLeaveBalances] = useState([]);
+  const [balancesLoading, setBalancesLoading] = useState(false);
+  const [balancesError, setBalancesError] = useState('');
   const [leaveTypes, setLeaveTypes] = useState([]);
   const [delegates, setDelegates] = useState([]);
   const [delegateEmpId, setDelegateEmpId] = useState('');
@@ -90,23 +94,43 @@ const LeaveApplication = () => {
     }
   }, [employeeId]);
 
-  // Fetch remaining days from the balance ledger for the selected leave type.
+  // Load all balances so the preview can show both primary and annual
+  // balances affected by the approval deduction plan.
   useEffect(() => {
-    if (employeeId && leaveTypeId) {
-      (async () => {
-        try {
-          const resp = await api.get(`/leave/balance/${employeeId}`);
-          const balances = resp.data?.data || [];
-          const typeBalance = balances.find((b) => b.leave_type_id === Number(leaveTypeId));
-          if (typeBalance) {
-            setRemainingDaysFromBalance(typeBalance.remaining_days);
-          }
-        } catch (e) {
-          // Ignore errors — balance is informational only.
-        }
-      })();
+    if (!employeeId) {
+      setLeaveBalances([]);
+      setBalancesError('');
+      return;
     }
-  }, [employeeId, leaveTypeId]);
+
+    let active = true;
+    setBalancesLoading(true);
+    setLeaveBalances([]);
+    setBalancesError('');
+    api
+      .get(`/leave/balance/${employeeId}`)
+      .then((resp) => {
+        if (active) {
+          setLeaveBalances(Array.isArray(resp.data?.data) ? resp.data.data : []);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load leave balances:', err);
+        if (active) {
+          setLeaveBalances([]);
+          setBalancesError(
+            err?.response?.data?.message || 'Could not load leave balances for this preview.',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setBalancesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [employeeId]);
 
   useEffect(() => {
     if (employeeId && leaveTypeId && startDate && endDate) {
@@ -334,6 +358,12 @@ const LeaveApplication = () => {
       return;
     }
     setCalculating(true);
+    setPreviewError('');
+    setEligibleDays(0);
+    setPrimaryDeduction(0);
+    setAnnualDeduction(0);
+    setAnnualCredit(0);
+    setUnpaidDays(0);
     try {
       const formData = new FormData();
       formData.append('employee_id', employeeId);
@@ -346,6 +376,7 @@ const LeaveApplication = () => {
       setEligibleDays(data.eligible_days || 0);
       setPrimaryDeduction(data.deduction_plan.primary_deduction || 0);
       setAnnualDeduction(data.deduction_plan.annual_deduction || 0);
+      setAnnualCredit(data.deduction_plan.add_to_annual || 0);
       setUnpaidDays(data.deduction_plan.unpaid_days || 0);
 
       // Calendar days calculation
@@ -355,10 +386,38 @@ const LeaveApplication = () => {
       setCalendarDays(days);
     } catch (err) {
       console.error('Failed to calculate preview:', err);
+      setPreviewError(
+        err?.response?.data?.message || 'Could not calculate the leave deduction preview.',
+      );
     } finally {
       setCalculating(false);
     }
   };
+
+  const projectedBalances = leaveBalances.flatMap((balance) => {
+    const isAnnual = String(balance.leave_type_name || '')
+      .toLowerCase()
+      .includes('annual');
+    const isSelectedType = Number(balance.leave_type_id) === Number(leaveTypeId);
+    const deduction =
+      (isSelectedType ? Number(primaryDeduction) : 0) + (isAnnual ? Number(annualDeduction) : 0);
+    const credit = isAnnual ? Number(annualCredit) : 0;
+
+    if (deduction === 0 && credit === 0) return [];
+
+    const currentBalance = Number(balance.remaining_days) || 0;
+    return [
+      {
+        name: balance.leave_type_name,
+        current: currentBalance,
+        projected: currentBalance - deduction + credit,
+      },
+    ];
+  });
+  const hasPlannedBalanceMovement = primaryDeduction > 0 || annualDeduction > 0 || annualCredit > 0;
+
+  const formatBalanceDays = (days) =>
+    Number.isInteger(days) ? String(days) : days.toFixed(2).replace(/\.?0+$/, '');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -656,6 +715,7 @@ const LeaveApplication = () => {
               <div className="text-gray-500">Calculating...</div>
             ) : (
               <div className="space-y-2">
+                {previewError && <p className="text-sm text-red-600">{previewError}</p>}
                 <div className="flex justify-between">
                   <span>Calendar Days:</span>
                   <span className="font-medium">{calendarDays}</span>
@@ -663,11 +723,6 @@ const LeaveApplication = () => {
                 <div className="flex justify-between">
                   <span>Eligible Leave Days:</span>
                   <span className="font-medium">{eligibleDays}</span>
-                  {remainingDaysFromBalance > 0 && remainingDaysFromBalance !== eligibleDays && (
-                    <span className="text-xs text-gray-500 ml-2">
-                      (Study balance: {remainingDaysFromBalance} days)
-                    </span>
-                  )}
                 </div>
                 {primaryDeduction > 0 && (
                   <div className="flex justify-between">
@@ -687,6 +742,37 @@ const LeaveApplication = () => {
                     <span className="font-medium">{unpaidDays} days</span>
                   </div>
                 )}
+                <div className="border-t pt-3 mt-3">
+                  <h4 className="font-medium mb-2">Estimated balance after approval</h4>
+                  {balancesLoading ? (
+                    <p className="text-sm text-gray-500">Loading current balances...</p>
+                  ) : balancesError ? (
+                    <p className="text-sm text-red-600">{balancesError}</p>
+                  ) : projectedBalances.length > 0 ? (
+                    <div className="space-y-1">
+                      {projectedBalances.map((balance) => (
+                        <div className="flex justify-between text-sm" key={balance.name}>
+                          <span>{balance.name}:</span>
+                          <span className="font-medium">
+                            {formatBalanceDays(balance.current)} to{' '}
+                            {formatBalanceDays(balance.projected)} days
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : hasPlannedBalanceMovement ? (
+                    <p className="text-sm text-amber-700">
+                      A balance will change, but its current balance could not be loaded.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-500">
+                      No balance deduction is expected for this leave.
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-2">
+                    This is an estimate; balances change only after the application is approved.
+                  </p>
+                </div>
                 {eligibleDays <= 0 && (
                   <div className="text-red-600 font-medium">
                     No Eligible Leave Days. The selected dates fall on excluded days for this leave
