@@ -10,27 +10,111 @@
 # ============================================================
 
 # ── Configuration ──────────────────────────────────────────────────────────
+set -o pipefail
+
+load_environment_file() {
+    local env_file="/var/www/private/hrdemo.env"
+    local line name value
+
+    [ -r "$env_file" ] || return 0
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        line=${line//$'\r'/}
+        [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+        name="${BASH_REMATCH[1]}"
+        value="${BASH_REMATCH[2]}"
+
+        case "$name" in
+            DB_*|BACKUP_*|S3_BUCKET|AWS_*|APP_ROOT|RESTORE_TEST_*) ;;
+            *) continue ;;
+        esac
+
+        [[ -v $name ]] && continue
+
+        case "$value" in
+            \"*\") value="${value:1:${#value}-2}" ;;
+            \'*\') value="${value:1:${#value}-2}" ;;
+        esac
+        export "$name=$value"
+    done < "$env_file"
+}
+
+load_environment_file
+
+DRY_RUN_REQUESTED=0
+for arg in "$@"; do
+    [ "$arg" = "--dry-run" ] && DRY_RUN_REQUESTED=1
+done
+
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-3306}"
 DB_USER="${DB_USERNAME:-muwascohr}"
 DB_PASS="${DB_PASSWORD:-}"
-DB_NAME="${DB_DATABASE:-admin_hrdemo}"
+if [ -z "$DB_DATABASE" ]; then
+    printf '%s [ERROR] DB_DATABASE is missing; refusing to guess the database name.\n' "$(date '+%Y-%m-%d %H:%M:%S')" >&2
+    exit 1
+fi
+DB_NAME="$DB_DATABASE"
 
-# SECURITY: never embed credentials here. Source them from the environment:
-#   set -a; . /path/to/.env; set +a; ./backup.sh
-if [ -z "$DB_PASS" ]; then
-    echo -e "${RED}[ERROR]${NC} DB_PASSWORD is not set. Export DB_PASSWORD (or source your .env) instead of hardcoding credentials." >&2
+if [ -z "$DB_PASS" ] && [ "$DRY_RUN_REQUESTED" -ne 1 ]; then
+    printf '%s [ERROR] DB_PASSWORD is missing; set it in %s or the environment.\n' "$(date '+%Y-%m-%d %H:%M:%S')" "/var/www/private/hrdemo.env" >&2
     exit 1
 fi
 
-BACKUP_DIR="${BACKUP_PATH:-$(dirname "$0")}"
+APP_ROOT="${APP_ROOT:-/var/www/vhosts/muwascoerp.co.ke/app.muwascoerp.co.ke}"
+BACKUP_DIR="${BACKUP_PATH:-/var/www/private/muwasco-backups}"
+BACKUP_UPLOAD_DIRS="${BACKUP_UPLOAD_DIRS:-$APP_ROOT/backend/storage/app}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 DATE_STAMP=$(date +"%Y-%m-%d")
+FAILED=0
+LOG_FILE=""
 
 MYSQLDUMP_CMD="mysqldump"
 GZIP_CMD="gzip"
 AWS_CLI="aws"
+MYSQL_DEFAULTS_FILE=""
+RESTORE_TEST_DEFAULTS_FILE=""
+MYSQL_DEFAULTS_FILES=()
+
+cleanup_mysql_defaults() {
+    local file
+    for file in "${MYSQL_DEFAULTS_FILES[@]}"; do
+        rm -f -- "$file"
+    done
+}
+
+trap cleanup_mysql_defaults EXIT
+
+create_mysql_defaults_file() {
+    local target_var="$1"
+    local mysql_user="$2"
+    local mysql_password="$3"
+    local escaped_password defaults_file
+
+    escaped_password="${mysql_password//\\/\\\\}"
+    escaped_password="${escaped_password//\"/\\\"}"
+    defaults_file=$(mktemp "${TMPDIR:-/tmp}/muwasco-mysql-XXXXXX") || {
+        log_error "Could not create temporary MySQL option file"
+        return 1
+    }
+    MYSQL_DEFAULTS_FILES+=("$defaults_file")
+    printf -v "$target_var" '%s' "$defaults_file"
+    chmod 600 "$defaults_file" || {
+        log_error "Could not secure temporary MySQL option file"
+        return 1
+    }
+    {
+        printf '[client]\n'
+        printf 'host=%s\n' "$DB_HOST"
+        printf 'port=%s\n' "$DB_PORT"
+        printf 'user=%s\n' "$mysql_user"
+        printf 'password="%s"\n' "$escaped_password"
+    } > "$defaults_file" || {
+        log_error "Could not write temporary MySQL option file"
+        return 1
+    }
+}
 
 # ── Backup encryption ───────────────────────────────────────────────────────
 # Backups are encrypted so a stolen backup, an offsite S3 copy, or a lost
@@ -69,7 +153,7 @@ AWS_CLI="aws"
 # Set BACKUP_ENCRYPTION=0 to fall back to plaintext archives (local dev only;
 # the production host should leave it on).
 BACKUP_ENCRYPTION="${BACKUP_ENCRYPTION:-1}"
-BACKUP_KEY_FILE="${BACKUP_KEY_FILE:-/var/www/private/backup.key}"
+BACKUP_KEY_FILE="${BACKUP_KEY_FILE:-/root/.muwasco-backup/backup.key}"
 BACKUP_OPENSSL_CIPHER="aes-256-cbc"
 # PBKDF2 work factor applied to the key file contents. This slows brute force
 # of a leaked key file; it does NOT protect a key file that is itself
@@ -88,9 +172,8 @@ backup_mac_key() {
 
 # Returns the encryption password via BACKUP_ENCRYPTION_PASSWORD.
 # Exits the script if the key is missing or unsafe.
-load_backup_key() {
+validate_backup_key() {
     if [ "$BACKUP_ENCRYPTION" != "1" ]; then
-        BACKUP_ENCRYPTION_PASSWORD=""
         return 0
     fi
 
@@ -98,26 +181,41 @@ load_backup_key() {
         log_error "BACKUP_ENCRYPTION=1 but the key file is not readable: ${BACKUP_KEY_FILE}"
         log_error "Create it with: openssl rand -hex 32 > ${BACKUP_KEY_FILE} && chmod 600 ${BACKUP_KEY_FILE}"
         log_error "It MUST live outside ${BACKUP_DIR}."
-        exit 1
+        return 1
     fi
 
-    # Refuse to write an archive next to its own key.
     local key_abs backup_abs
-    key_abs=$(cd "$(dirname "$BACKUP_KEY_FILE")" 2>/dev/null && pwd)/$(basename "$BACKUP_KEY_FILE")
-    backup_abs=$(cd "$BACKUP_DIR" 2>/dev/null && pwd)
+    key_abs=$(realpath -m -- "$BACKUP_KEY_FILE") || {
+        log_error "Could not resolve BACKUP_KEY_FILE: ${BACKUP_KEY_FILE}"
+        return 1
+    }
+    backup_abs=$(realpath -m -- "$BACKUP_DIR") || {
+        log_error "Could not resolve BACKUP_DIR: ${BACKUP_DIR}"
+        return 1
+    }
     case "$key_abs" in
+        "$backup_abs"|\
         "$backup_abs"/*)
             log_error "BACKUP_KEY_FILE (${key_abs}) is inside BACKUP_DIR (${backup_abs})."
             log_error "A backup stored with its own decryption key is not encrypted. Move the key out and retry."
-            exit 1
+            return 1
             ;;
     esac
 
-    BACKUP_ENCRYPTION_PASSWORD=$(cat "$BACKUP_KEY_FILE")
-    if [ -z "$BACKUP_ENCRYPTION_PASSWORD" ]; then
-        log_error "BACKUP_KEY_FILE is empty: ${BACKUP_KEY_FILE}"
-        exit 1
+    if [ ! -f "$BACKUP_KEY_FILE" ] || [ ! -s "$BACKUP_KEY_FILE" ]; then
+        log_error "BACKUP_KEY_FILE is missing, not a regular file, or empty: ${BACKUP_KEY_FILE}"
+        return 1
     fi
+}
+
+load_backup_key() {
+    validate_backup_key || exit 1
+    if [ "$BACKUP_ENCRYPTION" != "1" ]; then
+        BACKUP_ENCRYPTION_PASSWORD=""
+        return 0
+    fi
+
+    BACKUP_ENCRYPTION_PASSWORD=$(cat "$BACKUP_KEY_FILE")
 
     # MUST be exported: `openssl -pass env:VAR` reads the variable from the
     # CHILD process environment, and an unexported shell variable is invisible
@@ -135,8 +233,15 @@ verify_archive_mac() {
 
     local expected actual
     expected=$(cut -d' ' -f2 "$mac_file" | tr -d '[:space:]')
+    if [ -z "$expected" ]; then
+        log_error "empty MAC file: ${mac_file}"
+        return 1
+    fi
     actual=$(openssl dgst -sha256 -mac HMAC -macopt "hexkey:$(backup_mac_key)" "$archive" \
-             | cut -d' ' -f2 | tr -d '[:space:]')
+             | cut -d' ' -f2 | tr -d '[:space:]') || {
+        log_error "Could not calculate MAC for ${archive}"
+        return 1
+    }
 
     if [ "$expected" != "$actual" ]; then
         return 1
@@ -144,6 +249,14 @@ verify_archive_mac() {
     return 0
 }
 
+write_sha256() {
+    local archive="$1"
+    if ! sha256sum "$archive" > "${archive}.sha256"; then
+        rm -f -- "${archive}.sha256"
+        log_error "Could not create SHA-256 checksum for ${archive}"
+        return 1
+    fi
+}
 
 # Encrypt a plaintext archive in place, writing <final> and <final>.hmac.
 # Usage: encrypt_archive <plain_path> <final_path>
@@ -217,15 +330,29 @@ NC='\033[0m' # No Color
 # ── Functions ──────────────────────────────────────────────────────────────
 
 log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+    log_message "INFO" "$GREEN" "$1"
 }
 
 log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
+    log_message "WARN" "$YELLOW" "$1"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    FAILED=1
+    log_message "ERROR" "$RED" "$1"
+}
+
+log_message() {
+    local level="$1"
+    local color="$2"
+    local message="$3"
+    local line
+
+    line="$(date '+%Y-%m-%d %H:%M:%S') [${level}] ${message}"
+    printf '%b\n' "${color}${line}${NC}"
+    if [ -n "$LOG_FILE" ]; then
+        printf '%s\n' "$line" >> "$LOG_FILE"
+    fi
 }
 
 # Create backup directory
@@ -235,10 +362,32 @@ ensure_backup_dir() {
     mkdir -p "$BACKUP_DIR/logs"
 }
 
+validate_backup_location() {
+    local backup_abs app_abs
+    backup_abs=$(realpath -m -- "$BACKUP_DIR") || {
+        log_error "Could not resolve BACKUP_DIR: ${BACKUP_DIR}"
+        return 1
+    }
+    app_abs=$(realpath -m -- "$APP_ROOT") || {
+        log_error "Could not resolve APP_ROOT: ${APP_ROOT}"
+        return 1
+    }
+
+    case "$backup_abs" in
+        "$app_abs"|"$app_abs"/*|/var/www/vhosts/*|/var/www/html|/var/www/html/*)
+            log_error "BACKUP_DIR (${backup_abs}) must be outside the application and web roots."
+            return 1
+            ;;
+    esac
+}
+
 # Backup database
 backup_database() {
     local backup_file="$BACKUP_DIR/database/${DB_NAME}_${TIMESTAMP}.sql"
     local compressed_file="${backup_file}.gz"
+    local dump_err="$BACKUP_DIR/logs/mysqldump_${TIMESTAMP}.err"
+    local -a dump_status
+    local dump_rc sed_rc
     
     log_info "Starting database backup: ${DB_NAME}"
     
@@ -268,11 +417,7 @@ backup_database() {
     #
     # NOTE: --skip-generated-columns is a MySQL 8 option and is REJECTED by
     # MariaDB's mysqldump ("unknown option"). Do not add it.
-    $MYSQLDUMP_CMD \
-        --host="$DB_HOST" \
-        --port="$DB_PORT" \
-        --user="$DB_USER" \
-        --password="$DB_PASS" \
+    $MYSQLDUMP_CMD --defaults-extra-file="$MYSQL_DEFAULTS_FILE" \
         --single-transaction \
         --routines \
         --triggers \
@@ -280,12 +425,17 @@ backup_database() {
         --add-drop-table \
         --complete-insert \
         --skip-lock-tables \
-        "$DB_NAME" 2>/dev/null \
+        "$DB_NAME" 2>"$dump_err" \
     | sed "s/SQL_MODE='NO_AUTO_VALUE_ON_ZERO'/SQL_MODE='NO_AUTO_VALUE_ON_ZERO,NO_ZERO_IN_DATE,NO_ZERO_DATE'/g" \
     > "$backup_file"
+    dump_status=("${PIPESTATUS[@]}")
+    dump_rc="${dump_status[0]}"
+    sed_rc="${dump_status[1]}"
 
-    if [ ! -s "$backup_file" ]; then
-        log_error "Database dump failed or produced an empty file"
+    if [ "$dump_rc" -ne 0 ] || [ "$sed_rc" -ne 0 ] || [ ! -s "$backup_file" ] \
+            || ! grep -q -- '^-- Dump completed' "$backup_file"; then
+        log_error "Database dump failed (mysqldump exit ${dump_rc}, sed exit ${sed_rc}) or lacked the completion marker; partial dump removed. See ${dump_err}"
+        rm -f "$backup_file" "$compressed_file"
         return 1
     fi
     
@@ -303,7 +453,7 @@ backup_database() {
         log_info "Database backup completed: ${final_file} (${size})"
         
         # Generate checksum (sha256; keep .md5 for backward compatibility)
-        sha256sum "$final_file" > "${final_file}.sha256"
+        write_sha256 "$final_file" || return 1
         
         return 0
     else
@@ -314,23 +464,45 @@ backup_database() {
 
 # Backup uploaded files
 backup_files() {
-    local upload_dir="$(dirname "$0")/../../../uploads"
     local backup_file="$BACKUP_DIR/files/uploads_${TIMESTAMP}.tar.gz"
-    
-    if [ ! -d "$upload_dir" ]; then
-        log_warn "Upload directory not found: ${upload_dir}"
-        return 0
+    local upload_dir resolved_dir tar_path tar_rc tar_err="$BACKUP_DIR/logs/tar_${TIMESTAMP}.err"
+    local -a upload_dirs=() tar_paths=()
+
+    read -r -a upload_dirs <<< "$BACKUP_UPLOAD_DIRS"
+    for upload_dir in "${upload_dirs[@]}"; do
+        resolved_dir=$(realpath -m -- "$upload_dir") || {
+            log_error "Could not resolve upload directory: ${upload_dir}"
+            return 1
+        }
+        if [ ! -d "$resolved_dir" ]; then
+            log_error "Upload directory not found: ${resolved_dir}"
+            return 1
+        fi
+        tar_path="${resolved_dir#/}"
+        tar_paths+=("$tar_path")
+    done
+    if [ "${#tar_paths[@]}" -eq 0 ]; then
+        log_error "BACKUP_UPLOAD_DIRS did not contain any directories"
+        return 1
     fi
-    
+
     log_info "Starting files backup"
-    
-    tar -czf "$backup_file" \
-        --exclude="*.log" \
-        --exclude="cache/*" \
-        -C "$(dirname "$upload_dir")" \
-        "$(basename "$upload_dir")" 2>&1
-    
-    if [ $? -eq 0 ]; then
+
+    tar -czf "$backup_file" -C / -- "${tar_paths[@]}" 2>"$tar_err"
+    tar_rc=$?
+    if [ "$tar_rc" -eq 1 ]; then
+        log_warn "tar reported files changing during the archive; keeping the created archive"
+        while IFS= read -r line; do
+            [ -n "$line" ] && log_warn "tar: ${line}"
+        done < "$tar_err"
+    elif [ "$tar_rc" -ge 2 ]; then
+        log_error "Files backup failed (tar exit ${tar_rc}); see ${tar_err}"
+        rm -f "$backup_file"
+        return 1
+    fi
+
+    if [ -s "$backup_file" ]; then
+        rm -f "$tar_err"
         # Same treatment as the database dump: encrypt, self-check, keep the
         # ciphertext. Note these files are ALREADY encrypted at rest by
         # StorageEncryption, so this is a second independent layer - the
@@ -344,35 +516,47 @@ backup_files() {
         log_info "Files backup completed: ${final_file} (${size})"
         
         # Generate checksum (sha256; keep .md5 for backward compatibility)
-        sha256sum "$final_file" > "${final_file}.sha256"
+        write_sha256 "$final_file" || return 1
         
         return 0
-    else
-        log_error "Files backup failed"
-        return 1
     fi
+
+    log_error "Files backup failed: tar did not create an archive"
+    return 1
 }
 
 # Rotate old backups
 rotate_backups() {
     log_info "Rotating backups older than ${RETENTION_DAYS} days"
-    
-    local deleted=0
-    
-    # Rotate database backups (.enc, since archives are encrypted)
-    deleted=$(find "$BACKUP_DIR/database" -name "*.enc" -type f -mtime +${RETENTION_DAYS} -delete -print | wc -l)
-    find "$BACKUP_DIR/database" -name "*.md5" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
-    find "$BACKUP_DIR/database" -name "*.sha256" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
-    # Remove any partials an interrupted run may have left behind.
-    find "$BACKUP_DIR/database" -name "*.partial.*" -type f -mtime +1 -delete 2>/dev/null
-    
-    # Rotate file backups
-    deleted=$((deleted + $(find "$BACKUP_DIR/files" -name "*.tar.gz.enc" -type f -mtime +${RETENTION_DAYS} -delete -print | wc -l)))
-    find "$BACKUP_DIR/files" -name "*.md5" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
-    find "$BACKUP_DIR/files" -name "*.sha256" -type f -mtime +${RETENTION_DAYS} -delete 2>/dev/null
-    find "$BACKUP_DIR/files" -name "*.partial.*" -type f -mtime +1 -delete 2>/dev/null
-    
-    log_info "Removed ${deleted} old backup(s)"
+
+    if ! find "$BACKUP_DIR/database" "$BACKUP_DIR/files" -type f \
+            -mtime +"$RETENTION_DAYS" \
+            \( -name "*.enc" -o -name "*.gz" -o -name "*.sha256" -o -name "*.md5" -o -name "*.hmac" \) \
+            -delete; then
+        log_error "Could not remove expired backup files"
+        return 1
+    fi
+    if ! find "$BACKUP_DIR/database" "$BACKUP_DIR/files" -type f -name "*.partial.*" -mtime +1 -delete; then
+        log_error "Could not remove stale partial backup files"
+        return 1
+    fi
+
+    local directory mac_file
+    for directory in "$BACKUP_DIR/database" "$BACKUP_DIR/files"; do
+        for mac_file in "$directory"/*.hmac; do
+            [ -e "$mac_file" ] || continue
+            if [ ! -e "${mac_file%.hmac}" ] && ! rm -f -- "$mac_file"; then
+                log_error "Could not remove orphaned MAC file: ${mac_file}"
+                return 1
+            fi
+        done
+    done
+
+    if ! find "$BACKUP_DIR/logs" -type f -mtime +"$RETENTION_DAYS" -delete; then
+        log_error "Could not remove expired backup logs"
+        return 1
+    fi
+    log_info "Backup rotation completed"
 }
 
 # Verify last backup integrity
@@ -462,11 +646,13 @@ verify_backup() {
 # found on 2026-09-29 was a dump that was perfectly intact yet unrestorable.
 # A backup that has never been restored is not a backup.
 restore_test() {
+    local defaults_file="${1:-$MYSQL_DEFAULTS_FILE}"
     local latest_db=$(ls -t "$BACKUP_DIR/database"/*.enc 2>/dev/null | head -1)
     [ -z "$latest_db" ] && latest_db=$(ls -t "$BACKUP_DIR/database"/*.gz 2>/dev/null | head -1)
     [ -n "$latest_db" ] || { log_warn "No database backup to restore-test"; return 0; }
 
     local scratch="${DB_NAME}_restore_test"
+    local restore_err
     log_info "Restore-testing ${latest_db} into scratch database '${scratch}'"
 
     # Decrypt to a throwaway gzip first when the archive is encrypted, so the
@@ -488,11 +674,24 @@ restore_test() {
     fi
 
     # Always start from a clean slate so a previous failure cannot mask a new one.
-    mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
-        -e "DROP DATABASE IF EXISTS \`${scratch}\`; CREATE DATABASE \`${scratch}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" 2>/dev/null
+    restore_err=$(mktemp "${TMPDIR:-/tmp}/restore_mysql_XXXXXX") || {
+        log_error "Could not create temporary restore-test error file"
+        [ "$BACKUP_ENCRYPTION" = "1" ] && rm -f "$plaintext_gz"
+        return 1
+    }
+    if ! mysql --defaults-extra-file="$defaults_file" \
+            -e "DROP DATABASE IF EXISTS \`${scratch}\`; CREATE DATABASE \`${scratch}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;" 2>"$restore_err"; then
+        log_error "Cannot prepare scratch database '${scratch}'. The restore-test DB user must be allowed to DROP and CREATE it."
+        while IFS= read -r line; do
+            [ -n "$line" ] && log_error "MySQL: ${line}"
+        done < "$restore_err"
+        rm -f "$restore_err"
+        [ "$BACKUP_ENCRYPTION" = "1" ] && rm -f "$plaintext_gz"
+        return 1
+    fi
 
-    gunzip -c "$plaintext_gz" | mysql --host="$DB_HOST" --port="$DB_PORT" \
-        --user="$DB_USER" --password="$DB_PASS" "$scratch" 2>/tmp/restore_test_err.$$
+    gunzip -c "$plaintext_gz" | mysql --defaults-extra-file="$defaults_file" \
+        "$scratch" 2>"$restore_err"
 
     local rc=$?
     if [ "$BACKUP_ENCRYPTION" = "1" ]; then
@@ -500,28 +699,46 @@ restore_test() {
     fi
     if [ $rc -ne 0 ]; then
         log_error "RESTORE TEST FAILED - this backup is NOT restorable:"
-        head -5 /tmp/restore_test_err.$$ >&2
-        rm -f /tmp/restore_test_err.$$
+        while IFS= read -r line; do
+            [ -n "$line" ] && log_error "MySQL: ${line}"
+        done < "$restore_err"
+        rm -f "$restore_err"
         return 1
     fi
-    rm -f /tmp/restore_test_err.$$
+    rm -f "$restore_err"
 
     # Compare table count against the live database.
-    local live_tables=$(mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
+    local live_tables=$(mysql --defaults-extra-file="$defaults_file" \
         -N -B -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='${DB_NAME}' AND TABLE_TYPE='BASE TABLE';" 2>/dev/null)
-    local restored_tables=$(mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
+    local restored_tables=$(mysql --defaults-extra-file="$defaults_file" \
         -N -B -e "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA='${scratch}' AND TABLE_TYPE='BASE TABLE';" 2>/dev/null)
 
     if [ "$live_tables" = "$restored_tables" ]; then
         log_info "Restore test PASSED (${restored_tables}/${live_tables} tables)"
-        mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
-            -e "DROP DATABASE \`${scratch}\`;" 2>/dev/null
+        if ! mysql --defaults-extra-file="$defaults_file" \
+                -e "DROP DATABASE \`${scratch}\`;" 2>"$restore_err"; then
+            log_error "Cannot DROP scratch database '${scratch}'. The restore-test DB user must be granted DROP privilege."
+            while IFS= read -r line; do
+                [ -n "$line" ] && log_error "MySQL: ${line}"
+            done < "$restore_err"
+            rm -f "$restore_err"
+            return 1
+        fi
+        rm -f "$restore_err"
         return 0
     fi
 
     log_error "RESTORE TEST FAILED: ${restored_tables} tables restored vs ${live_tables} live"
-    mysql --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
-        -e "DROP DATABASE \`${scratch}\`;" 2>/dev/null
+    if ! mysql --defaults-extra-file="$defaults_file" \
+            -e "DROP DATABASE \`${scratch}\`;" 2>"$restore_err"; then
+        log_error "Cannot DROP scratch database '${scratch}'. The restore-test DB user must be granted DROP privilege."
+        while IFS= read -r line; do
+            [ -n "$line" ] && log_error "MySQL: ${line}"
+        done < "$restore_err"
+        rm -f "$restore_err"
+        return 1
+    fi
+    rm -f "$restore_err"
     return 1
 }
 
@@ -541,6 +758,7 @@ sync_to_offsite() {
         --exclude "*.log" \
         --exclude "*.partial.*" \
         --exclude "*.sql" \
+        --exclude ".backup.lock" \
         --include "*.hmac" \
         --storage-class STANDARD_IA \
         --no-progress 2>&1
@@ -555,21 +773,89 @@ sync_to_offsite() {
 # ── Main execution ─────────────────────────────────────────────────────────
 
 main() {
-    local mode="${1:-both}"
-    
-    echo ""
-    echo "============================================"
-    echo " MUWASCO HR System - Backup Utility"
-    echo " $(date)"
-    echo "============================================"
-    echo ""
-    
-    ensure_backup_dir
+    local mode="--both"
+    local lock_fd
+    local rotate_enabled=1
+    local database_in_run=1
+    local dry_run="$DRY_RUN_REQUESTED"
+    local restore_weekday="${RESTORE_TEST_WEEKDAY:-}"
+    local arg resolved_backup resolved_app resolved_key resolved_upload upload_dir
+    local -a upload_dirs=()
+
+    for arg in "$@"; do
+        case "$arg" in
+            --database|--files|--both) mode="$arg" ;;
+            --dry-run) dry_run=1 ;;
+            --no-rotate) rotate_enabled=0 ;;
+            --rotate) rotate_enabled=1 ;;
+            *)
+                log_error "Unknown option: ${arg}"
+                return 1
+                ;;
+        esac
+    done
+    [ "$mode" = "--files" ] && database_in_run=0
+
+    validate_backup_location || return 1
+    if [ "$dry_run" -eq 1 ]; then
+        validate_backup_key || return 1
+        resolved_backup=$(realpath -m -- "$BACKUP_DIR") || return 1
+        resolved_app=$(realpath -m -- "$APP_ROOT") || return 1
+        resolved_key=$(realpath -m -- "$BACKUP_KEY_FILE") || return 1
+        read -r -a upload_dirs <<< "$BACKUP_UPLOAD_DIRS"
+        printf 'DRY RUN - no files or directories will be written\n'
+        printf 'Mode: %s\n' "$mode"
+        printf 'Application root: %s\n' "$resolved_app"
+        printf 'Backup directory: %s\n' "$resolved_backup"
+        printf 'Upload directories:'
+        for upload_dir in "${upload_dirs[@]}"; do
+            resolved_upload=$(realpath -m -- "$upload_dir") || return 1
+            printf ' %s' "$resolved_upload"
+        done
+        printf '\nDatabase: %s@%s:%s/%s\n' "$DB_USER" "$DB_HOST" "$DB_PORT" "$DB_NAME"
+        printf 'Encryption: %s\n' "$BACKUP_ENCRYPTION"
+        printf 'Key file: %s\n' "$resolved_key"
+        printf 'Retention days: %s\n' "$RETENTION_DAYS"
+        printf 'Restore-test weekday: %s\n' "${restore_weekday:-not configured}"
+        return 0
+    fi
+
+    if [ -n "$restore_weekday" ] && [[ ! "$restore_weekday" =~ ^[1-7]$ ]]; then
+        log_error "RESTORE_TEST_WEEKDAY must be an ISO weekday from 1 (Monday) to 7 (Sunday)"
+        return 1
+    fi
+    if { [ -n "${RESTORE_TEST_USER:-}" ] && [ -z "${RESTORE_TEST_PASSWORD:-}" ]; } \
+            || { [ -z "${RESTORE_TEST_USER:-}" ] && [ -n "${RESTORE_TEST_PASSWORD:-}" ]; }; then
+        log_error "RESTORE_TEST_USER and RESTORE_TEST_PASSWORD must be configured together"
+        return 1
+    fi
+    if { [ -n "${RESTORE_TEST_USER:-}" ] || [ -n "${RESTORE_TEST_PASSWORD:-}" ]; } \
+            && [ -z "$restore_weekday" ]; then
+        log_error "RESTORE_TEST_WEEKDAY is required when separate restore-test credentials are configured"
+        return 1
+    fi
+
+    mkdir -p "$BACKUP_DIR/logs" || {
+        log_error "Could not create log directory: ${BACKUP_DIR}/logs"
+        exit 1
+    }
+    LOG_FILE="$BACKUP_DIR/logs/backup_${DATE_STAMP}.log"
+    exec {lock_fd}>"$BACKUP_DIR/.backup.lock" || {
+        log_error "Could not open backup lock file: ${BACKUP_DIR}/.backup.lock"
+        return 1
+    }
+    if ! flock -n "$lock_fd"; then
+        log_error "Another backup run is already in progress; exiting."
+        return 1
+    fi
+    log_info "Backup utility started (mode: ${mode})"
 
     # Load (and validate) the backup encryption key BEFORE anything is written.
     # load_backup_key aborts if the key is missing, empty, or stored inside
     # BACKUP_DIR, so a run never produces an archive it cannot later open.
     load_backup_key
+    ensure_backup_dir
+    create_mysql_defaults_file MYSQL_DEFAULTS_FILE "$DB_USER" "$DB_PASS" || exit 1
     if [ "$BACKUP_ENCRYPTION" = "1" ]; then
         log_info "Backup encryption: ON (${BACKUP_OPENSSL_CIPHER}, key outside backup dir)"
     else
@@ -578,44 +864,60 @@ main() {
     
     case "$mode" in
         --database)
-            backup_database
+            backup_database || log_error "Database backup operation failed"
             ;;
         --files)
-            backup_files
+            backup_files || log_error "Files backup operation failed"
             ;;
-        --both|*)
-            backup_database
-            backup_files
+        --both)
+            backup_database || log_error "Database backup operation failed"
+            backup_files || log_error "Files backup operation failed"
             ;;
     esac
-    
-    # Rotate old backups
-    if [ "$2" = "--rotate" ] || [ "$1" = "--rotate" ]; then
-        rotate_backups
-    fi
-    
+
     # Verify integrity
     verify_backup
 
     # Prove the latest backup can actually be replayed. A failed restore test
     # must fail the run, otherwise a corrupt-but-intact dump silently becomes
     # the thing you discover during an outage.
-    if [ "${SKIP_RESTORE_TEST:-0}" != "1" ]; then
+    if [ "${SKIP_RESTORE_TEST:-0}" != "1" ] && [ "$database_in_run" -eq 1 ]; then
         restore_test || log_error "Latest backup is NOT restorable - investigate before relying on it"
-    else
+        if [ -n "$restore_weekday" ] && [ "$(date +%u)" = "$restore_weekday" ]; then
+            if [ -n "${RESTORE_TEST_USER:-}" ]; then
+                create_mysql_defaults_file RESTORE_TEST_DEFAULTS_FILE \
+                    "$RESTORE_TEST_USER" "$RESTORE_TEST_PASSWORD" || return 1
+                restore_test "$RESTORE_TEST_DEFAULTS_FILE" \
+                    || log_error "Weekly restore test with RESTORE_TEST_USER failed"
+            else
+                restore_test || log_error "Weekly restore test failed"
+            fi
+        fi
+    elif [ "${SKIP_RESTORE_TEST:-0}" = "1" ]; then
         log_warn "SKIP_RESTORE_TEST=1 - restore test skipped by request"
+    else
+        log_info "Restore test skipped because this run did not include the database"
     fi
     
     # Sync to offsite
     sync_to_offsite
+
+    if [ "$FAILED" -eq 0 ] && [ "$rotate_enabled" -eq 1 ]; then
+        rotate_backups || log_error "Backup rotation failed"
+    elif [ "$rotate_enabled" -eq 0 ]; then
+        log_info "Backup rotation skipped (--no-rotate)"
+    else
+        log_warn "Backup rotation skipped because this run has errors"
+    fi
     
-    echo ""
+    if [ "$FAILED" -ne 0 ]; then
+        log_error "Backup process failed"
+        return 1
+    fi
+
     log_info "Backup process completed"
-    echo ""
+    return 0
 }
 
 # Execute main function
 main "$@"
-
-
-
