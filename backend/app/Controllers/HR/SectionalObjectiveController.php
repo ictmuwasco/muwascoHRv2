@@ -453,7 +453,16 @@ class SectionalObjectiveController extends BaseController
 
         if (($scope['is_dept_head'] || $scope['role'] === 'hr_manager') && $scope['department_id'] !== null) {
             $sql = self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . '
-                WHERE pc.department_id = ? AND wo.level = \'department\'
+                WHERE pc.department_id = ?
+                  AND COALESCE(
+                      NULLIF(wo.level, \'\'),
+                      CASE
+                          WHEN wo.subsection_id IS NOT NULL THEN \'subsection\'
+                          WHEN wo.section_id IS NOT NULL THEN \'section\'
+                          ELSE \'department\'
+                      END
+                  ) IN (\'department\', \'section\')
+                  AND wo.soft_deleted = 0
                 ORDER BY pc.name, wo.objective';
             $stmt = $this->db->prepare($sql);
             $dept = (int) $scope['department_id'];
@@ -612,26 +621,49 @@ class SectionalObjectiveController extends BaseController
 
     /**
      * Validate that the given activity ids and employee ids are within the
-     * caller's scope. Returns [activityIds, employeeIds, firstEmpRef].
+     * caller's scope and that each activity matches at least one selected
+     * employee. Also returns invalid IDs for explicit request errors.
      */
     private function validateAssignments(array $scope, array $activityIds, array $employeeIds): array
     {
         $validActivities = [];
-        if (!empty($activityIds)) {
-            $allowed = array_map('intval', array_column($this->scopedActivities($scope), 'id'));
-            foreach ($activityIds as $aid) {
-                $aid = (int) $aid;
-                if (in_array($aid, $allowed, true)) $validActivities[] = $aid;
+        $requestedActivityIds = array_map('intval', $activityIds);
+        $activitiesById = [];
+        if ($requestedActivityIds !== []) {
+            foreach ($this->scopedActivities($scope) as $activity) {
+                $activitiesById[(int) $activity['id']] = $activity;
+            }
+            foreach ($requestedActivityIds as $aid) {
+                if (isset($activitiesById[$aid])) $validActivities[] = $aid;
             }
         }
 
         $emp = $this->scopedEmployees($scope);
         $allowedEmp = array_map('intval', array_column($emp['employees'], 'id'));
+        $requestedEmployeeIds = array_map('intval', $employeeIds);
         $validEmployees = [];
-        foreach ($employeeIds as $eid) {
-            $eid = (int) $eid;
+        $employeesById = [];
+        foreach ($emp['employees'] as $employee) {
+            $employeesById[(int) $employee['id']] = $employee;
+        }
+        foreach ($requestedEmployeeIds as $eid) {
             if (in_array($eid, $allowedEmp, true)) $validEmployees[] = $eid;
         }
+
+        // Keep the API's assignment validation consistent with the activity
+        // picker: each linked activity must match at least one selected
+        // employee's department, section and subsection.
+        $validActivities = array_values(array_filter(
+            $validActivities,
+            function (int $activityId) use ($activitiesById, $validEmployees, $employeesById): bool {
+                foreach ($validEmployees as $employeeId) {
+                    if ($this->activityMatchesEmployee($activitiesById[$activityId], $employeesById[$employeeId])) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        ));
 
         $firstEmp = null;
         if (!empty($validEmployees)) {
@@ -642,7 +674,50 @@ class SectionalObjectiveController extends BaseController
             $stmt->close();
         }
 
-        return [$validActivities, $validEmployees, $firstEmp];
+        return [
+            $validActivities,
+            $validEmployees,
+            $firstEmp,
+            array_values(array_diff($requestedActivityIds, $validActivities)),
+            array_values(array_diff($requestedEmployeeIds, $validEmployees)),
+        ];
+    }
+
+    /**
+     * Whether an activity's assigned unit contains the employee.
+     */
+    private function activityMatchesEmployee(array $activity, array $employee): bool
+    {
+        if (
+            !empty($activity['department_id'])
+            && !empty($employee['department_id'])
+            && (int) $activity['department_id'] !== (int) $employee['department_id']
+        ) {
+            return false;
+        }
+        $employeeType = strtolower(trim((string) ($employee['employee_type'] ?? '')));
+        if (in_array($employeeType, ['section_head', 'section_manager'], true)) {
+            if (
+                empty($activity['section_id'])
+                || (int) $activity['section_id'] !== (int) ($employee['section_id'] ?? 0)
+                || !empty($activity['subsection_id'])
+            ) {
+                return false;
+            }
+        }
+        if (
+            !empty($activity['section_id'])
+            && (int) $activity['section_id'] !== (int) ($employee['section_id'] ?? 0)
+        ) {
+            return false;
+        }
+        if (
+            !empty($activity['subsection_id'])
+            && (int) $activity['subsection_id'] !== (int) ($employee['subsection_id'] ?? 0)
+        ) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -677,8 +752,18 @@ class SectionalObjectiveController extends BaseController
             $this->error('Max score must be a positive number.', 422);
         }
 
-        [$validActivities, $validEmployees, $firstEmp] = $this->validateAssignments($scope, $activityIds, $employeeIds);
+        [$validActivities, $validEmployees, $firstEmp, $invalidActivities, $invalidEmployees] =
+            $this->validateAssignments($scope, $activityIds, $employeeIds);
 
+        if ($invalidEmployees !== []) {
+            $this->error('One or more selected employees are outside your assignment scope.', 422);
+        }
+        if (empty($validEmployees)) {
+            $this->error('Select at least one valid employee.', 422);
+        }
+        if ($invalidActivities !== []) {
+            $this->error('Every linked workplan activity must belong to a selected employee unit.', 422);
+        }
         if (empty($validActivities)) {
             $this->error('Select at least one valid workplan activity.', 422);
         }
@@ -691,10 +776,6 @@ class SectionalObjectiveController extends BaseController
         if ($maxScore <= 0) {
             $this->error('Max score must be a positive number.', 422);
         }
-        if (empty($validEmployees)) {
-            $this->error('Select at least one valid employee.', 422);
-        }
-
         $activityIdsStr = implode(',', $validActivities);
         $assignedStr    = implode(',', $validEmployees);
         $departmentId   = $firstEmp['department_id'] !== null ? (int) $firstEmp['department_id'] : null;
@@ -773,14 +854,40 @@ class SectionalObjectiveController extends BaseController
         $fields = [];
         $params = [];
         $types  = '';
+        $activityIdsProvided = isset($data['activity_ids']) && is_array($data['activity_ids']);
+        $employeeIds = $data['assigned_to_employee_ids'] ?? ($data['employee_ids'] ?? null);
+        $employeeIdsProvided = is_array($employeeIds);
+        $assignmentProvided = $activityIdsProvided || $employeeIdsProvided;
+        $validActivities = [];
+        $validEmployees = [];
+        $firstEmp = null;
+        if ($assignmentProvided) {
+            $activityIdsToValidate = $activityIdsProvided
+                ? $data['activity_ids']
+                : $this->parseEmployeeIds($old['activity_ids'] ?? null);
+            $employeeIdsToValidate = $employeeIdsProvided
+                ? $employeeIds
+                : $this->parseEmployeeIds($old['assigned_to_employee_ids'] ?? null);
+            [$validActivities, $validEmployees, $firstEmp, $invalidActivities, $invalidEmployees] =
+                $this->validateAssignments($scope, $activityIdsToValidate, $employeeIdsToValidate);
+            if ($invalidEmployees !== []) {
+                $this->error('One or more selected employees are outside your assignment scope.', 422);
+            }
+            if ($validEmployees === []) {
+                $this->error('Select at least one valid employee.', 422);
+            }
+            if ($invalidActivities !== []) {
+                $this->error('Every linked workplan activity must belong to a selected employee unit. Unlink incompatible activities and try again.', 422);
+            }
+            if ($validActivities === []) {
+                $this->error('Select at least one valid workplan activity.', 422);
+            }
+        }
+
         $objectiveMarksProvided = array_key_exists('objective_marks', $data);
         if ($objectiveMarksProvided) {
             if (!is_array($data['objective_marks']) || !isset($data['activity_ids']) || !is_array($data['activity_ids'])) {
                 $this->error('Objective marks must be submitted with the linked objectives.', 422);
-            }
-            [$validActivities] = $this->validateAssignments($scope, $data['activity_ids'], []);
-            if (empty($validActivities)) {
-                $this->error('Select at least one valid workplan activity.', 422);
             }
             $fields[] = 'max_score = ?';
             $params[] = $this->aggregateObjectiveMarks($data['objective_marks'], $validActivities);
@@ -810,22 +917,13 @@ class SectionalObjectiveController extends BaseController
             $params[] = !empty($data['is_recurrent']) ? 1 : 0;
             $types   .= 'i';
         }
-        if (isset($data['activity_ids']) && is_array($data['activity_ids'])) {
-            [$validActivities] = $this->validateAssignments($scope, $data['activity_ids'], []);
-            if (empty($validActivities)) {
-                $this->error('Select at least one valid workplan activity.', 422);
-            }
+        if ($activityIdsProvided) {
             $fields[] = 'activity_ids = ?';
             $params[] = implode(',', $validActivities);
             $types   .= 's';
         }
 
-        $employeeIds = $data['assigned_to_employee_ids'] ?? ($data['employee_ids'] ?? null);
-        if (is_array($employeeIds)) {
-            [, $validEmployees, $firstEmp] = $this->validateAssignments($scope, [], $employeeIds);
-            if (empty($validEmployees)) {
-                $this->error('Select at least one valid employee.', 422);
-            }
+        if ($employeeIdsProvided) {
             $fields[] = 'assigned_to_employee_ids = ?';
             $params[] = implode(',', $validEmployees);
             $types   .= 's';

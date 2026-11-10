@@ -27,7 +27,7 @@ const parseIds = (raw: string | null | undefined): number[] =>
     .map((s) => parseInt(s.trim(), 10))
     .filter((n) => !Number.isNaN(n) && n > 0);
 
-/** Unit-based activity <-> employee matching (department -> section -> subsection). */
+/** Match an activity to an employee's assignable organizational unit. */
 function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
   if (
     act.department_id &&
@@ -35,6 +35,11 @@ function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
     Number(act.department_id) !== Number(emp.department_id)
   )
     return false;
+  const employeeType = (emp.employee_type || '').toLowerCase();
+  if (employeeType === 'section_head' || employeeType === 'section_manager') {
+    if (!act.section_id || Number(act.section_id) !== Number(emp.section_id || 0)) return false;
+    if (act.subsection_id) return false;
+  }
   if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0)) return false;
   if (act.subsection_id && Number(act.subsection_id) !== Number(emp.subsection_id || 0))
     return false;
@@ -165,20 +170,38 @@ export default function Kpis() {
     0,
   );
 
+  const selectedEmployees = useMemo(
+    () =>
+      formEmpIds
+        .map((id) => employees.find((e) => Number(e.id) === id))
+        .filter((e): e is KpiEmployee => !!e),
+    [formEmpIds, employees],
+  );
+
   // Activities shown in the modal: those matching ANY selected employee, plus
   // already-linked ones (kept visible in edit mode so they can be unlinked).
   const modalActivities = useMemo(() => {
-    if (!modal.open) return [];
-    const selected = formEmpIds
-      .map((id) => employees.find((e) => Number(e.id) === id))
-      .filter((e): e is KpiEmployee => !!e);
-    if (selected.length === 0) return [];
-    return activities.filter(
+    if (!modal.open || selectedEmployees.length === 0) return [];
+    const linkedActivityIds = new Set(formActIds);
+    const activityMap = new Map<number, KpiActivity>();
+    [
+      ...activities,
+      ...linkedActivities.filter((activity) => linkedActivityIds.has(Number(activity.id))),
+    ].forEach((activity) => activityMap.set(Number(activity.id), activity));
+    return Array.from(activityMap.values()).filter(
       (a) =>
         formActIds.includes(Number(a.id)) ||
-        selected.some((emp) => activityMatchesEmployee(a, emp)),
+        selectedEmployees.some((emp) => activityMatchesEmployee(a, emp)),
     );
-  }, [modal.open, formEmpIds, formActIds, employees, activities]);
+  }, [modal.open, formActIds, selectedEmployees, activities, linkedActivities]);
+  const activityScopeHint =
+    role === 'dept_head' || role === 'hr_manager'
+      ? 'Only activities assigned to the selected section(s) are shown. Department-wide activities must be cascaded to a section before they can be linked to a section head KPI.'
+      : "Objectives shown are scoped to the selected employees' unit.";
+  const noMatchingActivitiesMessage =
+    role === 'dept_head' || role === 'hr_manager'
+      ? 'No section-specific workplan activities match the selected section head(s). Create or cascade activities to those section(s) first.'
+      : 'No matching workplan activities.';
 
   const openAdd = () => {
     setFormName('');
@@ -673,15 +696,13 @@ export default function Kpis() {
                   <span className="text-gray-400">{formActIds.length} selected</span>
                 </div>
               </div>
-              <p className="text-xs text-gray-400 mb-1">
-                Objectives shown are scoped to the selected employees' unit.
-              </p>
+              <p className="text-xs text-gray-400 mb-1">{activityScopeHint}</p>
               <div className="max-h-56 overflow-y-auto border border-gray-200 dark:border-slate-600 rounded-md divide-y divide-gray-100 dark:divide-slate-700">
                 {formEmpIds.length === 0 && (
                   <p className="p-3 text-sm text-gray-400">Select at least one employee first.</p>
                 )}
                 {formEmpIds.length > 0 && modalActivities.length === 0 && (
-                  <p className="p-3 text-sm text-gray-400">No matching workplan activities.</p>
+                  <p className="p-3 text-sm text-gray-400">{noMatchingActivitiesMessage}</p>
                 )}
                 {modalActivities.map((a) => (
                   <div
@@ -706,6 +727,12 @@ export default function Kpis() {
                           </span>
                         )}
                         <span className="flex flex-wrap gap-1 mt-1">
+                          {formActIds.includes(Number(a.id)) &&
+                            !selectedEmployees.some((emp) => activityMatchesEmployee(a, emp)) && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                                Existing link is outside the selected unit — unselect to remove
+                              </span>
+                            )}
                           {(a.contract_name || a.department_name) && (
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300">
                               {a.contract_name || a.department_name}
