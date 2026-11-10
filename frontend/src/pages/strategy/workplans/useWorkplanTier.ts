@@ -45,10 +45,6 @@ export function useWorkplanTier(view: TierView) {
       if (search) params.q = search;
       if (parentFilter) params.parent_id = parentFilter;
       if (fyId) params.financial_year_id = fyId;
-      // Section/subsection heads see only their own activities — ask the
-      // server to filter (pagination.total/last_page must agree with the
-      // row set the table actually renders).
-      if (view === 'section' || view === 'subsection') params.created_by_self = '1';
       const [listRes, sumRes] = await Promise.all([
         workplanService.list(params),
         workplanService.summary(view, fyId || undefined),
