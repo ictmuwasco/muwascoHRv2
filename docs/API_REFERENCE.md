@@ -475,3 +475,19 @@ Grouped alphabetically by first path segment.
 | GET | /workplans/section-sources | WorkplanController::sectionSources |
 | GET | /workplans/summary | WorkplanController::summary |
 
+#### Workplan list and summary scope
+
+`GET /workplans` accepts `view=md|department|section|subsection|integrated`. The server applies role-aware unit scope before optional filters. For department/section/subsection heads, the tier scopes are:
+
+- `department`: caller's department contract plus effective levels `department` and `section`.
+- `section`: caller's section, the caller's department contract, and effective levels `section` and `subsection`.
+- `subsection`: caller's subsection, the caller's department contract, and effective level `subsection`.
+- A section head requesting `view=subsection` is limited to subsections belonging to their own section and their department.
+
+Effective level uses the stored non-empty `workplan_objectives.level`, or infers a missing level from `subsection_id` then `section_id`, falling back to `department`. The `created_by_self=1` list parameter is still supported as an explicit additional filter; the tier-page hook does not send it.
+
+The `view=integrated` list selector adds `w.is_integrated = 1` to its `viewScope()` result; the dedicated `/workplans/integrated-view` endpoint is separate.
+
+`financial_year_id` filters list rows and summary aggregates. Without that parameter, the list has no default financial-year filter; summary applies the active-year filter by default only for `view=md`. In other views the no-FY summary includes all years, even though its `active_financial_year` field reports the latest active-year metadata. See [strategy-performance.md](strategy-performance.md#workplan-tier-visibility-implemented) for scope notes and verification limits.
+
+The `GET /sectional-objectives` payload supplies employees and selectable workplan activities for the KPI form. When a department head assigns a KPI to section heads, linked activities must belong to one of the selected employees' sections; department-wide and subsection activities are not valid for that assignment. The server applies the same unit check during create/update.
