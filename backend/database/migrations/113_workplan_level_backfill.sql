@@ -9,4 +9,4 @@ UPDATE workplan_objectives
        WHEN goal_id IS NOT NULL OR strategic_target_id IS NOT NULL THEN 'organisation'
        ELSE level
    END
- WHERE level IS NULL OR level = '';
+ WHERE COALESCE(LENGTH(level), 0) = 0;
