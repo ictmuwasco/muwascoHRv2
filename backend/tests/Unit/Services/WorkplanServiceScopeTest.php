@@ -82,6 +82,16 @@ final class WorkplanServiceScopeTest extends TestCase
         self::assertSame([12, 7], $params);
     }
 
+    public function testUnitTierScopesFailClosedWithoutDepartment(): void
+    {
+        [$where, $params] = $this->service()->viewScope($this->scope([
+            'is_section_head' => true,
+            'section_id' => 12,
+        ]), 'section');
+
+        self::assertSame(['1=0', []], [$where, $params]);
+    }
+
     /**
      * The view-scope branches do not use the database connection, so these
      * tests can exercise their SQL and bind parameters without a DB server.

@@ -158,13 +158,10 @@ class WorkplanService
 
         if ($view === 'section') {
             if ($scope['is_section_head'] && $scope['section_id'] !== null) {
-                if ($scope['department_id'] === null) {
-                    return ['1=0', []];
-                }
-                return [
+                return $this->departmentBoundScope($scope, [
                     "w.section_id = ? AND c.department_id = ? AND " . $this->effectiveLevelSql() . " IN ('section', 'subsection')",
                     [(int) $scope['section_id'], (int) $scope['department_id']],
-                ];
+                ]);
             }
             if ($scope['is_dept_head'] || $this->isHrDeptHead($scope)) {
                 return ['1=0', []];
@@ -174,22 +171,16 @@ class WorkplanService
 
         if ($view === 'subsection') {
             if ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null) {
-                if ($scope['department_id'] === null) {
-                    return ['1=0', []];
-                }
-                return [
+                return $this->departmentBoundScope($scope, [
                     "w.subsection_id = ? AND c.department_id = ? AND " . $this->effectiveLevelSql() . " = 'subsection'",
                     [(int) $scope['subsection_id'], (int) $scope['department_id']],
-                ];
+                ]);
             }
             if ($scope['is_section_head'] && $scope['section_id'] !== null) {
-                if ($scope['department_id'] === null) {
-                    return ['1=0', []];
-                }
-                return [
+                return $this->departmentBoundScope($scope, [
                     "w.subsection_id IN (SELECT id FROM subsections WHERE section_id = ?) AND c.department_id = ? AND " . $this->effectiveLevelSql() . " = 'subsection'",
                     [(int) $scope['section_id'], (int) $scope['department_id']],
-                ];
+                ]);
             }
             if ($scope['is_dept_head'] || $this->isHrDeptHead($scope)) {
                 return ['1=0', []];
@@ -199,6 +190,15 @@ class WorkplanService
 
         // md (non-broad caller) and department — the caller's own department.
         return $this->departmentWhere($scope);
+    }
+
+    /**
+     * @param array{0: string, 1: array<int, int>} $query
+     * @return array{0: string, 1: array<int, int>}
+     */
+    private function departmentBoundScope(array $scope, array $query): array
+    {
+        return $scope['department_id'] === null ? ['1=0', []] : $query;
     }
 
     private function effectiveLevelSql(): string
