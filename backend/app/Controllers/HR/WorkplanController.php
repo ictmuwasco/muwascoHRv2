@@ -1306,10 +1306,19 @@ class WorkplanController extends BaseController
                 LIMIT 5";
             $recent = $this->workplans->selectRows($recentSql, $types, $params);
 
-            // Currently active financial year (workplan period).
-            $fyRows = $this->workplans->selectRows(
-                'SELECT id, year_name, start_date, end_date FROM financial_years WHERE is_active = 1 ORDER BY start_date DESC LIMIT 1'
-            );
+            // Report the selected financial year as the workplan period when
+            // the dashboard is filtered to a specific year.
+            if (isset($_GET['financial_year_id']) && $_GET['financial_year_id'] !== '') {
+                $fyRows = $this->workplans->selectRows(
+                    'SELECT id, year_name, start_date, end_date FROM financial_years WHERE id = ? LIMIT 1',
+                    'i',
+                    [(int) $_GET['financial_year_id']]
+                );
+            } else {
+                $fyRows = $this->workplans->selectRows(
+                    'SELECT id, year_name, start_date, end_date FROM financial_years WHERE is_active = 1 ORDER BY start_date DESC LIMIT 1'
+                );
+            }
 
             $this->success([
                 'view'            => $view,
@@ -1417,6 +1426,7 @@ class WorkplanController extends BaseController
                         CONCAT_WS(' ', u.first_name, u.last_name, u.surname) AS created_by_name
                  FROM workplan_objectives w
                  LEFT JOIN users u ON w.created_by = u.id
+                 LEFT JOIN performance_contracts c ON w.performance_contract_id = c.id
                  WHERE {$where}
                  ORDER BY w.created_at DESC, w.id ASC
                  LIMIT 200",
