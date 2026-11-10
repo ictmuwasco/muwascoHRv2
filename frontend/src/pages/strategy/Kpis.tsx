@@ -184,9 +184,10 @@ export default function Kpis() {
     if (!modal.open || selectedEmployees.length === 0) return [];
     const linkedActivityIds = new Set(formActIds);
     const activityMap = new Map<number, KpiActivity>();
-    [...activities, ...linkedActivities.filter((activity) => linkedActivityIds.has(Number(activity.id)))].forEach(
-      (activity) => activityMap.set(Number(activity.id), activity),
-    );
+    [
+      ...activities,
+      ...linkedActivities.filter((activity) => linkedActivityIds.has(Number(activity.id))),
+    ].forEach((activity) => activityMap.set(Number(activity.id), activity));
     return Array.from(activityMap.values()).filter(
       (a) =>
         formActIds.includes(Number(a.id)) ||

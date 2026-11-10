@@ -1,25 +1,12 @@
 -- Backfill missing workplan cascade levels without changing existing labels.
--- Safe to re-run: every update only touches NULL or empty levels.
+-- Safe to re-run: the update only touches NULL or empty levels.
 
 UPDATE workplan_objectives
-   SET level = 'subsection'
- WHERE subsection_id IS NOT NULL
-   AND (level IS NULL OR level = '');
-
-UPDATE workplan_objectives
-   SET level = 'section'
- WHERE section_id IS NOT NULL AND subsection_id IS NULL
-   AND (level IS NULL OR level = '');
-
-UPDATE workplan_objectives
-   SET level = 'department'
- WHERE section_id IS NULL AND subsection_id IS NULL
-   AND performance_contract_id IS NOT NULL
-   AND (level IS NULL OR level = '');
-
-UPDATE workplan_objectives
-   SET level = 'organisation'
- WHERE section_id IS NULL AND subsection_id IS NULL
-   AND performance_contract_id IS NULL
-   AND (goal_id IS NOT NULL OR strategic_target_id IS NOT NULL)
-   AND (level IS NULL OR level = '');
+   SET level = CASE
+       WHEN subsection_id IS NOT NULL THEN 'subsection'
+       WHEN section_id IS NOT NULL THEN 'section'
+       WHEN performance_contract_id IS NOT NULL THEN 'department'
+       WHEN goal_id IS NOT NULL OR strategic_target_id IS NOT NULL THEN 'organisation'
+       ELSE level
+   END
+ WHERE level IS NULL OR level = '';
