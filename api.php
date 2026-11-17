@@ -700,10 +700,10 @@ $router->add('PUT',    '/strategic-plans/{id}',         StrategicPlanController:
 $router->add('DELETE', '/strategic-plans/{id}',         StrategicPlanController::class, 'destroy', 'strategic_plan:manage');
 $router->add('POST',   '/strategic-plans/{id}/goals',   StrategicPlanController::class, 'storeGoal', 'strategic_plan:manage');
 $router->add('PUT',    '/goals/{id}',                   StrategicPlanController::class, 'updateGoal', 'strategic_plan:manage');
-$router->add('DELETE', '/goals/{id}',                   StrategicPlanController::class, 'destroyGoal', 'strategic_plan:manage');
+$router->add('DELETE', '/goals/{id}',                   StrategicPlanController::class, 'destroyGoal', 'strategic_plan:manage';
 $router->add('POST',   '/strategic-plans/{id}/targets', StrategicPlanController::class, 'storeTarget', 'strategic_plan:manage');
-$router->add('PUT',    '/targets/{id}',                 StrategicPlanController::class, 'updateTarget', 'strategic_plan:manage');
-$router->add('DELETE', '/targets/{id}',                 StrategicPlanController::class, 'destroyTarget', 'strategic_plan:manage');
+$router->add('PUT',    '/targets/{id}',                 StrategicPlanController::class, 'updateTarget', 'strategic_plan:manage';
+$router->add('DELETE', '/targets/{id}',                 StrategicPlanController::class, 'destroyTarget', 'strategic_plan:manage';
 
 // Performance contracts — reads mirror the seeded performance_contract:view;
 // writes are OrgScope-managed (scope logic).
@@ -730,12 +730,9 @@ $router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::c
 $router->add('GET',    '/strategic-plans/{id}/workplans', WorkplanController::class, 'index', 'workplan:view');
 $router->add('GET',    '/workplans',                    WorkplanController::class, 'list', 'workplan:view');
 $router->add('POST',   '/workplans',                    WorkplanController::class, 'store', 'workplan:view';
-// Legacy-parity batch creation: one contract -> many activities (dept heads).
 $router->add('POST',   '/workplans/bulk',               WorkplanController::class, 'bulk', 'workplan:view';
-// Workplan extension routes (must be declared BEFORE the /workplans/{id} wildcard)
 $router->add('GET',    '/workplans/integrated-view',    WorkplanController::class, 'integratedView', 'workplan:view';
 $router->add('GET',    '/workplans/export',             WorkplanController::class, 'export', 'workplan:view', '20:300';
-// Cascading workplan system: dashboard summary, downward cascade, lineage.
 $router->add('GET',    '/workplans/summary',            WorkplanController::class, 'summary', 'workplan:view';
 $router->add('GET',    '/workplans/section-sources',    WorkplanController::class, 'sectionSources', 'workplan:view';
 $router->add('POST',   '/workplans/{id}/cascade',       WorkplanController::class, 'cascade', 'workplan:view';
@@ -778,10 +775,6 @@ $router->add('PUT',    '/complaints/{id}',           ComplaintController::class,
 // Notification routes — every user manages their OWN notifications
 // (ownership enforced in the controller).
 $router->add('GET', '/notifications', NotificationController::class, 'index';
-// Literal path, registered ahead of the {id} route. Ordering is not strictly
-// required here: {id} compiles to ([^/]+) and '/notifications/{id}/read' has an
-// extra segment, so it cannot swallow '/notifications/unread'. Declaring the
-// literal first just keeps the intent obvious to the next reader.
 $router->add('GET', '/notifications/unread', NotificationController::class, 'unread';
 $router->add('POST', '/notifications/{id}/read', NotificationController::class, 'markAsRead';
 $router->add('POST', '/notifications/read-all', NotificationController::class, 'markAllAsRead';
@@ -866,7 +859,7 @@ $router->add('GET', '/employees/{id}/profile-image', EmployeeController::class, 
 // Employee contracts routes (HR) - manage contract renewals and history
 $router->add('GET', '/employees/{id}/contracts', EmployeeController::class, 'getEmployeeContracts', 'employees:view';
 $router->add('POST', '/employees/{id}/contracts/{contractId}/renew', EmployeeController::class, 'renewEmployeeContract', 'employees:edit', '20:300';
-$router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController::class, 'convertToPermanent', 'employees:edit', '20:300');
+$router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController::class, 'convertToPermanent', 'employees:edit', '20:300';
 
 // ===========================================================================
 // Private Vault (PART A) — zero-knowledge, client-side encryption.
@@ -897,7 +890,6 @@ $router->add('PUT',  '/vault/requests/{id}',       VaultController::class, 'deci
 $router->add('POST', '/vault/grants',              VaultController::class, 'createGrantAction',   'profile:edit',  '10:300';
 $router->add('DELETE', '/vault/grants/{id}',       VaultController::class, 'revokeGrantAction',   'profile:edit',  '20:300';
 
-
 // Permission routes - plain method names (permission administration itself
 // is protected by permission_overrides:view / permission_overrides:manage)
 $router->add('GET', '/permissions/catalog', PermissionController::class, 'catalog', 'permission_overrides:view';
@@ -911,10 +903,6 @@ $router->add('DELETE', '/permissions/users/{id}/overrides', PermissionController
 
 // Meeting routes - Laravel-style methods
 $router->add('GET', '/my-meetings', MeetingController::class, 'myMeetings', 'meetings:view';
-// Org-wide index is scoped server-side in indexAction(): holders of
-// meetings:dashboard (hr_manager/managing_director/super_admin + overrides)
-// see every meeting; every other meetings:create caller (e.g. dept_head) sees
-// only the meetings they organized. Personal invites → /my-meetings.
 $router->add('GET', '/meetings', MeetingController::class, 'index', 'meetings:create';
 $router->add('GET', '/meetings/stats', MeetingController::class, 'stats', 'meetings:dashboard';
 $router->add('GET', '/meetings/eligible-employees', MeetingController::class, 'eligibleEmployees', 'meetings:create';
@@ -1006,7 +994,7 @@ $router->add('GET', '/system/seeders/status/{table}', \App\Controllers\System\Se
 // Security Operations & AI-Assisted Threat Detection (Phase 5)
 // Centralized security monitoring, intrusion detection, and incident response.
 // All routes require security:view (read) or security:investigate/security:manage (write).
-// ============================================================================
+// ===========================================================================
 use App\Controllers\Security\SecurityDashboardController;
 use App\Controllers\Security\SecurityAdminController;
 
