@@ -29,10 +29,10 @@ class AuthService implements AuthServiceInterface
     private ?Session $session = null;
 
     public function __construct(
-        UserRepositoryInterface $userRepository = null,
-        Hash $hash = null,
-        Session $session = null,
-        EmployeeRepositoryInterface $employeeRepository = null
+        ?UserRepositoryInterface $userRepository = null,
+        ?Hash $hash = null,
+        ?Session $session = null,
+        ?EmployeeRepositoryInterface $employeeRepository = null
     ) {
         $this->userRepository = $userRepository;
         $this->employeeRepository = $employeeRepository;
@@ -705,3 +705,5 @@ class AuthService implements AuthServiceInterface
         setcookie('remember_me', '', time() - 3600, '/', '', $this->isSecureRequest(), true);
     }
 }
+
+

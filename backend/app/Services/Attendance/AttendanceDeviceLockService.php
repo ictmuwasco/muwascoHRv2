@@ -139,11 +139,17 @@ class AttendanceDeviceLockService
         // the fingerprint the ONLY bound parameter, which makes the bind_param
         // type string unambiguous.
         //
+        // The lock resets at midnight instead of after a rolling 24-hour
+        // window: any clock-in from the start of today counts, and the device
+        // frees up at the start of tomorrow.
+        //
         // (Binding the fingerprint as part of an "iii" list silently cast it to
         // the integer 0, so MySQL compared device_fingerprint = 0 and matched
         // unrelated rows - the lock would then have fired for the wrong people.)
-        $cutoff = date('Y-m-d H:i:s', time() - ($hours * 3600));
-        $unlocksAt = date('Y-m-d H:i:s', time() + ($hours * 3600));
+        $todayMidnight = date('Y-m-d 00:00:00');
+        $tomorrowMidnight = date('Y-m-d 00:00:00', strtotime('+1 day'));
+        $cutoff = $todayMidnight;
+        $unlocksAt = $tomorrowMidnight;
 
         // FOR UPDATE takes a row lock so two simultaneous clock-ins from the
         // same device serialise here instead of both reading "no owner" and
@@ -182,10 +188,9 @@ class AttendanceDeviceLockService
 
         throw new DeviceLockedException(
             sprintf(
-                'This device is already registered to %s. It becomes available again after the lock expires (%sh window). '
+                'This device is already registered to %s. It becomes available again at midnight tonight. '
                     . 'Please use your own device to clock in.',
-                $ownerName,
-                $hours
+                $ownerName
             ),
             [
                 'code'         => 'DEVICE_LOCKED',

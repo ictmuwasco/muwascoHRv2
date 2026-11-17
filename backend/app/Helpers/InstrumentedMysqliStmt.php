@@ -56,6 +56,7 @@ final class InstrumentedMysqliStmt extends \mysqli_stmt
         return $result;
     }
 
+    #[\ReturnTypeWillChange]
     public function close(): bool
     {
         if ($this->closed) {
