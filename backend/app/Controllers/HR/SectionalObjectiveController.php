@@ -209,14 +209,19 @@ class SectionalObjectiveController extends BaseController
         if ($scope['is_section_head']) {
             return $scope['section_id'] !== null
                 && (int) ($employee['section_id'] ?? 0) === (int) $scope['section_id']
-                && empty($employee['subsection_id'])
                 && !in_array(
                     self::roleOf($employee),
                     [
                         'dept_head', 'head_of_department', 'department_head', 'manager',
-                        'section_head', 'section_manager', 'sub_section_head', 'subsection_head',
+                        'section_head', 'section_manager',
                     ],
                     true
+                )
+                && (
+                    // Direct reports: no subsection assigned.
+                    empty($employee['subsection_id'])
+                    // Subsection heads in this section (e.g. after cascading work).
+                    || in_array(self::roleOf($employee), ['sub_section_head', 'subsection_head'], true)
                 );
         }
         return true;
@@ -244,6 +249,35 @@ class SectionalObjectiveController extends BaseController
         }
 
         return $ids;
+    }
+
+    /**
+     * Whether a section head may assign KPIs to this employee.
+     *
+     * Includes direct reports (no subsection) and subsection heads within the
+     * section head's section. Excludes higher / peer heads and non-head
+     * subsection staff (those belong to the subsection head).
+     */
+    private function isSectionHeadKpiAssignee(array $employee): bool
+    {
+        $role = self::roleOf($employee);
+
+        // Never assignable: higher / peer heads.
+        if (in_array($role, [
+            'dept_head', 'head_of_department', 'department_head', 'manager',
+            'section_head', 'section_manager',
+        ], true)) {
+            return false;
+        }
+
+        // Subsection heads in this section are assignable by the
+        // section head (e.g. after cascading work to a subsection).
+        if (in_array($role, ['sub_section_head', 'subsection_head'], true)) {
+            return !empty($employee['subsection_id']);
+        }
+
+        // Regular staff: only those without a subsection (direct reports).
+        return empty($employee['subsection_id']);
     }
 
     /**
@@ -367,16 +401,13 @@ class SectionalObjectiveController extends BaseController
             return ['employees' => self::withoutSelf($rows, $selfId), 'employee_record' => $own];
         }
 
-        // Section head: direct section employees only. Subsection employees and
-        // their head are assigned by the subsection head.
+        // Section head: direct section employees (no subsection) and the
+        // subsection heads of subsections within their section. Subsection
+        // employees (non-head) are assigned by the subsection head themselves.
         if ($scope['is_section_head'] && $secId !== null) {
             $rows = array_values(array_filter(
                 $this->fetchEmployees(null, $secId, null),
-                fn ($e) => empty($e['subsection_id'])
-                    && !in_array(self::roleOf($e), [
-                        'dept_head', 'head_of_department', 'department_head', 'manager',
-                        'section_head', 'section_manager', 'sub_section_head', 'subsection_head',
-                    ], true)
+                fn ($e) => $this->isSectionHeadKpiAssignee($e)
             ));
             return ['employees' => self::withoutSelf($rows, $selfId), 'employee_record' => $own];
         }

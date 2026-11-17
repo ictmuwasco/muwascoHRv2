@@ -8,29 +8,10 @@ namespace App\Services\Attendance;
  * Prevents multiple employees from clocking in from the same device inside a
  * configurable rolling window (24 hours by default).
  *
- * WHY A SERVER-SIDE LOCK
- *   Client-side checks are advisory only - anyone can bypass the browser. The
- *   authoritative decision therefore happens inside AttendanceClockService's
- *   clock-in transaction, immediately before the row is inserted.
+ * The device fingerprint is hashed before storage. Raw device IDs are never
+ * persisted.
  *
- * PRIVACY: THE FINGERPRINT IS NOT STORED RAW
- *   The client sends an opaque random ID it generates once and keeps in
- *   localStorage. It is NEVER persisted. We store only
- *   hash_hmac('sha256', raw, APP_KEY): a keyed digest, so a database dump
- *   cannot be reversed into device identifiers, and two installs with
- *   different APP_KEYs cannot correlate the same device. The raw value never
- *   leaves the request.
- *
- * WHY A WINDOW INSTEAD OF A PERMANENT BINDING
- *   Kiosk/shared devices must still work across shifts. The lock is measured
- *   from the owner's most recent clock-in and expires automatically, so no
- *   manual unlock step is ever needed.
- *
- * CONCURRENCY
- *   assertDeviceAvailable() must be called INSIDE the caller's transaction,
- *   which is what AttendanceClockService::clockIn() already opens. The SELECT
- *   ... FOR UPDATE serialises competing clock-ins on the same device so two
- *   simultaneous requests cannot both pass the check.
+ * assertDeviceAvailable() must run inside the caller's database transaction.
  */
 class AttendanceDeviceLockService
 {
@@ -38,21 +19,21 @@ class AttendanceDeviceLockService
     public const DEFAULT_WINDOW_HOURS = 24;
 
     /**
-     * Hours a device stays locked to its owner. 0 disables the lock entirely,
-     * which is the emergency escape hatch if the rule misfires.
+     * Hours a device stays locked to its owner.
+     * Setting this to 0 disables the lock.
      */
     public function windowHours(): int
     {
         $hours = $this->rawWindowHours();
+
         if ($hours === null) {
             return self::DEFAULT_WINDOW_HOURS;
         }
 
-        // Guard against a typo'd or hostile value: negative windows would
-        // lock every device forever, absurd values would disable the control.
         if ($hours < 0) {
             return 0;
         }
+
         if ($hours > 24 * 30) {
             return 24 * 30;
         }
@@ -61,26 +42,22 @@ class AttendanceDeviceLockService
     }
 
     /**
-     * Read ATTENDANCE_DEVICE_LOCK_HOURS without the `?:` trap.
+     * Read ATTENDANCE_DEVICE_LOCK_HOURS while preserving the value "0".
      *
-     * The shared env() helper ends in `?: $default`, so the string "0" is
-     * falsy and would be replaced by the default. That would make
-     * ATTENDANCE_DEVICE_LOCK_HOURS=0 silently fail to disable the lock - the
-     * opposite of what an operator disabling a misfiring control expects.
-     * Reading the sources directly keeps "0" meaningful.
-     *
-     * @return int|null null when unset or non-numeric.
+     * @return int|null
      */
     private function rawWindowHours(): ?int
     {
         foreach ([$_ENV, $_SERVER] as $bag) {
             if (isset($bag['ATTENDANCE_DEVICE_LOCK_HOURS'])) {
                 $value = $bag['ATTENDANCE_DEVICE_LOCK_HOURS'];
+
                 return is_numeric($value) ? (int) $value : null;
             }
         }
 
         $fromEnv = getenv('ATTENDANCE_DEVICE_LOCK_HOURS');
+
         if ($fromEnv !== false) {
             return is_numeric($fromEnv) ? (int) $fromEnv : null;
         }
@@ -94,23 +71,15 @@ class AttendanceDeviceLockService
     }
 
     /**
-     * Reduce a client-supplied device ID to the privacy-safe stored form.
+     * Convert a raw device ID into a privacy-safe fingerprint.
      *
-     * Returns null for absent/blank input so callers can store NULL and skip
-     * the lock entirely - an unidentifiable device cannot be locked, and we
-     * must not hash empty input into one shared bucket that would lock every
-     * such device to the first employee who used it.
+     * @return string|null
      */
     public function fingerprint(?string $rawDeviceId): ?string
     {
         $raw = is_string($rawDeviceId) ? trim($rawDeviceId) : '';
-        if ($raw === '') {
-            return null;
-        }
 
-        // Bound the input before hashing. A multi-megabyte "device id" is
-        // not a real client and would otherwise be hashed on every request.
-        if (strlen($raw) > 255) {
+        if ($raw === '' || strlen($raw) > 255) {
             return null;
         }
 
@@ -122,36 +91,41 @@ class AttendanceDeviceLockService
     }
 
     /**
-     * Authoritative check. MUST run inside the caller's transaction.
+     * Check whether another employee has recently used this device.
      *
-     * @return array<string,mixed> Context for auditing when access is denied.
-     * @throws DeviceLockedException when another employee owns the device.
+     * MUST be called inside the caller's database transaction.
+     *
+     * @param string $fingerprint Hashed device identifier.
+     * @param int $employeeDbId Employee attempting to clock in.
+     *
+     * @return array<string,mixed>
+     *
+     * @throws DeviceLockedException
      */
-    public function assertDeviceAvailable(string $fingerprint, int $employeeDbId): array
-    {
+    public function assertDeviceAvailable(
+        string $fingerprint,
+        int $employeeDbId
+    ): array {
         $hours = $this->windowHours();
+
         if ($hours === 0 || $fingerprint === '') {
             return ['checked' => false];
         }
 
-        // Window boundaries are computed in PHP, matching how clock_in
-        // timestamps are generated in AttendanceClockService. This also keeps
-        // the fingerprint the ONLY bound parameter, which makes the bind_param
-        // type string unambiguous.
-        //
-        // (Binding the fingerprint as part of an "iii" list silently cast it to
-        // the integer 0, so MySQL compared device_fingerprint = 0 and matched
-        // unrelated rows - the lock would then have fired for the wrong people.)
-        $cutoff = date('Y-m-d H:i:s', time() - ($hours * 3600));
-        $unlocksAt = date('Y-m-d H:i:s', time() + ($hours * 3600));
+        // Calculate the rolling cutoff from the current time.
+        // A clock-in is considered active while it is within this window.
+        $cutoff = date(
+            'Y-m-d H:i:s',
+            strtotime("-{$hours} hours")
+        );
 
-        // FOR UPDATE takes a row lock so two simultaneous clock-ins from the
-        // same device serialise here instead of both reading "no owner" and
-        // both inserting. Under REPEATABLE READ a matching-index miss also gap
-        // locks the range, which is what closes the insert race.
+        // Lock the matching row while checking device ownership.
         $row = \db()->fetchOne(
-            "SELECT a.employee_id AS owner_id, a.clock_in AS locked_since,
-                    e.first_name AS owner_first_name, e.last_name AS owner_last_name
+            "SELECT
+                a.employee_id AS owner_id,
+                a.clock_in AS locked_since,
+                e.first_name AS owner_first_name,
+                e.last_name AS owner_last_name
              FROM attendance a
              LEFT JOIN employees e ON e.id = a.employee_id
              WHERE a.device_fingerprint = ?
@@ -165,32 +139,45 @@ class AttendanceDeviceLockService
         );
 
         if (!$row) {
-            return ['checked' => true, 'owner' => null];
+            return [
+                'checked' => true,
+                'owner' => null,
+            ];
         }
 
-        // Same employee: their own device, no conflict.
+        // The employee who originally used the device may reuse it.
         if ((int) $row['owner_id'] === $employeeDbId) {
-            return ['checked' => true, 'owner' => (int) $row['owner_id']];
+            return [
+                'checked' => true,
+                'owner' => (int) $row['owner_id'],
+            ];
         }
 
         $ownerName = trim(
-            (string) ($row['owner_first_name'] ?? '') . ' ' . (string) ($row['owner_last_name'] ?? '')
+            (string) ($row['owner_first_name'] ?? '') . ' ' .
+            (string) ($row['owner_last_name'] ?? '')
         );
+
         if ($ownerName === '') {
             $ownerName = 'another employee';
         }
 
+        // Calculate the exact expiry time from the original clock-in.
+        $unlocksAt = date(
+            'Y-m-d H:i:s',
+            strtotime($row['locked_since'] . " +{$hours} hours")
+        );
+
         throw new DeviceLockedException(
             sprintf(
-                'This device is already registered to %s. It becomes available again after the lock expires (%sh window). '
-                    . 'Please use your own device to clock in.',
+                'This device is already registered to %s. It becomes available again at %s. Please use your own device to clock in.',
                 $ownerName,
-                $hours
+                $unlocksAt
             ),
             [
-                'code'         => 'DEVICE_LOCKED',
+                'code' => 'DEVICE_LOCKED',
                 'window_hours' => $hours,
-                'unlocks_at'   => $unlocksAt,
+                'unlocks_at' => $unlocksAt,
             ]
         );
     }

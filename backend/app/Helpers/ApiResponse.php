@@ -196,7 +196,7 @@ class ApiResponse
      * @param string $reference  Optional error tracking reference (error_uuid) —
      *                            only set when the error has been persisted.
      */
-    public static function error(string $message, string $errorCode = 'ERROR', array $details = [], int $status = 400, string $reference = null): void
+    public static function error(string $message, string $errorCode = 'ERROR', array $details = [], int $status = 400, ?string $reference = null): void
     {
         self::clearOutputBuffers();
         http_response_code($status);

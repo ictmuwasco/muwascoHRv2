@@ -670,19 +670,16 @@ const Dashboard = () => {
             'please move closer and try again.',
         );
       } else if (resp?.error?.code === 'DEVICE_LOCKED') {
-        // Server-authoritative device conflict. Surface the reason and when the
-        // device frees up, rather than the generic failure text.
+        // Server-authoritative device conflict. The device lock resets at
+        // midnight, so surface the midnight expiry rather than a rolling
+        // "X hours" countdown.
         // Envelope: { success:false, message, error:{ code, details:{...} } }
         const details = resp?.error?.details ?? {};
-        const hours = Number(details.window_hours ?? 0);
         const unlocksAt = details.unlocks_at ? new Date(details.unlocks_at) : null;
         setLocationError(
           resp.message ||
-            (hours
-              ? `This device is already registered to another employee. It becomes ` +
-                `available again in ${hours} hour${hours === 1 ? '' : 's'}. ` +
-                'Please clock in from your own device.'
-              : 'This device is already registered to another employee. Please use your own device.'),
+            `This device is already registered to another employee. It becomes ` +
+              `available again at midnight tonight. Please clock in from your own device.`,
         );
         if (unlocksAt && !Number.isNaN(unlocksAt.getTime())) {
           setActionMessage(`Device lock expires at ${unlocksAt.toLocaleString()}.`);

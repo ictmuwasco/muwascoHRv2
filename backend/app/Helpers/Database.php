@@ -96,7 +96,7 @@ class Database
             // leak is obvious instead of surfacing as a cryptic
             // "mysqli object is already closed" deep inside a repository.
             try {
-                $alive = $this->injected->ping();
+                $alive = @$this->injected->ping();
             } catch (\Throwable $e) {
                 throw new \RuntimeException(
                     'Injected DB connection is closed: a prior test closed its scratch ' .
@@ -114,7 +114,7 @@ class Database
             return $this->injected;
         }
 
-        if (!$this->mysqli->ping()) {
+        if (!@$this->mysqli->ping()) {
             $this->connect();
         }
         return $this->mysqli;

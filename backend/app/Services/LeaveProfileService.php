@@ -866,14 +866,15 @@ class LeaveProfileService
         // ── Closing balances ──────────────────────────────────────────
         $closingBalances = [];
         foreach ($openingBalances as $ltId => $ob) {
+            $closingUsed = $runningBalances[$ltId] ?? $ob['remaining'];
             $closingBalances[$ltId] = [
                 'leave_type_id'   => $ltId,
                 'leave_type_name' => $ob['leave_type_name'],
                 'allocated'       => $ob['allocated'],
                 'brought_forward' => $ob['brought_forward'],
                 'accumulated'     => $ob['accumulated'],
-                'used'            => $ob['used'],
-                'remaining'       => $runningBalances[$ltId] ?? $ob['remaining'],
+                'used'            => $ob['accumulated'] - $closingUsed,
+                'remaining'       => $closingUsed,
                 'total_available' => $ob['total_available'],
             ];
         }
