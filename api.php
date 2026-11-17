@@ -711,7 +711,7 @@ $router->add('GET',    '/performance-contracts',        PerformanceContractContr
 $router->add('POST',   '/performance-contracts',        PerformanceContractController::class, 'store', 'performance_contract:manage');
 $router->add('GET',    '/performance-contracts/{id}',   PerformanceContractController::class, 'show', 'performance_contract:view');
 $router->add('PUT',    '/performance-contracts/{id}',   PerformanceContractController::class, 'update', 'performance_contract:manage');
-$router->add('DELETE', '/performance-contracts/{id}',   PerformanceContractController::class, 'destroy', 'performance_contract:manage');
+$router->add('DELETE', '/performance-contracts/{id}',   PerformanceContractController::class, 'destroy', 'performance_contract:manage';
 
 // Appraisal cycles (quarterly quarters attached to every workplan activity).
 // Read: any authenticated user — heads' workplan quarter pickers consume the
@@ -723,7 +723,7 @@ $router->add('DELETE', '/performance-contracts/{id}',   PerformanceContractContr
 $router->add('GET',    '/appraisal-cycles',          AppraisalCycleController::class, 'index');
 $router->add('POST',   '/appraisal-cycles',          AppraisalCycleController::class, 'store', 'performance:cycles');
 $router->add('PUT',    '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'update', 'performance:cycles');
-$router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'destroy', 'performance:cycles');
+$router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'destroy', 'performance:cycles';
 
 // Workplan objectives — reads mirror the seeded workplan:view; all writes are
 // OrgScope-managed (organizational scope logic in the controllers).
@@ -763,7 +763,7 @@ $router->add('GET',    '/sectional-objectives',         SectionalObjectiveContro
 $router->add('POST',   '/sectional-objectives',         SectionalObjectiveController::class, 'store', 'sectional_objective:view');
 $router->add('GET',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'show', 'sectional_objective:view');
 $router->add('PUT',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'update', 'sectional_objective:view');
-$router->add('DELETE', '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'destroy', 'sectional_objective:view');
+$router->add('DELETE', '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'destroy', 'sectional_objective:view';
 
 // Strategy & Performance dashboard + report endpoints
 $router->add('GET',    '/dashboard/strategic-performance', DashboardController::class, 'strategicPerformance', 'dashboard:view');
@@ -805,16 +805,16 @@ $router->add('POST', '/profile/documents', EmployeeController::class, 'uploadPro
 $router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewProfileDocument');
 // ===========================================================================
 // Encrypted document access — the two-step OTP gate (migration 106).
-//
+
 // WHY THIS IS SEPARATE FROM THE EXISTING /documents/{id} VIEW ROUTE
 //   GET /profile/documents/{id} still exists and still serves LEGACY
 //   plaintext documents for anyone with profile:view / employees:view. It is
 //   left in place deliberately: without it, every un-migrated document becomes
 //   unreadable the moment this feature is switched on.
-//
+
 //   Once encrypt_existing_files.php has run, set DOCUMENT_OTP_REQUIRED=true and
 //   retire that route, at which point /open is the only path to a document.
-//
+
 // PERMISSION NOTES
 //   * All three are `profile:view`, NOT `profile:edit`. Reading a document you
 //     already have permission to see is not a mutation, and gating it on edit
@@ -832,13 +832,13 @@ $router->add('POST', '/profile/documents/{id}/verify',        EmployeeController
 $router->add('GET',  '/profile/documents/{id}/open',           EmployeeController::class, 'openDocumentAction',          'profile:view', '20:300');
 
 // Employee-scoped variants, used while the document LIST is still redacted.
-//
+
 // These MUST come after the document-scoped routes above. The router builds its
 // pattern with an anchored `([^/]+)` per placeholder, so `/profile/documents/{id}`
 // cannot match a two-segment path and the two groups cannot shadow each other
 // — but registering the more specific pair first keeps the intent obvious to
 // whoever reads the file next.
-//
+
 // Requesting is `employees:view` because the whole point is that someone who
 // legitimately sees the profile may ask the owner to unlock the documents. The
 // controller still re-checks EmployeePolicy::canView for this specific employee,
@@ -869,11 +869,11 @@ $router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController:
 
 // ===========================================================================
 // Private Vault (PART A) — zero-knowledge, client-side encryption.
-//
+
 // The browser performs ALL cryptography. These routes move ciphertext, wrapped
 // keys and access decisions only; the server never receives a passphrase, an
 // unwrapped data key, or a decrypted value.
-//
+
 // PERMISSION NOTES (each choice is deliberate):
 //   * setup / status / item writes are `profile:*` because the target is
 //     ALWAYS the caller's own employee, resolved server-side from the session.
@@ -1034,17 +1034,17 @@ $router->add('POST', '/security/incidents/{id}/contain', SecurityAdminController
 
 // ============================================================================
 // HR Policy & Procedures Manual module (migration 081)
-//
+
 // Employee reader/search/acknowledgement surface: hr_policies:view /
 // hr_policies:acknowledge (seeded to EVERY role). Static paths are registered
 // BEFORE the /hr-policies/{id} wildcard so they take precedence (first-match
 // router). File streaming reads PRIVATE storage only.
-//
+
 // HR administration: hr_policies:manage (upload/edit/archive/delete/history/
 // acknowledgements) and hr_policies:publish (publish workflow) — seeded to
 // hr_manager / super_admin only. Uploads are throttled; uploads NEVER
 // auto-publish (draft → review → publish is explicit).
-// ============================================================================
+// ===========================================================================
 use App\Controllers\HR\HrPolicyController;
 use App\Controllers\Settings\HrPolicyAdminController;
 
