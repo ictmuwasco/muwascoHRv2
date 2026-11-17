@@ -28,63 +28,142 @@ const LeaveApplication = () => {
    * Mobile photos often carry an EXIF orientation tag that canvas.drawImage
    * ignores, causing sideways or upside-down uploads.
    */
+
   const readExifOrientation = (arrayBuffer) => {
-    const view = new DataView(arrayBuffer);
-    if (view.getUint8(0) !== 0xff || view.getUint8(1) !== 0xd8) {
-      return [false, false, 0];
-    }
-    let offset = 2;
-    const length = view.byteLength;
-    while (offset < length) {
-      const marker = view.getUint16(offset, false);
-      offset += 2;
-      if (marker === 0xffe1) {
-        const segLen = view.getUint16(offset, false);
+    const defaultOrientation = [false, false, 0];
+
+    try {
+      const view = new DataView(arrayBuffer);
+      const length = view.byteLength;
+
+      // Confirm this is a JPEG file.
+      if (length < 4 || view.getUint8(0) !== 0xff || view.getUint8(1) !== 0xd8) {
+        return defaultOrientation;
+      }
+
+      let offset = 2;
+
+      while (offset + 4 <= length) {
+        const marker = view.getUint16(offset, false);
         offset += 2;
-        const exifId = view.getUint32(offset, false);
-        if (exifId === 0x45786966) {
-          const tiffOffset = offset + 4;
-          const endianness = view.getUint16(tiffOffset, false);
-          const littleEndian = endianness === 0x4949;
-          const getU16 = (addr) => view.getUint16(addr, littleEndian);
-          const getU32 = (addr) => view.getUint32(addr, littleEndian);
-          const ifdOffset = tiffOffset + getU32(tiffOffset + 4);
-          const numEntries = getU16(ifdOffset);
-          for (let i = 0; i < numEntries; i++) {
-            const entryOffset = ifdOffset + 2 + i * 12;
-            const tag = getU16(entryOffset);
-            if (tag === 0x0112) {
-              const orientation = getU16(entryOffset + 8);
-              switch (orientation) {
-                case 2:
-                  return [true, false, 0];
-                case 3:
-                  return [false, false, 180];
-                case 4:
-                  return [false, true, 0];
-                case 5:
-                  return [true, true, 270];
-                case 6:
-                  return [false, false, 90];
-                case 7:
-                  return [true, true, 90];
-                case 8:
-                  return [false, false, 270];
-                default:
-                  return [false, false, 0];
+
+        // JPEG end-of-image or start-of-scan.
+        if (marker === 0xffd9 || marker === 0xffda) {
+          break;
+        }
+
+        // Skip standalone markers that have no segment length.
+        if (marker === 0xff01 || (marker >= 0xffd0 && marker <= 0xffd7)) {
+          continue;
+        }
+
+        if (offset + 2 > length) break;
+
+        const segLen = view.getUint16(offset, false);
+
+        if (segLen < 2 || offset + segLen > length) {
+          break;
+        }
+
+        const segmentEnd = offset + segLen;
+
+        if (marker === 0xffe1 && segLen >= 16) {
+          const exifOffset = offset + 2;
+
+          // Check the EXIF identifier: "Exif"
+          const exifId = view.getUint32(exifOffset, false);
+
+          if (exifId === 0x45786966) {
+            // EXIF identifier is 6 bytes: "Exif\0\0".
+            const tiffOffset = exifOffset + 6;
+
+            // Validate TIFF header.
+            if (tiffOffset + 8 > segmentEnd) {
+              return defaultOrientation;
+            }
+
+            const endianness = view.getUint16(tiffOffset, false);
+
+            const littleEndian = endianness === 0x4949;
+            const bigEndian = endianness === 0x4d4d;
+
+            if (!littleEndian && !bigEndian) {
+              return defaultOrientation;
+            }
+
+            const getU16 = (addr) => {
+              if (addr < tiffOffset || addr + 2 > segmentEnd) {
+                throw new RangeError('Invalid EXIF offset');
+              }
+              return view.getUint16(addr, littleEndian);
+            };
+
+            const getU32 = (addr) => {
+              if (addr < tiffOffset || addr + 4 > segmentEnd) {
+                throw new RangeError('Invalid EXIF offset');
+              }
+              return view.getUint32(addr, littleEndian);
+            };
+
+            // TIFF magic number must be 42.
+            if (getU16(tiffOffset + 2) !== 42) {
+              return defaultOrientation;
+            }
+
+            const ifdOffset = tiffOffset + getU32(tiffOffset + 4);
+
+            if (ifdOffset + 2 > segmentEnd) {
+              return defaultOrientation;
+            }
+
+            const numEntries = getU16(ifdOffset);
+
+            if (ifdOffset + 2 + numEntries * 12 > segmentEnd) {
+              return defaultOrientation;
+            }
+
+            for (let i = 0; i < numEntries; i++) {
+              const entryOffset = ifdOffset + 2 + i * 12;
+              const tag = getU16(entryOffset);
+
+              if (tag === 0x0112) {
+                const orientation = getU16(entryOffset + 8);
+
+                switch (orientation) {
+                  case 2:
+                    return [true, false, 0];
+                  case 3:
+                    return [false, false, 180];
+                  case 4:
+                    return [false, true, 0];
+                  case 5:
+                    return [true, true, 270];
+                  case 6:
+                    return [false, false, 90];
+                  case 7:
+                    return [true, true, 90];
+                  case 8:
+                    return [false, false, 270];
+                  default:
+                    return defaultOrientation;
+                }
               }
             }
+
+            return defaultOrientation;
           }
         }
-        return [false, false, 0];
+
+        // Move to the next JPEG segment.
+        offset = segmentEnd;
       }
-      if ((marker & 0xff00) !== 0xff00) break;
-      const segLen = view.getUint16(offset, false);
-      if (segLen <= 2) break;
-      offset += segLen - 2;
+    } catch (error) {
+      console.warn('Could not read JPEG EXIF orientation:', error);
     }
-    return [false, false, 0];
+
+    return defaultOrientation;
   };
+
   /**
    * Compress an image file before upload. Returns a proper File object.
    *
