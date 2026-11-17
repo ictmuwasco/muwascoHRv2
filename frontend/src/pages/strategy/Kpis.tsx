@@ -36,13 +36,25 @@ function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
   )
     return false;
   const employeeType = (emp.employee_type || '').toLowerCase();
-  if (employeeType === 'section_head' || employeeType === 'section_manager') {
+  const isSectionHead = employeeType === 'section_head' || employeeType === 'section_manager';
+  const isSubSectionHead =
+    employeeType === 'sub_section_head' || employeeType === 'subsection_head';
+  if (isSectionHead) {
+    // Section heads see section-level activities only (no subsection_id filter).
     if (!act.section_id || Number(act.section_id) !== Number(emp.section_id || 0)) return false;
     if (act.subsection_id) return false;
   }
-  if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0)) return false;
-  if (act.subsection_id && Number(act.subsection_id) !== Number(emp.subsection_id || 0))
-    return false;
+  if (isSubSectionHead) {
+    // Subsection heads see activities scoped to their own section AND subsection.
+    if (!act.section_id || Number(act.section_id) !== Number(emp.section_id || 0)) return false;
+    if (!act.subsection_id || Number(act.subsection_id) !== Number(emp.subsection_id || 0))
+      return false;
+  } else {
+    // Regular employees match on section and subsection (when present).
+    if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0)) return false;
+    if (act.subsection_id && Number(act.subsection_id) !== Number(emp.subsection_id || 0))
+      return false;
+  }
   return true;
 }
 

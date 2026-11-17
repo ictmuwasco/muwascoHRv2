@@ -28,7 +28,7 @@ use App\Services\CalendarContextService;
  *    authoritative guard for concurrent inserts — both answered idempotently
  *  - Clock-out only against today's record; double clock-out is idempotent;
  *    clocking out without an open session is rejected (NOT_CLOCKED_IN)
- *  - Late determination by configured cutoff (ATTENDANCE_LATE_CUTOFF, 08:30
+ *  - Late determination by configured cutoff (ATTENDANCE_LATE_CUTOFF, 08:10
  *    Africa/Nairobi default, preserved from the original implementation)
  *  - Snapshot approved leave on the attendance row when an employee clocks
  *    in while recalled from leave
@@ -46,7 +46,7 @@ class AttendanceClockService
     public const DEFAULT_RADIUS_METERS = 100;
 
     /** Default late cutoff (Africa/Nairobi). */
-    public const LATE_CUTOFF_DEFAULT = '08:30';
+    public const LATE_CUTOFF_DEFAULT = '08:10';
 
     private OfficeRepositoryInterface $officeRepository;
     private CalendarContextService $calendar;
@@ -612,7 +612,7 @@ class AttendanceClockService
 
     /**
      * Determine the late flag + clock-in status for "now" against the
-     * configured cutoff (default 08:30 Africa/Nairobi — original rule).
+     * configured cutoff (default 08:10 Africa/Nairobi — updated rule).
      *
      * @return array{is_late:bool, status:'late'|'clocked_in'}
      */

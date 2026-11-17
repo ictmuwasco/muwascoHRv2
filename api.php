@@ -126,6 +126,9 @@ class ApiRouter
     /** Route definition currently being dispatched (permission/throttle context). */
     private static ?array $currentRoute = null;
 
+    /** Route URI params for the dispatch in progress (e.g. ['id' => '535']). */
+    private static ?array $currentParams = null;
+
     public function __construct()
     {
         $this->container = \App\Container\Container::getInstance();
@@ -175,8 +178,6 @@ class ApiRouter
         return self::$currentRoute;
     }
 
-    /** Route URI params for the dispatch in progress (e.g. ['id' => '535']). */
-    private static ?array $currentParams = null;
 
     public static function currentRouteParams(): ?array
     {
@@ -195,6 +196,33 @@ class ApiRouter
             $params[$name] = $values[$i] ?? null;
         }
         return $params;
+    }
+
+    /**
+     * Call a controller action with route parameters.
+     *
+     * Route URI parameters are always extracted as strings (e.g. '535').
+     * Controller methods declare typed parameters (e.g. `int $id`), so a
+     * string would cause a TypeError under strict_types and produce a 500.
+     * This method inspects the method signature via reflection and casts
+     * each value to the declared type before invocation.
+     *
+     * @return mixed The return value of the controller action (e.g. array for login responses, null for void actions).
+     */
+    private function callAction(object $controller, string $methodName, array $params): mixed
+    {
+        $ref = new \ReflectionMethod($controller, $methodName);
+        $args = [];
+        foreach ($ref->getParameters() as $i => $param) {
+            $value = $params[$i] ?? null;
+            $type = $param->getType();
+            if ($type instanceof \ReflectionNamedType && $type->getName() === 'int') {
+                $args[] = (int) $value;
+            } else {
+                $args[] = $value;
+            }
+        }
+        return $controller->$methodName(...$args);
     }
 
     public function dispatch(): void
@@ -266,10 +294,11 @@ class ApiRouter
                 
                 // Try the Action-suffixed method first, then the plain method name
                 $actionMethod = $action . 'Action';
+                $result = null;
                 if (method_exists($controller, $actionMethod)) {
-                    $this->callAction($controller, $actionMethod, $matches);
+                    $result = $this->callAction($controller, $actionMethod, $matches);
                 } elseif (method_exists($controller, $action)) {
-                    $this->callAction($controller, $action, $matches);
+                    $result = $this->callAction($controller, $action, $matches);
                 } else {
                     \App\Helpers\ApiResponse::error(
                         "Method {$action} not found on " . $controllerClass,
@@ -277,8 +306,19 @@ class ApiRouter
                         [],
                         500
                     );
+                    return;
                 }
-                return;
+                
+                // Output JSON response in ApiResponse format {success, message, data}
+                // to match frontend expectations and prevent "malformed response" errors.
+                header('Content-Type: application/json');
+                $response = [
+                    'success' => true,
+                    'message' => 'Login successful',
+                    'data' => $result
+                ];
+                echo json_encode($response);
+                exit;
             }
         }
 
@@ -290,30 +330,6 @@ class ApiRouter
         );
     }
 
-    /**
-     * Call a controller action with route parameters.
-     *
-     * Route URI parameters are always extracted as strings (e.g. '535').
-     * Controller methods declare typed parameters (e.g. `int $id`), so a
-     * string would cause a TypeError under strict_types and produce a 500.
-     * This method inspects the method signature via reflection and casts
-     * each value to the declared type before invocation.
-     */
-    private function callAction(object $controller, string $methodName, array $params): void
-    {
-        $ref = new \ReflectionMethod($controller, $methodName);
-        $args = [];
-        foreach ($ref->getParameters() as $i => $param) {
-            $value = $params[$i] ?? null;
-            $type = $param->getType();
-            if ($type instanceof \ReflectionNamedType && $type->getName() === 'int') {
-                $args[] = (int) $value;
-            } else {
-                $args[] = $value;
-            }
-        }
-        $controller->$methodName(...$args);
-    }
 }
 
 // Governance safety-net: ensure every authenticated mutating request is audited.
@@ -405,7 +421,7 @@ $router->add('GET', '/roles', RolesController::class, 'index');
 // authenticated self-service (own record enforced in the controller);
 // record administration requires attendance:manage.
 $router->add('GET', '/attendance/today', AttendanceController::class, 'today', 'attendance:view');
-$router->add('GET', '/attendance/dashboard', AttendanceController::class, 'dashboard');
+$router->add('GET', '/attendance/dashboard', AttendanceController::class, 'dashboard', null);
 // HR attendance monitoring dashboard + employee history (before /attendance/{id} wildcard)
 // Org attendance monitoring is an administrative function: it requires
 // attendance:manage (officers/employees hold only attendance:view). Data
@@ -690,12 +706,9 @@ $router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::c
 $router->add('GET',    '/strategic-plans/{id}/workplans', WorkplanController::class, 'index', 'workplan:view');
 $router->add('GET',    '/workplans',                    WorkplanController::class, 'list', 'workplan:view');
 $router->add('POST',   '/workplans',                    WorkplanController::class, 'store', 'workplan:view');
-// Legacy-parity batch creation: one contract -> many activities (dept heads).
 $router->add('POST',   '/workplans/bulk',               WorkplanController::class, 'bulk', 'workplan:view');
-// Workplan extension routes (must be declared BEFORE the /workplans/{id} wildcard)
 $router->add('GET',    '/workplans/integrated-view',    WorkplanController::class, 'integratedView', 'workplan:view');
 $router->add('GET',    '/workplans/export',             WorkplanController::class, 'export', 'workplan:view', '20:300');
-// Cascading workplan system: dashboard summary, downward cascade, lineage.
 $router->add('GET',    '/workplans/summary',            WorkplanController::class, 'summary', 'workplan:view');
 $router->add('GET',    '/workplans/section-sources',    WorkplanController::class, 'sectionSources', 'workplan:view');
 $router->add('POST',   '/workplans/{id}/cascade',       WorkplanController::class, 'cascade', 'workplan:view');
@@ -738,10 +751,6 @@ $router->add('PUT',    '/complaints/{id}',           ComplaintController::class,
 // Notification routes — every user manages their OWN notifications
 // (ownership enforced in the controller).
 $router->add('GET', '/notifications', NotificationController::class, 'index');
-// Literal path, registered ahead of the {id} route. Ordering is not strictly
-// required here: {id} compiles to ([^/]+) and '/notifications/{id}/read' has an
-// extra segment, so it cannot swallow '/notifications/unread'. Declaring the
-// literal first just keeps the intent obvious to the next reader.
 $router->add('GET', '/notifications/unread', NotificationController::class, 'unread');
 $router->add('POST', '/notifications/{id}/read', NotificationController::class, 'markAsRead');
 $router->add('POST', '/notifications/read-all', NotificationController::class, 'markAllAsRead');
@@ -763,19 +772,19 @@ $router->add('GET', '/profile', EmployeeController::class, 'profile', 'profile:v
 $router->add('PUT', '/profile', EmployeeController::class, 'updateProfile', 'profile:edit');
 $router->add('POST', '/profile/documents', EmployeeController::class, 'uploadProfileDocument', 'profile:edit', '20:300');
 $router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewProfileDocument');
-$router->add('GET', '/profile/documents/{id}/view', EmployeeController::class, 'viewProfileDocument');
+
 // ===========================================================================
 // Encrypted document access — the two-step OTP gate (migration 106).
-//
+
 // WHY THIS IS SEPARATE FROM THE EXISTING /documents/{id} VIEW ROUTE
 //   GET /profile/documents/{id} still exists and still serves LEGACY
 //   plaintext documents for anyone with profile:view / employees:view. It is
 //   left in place deliberately: without it, every un-migrated document becomes
 //   unreadable the moment this feature is switched on.
-//
+
 //   Once encrypt_existing_files.php has run, set DOCUMENT_OTP_REQUIRED=true and
 //   retire that route, at which point /open is the only path to a document.
-//
+
 // PERMISSION NOTES
 //   * All three are `profile:view`, NOT `profile:edit`. Reading a document you
 //     already have permission to see is not a mutation, and gating it on edit
@@ -793,13 +802,13 @@ $router->add('POST', '/profile/documents/{id}/verify',        EmployeeController
 $router->add('GET',  '/profile/documents/{id}/open',           EmployeeController::class, 'openDocumentAction',          'profile:view', '20:300');
 
 // Employee-scoped variants, used while the document LIST is still redacted.
-//
+
 // These MUST come after the document-scoped routes above. The router builds its
 // pattern with an anchored `([^/]+)` per placeholder, so `/profile/documents/{id}`
 // cannot match a two-segment path and the two groups cannot shadow each other
 // — but registering the more specific pair first keeps the intent obvious to
 // whoever reads the file next.
-//
+
 // Requesting is `employees:view` because the whole point is that someone who
 // legitimately sees the profile may ask the owner to unlock the documents. The
 // controller still re-checks EmployeePolicy::canView for this specific employee,
@@ -830,11 +839,11 @@ $router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController:
 
 // ===========================================================================
 // Private Vault (PART A) — zero-knowledge, client-side encryption.
-//
+
 // The browser performs ALL cryptography. These routes move ciphertext, wrapped
 // keys and access decisions only; the server never receives a passphrase, an
 // unwrapped data key, or a decrypted value.
-//
+
 // PERMISSION NOTES (each choice is deliberate):
 //   * setup / status / item writes are `profile:*` because the target is
 //     ALWAYS the caller's own employee, resolved server-side from the session.
@@ -857,7 +866,6 @@ $router->add('PUT',  '/vault/requests/{id}',       VaultController::class, 'deci
 $router->add('POST', '/vault/grants',              VaultController::class, 'createGrantAction',   'profile:edit',  '10:300');
 $router->add('DELETE', '/vault/grants/{id}',       VaultController::class, 'revokeGrantAction',   'profile:edit',  '20:300');
 
-
 // Permission routes - plain method names (permission administration itself
 // is protected by permission_overrides:view / permission_overrides:manage)
 $router->add('GET', '/permissions/catalog', PermissionController::class, 'catalog', 'permission_overrides:view');
@@ -871,10 +879,6 @@ $router->add('DELETE', '/permissions/users/{id}/overrides', PermissionController
 
 // Meeting routes - Laravel-style methods
 $router->add('GET', '/my-meetings', MeetingController::class, 'myMeetings', 'meetings:view');
-// Org-wide index is scoped server-side in indexAction(): holders of
-// meetings:dashboard (hr_manager/managing_director/super_admin + overrides)
-// see every meeting; every other meetings:create caller (e.g. dept_head) sees
-// only the meetings they organized. Personal invites → /my-meetings.
 $router->add('GET', '/meetings', MeetingController::class, 'index', 'meetings:create');
 $router->add('GET', '/meetings/stats', MeetingController::class, 'stats', 'meetings:dashboard');
 $router->add('GET', '/meetings/eligible-employees', MeetingController::class, 'eligibleEmployees', 'meetings:create');
@@ -966,7 +970,7 @@ $router->add('GET', '/system/seeders/status/{table}', \App\Controllers\System\Se
 // Security Operations & AI-Assisted Threat Detection (Phase 5)
 // Centralized security monitoring, intrusion detection, and incident response.
 // All routes require security:view (read) or security:investigate/security:manage (write).
-// ============================================================================
+// ===========================================================================
 use App\Controllers\Security\SecurityDashboardController;
 use App\Controllers\Security\SecurityAdminController;
 
@@ -995,17 +999,17 @@ $router->add('POST', '/security/incidents/{id}/contain', SecurityAdminController
 
 // ============================================================================
 // HR Policy & Procedures Manual module (migration 081)
-//
+
 // Employee reader/search/acknowledgement surface: hr_policies:view /
 // hr_policies:acknowledge (seeded to EVERY role). Static paths are registered
 // BEFORE the /hr-policies/{id} wildcard so they take precedence (first-match
 // router). File streaming reads PRIVATE storage only.
-//
+
 // HR administration: hr_policies:manage (upload/edit/archive/delete/history/
 // acknowledgements) and hr_policies:publish (publish workflow) — seeded to
 // hr_manager / super_admin only. Uploads are throttled; uploads NEVER
 // auto-publish (draft → review → publish is explicit).
-// ============================================================================
+// ===========================================================================
 use App\Controllers\HR\HrPolicyController;
 use App\Controllers\Settings\HrPolicyAdminController;
 

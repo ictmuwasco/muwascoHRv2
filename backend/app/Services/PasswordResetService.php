@@ -43,6 +43,61 @@ class PasswordResetService
     }
 
     /**
+     * Resolve the base URL used for password-reset / welcome links.
+     *
+     * The link is NEVER built from $_SERVER['HTTP_HOST'] or
+     * $_SERVER['HTTP_X_FORWARDED_HOST'], so a hostile Host header cannot
+     * poison reset links (host-header poisoning). It is resolved from the
+     * FRONTEND_URL environment variable, validated to be a proper absolute
+     * http(s) URL, with APP_URL as the only documented fallback.
+     *
+     * @return string The base URL without trailing slash, e.g. https://hr.muwasco.co.ke
+     * @throws \RuntimeException when FRONTEND_URL is unset and APP_URL is also missing/invalid.
+     */
+    private function getFrontendBaseUrl(): string
+    {
+        $frontend = (string) \env('FRONTEND_URL', '');
+        if ($frontend !== '') {
+            $frontend = rtrim($frontend, '/');
+            $parts = parse_url($frontend);
+            if (is_array($parts)
+                && isset($parts['scheme'])
+                && in_array(strtolower($parts['scheme']), ['http', 'https'], true)
+                && isset($parts['host'])
+                && $parts['host'] !== ''
+            ) {
+                return $frontend;
+            }
+            \logger()->warning('FRONTEND_URL is malformed, ignoring', [
+                'frontend_url' => substr($frontend, 0, 128),
+            ]);
+        }
+
+        // Fallback to APP_URL so a misconfigured deployment does not silently
+        // emit localhost links. Log loudly so ops notices the missing config.
+        $appUrl = (string) \env('APP_URL', '');
+        if ($appUrl !== '') {
+            $appUrl = rtrim($appUrl, '/');
+            $parts = parse_url($appUrl);
+            if (is_array($parts)
+                && isset($parts['scheme'])
+                && in_array(strtolower($parts['scheme']), ['http', 'https'], true)
+                && isset($parts['host'])
+                && $parts['host'] !== ''
+            ) {
+                \logger()->warning('FRONTEND_URL unset, falling back to APP_URL for reset links', [
+                    'app_url' => substr($appUrl, 0, 128),
+                ]);
+                return $appUrl;
+            }
+        }
+
+        throw new \RuntimeException(
+            'FRONTEND_URL is not set and APP_URL is missing or invalid; cannot build password-reset links.'
+        );
+    }
+
+    /**
      * Start a reset for an email address.
      *
      * @return array{sent:bool, reason:string} `reason` is for LOGS ONLY and
@@ -500,7 +555,7 @@ class PasswordResetService
      */
     private function sendLink(string $email, string $name, string $token, string $otp): bool
     {
-        $frontend = rtrim((string) \env('FRONTEND_URL', 'http://localhost:5173'), '/');
+        $frontend = $this->getFrontendBaseUrl();
         $link = $frontend . '/reset-password?token=' . rawurlencode($token);
 
         try {
@@ -569,7 +624,7 @@ class PasswordResetService
             return false;
         }
 
-        $frontend = rtrim((string) \env('FRONTEND_URL', 'http://localhost:5173'), '/');
+        $frontend = $this->getFrontendBaseUrl();
         $link = $frontend . '/reset-password?token=' . rawurlencode($token);
 
         try {

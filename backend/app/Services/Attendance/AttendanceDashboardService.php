@@ -17,7 +17,7 @@ namespace App\Services;
  *   3. Attendance record  - a clock-in takes precedence over approved leave
  *   4. ON_LEAVE           - approved leave application and no attendance record
  *   5. AUTO_CLOCKED_OUT   - session closed automatically at midnight
- *   6. LATE               - clocked in after the late cutoff (08:30 Africa/Nairobi)
+ *   6. LATE               - clocked in after the late cutoff (08:10 Africa/Nairobi)
  *   7. MISSING_CLOCK_OUT  - past-day record still missing clock-out (defensive)
  *   8. PRESENT            - valid clock-in, day/session in progress
  *   9. CLOCKED_OUT        - completed clock-in + clock-out
@@ -67,9 +67,9 @@ class AttendanceDashboardService
      */
     private const NOT_CLOCKED_IN_GRACE_ENABLED = false;
 
-    /** Late cutoff - must match AttendanceController::clockInAction (08:30). */
+    /** Late cutoff - must match AttendanceController::clockInAction (08:10).. */
     private const LATE_CUTOFF_HOUR   = 8;
-    private const LATE_CUTOFF_MINUTE = 30;
+    private const LATE_CUTOFF_MINUTE = 10;
 
     /** Hard cap on rows in the lightweight "not clocked in / absent" panel. */
     private const ABSENT_PANEL_LIMIT = 200;
@@ -421,7 +421,7 @@ class AttendanceDashboardService
      * record (if any) attached in the same query - one round trip.
      *
      * $subsectionId additionally narrows to a single sub-section (used by the
-     * server-side data-scope clamp for sub-section heads â€” never from
+     * server-side data-scope clamp for sub-section heads GÇö never from
      * untrusted input).
      */
     private function getRosterRows(string $date, ?int $departmentId, ?int $sectionId, ?int $subsectionId = null): array
