@@ -36,8 +36,7 @@ function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
   )
     return false;
   const employeeType = (emp.employee_type || '').toLowerCase();
-  const isSectionHead =
-    employeeType === 'section_head' || employeeType === 'section_manager';
+  const isSectionHead = employeeType === 'section_head' || employeeType === 'section_manager';
   const isSubSectionHead =
     employeeType === 'sub_section_head' || employeeType === 'subsection_head';
   if (isSectionHead) {

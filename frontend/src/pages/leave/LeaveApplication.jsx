@@ -56,14 +56,22 @@ const LeaveApplication = () => {
             if (tag === 0x0112) {
               const orientation = getU16(entryOffset + 8);
               switch (orientation) {
-                case 2: return [true, false, 0];
-                case 3: return [false, false, 180];
-                case 4: return [false, true, 0];
-                case 5: return [true, true, 270];
-                case 6: return [false, false, 90];
-                case 7: return [true, true, 90];
-                case 8: return [false, false, 270];
-                default: return [false, false, 0];
+                case 2:
+                  return [true, false, 0];
+                case 3:
+                  return [false, false, 180];
+                case 4:
+                  return [false, true, 0];
+                case 5:
+                  return [true, true, 270];
+                case 6:
+                  return [false, false, 90];
+                case 7:
+                  return [true, true, 90];
+                case 8:
+                  return [false, false, 270];
+                default:
+                  return [false, false, 0];
               }
             }
           }
@@ -136,8 +144,7 @@ const LeaveApplication = () => {
           // Choose output format: keep PNG as PNG (alpha/transparency),
           // everything else → JPEG.
           const mimeType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
-          const quality =
-            img.width * img.height > 4_000_000 ? 0.6 : 0.8;
+          const quality = img.width * img.height > 4_000_000 ? 0.6 : 0.8;
 
           const dataUrl = canvas.toDataURL(mimeType, quality);
           const base64 = dataUrl.split(',')[1];
@@ -867,16 +874,10 @@ const LeaveApplication = () => {
                 className="w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 required={typePolicy.requires_document === true}
               />
-              {compressing && (
-                <p className="text-xs text-blue-600 mt-1">Compressing image…</p>
-              )}
-              {documentError && (
-                <p className="text-xs text-red-600 mt-1">{documentError}</p>
-              )}
+              {compressing && <p className="text-xs text-blue-600 mt-1">Compressing image…</p>}
+              {documentError && <p className="text-xs text-red-600 mt-1">{documentError}</p>}
               {!compressing && !documentError && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Allowed: PDF, JPG, PNG. Max size: 5MB.
-                </p>
+                <p className="text-xs text-gray-500 mt-1">Allowed: PDF, JPG, PNG. Max size: 5MB.</p>
               )}
             </div>
           )}

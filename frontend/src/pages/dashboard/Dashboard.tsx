@@ -679,7 +679,7 @@ const Dashboard = () => {
         setLocationError(
           resp.message ||
             `This device is already registered to another employee. It becomes ` +
-            `available again at midnight tonight. Please clock in from your own device.`,
+              `available again at midnight tonight. Please clock in from your own device.`,
         );
         if (unlocksAt && !Number.isNaN(unlocksAt.getTime())) {
           setActionMessage(`Device lock expires at ${unlocksAt.toLocaleString()}.`);
