@@ -126,6 +126,9 @@ class ApiRouter
     /** Route definition currently being dispatched (permission/throttle context). */
     private static ?array $currentRoute = null;
 
+    /** Route URI params for the dispatch in progress (e.g. ['id' => '535']). */
+    private static ?array $currentParams = null;
+
     public function __construct()
     {
         $this->container = \App\Container\Container::getInstance();
@@ -197,6 +200,33 @@ class ApiRouter
         return $params;
     }
 
+    /**
+     * Call a controller action with route parameters.
+     *
+     * Route URI parameters are always extracted as strings (e.g. '535').
+     * Controller methods declare typed parameters (e.g. `int $id`), so a
+     * string would cause a TypeError under strict_types and produce a 500.
+     * This method inspects the method signature via reflection and casts
+     * each value to the declared type before invocation.
+     *
+     * @return mixed The return value of the controller action (e.g. array for login responses, null for void actions).
+     */
+    private function callAction(object $controller, string $methodName, array $params): mixed
+    {
+        $ref = new \ReflectionMethod($controller, $methodName);
+        $args = [];
+        foreach ($ref->getParameters() as $i => $param) {
+            $value = $params[$i] ?? null;
+            $type = $param->getType();
+            if ($type instanceof \ReflectionNamedType && $type->getName() === 'int') {
+                $args[] = (int) $value;
+            } else {
+                $args[] = $value;
+            }
+        }
+        return $controller->$methodName(...$args);
+    }
+
     public function dispatch(): void
     {
         $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
@@ -266,10 +296,11 @@ class ApiRouter
                 
                 // Try the Action-suffixed method first, then the plain method name
                 $actionMethod = $action . 'Action';
+                $result = null;
                 if (method_exists($controller, $actionMethod)) {
-                    $this->callAction($controller, $actionMethod, $matches);
+                    $result = $this->callAction($controller, $actionMethod, $matches);
                 } elseif (method_exists($controller, $action)) {
-                    $this->callAction($controller, $action, $matches);
+                    $result = $this->callAction($controller, $action, $matches);
                 } else {
                     \App\Helpers\ApiResponse::error(
                         "Method {$action} not found on " . $controllerClass,
@@ -277,8 +308,17 @@ class ApiRouter
                         [],
                         500
                     );
+                    return;
                 }
-                return;
+                
+                // Output JSON response and terminate request — ensures the
+                // controller action's return value (e.g. login user array + token)
+                // is properly sent to the client, fixing "malformed response" errors.
+                // Wrapping in 'data' key matches the frontend's expected response shape
+                // (response?.data?.data?.user chain in AuthContext.jsx login handler).
+                header('Content-Type: application/json');
+                echo json_encode(['data' => $result]);
+                exit;
             }
         }
 
@@ -405,7 +445,7 @@ $router->add('GET', '/roles', RolesController::class, 'index');
 // authenticated self-service (own record enforced in the controller);
 // record administration requires attendance:manage.
 $router->add('GET', '/attendance/today', AttendanceController::class, 'today', 'attendance:view');
-$router->add('GET', '/attendance/dashboard', AttendanceController::class, 'dashboard');
+$router->add('GET', '/attendance/dashboard');
 // HR attendance monitoring dashboard + employee history (before /attendance/{id} wildcard)
 // Org attendance monitoring is an administrative function: it requires
 // attendance:manage (officers/employees hold only attendance:view). Data
@@ -694,7 +734,7 @@ $router->add('POST',   '/workplans',                    WorkplanController::clas
 $router->add('POST',   '/workplans/bulk',               WorkplanController::class, 'bulk', 'workplan:view');
 // Workplan extension routes (must be declared BEFORE the /workplans/{id} wildcard)
 $router->add('GET',    '/workplans/integrated-view',    WorkplanController::class, 'integratedView', 'workplan:view');
-$router->add('GET',    '/workplans/export',             WorkplanController::class, 'export', 'workplan:view', '20:300');
+$router->add('GET',    '/workplans/export',             WorkplanController::class, 'export', 'workplan:view', '20:300';
 // Cascading workplan system: dashboard summary, downward cascade, lineage.
 $router->add('GET',    '/workplans/summary',            WorkplanController::class, 'summary', 'workplan:view');
 $router->add('GET',    '/workplans/section-sources',    WorkplanController::class, 'sectionSources', 'workplan:view');
@@ -763,7 +803,6 @@ $router->add('GET', '/profile', EmployeeController::class, 'profile', 'profile:v
 $router->add('PUT', '/profile', EmployeeController::class, 'updateProfile', 'profile:edit');
 $router->add('POST', '/profile/documents', EmployeeController::class, 'uploadProfileDocument', 'profile:edit', '20:300');
 $router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewProfileDocument');
-$router->add('GET', '/profile/documents/{id}/view', EmployeeController::class, 'viewProfileDocument');
 // ===========================================================================
 // Encrypted document access — the two-step OTP gate (migration 106).
 //
