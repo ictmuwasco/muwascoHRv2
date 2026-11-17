@@ -37,16 +37,15 @@ export default defineConfig({
   },
   server: {
     // Vite default port (5173). Override via `npm run dev -- --port=3000` if needed.
-    // The backend is the XAMPP-served PHP API at /hrdemo/api.php. We forward
-    // /api/* to the XAMPP Apache server and rewrite the path to prefix
-    // /hrdemo so that api.php receives a normal REQUEST_URI of
-    // /hrdemo/api/auth/login and its own router can match /auth/login correctly.
+    // The PHP backend runs on localhost:8000 (docroot = repo root, router.php).
+    // /api/* is proxied to it WITH the /api prefix intact: router.php forwards
+    // /api/* to api.php, and api.php strips /api internally before matching
+    // routes (e.g. /api/auth/login -> /auth/login). Do NOT strip /api here.
     proxy: {
       '/api': {
-        target: 'http://localhost', // XAMPP Apache on port 80
+        target: 'http://localhost:8000', // PHP development server with router.php
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => `/hrdemo${path}`, // Prefix with /hrdemo
       },
     },
   },

@@ -178,8 +178,6 @@ class ApiRouter
         return self::$currentRoute;
     }
 
-    /** Route URI params for the dispatch in progress (e.g. ['id' => '535']). */
-    private static ?array $currentParams = null;
 
     public static function currentRouteParams(): ?array
     {
@@ -311,13 +309,15 @@ class ApiRouter
                     return;
                 }
                 
-                // Output JSON response and terminate request — ensures the
-                // controller action's return value (e.g. login user array + token)
-                // is properly sent to the client, fixing "malformed response" errors.
-                // Wrapping in 'data' key matches the frontend's expected response shape
-                // (response?.data?.data?.user chain in AuthContext.jsx login handler).
+                // Output JSON response in ApiResponse format {success, message, data}
+                // to match frontend expectations and prevent "malformed response" errors.
                 header('Content-Type: application/json');
-                echo json_encode(['data' => $result]);
+                $response = [
+                    'success' => true,
+                    'message' => 'Login successful',
+                    'data' => $result
+                ];
+                echo json_encode($response);
                 exit;
             }
         }
@@ -330,30 +330,6 @@ class ApiRouter
         );
     }
 
-    /**
-     * Call a controller action with route parameters.
-     *
-     * Route URI parameters are always extracted as strings (e.g. '535').
-     * Controller methods declare typed parameters (e.g. `int $id`), so a
-     * string would cause a TypeError under strict_types and produce a 500.
-     * This method inspects the method signature via reflection and casts
-     * each value to the declared type before invocation.
-     */
-    private function callAction(object $controller, string $methodName, array $params): void
-    {
-        $ref = new \ReflectionMethod($controller, $methodName);
-        $args = [];
-        foreach ($ref->getParameters() as $i => $param) {
-            $value = $params[$i] ?? null;
-            $type = $param->getType();
-            if ($type instanceof \ReflectionNamedType && $type->getName() === 'int') {
-                $args[] = (int) $value;
-            } else {
-                $args[] = $value;
-            }
-        }
-        $controller->$methodName(...$args);
-    }
 }
 
 // Governance safety-net: ensure every authenticated mutating request is audited.
@@ -445,7 +421,7 @@ $router->add('GET', '/roles', RolesController::class, 'index');
 // authenticated self-service (own record enforced in the controller);
 // record administration requires attendance:manage.
 $router->add('GET', '/attendance/today', AttendanceController::class, 'today', 'attendance:view');
-$router->add('GET', '/attendance/dashboard');
+$router->add('GET', '/attendance/dashboard', AttendanceController::class, 'dashboard', null);
 // HR attendance monitoring dashboard + employee history (before /attendance/{id} wildcard)
 // Org attendance monitoring is an administrative function: it requires
 // attendance:manage (officers/employees hold only attendance:view). Data
@@ -700,18 +676,18 @@ $router->add('PUT',    '/strategic-plans/{id}',         StrategicPlanController:
 $router->add('DELETE', '/strategic-plans/{id}',         StrategicPlanController::class, 'destroy', 'strategic_plan:manage');
 $router->add('POST',   '/strategic-plans/{id}/goals',   StrategicPlanController::class, 'storeGoal', 'strategic_plan:manage');
 $router->add('PUT',    '/goals/{id}',                   StrategicPlanController::class, 'updateGoal', 'strategic_plan:manage');
-$router->add('DELETE', '/goals/{id}',                   StrategicPlanController::class, 'destroyGoal', 'strategic_plan:manage';
+$router->add('DELETE', '/goals/{id}',                   StrategicPlanController::class, 'destroyGoal', 'strategic_plan:manage');
 $router->add('POST',   '/strategic-plans/{id}/targets', StrategicPlanController::class, 'storeTarget', 'strategic_plan:manage');
-$router->add('PUT',    '/targets/{id}',                 StrategicPlanController::class, 'updateTarget', 'strategic_plan:manage';
-$router->add('DELETE', '/targets/{id}',                 StrategicPlanController::class, 'destroyTarget', 'strategic_plan:manage';
+$router->add('PUT',    '/targets/{id}',                 StrategicPlanController::class, 'updateTarget', 'strategic_plan:manage');
+$router->add('DELETE', '/targets/{id}',                 StrategicPlanController::class, 'destroyTarget', 'strategic_plan:manage');
 
 // Performance contracts — reads mirror the seeded performance_contract:view;
 // writes are OrgScope-managed (scope logic).
 $router->add('GET',    '/performance-contracts',        PerformanceContractController::class, 'index', 'performance_contract:view');
 $router->add('POST',   '/performance-contracts',        PerformanceContractController::class, 'store', 'performance_contract:manage');
 $router->add('GET',    '/performance-contracts/{id}',   PerformanceContractController::class, 'show', 'performance_contract:view');
-$router->add('PUT',    '/performance-contracts/{id}',   PerformanceContractController::class, 'update', 'performance_contract:manage';
-$router->add('DELETE', '/performance-contracts/{id}',   PerformanceContractController::class, 'destroy', 'performance_contract:manage';
+$router->add('PUT',    '/performance-contracts/{id}',   PerformanceContractController::class, 'update', 'performance_contract:manage');
+$router->add('DELETE', '/performance-contracts/{id}',   PerformanceContractController::class, 'destroy', 'performance_contract:manage');
 
 // Appraisal cycles (quarterly quarters attached to every workplan activity).
 // Read: any authenticated user — heads' workplan quarter pickers consume the
@@ -722,80 +698,80 @@ $router->add('DELETE', '/performance-contracts/{id}',   PerformanceContractContr
 // workflow but must not configure cycles.
 $router->add('GET',    '/appraisal-cycles',          AppraisalCycleController::class, 'index');
 $router->add('POST',   '/appraisal-cycles',          AppraisalCycleController::class, 'store', 'performance:cycles');
-$router->add('PUT',    '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'update', 'performance:cycles';
-$router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'destroy', 'performance:cycles';
+$router->add('PUT',    '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'update', 'performance:cycles');
+$router->add('DELETE', '/appraisal-cycles/{id}',     AppraisalCycleController::class, 'destroy', 'performance:cycles');
 
 // Workplan objectives — reads mirror the seeded workplan:view; all writes are
 // OrgScope-managed (organizational scope logic in the controllers).
 $router->add('GET',    '/strategic-plans/{id}/workplans', WorkplanController::class, 'index', 'workplan:view');
 $router->add('GET',    '/workplans',                    WorkplanController::class, 'list', 'workplan:view');
-$router->add('POST',   '/workplans',                    WorkplanController::class, 'store', 'workplan:view';
-$router->add('POST',   '/workplans/bulk',               WorkplanController::class, 'bulk', 'workplan:view';
-$router->add('GET',    '/workplans/integrated-view',    WorkplanController::class, 'integratedView', 'workplan:view';
-$router->add('GET',    '/workplans/export',             WorkplanController::class, 'export', 'workplan:view', '20:300';
-$router->add('GET',    '/workplans/summary',            WorkplanController::class, 'summary', 'workplan:view';
-$router->add('GET',    '/workplans/section-sources',    WorkplanController::class, 'sectionSources', 'workplan:view';
-$router->add('POST',   '/workplans/{id}/cascade',       WorkplanController::class, 'cascade', 'workplan:view';
-$router->add('GET',    '/workplans/{id}/traceability',  WorkplanController::class, 'traceability', 'workplan:view';
-$router->add('GET',    '/workplans/{id}/progress-history', WorkplanController::class, 'progressHistory', 'workplan:view';
-$router->add('PUT',    '/workplans/{id}/progress',      WorkplanController::class, 'progressUpdate', 'workplan:view';
-$router->add('GET',    '/workplans/{id}/dependencies',  WorkplanController::class, 'dependencies', 'workplan:view';
-$router->add('GET',    '/workplans/{id}',               WorkplanController::class, 'show', 'workplan:view';
-$router->add('PUT',    '/workplans/{id}',               WorkplanController::class, 'update', 'workplan:view';
-$router->add('DELETE', '/workplans/{id}',               WorkplanController::class, 'destroy', 'workplan:view';
+$router->add('POST',   '/workplans',                    WorkplanController::class, 'store', 'workplan:view');
+$router->add('POST',   '/workplans/bulk',               WorkplanController::class, 'bulk', 'workplan:view');
+$router->add('GET',    '/workplans/integrated-view',    WorkplanController::class, 'integratedView', 'workplan:view');
+$router->add('GET',    '/workplans/export',             WorkplanController::class, 'export', 'workplan:view', '20:300');
+$router->add('GET',    '/workplans/summary',            WorkplanController::class, 'summary', 'workplan:view');
+$router->add('GET',    '/workplans/section-sources',    WorkplanController::class, 'sectionSources', 'workplan:view');
+$router->add('POST',   '/workplans/{id}/cascade',       WorkplanController::class, 'cascade', 'workplan:view');
+$router->add('GET',    '/workplans/{id}/traceability',  WorkplanController::class, 'traceability', 'workplan:view');
+$router->add('GET',    '/workplans/{id}/progress-history', WorkplanController::class, 'progressHistory', 'workplan:view');
+$router->add('PUT',    '/workplans/{id}/progress',      WorkplanController::class, 'progressUpdate', 'workplan:view');
+$router->add('GET',    '/workplans/{id}/dependencies',  WorkplanController::class, 'dependencies', 'workplan:view');
+$router->add('GET',    '/workplans/{id}',               WorkplanController::class, 'show', 'workplan:view');
+$router->add('PUT',    '/workplans/{id}',               WorkplanController::class, 'update', 'workplan:view');
+$router->add('DELETE', '/workplans/{id}',               WorkplanController::class, 'destroy', 'workplan:view');
 
 // KPIs (linked to performance contracts)
 // Permission is 'view' because OrgScope::canManagePerformance() enforces the
 // business-level authorization inside KPIController (same pattern as workplans).
-$router->add('GET',    '/contracts/{id}/kpis',          KPIController::class, 'index', 'kpi:view';
-$router->add('POST',   '/contracts/{id}/kpis',          KPIController::class, 'store', 'kpi:view';
-$router->add('GET',    '/kpis',                         KPIController::class, 'list', 'kpi:view';
-$router->add('PUT',    '/kpis/{id}',                    KPIController::class, 'update', 'kpi:view';
-$router->add('DELETE', '/kpis/{id}',                    KPIController::class, 'destroy', 'kpi:view';
+$router->add('GET',    '/contracts/{id}/kpis',          KPIController::class, 'index', 'kpi:view');
+$router->add('POST',   '/contracts/{id}/kpis',          KPIController::class, 'store', 'kpi:view');
+$router->add('GET',    '/kpis',                         KPIController::class, 'list', 'kpi:view');
+$router->add('PUT',    '/kpis/{id}',                    KPIController::class, 'update', 'kpi:view');
+$router->add('DELETE', '/kpis/{id}',                    KPIController::class, 'destroy', 'kpi:view');
 
 // Sectional objectives / KPIs (performance indicators)
 // Permission is 'view' because OrgScope::canManagePerformance() enforces the
 // business-level authorization inside SectionalObjectiveController.
-$router->add('GET',    '/sectional-objectives',         SectionalObjectiveController::class, 'index', 'sectional_objective:view';
-$router->add('POST',   '/sectional-objectives',         SectionalObjectiveController::class, 'store', 'sectional_objective:view';
-$router->add('GET',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'show', 'sectional_objective:view';
-$router->add('PUT',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'update', 'sectional_objective:view';
-$router->add('DELETE', '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'destroy', 'sectional_objective:view';
+$router->add('GET',    '/sectional-objectives',         SectionalObjectiveController::class, 'index', 'sectional_objective:view');
+$router->add('POST',   '/sectional-objectives',         SectionalObjectiveController::class, 'store', 'sectional_objective:view');
+$router->add('GET',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'show', 'sectional_objective:view');
+$router->add('PUT',    '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'update', 'sectional_objective:view');
+$router->add('DELETE', '/sectional-objectives/{id}',    SectionalObjectiveController::class, 'destroy', 'sectional_objective:view');
 
 // Strategy & Performance dashboard + report endpoints
-$router->add('GET',    '/dashboard/strategic-performance', DashboardController::class, 'strategicPerformance', 'dashboard:view';
-$router->add('GET',    '/reports/strategic-performance',   ReportController::class, 'strategicPerformance', 'reports:view';
+$router->add('GET',    '/dashboard/strategic-performance', DashboardController::class, 'strategicPerformance', 'dashboard:view');
+$router->add('GET',    '/reports/strategic-performance',   ReportController::class, 'strategicPerformance', 'reports:view');
 
 // Complaint routes (duplicate registration kept for backward compatibility)
-$router->add('GET',    '/complaints',                ComplaintController::class, 'index';
-$router->add('POST',   '/complaints',                ComplaintController::class, 'store';
-$router->add('PUT',    '/complaints/{id}',           ComplaintController::class, 'update', 'complaints:view';
+$router->add('GET',    '/complaints',                ComplaintController::class, 'index');
+$router->add('POST',   '/complaints',                ComplaintController::class, 'store');
+$router->add('PUT',    '/complaints/{id}',           ComplaintController::class, 'update', 'complaints:view');
 
 
 // Notification routes — every user manages their OWN notifications
 // (ownership enforced in the controller).
-$router->add('GET', '/notifications', NotificationController::class, 'index';
-$router->add('GET', '/notifications/unread', NotificationController::class, 'unread';
-$router->add('POST', '/notifications/{id}/read', NotificationController::class, 'markAsRead';
-$router->add('POST', '/notifications/read-all', NotificationController::class, 'markAllAsRead';
+$router->add('GET', '/notifications', NotificationController::class, 'index');
+$router->add('GET', '/notifications/unread', NotificationController::class, 'unread');
+$router->add('POST', '/notifications/{id}/read', NotificationController::class, 'markAsRead');
+$router->add('POST', '/notifications/read-all', NotificationController::class, 'markAllAsRead');
 
 // Audit routes - plain method names
-$router->add('GET', '/audit', AuditLogController::class, 'index', 'audit:view';
-$router->add('GET', '/audit/statistics', AuditLogController::class, 'statistics', 'audit:view';
-$router->add('GET', '/audit/filters', AuditLogController::class, 'filters', 'audit:view';
-$router->add('GET', '/audit/export', AuditLogController::class, 'export', 'audit:export', '20:300';
-$router->add('GET', '/audit/{id}', AuditLogController::class, 'show', 'audit:view';
-$router->add('GET', '/audit-logs', AuditLogController::class, 'index', 'audit:view';
+$router->add('GET', '/audit', AuditLogController::class, 'index', 'audit:view');
+$router->add('GET', '/audit/statistics', AuditLogController::class, 'statistics', 'audit:view');
+$router->add('GET', '/audit/filters', AuditLogController::class, 'filters', 'audit:view');
+$router->add('GET', '/audit/export', AuditLogController::class, 'export', 'audit:export', '20:300');
+$router->add('GET', '/audit/{id}', AuditLogController::class, 'show', 'audit:view');
+$router->add('GET', '/audit-logs', AuditLogController::class, 'index', 'audit:view');
 
 // Settings routes
-$router->add('GET', '/settings', SettingController::class, 'index', 'admin:view';
-$router->add('PUT', '/settings', SettingController::class, 'update', 'admin:manage';
+$router->add('GET', '/settings', SettingController::class, 'index', 'admin:view');
+$router->add('PUT', '/settings', SettingController::class, 'update', 'admin:manage');
 
 // Profile routes — self-service (own record enforced in the controller)
-$router->add('GET', '/profile', EmployeeController::class, 'profile', 'profile:view';
-$router->add('PUT', '/profile', EmployeeController::class, 'updateProfile', 'profile:edit';
-$router->add('POST', '/profile/documents', EmployeeController::class, 'uploadProfileDocument', 'profile:edit', '20:300';
-$router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewProfileDocument';
+$router->add('GET', '/profile', EmployeeController::class, 'profile', 'profile:view');
+$router->add('PUT', '/profile', EmployeeController::class, 'updateProfile', 'profile:edit');
+$router->add('POST', '/profile/documents', EmployeeController::class, 'uploadProfileDocument', 'profile:edit', '20:300');
+$router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewProfileDocument');
 
 // ===========================================================================
 // Encrypted document access — the two-step OTP gate (migration 106).
@@ -821,9 +797,9 @@ $router->add('GET', '/profile/documents/{id}', EmployeeController::class, 'viewP
 //     unlimited verify endpoint is brute-forceable regardless of the row-level
 //     attempt counter.
 // ===========================================================================
-$router->add('POST', '/profile/documents/{id}/request-access', EmployeeController::class, 'requestDocumentAccessAction', 'profile:view', '5:300';
-$router->add('POST', '/profile/documents/{id}/verify',        EmployeeController::class, 'verifyDocumentAccessAction',   'profile:view', '10:300';
-$router->add('GET',  '/profile/documents/{id}/open',           EmployeeController::class, 'openDocumentAction',          'profile:view', '20:300';
+$router->add('POST', '/profile/documents/{id}/request-access', EmployeeController::class, 'requestDocumentAccessAction', 'profile:view', '5:300');
+$router->add('POST', '/profile/documents/{id}/verify',        EmployeeController::class, 'verifyDocumentAccessAction',   'profile:view', '10:300');
+$router->add('GET',  '/profile/documents/{id}/open',           EmployeeController::class, 'openDocumentAction',          'profile:view', '20:300');
 
 // Employee-scoped variants, used while the document LIST is still redacted.
 
@@ -837,29 +813,29 @@ $router->add('GET',  '/profile/documents/{id}/open',           EmployeeControlle
 // legitimately sees the profile may ask the owner to unlock the documents. The
 // controller still re-checks EmployeePolicy::canView for this specific employee,
 // so the route permission is necessary but not sufficient.
-$router->add('POST', '/profile/employees/{employeeId}/documents/request-access', EmployeeController::class, 'requestEmployeeDocumentsAccessAction', 'employees:view', '5:300';
-$router->add('POST', '/profile/employees/{employeeId}/documents/verify',        EmployeeController::class, 'verifyEmployeeDocumentsAccessAction',   'employees:view', '10:300';
+$router->add('POST', '/profile/employees/{employeeId}/documents/request-access', EmployeeController::class, 'requestEmployeeDocumentsAccessAction', 'employees:view', '5:300');
+$router->add('POST', '/profile/employees/{employeeId}/documents/verify',        EmployeeController::class, 'verifyEmployeeDocumentsAccessAction',   'employees:view', '10:300');
 
-$router->add('DELETE', '/profile/documents/{id}', EmployeeController::class, 'deleteProfileDocument', 'profile:edit';
+$router->add('DELETE', '/profile/documents/{id}', EmployeeController::class, 'deleteProfileDocument', 'profile:edit');
 
 // Profile contracts routes — self-service.
 // Reading your own contract history is self-service (profile:view). Renewing
 // is NOT: it mutates the employment record, so it is gated on employees:edit
 // (HR/admin only). profile:edit is held by every staff role including officer,
 // so it must never be the gate here — see EmployeePolicy::canRenewContract().
-$router->add('GET', '/profile/contracts', EmployeeController::class, 'getProfileContracts', 'profile:view';
-$router->add('POST', '/profile/contracts/{id}/renew', EmployeeController::class, 'renewProfileContract', 'employees:edit', '20:300';
+$router->add('GET', '/profile/contracts', EmployeeController::class, 'getProfileContracts', 'profile:view');
+$router->add('POST', '/profile/contracts/{id}/renew', EmployeeController::class, 'renewProfileContract', 'employees:edit', '20:300');
 
 // Profile picture routes
-$router->add('POST', '/profile/profile-image', EmployeeController::class, 'uploadProfileImage', 'profile:edit', '20:300';
-$router->add('GET', '/profile/profile-image', EmployeeController::class, 'profileImage', 'profile:view';
-$router->add('POST', '/employees/{id}/profile-image', EmployeeController::class, 'uploadEmployeeProfileImage', 'employees:edit', '20:300';
+$router->add('POST', '/profile/profile-image', EmployeeController::class, 'uploadProfileImage', 'profile:edit', '20:300');
+$router->add('GET', '/profile/profile-image', EmployeeController::class, 'profileImage', 'profile:view');
+$router->add('POST', '/employees/{id}/profile-image', EmployeeController::class, 'uploadEmployeeProfileImage', 'employees:edit', '20:300');
 $router->add('GET', '/employees/{id}/profile-image', EmployeeController::class, 'employeeProfileImage', 'employees:view');
 
 // Employee contracts routes (HR) - manage contract renewals and history
-$router->add('GET', '/employees/{id}/contracts', EmployeeController::class, 'getEmployeeContracts', 'employees:view';
-$router->add('POST', '/employees/{id}/contracts/{contractId}/renew', EmployeeController::class, 'renewEmployeeContract', 'employees:edit', '20:300';
-$router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController::class, 'convertToPermanent', 'employees:edit', '20:300';
+$router->add('GET', '/employees/{id}/contracts', EmployeeController::class, 'getEmployeeContracts', 'employees:view');
+$router->add('POST', '/employees/{id}/contracts/{contractId}/renew', EmployeeController::class, 'renewEmployeeContract', 'employees:edit', '20:300');
+$router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController::class, 'convertToPermanent', 'employees:edit', '20:300');
 
 // ===========================================================================
 // Private Vault (PART A) — zero-knowledge, client-side encryption.
@@ -880,86 +856,86 @@ $router->add('POST', '/employees/{id}/convert-to-permanent', EmployeeController:
 //     security-relevant, so they carry the vault_access budget in
 //     backend/config/rate_limits.php.
 // ===========================================================================
-$router->add('GET',  '/vault/status',              VaultController::class, 'statusAction',        'profile:view';
-$router->add('POST', '/vault/setup',               VaultController::class, 'setupAction',         'profile:edit', '5:900';
-$router->add('PUT',  '/vault/items/{group}',       VaultController::class, 'writeItemAction',     'profile:edit', '30:300';
-$router->add('GET',  '/vault/items/{employeeId}',  VaultController::class, 'readItemsAction',     'employees:view';
-$router->add('GET',  '/vault/lock-state/{employeeId}', VaultController::class, 'lockStateAction', 'employees:view';
-$router->add('POST', '/vault/requests',            VaultController::class, 'requestAccessAction', 'employees:view', '10:300';
-$router->add('PUT',  '/vault/requests/{id}',       VaultController::class, 'decideRequestAction', 'profile:edit',  '20:300';
-$router->add('POST', '/vault/grants',              VaultController::class, 'createGrantAction',   'profile:edit',  '10:300';
-$router->add('DELETE', '/vault/grants/{id}',       VaultController::class, 'revokeGrantAction',   'profile:edit',  '20:300';
+$router->add('GET',  '/vault/status',              VaultController::class, 'statusAction',        'profile:view');
+$router->add('POST', '/vault/setup',               VaultController::class, 'setupAction',         'profile:edit', '5:900');
+$router->add('PUT',  '/vault/items/{group}',       VaultController::class, 'writeItemAction',     'profile:edit', '30:300');
+$router->add('GET',  '/vault/items/{employeeId}',  VaultController::class, 'readItemsAction',     'employees:view');
+$router->add('GET',  '/vault/lock-state/{employeeId}', VaultController::class, 'lockStateAction', 'employees:view');
+$router->add('POST', '/vault/requests',            VaultController::class, 'requestAccessAction', 'employees:view', '10:300');
+$router->add('PUT',  '/vault/requests/{id}',       VaultController::class, 'decideRequestAction', 'profile:edit',  '20:300');
+$router->add('POST', '/vault/grants',              VaultController::class, 'createGrantAction',   'profile:edit',  '10:300');
+$router->add('DELETE', '/vault/grants/{id}',       VaultController::class, 'revokeGrantAction',   'profile:edit',  '20:300');
 
 // Permission routes - plain method names (permission administration itself
 // is protected by permission_overrides:view / permission_overrides:manage)
-$router->add('GET', '/permissions/catalog', PermissionController::class, 'catalog', 'permission_overrides:view';
-$router->add('GET', '/permissions/statistics', PermissionController::class, 'statistics', 'permission_overrides:view';
-$router->add('GET', '/permissions/roles', PermissionController::class, 'roles', 'permission_overrides:view';
-$router->add('GET', '/permissions/users', PermissionController::class, 'users', 'permission_overrides:view';
-$router->add('GET', '/permissions/users/{id}', PermissionController::class, 'userPermissions', 'permission_overrides:view';
-$router->add('GET', '/permissions/overrides', PermissionController::class, 'overrides', 'permission_overrides:view';
-$router->add('POST', '/permissions/users/{id}/overrides', PermissionController::class, 'setOverride', 'permission_overrides:manage', '30:300';
-$router->add('DELETE', '/permissions/users/{id}/overrides', PermissionController::class, 'removeOverride', 'permission_overrides:manage', '30:300';
+$router->add('GET', '/permissions/catalog', PermissionController::class, 'catalog', 'permission_overrides:view');
+$router->add('GET', '/permissions/statistics', PermissionController::class, 'statistics', 'permission_overrides:view');
+$router->add('GET', '/permissions/roles', PermissionController::class, 'roles', 'permission_overrides:view');
+$router->add('GET', '/permissions/users', PermissionController::class, 'users', 'permission_overrides:view');
+$router->add('GET', '/permissions/users/{id}', PermissionController::class, 'userPermissions', 'permission_overrides:view');
+$router->add('GET', '/permissions/overrides', PermissionController::class, 'overrides', 'permission_overrides:view');
+$router->add('POST', '/permissions/users/{id}/overrides', PermissionController::class, 'setOverride', 'permission_overrides:manage', '30:300');
+$router->add('DELETE', '/permissions/users/{id}/overrides', PermissionController::class, 'removeOverride', 'permission_overrides:manage', '30:300');
 
 // Meeting routes - Laravel-style methods
-$router->add('GET', '/my-meetings', MeetingController::class, 'myMeetings', 'meetings:view';
-$router->add('GET', '/meetings', MeetingController::class, 'index', 'meetings:create';
-$router->add('GET', '/meetings/stats', MeetingController::class, 'stats', 'meetings:dashboard';
-$router->add('GET', '/meetings/eligible-employees', MeetingController::class, 'eligibleEmployees', 'meetings:create';
-$router->add('POST', '/meetings', MeetingController::class, 'store', 'meetings:create';
-$router->add('GET', '/meetings/{id}', MeetingController::class, 'show', 'meetings:view';
-$router->add('PUT', '/meetings/{id}', MeetingController::class, 'update', 'meetings:edit';
-$router->add('DELETE', '/meetings/{id}', MeetingController::class, 'destroy', 'meetings:delete';
-$router->add('POST', '/meetings/{id}/cancel', MeetingController::class, 'cancel', 'meetings:edit';
-$router->add('GET', '/meetings/{id}/participants', MeetingController::class, 'participants', 'meetings:view';
-$router->add('POST', '/meetings/{id}/participants', MeetingController::class, 'addParticipant', 'meetings:invite';
-$router->add('DELETE', '/meetings/{id}/participants/{employeeId}', MeetingController::class, 'removeParticipant', 'meetings:invite';
+$router->add('GET', '/my-meetings', MeetingController::class, 'myMeetings', 'meetings:view');
+$router->add('GET', '/meetings', MeetingController::class, 'index', 'meetings:create');
+$router->add('GET', '/meetings/stats', MeetingController::class, 'stats', 'meetings:dashboard');
+$router->add('GET', '/meetings/eligible-employees', MeetingController::class, 'eligibleEmployees', 'meetings:create');
+$router->add('POST', '/meetings', MeetingController::class, 'store', 'meetings:create');
+$router->add('GET', '/meetings/{id}', MeetingController::class, 'show', 'meetings:view');
+$router->add('PUT', '/meetings/{id}', MeetingController::class, 'update', 'meetings:edit');
+$router->add('DELETE', '/meetings/{id}', MeetingController::class, 'destroy', 'meetings:delete');
+$router->add('POST', '/meetings/{id}/cancel', MeetingController::class, 'cancel', 'meetings:edit');
+$router->add('GET', '/meetings/{id}/participants', MeetingController::class, 'participants', 'meetings:view');
+$router->add('POST', '/meetings/{id}/participants', MeetingController::class, 'addParticipant', 'meetings:invite');
+$router->add('DELETE', '/meetings/{id}/participants/{employeeId}', MeetingController::class, 'removeParticipant', 'meetings:invite');
 // Confirm/decline are the invitee's own attendance response (any invited
 // employee); marking attendance for others is an organiser capability.
-$router->add('POST', '/meetings/{id}/confirm', MeetingController::class, 'confirm', 'meetings:confirm';
-$router->add('POST', '/meetings/{id}/decline', MeetingController::class, 'decline', 'meetings:confirm';
-$router->add('POST', '/meetings/{id}/attendance', MeetingController::class, 'markAttendance', 'meetings:view_attendance';
+$router->add('POST', '/meetings/{id}/confirm', MeetingController::class, 'confirm', 'meetings:confirm');
+$router->add('POST', '/meetings/{id}/decline', MeetingController::class, 'decline', 'meetings:confirm');
+$router->add('POST', '/meetings/{id}/attendance', MeetingController::class, 'markAttendance', 'meetings:view_attendance');
 
 // Meeting Minutes routes - structured minutes management.
 // Reads: meetings:view (viewing refined per-user in MeetingMinutesService:
 // managers see drafts, confirmed invitees see published minutes).
 // Writes: meetings:manage (refined per-user by the service as well).
-$router->add('GET',  '/meetings/{id}/minutes/status',  MeetingMinutesController::class, 'status', 'meetings:view';
-$router->add('GET',  '/meetings/{id}/minutes/options', MeetingMinutesController::class, 'options', 'meetings:manage';
-$router->add('POST', '/meetings/{id}/minutes',           MeetingMinutesController::class, 'create', 'meetings:manage';
-$router->add('GET',  '/meetings/{id}/minutes',           MeetingMinutesController::class, 'view', 'meetings:view';
-$router->add('PUT',  '/meetings/{id}/minutes',           MeetingMinutesController::class, 'update', 'meetings:manage';
-$router->add('POST', '/meetings/{id}/minutes/publish',   MeetingMinutesController::class, 'publish', 'meetings:manage';
-$router->add('POST', '/meetings/{id}/minutes/reopen',    MeetingMinutesController::class, 'reopen', 'meetings:manage';
+$router->add('GET',  '/meetings/{id}/minutes/status',  MeetingMinutesController::class, 'status', 'meetings:view');
+$router->add('GET',  '/meetings/{id}/minutes/options', MeetingMinutesController::class, 'options', 'meetings:manage');
+$router->add('POST', '/meetings/{id}/minutes',           MeetingMinutesController::class, 'create', 'meetings:manage');
+$router->add('GET',  '/meetings/{id}/minutes',           MeetingMinutesController::class, 'view', 'meetings:view');
+$router->add('PUT',  '/meetings/{id}/minutes',           MeetingMinutesController::class, 'update', 'meetings:manage');
+$router->add('POST', '/meetings/{id}/minutes/publish',   MeetingMinutesController::class, 'publish', 'meetings:manage');
+$router->add('POST', '/meetings/{id}/minutes/reopen',    MeetingMinutesController::class, 'reopen', 'meetings:manage');
 
 // Notification preferences (own settings)
-$router->add('GET', '/notification-preferences', \App\Controllers\Notifications\NotificationPreferencesController::class, 'index';
-$router->add('PUT', '/notification-preferences', \App\Controllers\Notifications\NotificationPreferencesController::class, 'update';
+$router->add('GET', '/notification-preferences', \App\Controllers\Notifications\NotificationPreferencesController::class, 'index');
+$router->add('PUT', '/notification-preferences', \App\Controllers\Notifications\NotificationPreferencesController::class, 'update');
 
 // Web Push subscriptions
-$router->add('GET', '/push/vapid-public-key', \App\Controllers\Notifications\PushSubscriptionController::class, 'vapidPublicKey';
-$router->add('GET', '/push/subscriptions', \App\Controllers\Notifications\PushSubscriptionController::class, 'index';
-$router->add('POST', '/push/subscribe', \App\Controllers\Notifications\PushSubscriptionController::class, 'subscribe';
-$router->add('DELETE', '/push/subscribe', \App\Controllers\Notifications\PushSubscriptionController::class, 'unsubscribe';
+$router->add('GET', '/push/vapid-public-key', \App\Controllers\Notifications\PushSubscriptionController::class, 'vapidPublicKey');
+$router->add('GET', '/push/subscriptions', \App\Controllers\Notifications\PushSubscriptionController::class, 'index');
+$router->add('POST', '/push/subscribe', \App\Controllers\Notifications\PushSubscriptionController::class, 'subscribe');
+$router->add('DELETE', '/push/subscribe', \App\Controllers\Notifications\PushSubscriptionController::class, 'unsubscribe');
 
 // Admin / HR notification visibility + controlled test sending
-$router->add('GET', '/admin/notifications/stats', \App\Controllers\Notifications\AdminNotificationController::class, 'stats', 'notifications:view';
-$router->add('GET', '/admin/notifications/audit/{employeeId}', \App\Controllers\Notifications\AdminNotificationController::class, 'audit', 'notifications:view';
-$router->add('POST', '/admin/notifications/test-send', \App\Controllers\Notifications\NotificationTestController::class, 'send', 'notifications:manage';
+$router->add('GET', '/admin/notifications/stats', \App\Controllers\Notifications\AdminNotificationController::class, 'stats', 'notifications:view');
+$router->add('GET', '/admin/notifications/audit/{employeeId}', \App\Controllers\Notifications\AdminNotificationController::class, 'audit', 'notifications:view');
+$router->add('POST', '/admin/notifications/test-send', \App\Controllers\Notifications\NotificationTestController::class, 'send', 'notifications:manage');
 
 // ===========================================================================
 // System Monitoring / Error Tracking (RBAC module: system_errors)
 // Correlates with audit_logs via request_id. Literal paths MUST be
 // registered before the {uuid} wildcard route.
 // ===========================================================================
-$router->add('GET',  '/system/errors/stats',              \App\Controllers\System\MonitoringController::class, 'stats', 'system_errors:view';
-$router->add('GET',  '/system/errors/groups',             \App\Controllers\System\MonitoringController::class, 'groups', 'system_errors:view';
-$router->add('POST', '/system/errors/groups/{id}/manage', \App\Controllers\System\MonitoringController::class, 'manage', 'system_errors:manage';
-$router->add('GET',  '/system/errors/{uuid}',             \App\Controllers\System\MonitoringController::class, 'show', 'system_errors:view';
+$router->add('GET',  '/system/errors/stats',              \App\Controllers\System\MonitoringController::class, 'stats', 'system_errors:view');
+$router->add('GET',  '/system/errors/groups',             \App\Controllers\System\MonitoringController::class, 'groups', 'system_errors:view');
+$router->add('POST', '/system/errors/groups/{id}/manage', \App\Controllers\System\MonitoringController::class, 'manage', 'system_errors:manage');
+$router->add('GET',  '/system/errors/{uuid}',             \App\Controllers\System\MonitoringController::class, 'show', 'system_errors:view');
 // Pre-login browser error collector - PUBLIC (see AuthenticationMiddleware).
-$router->add('POST', '/system/client-errors',             \App\Controllers\System\MonitoringController::class, 'clientError';
-$router->add('GET',  '/system/performance',               \App\Controllers\System\MonitoringController::class, 'performance', 'system_errors:view';
-$router->add('GET',  '/system/health',                    \App\Controllers\System\MonitoringController::class, 'health', 'system_errors:view';
+$router->add('POST', '/system/client-errors',             \App\Controllers\System\MonitoringController::class, 'clientError');
+$router->add('GET',  '/system/performance',               \App\Controllers\System\MonitoringController::class, 'performance', 'system_errors:view');
+$router->add('GET',  '/system/health',                    \App\Controllers\System\MonitoringController::class, 'health', 'system_errors:view');
 
 // ===========================================================================
 // AI Assistant (Phase 4/6) — authenticated-only (allowlist group ai_assistant);
@@ -968,27 +944,27 @@ $router->add('GET',  '/system/health',                    \App\Controllers\Syste
 // to see; it never executes HR writes (Phase 10 policy). Chat is throttled
 // because every turn triggers a live provider completion.
 // ===========================================================================
-$router->add('POST', '/ai/chat', \App\Controllers\AI\AiAssistantController::class, 'chat', null, '30:300';
-$router->add('GET', '/ai/conversations/{id}', \App\Controllers\AI\AiAssistantController::class, 'show';
-$router->add('POST', '/ai/conversations/{id}/clear', \App\Controllers\AI\AiAssistantController::class, 'clear', null, '30:300';
-$router->add('POST', '/ai/feedback', \App\Controllers\AI\AiAssistantController::class, 'feedback', null, '60:300';
+$router->add('POST', '/ai/chat', \App\Controllers\AI\AiAssistantController::class, 'chat', null, '30:300');
+$router->add('GET', '/ai/conversations/{id}', \App\Controllers\AI\AiAssistantController::class, 'show');
+$router->add('POST', '/ai/conversations/{id}/clear', \App\Controllers\AI\AiAssistantController::class, 'clear', null, '30:300');
+$router->add('POST', '/ai/feedback', \App\Controllers\AI\AiAssistantController::class, 'feedback', null, '60:300');
 
 // ============================================================================
 // Query Performance Monitoring (system:view permission)
 // ============================================================================
-$router->add('GET', '/system/query-log/statistics', QueryLogController::class, 'statistics', 'system:view';
-$router->add('GET', '/system/query-log/slow', QueryLogController::class, 'slow', 'system:view';
-$router->add('GET', '/system/query-log', QueryLogController::class, 'index', 'system:view';
-$router->add('POST', '/system/query-log/reset', QueryLogController::class, 'reset', 'system:manage', '10:300';
+$router->add('GET', '/system/query-log/statistics', QueryLogController::class, 'statistics', 'system:view');
+$router->add('GET', '/system/query-log/slow', QueryLogController::class, 'slow', 'system:view');
+$router->add('GET', '/system/query-log', QueryLogController::class, 'index', 'system:view');
+$router->add('POST', '/system/query-log/reset', QueryLogController::class, 'reset', 'system:manage', '10:300');
 
 // ============================================================================
 // Database Seeder Management (system:view permission)
 // ============================================================================
-$router->add('GET', '/system/seeders', \App\Controllers\System\SeederController::class, 'index', 'system:view';
-$router->add('POST', '/system/seeders/run', \App\Controllers\System\SeederController::class, 'runAll', 'system:manage', '10:300';
-$router->add('POST', '/system/seeders/run/{name}', \App\Controllers\System\SeederController::class, 'run', 'system:manage', '10:300';
-$router->add('POST', '/system/seeders/truncate/{table}', \App\Controllers\System\SeederController::class, 'truncate', 'system:manage', '10:300';
-$router->add('GET', '/system/seeders/status/{table}', \App\Controllers\System\SeederController::class, 'status', 'system:view';
+$router->add('GET', '/system/seeders', \App\Controllers\System\SeederController::class, 'index', 'system:view');
+$router->add('POST', '/system/seeders/run', \App\Controllers\System\SeederController::class, 'runAll', 'system:manage', '10:300');
+$router->add('POST', '/system/seeders/run/{name}', \App\Controllers\System\SeederController::class, 'run', 'system:manage', '10:300');
+$router->add('POST', '/system/seeders/truncate/{table}', \App\Controllers\System\SeederController::class, 'truncate', 'system:manage', '10:300');
+$router->add('GET', '/system/seeders/status/{table}', \App\Controllers\System\SeederController::class, 'status', 'system:view');
 
 // ============================================================================
 // Security Operations & AI-Assisted Threat Detection (Phase 5)
@@ -999,27 +975,27 @@ use App\Controllers\Security\SecurityDashboardController;
 use App\Controllers\Security\SecurityAdminController;
 
 // Dashboard read APIs
-$router->add('GET', '/security/overview', SecurityDashboardController::class, 'overview', 'security:view';
-$router->add('GET', '/security/report', SecurityDashboardController::class, 'report', 'security:view', '30:300';
-$router->add('GET', '/security/appraisal', SecurityDashboardController::class, 'appraisal', 'security:view', '30:300';
-$router->add('GET', '/security/events', SecurityDashboardController::class, 'events', 'security:view', '60:300';
-$router->add('GET', '/security/events/{id}', SecurityDashboardController::class, 'eventDetail', 'security:view';
-$router->add('GET', '/security/incidents', SecurityDashboardController::class, 'incidents', 'security:view', '60:300';
-$router->add('GET', '/security/incidents/{id}', SecurityDashboardController::class, 'incidentDetail', 'security:view';
-$router->add('GET', '/security/threats', SecurityDashboardController::class, 'threats', 'security:view';
-$router->add('GET', '/security/posture', SecurityDashboardController::class, 'posture', 'security:view';
-$router->add('GET', '/security/endpoints', SecurityDashboardController::class, 'endpoints', 'security:view';
-$router->add('GET', '/security/activity/{userId}', SecurityDashboardController::class, 'userActivity', 'security:investigate';
-$router->add('GET', '/security/vulnerabilities', SecurityDashboardController::class, 'vulnerabilities', 'security:view';
-$router->add('GET', '/security/ai/threats', SecurityDashboardController::class, 'aiThreats', 'security:investigate';
-$router->add('POST', '/security/ai/analyze', SecurityDashboardController::class, 'aiAnalyze', 'security:investigate', '60:300';
-$router->add('POST', '/security/ai/copilot', SecurityDashboardController::class, 'aiCopilot', 'security:investigate', '30:300';
+$router->add('GET', '/security/overview', SecurityDashboardController::class, 'overview', 'security:view');
+$router->add('GET', '/security/report', SecurityDashboardController::class, 'report', 'security:view', '30:300');
+$router->add('GET', '/security/appraisal', SecurityDashboardController::class, 'appraisal', 'security:view', '30:300');
+$router->add('GET', '/security/events', SecurityDashboardController::class, 'events', 'security:view', '60:300');
+$router->add('GET', '/security/events/{id}', SecurityDashboardController::class, 'eventDetail', 'security:view');
+$router->add('GET', '/security/incidents', SecurityDashboardController::class, 'incidents', 'security:view', '60:300');
+$router->add('GET', '/security/incidents/{id}', SecurityDashboardController::class, 'incidentDetail', 'security:view');
+$router->add('GET', '/security/threats', SecurityDashboardController::class, 'threats', 'security:view');
+$router->add('GET', '/security/posture', SecurityDashboardController::class, 'posture', 'security:view');
+$router->add('GET', '/security/endpoints', SecurityDashboardController::class, 'endpoints', 'security:view');
+$router->add('GET', '/security/activity/{userId}', SecurityDashboardController::class, 'userActivity', 'security:investigate');
+$router->add('GET', '/security/vulnerabilities', SecurityDashboardController::class, 'vulnerabilities', 'security:view');
+$router->add('GET', '/security/ai/threats', SecurityDashboardController::class, 'aiThreats', 'security:investigate');
+$router->add('POST', '/security/ai/analyze', SecurityDashboardController::class, 'aiAnalyze', 'security:investigate', '60:300');
+$router->add('POST', '/security/ai/copilot', SecurityDashboardController::class, 'aiCopilot', 'security:investigate', '30:300');
 
 // Admin write APIs (incident management)
-$router->add('POST', '/security/incidents/{id}/resolve', SecurityAdminController::class, 'resolveIncident', 'security:manage', '30:300';
-$router->add('POST', '/security/incidents/{id}/false-positive', SecurityAdminController::class, 'falsePositive', 'security:manage', '30:300';
-$router->add('POST', '/security/incidents/{id}/investigate', SecurityAdminController::class, 'investigate', 'security:investigate', '30:300';
-$router->add('POST', '/security/incidents/{id}/contain', SecurityAdminController::class, 'contain', 'security:manage', '30:300';
+$router->add('POST', '/security/incidents/{id}/resolve', SecurityAdminController::class, 'resolveIncident', 'security:manage', '30:300');
+$router->add('POST', '/security/incidents/{id}/false-positive', SecurityAdminController::class, 'falsePositive', 'security:manage', '30:300');
+$router->add('POST', '/security/incidents/{id}/investigate', SecurityAdminController::class, 'investigate', 'security:investigate', '30:300');
+$router->add('POST', '/security/incidents/{id}/contain', SecurityAdminController::class, 'contain', 'security:manage', '30:300');
 
 // ============================================================================
 // HR Policy & Procedures Manual module (migration 081)
@@ -1038,30 +1014,30 @@ use App\Controllers\HR\HrPolicyController;
 use App\Controllers\Settings\HrPolicyAdminController;
 
 // --- Employee-facing reader (static paths first) ---
-$router->add('GET', '/hr-policies/current', HrPolicyController::class, 'current', 'hr_policies:view';
-$router->add('GET', '/hr-policies/search', HrPolicyController::class, 'search', 'hr_policies:view';
-$router->add('GET', '/hr-policies/bookmarks', HrPolicyController::class, 'bookmarks', 'hr_policies:view';
-$router->add('POST', '/hr-policies/bookmarks', HrPolicyController::class, 'addBookmark', 'hr_policies:view', '30:300';
-$router->add('DELETE', '/hr-policies/bookmarks/{sectionId}', HrPolicyController::class, 'removeBookmark', 'hr_policies:view', '30:300';
-$router->add('GET', '/hr-policies/recent', HrPolicyController::class, 'recent', 'hr_policies:view';
-$router->add('GET', '/hr-policies/sections/{id}', HrPolicyController::class, 'section', 'hr_policies:view';
+$router->add('GET', '/hr-policies/current', HrPolicyController::class, 'current', 'hr_policies:view');
+$router->add('GET', '/hr-policies/search', HrPolicyController::class, 'search', 'hr_policies:view');
+$router->add('GET', '/hr-policies/bookmarks', HrPolicyController::class, 'bookmarks', 'hr_policies:view');
+$router->add('POST', '/hr-policies/bookmarks', HrPolicyController::class, 'addBookmark', 'hr_policies:view', '30:300');
+$router->add('DELETE', '/hr-policies/bookmarks/{sectionId}', HrPolicyController::class, 'removeBookmark', 'hr_policies:view', '30:300');
+$router->add('GET', '/hr-policies/recent', HrPolicyController::class, 'recent', 'hr_policies:view');
+$router->add('GET', '/hr-policies/sections/{id}', HrPolicyController::class, 'section', 'hr_policies:view');
 // --- Document-scoped reads (wildcards) ---
-$router->add('GET', '/hr-policies', HrPolicyController::class, 'index', 'hr_policies:view';
-$router->add('GET', '/hr-policies/{id}', HrPolicyController::class, 'show', 'hr_policies:view';
-$router->add('GET', '/hr-policies/{id}/sections', HrPolicyController::class, 'sections', 'hr_policies:view';
-$router->add('GET', '/hr-policies/{id}/file', HrPolicyController::class, 'file', 'hr_policies:view';
-$router->add('POST', '/hr-policies/{id}/acknowledge', HrPolicyController::class, 'acknowledge', 'hr_policies:acknowledge', '20:300';
+$router->add('GET', '/hr-policies', HrPolicyController::class, 'index', 'hr_policies:view');
+$router->add('GET', '/hr-policies/{id}', HrPolicyController::class, 'show', 'hr_policies:view');
+$router->add('GET', '/hr-policies/{id}/sections', HrPolicyController::class, 'sections', 'hr_policies:view');
+$router->add('GET', '/hr-policies/{id}/file', HrPolicyController::class, 'file', 'hr_policies:view');
+$router->add('POST', '/hr-policies/{id}/acknowledge', HrPolicyController::class, 'acknowledge', 'hr_policies:acknowledge', '20:300');
 
 // --- HR administration (/settings/hr-policies) ---
-$router->add('GET', '/settings/hr-policies', HrPolicyAdminController::class, 'index', 'hr_policies:manage';
-$router->add('POST', '/settings/hr-policies', HrPolicyAdminController::class, 'store', 'hr_policies:manage', '30:300';
-$router->add('POST', '/settings/hr-policies/{id}/reparse', HrPolicyAdminController::class, 'reparse', 'hr_policies:manage', '10:300';
-$router->add('PUT', '/settings/hr-policies/{id}', HrPolicyAdminController::class, 'update', 'hr_policies:manage', '20:300';
-$router->add('POST', '/settings/hr-policies/{id}/status', HrPolicyAdminController::class, 'setStatus', 'hr_policies:manage', '20:300';
-$router->add('POST', '/settings/hr-policies/{id}/publish', HrPolicyAdminController::class, 'publish', 'hr_policies:publish', '10:300';
-$router->add('POST', '/settings/hr-policies/{id}/archive', HrPolicyAdminController::class, 'archive', 'hr_policies:manage', '10:300';
-$router->add('DELETE', '/settings/hr-policies/{id}', HrPolicyAdminController::class, 'destroy', 'hr_policies:manage', '10:300';
-$router->add('GET', '/settings/hr-policies/{id}/history', HrPolicyAdminController::class, 'history', 'hr_policies:manage';
+$router->add('GET', '/settings/hr-policies', HrPolicyAdminController::class, 'index', 'hr_policies:manage');
+$router->add('POST', '/settings/hr-policies', HrPolicyAdminController::class, 'store', 'hr_policies:manage', '30:300');
+$router->add('POST', '/settings/hr-policies/{id}/reparse', HrPolicyAdminController::class, 'reparse', 'hr_policies:manage', '10:300');
+$router->add('PUT', '/settings/hr-policies/{id}', HrPolicyAdminController::class, 'update', 'hr_policies:manage', '20:300');
+$router->add('POST', '/settings/hr-policies/{id}/status', HrPolicyAdminController::class, 'setStatus', 'hr_policies:manage', '20:300');
+$router->add('POST', '/settings/hr-policies/{id}/publish', HrPolicyAdminController::class, 'publish', 'hr_policies:publish', '10:300');
+$router->add('POST', '/settings/hr-policies/{id}/archive', HrPolicyAdminController::class, 'archive', 'hr_policies:manage', '10:300');
+$router->add('DELETE', '/settings/hr-policies/{id}', HrPolicyAdminController::class, 'destroy', 'hr_policies:manage', '10:300');
+$router->add('GET', '/settings/hr-policies/{id}/history', HrPolicyAdminController::class, 'history', 'hr_policies:manage');
 $router->add('GET', '/settings/hr-policies/{id}/acknowledgements', HrPolicyAdminController::class, 'acknowledgements', 'hr_policies:manage');
 
 
