@@ -203,8 +203,8 @@ export default function CascadeActivityDialog({
           </p>
           <p className="mt-0.5 line-clamp-2">{parent.objective}</p>
           <p className="mt-1 text-xs opacity-80">
-            A linked child activity will be created at the next level —” the parent stays intact
-            for traceability.
+            A linked child activity will be created at the next level —” the parent stays intact for
+            traceability.
           </p>
         </div>
 

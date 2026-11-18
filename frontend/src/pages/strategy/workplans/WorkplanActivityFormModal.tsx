@@ -263,11 +263,7 @@ export default function WorkplanActivityFormModal({
         {mode === 'edit' && record?.parent_objective && (
           <div>
             <label className={labelCls}>Source (Parent) Activity</label>
-            <input
-              className={inputCls}
-              value={record.parent_objective}
-              readOnly
-            />
+            <input className={inputCls} value={record.parent_objective} readOnly />
           </div>
         )}
 
@@ -292,9 +288,9 @@ export default function WorkplanActivityFormModal({
               <input
                 className={inputCls}
                 value={
-                  visibleContracts.find((c) => Number(c.id) === Number(contractId))?.name
-                    ?? record?.contract_name
-                    ?? '—'
+                  visibleContracts.find((c) => Number(c.id) === Number(contractId))?.name ??
+                  record?.contract_name ??
+                  '—'
                 }
                 readOnly
               />
