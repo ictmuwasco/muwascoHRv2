@@ -33,6 +33,9 @@ interface RowState {
   subsection_id: string;
   target_date: string;
   cycle_ids: number[];
+  planned_start_date: string;
+  budget_amount: string;
+  resource_notes: string;
 }
 
 /**
@@ -95,6 +98,9 @@ export default function TierAddWorkplanModal({
         subsection_id: '',
         target_date: '',
         cycle_ids: [],
+        planned_start_date: '',
+        budget_amount: '',
+        resource_notes: '',
       },
     ]);
   const updateRow = (idx: number, patch: Partial<RowState>) =>
@@ -125,7 +131,10 @@ export default function TierAddWorkplanModal({
           objective: row.objective.trim(),
           performance_contract_id: null,
           parent_objective_id: Number(sourceId),
+          planned_start_date: row.planned_start_date || null,
           planned_end_date: row.target_date || null,
+          budget_amount: row.budget_amount === '' ? 0 : Number(row.budget_amount),
+          resource_notes: row.resource_notes.trim() || null,
           cycle_ids: row.cycle_ids.join(','),
         };
         if (kind === 'section') {
@@ -224,6 +233,15 @@ export default function TierAddWorkplanModal({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
+                <label className={labelCls}>Start Date</label>
+                <input
+                  type="date"
+                  className={inputCls}
+                  value={row.planned_start_date}
+                  onChange={(e) => updateRow(idx, { planned_start_date: e.target.value })}
+                />
+              </div>
+              <div>
                 <label className={labelCls}>Target Date (Timeline)</label>
                 <input
                   type="date"
@@ -232,23 +250,44 @@ export default function TierAddWorkplanModal({
                   onChange={(e) => updateRow(idx, { target_date: e.target.value })}
                 />
               </div>
-              {kind === 'section' && hasSubsections && (
-                <div className={hasSubsections ? 'md:col-span-2' : ''}>
-                  <label className={labelCls}>Cascade to Subsection (optional)</label>
-                  <select
-                    className={inputCls}
-                    value={row.subsection_id}
-                    onChange={(e) => updateRow(idx, { subsection_id: e.target.value })}
-                  >
-                    <option value="">— Keep at section level —</option>
-                    {subsections.map((ss) => (
-                      <option key={ss.id} value={String(ss.id)}>
-                        {ss.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+              <div>
+                <label className={labelCls}>Budget (KES)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className={inputCls}
+                  value={row.budget_amount}
+                  onChange={(e) => updateRow(idx, { budget_amount: e.target.value })}
+                />
+              </div>
+            </div>
+            {kind === 'section' && hasSubsections && (
+              <div>
+                <label className={labelCls}>Cascade to Subsection (optional)</label>
+                <select
+                  className={inputCls}
+                  value={row.subsection_id}
+                  onChange={(e) => updateRow(idx, { subsection_id: e.target.value })}
+                >
+                  <option value="">— Keep at section level —</option>
+                  {subsections.map((ss) => (
+                    <option key={ss.id} value={String(ss.id)}>
+                      {ss.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div>
+              <label className={labelCls}>Resource Notes</label>
+              <textarea
+                rows={2}
+                className={inputCls}
+                value={row.resource_notes}
+                onChange={(e) => updateRow(idx, { resource_notes: e.target.value })}
+                placeholder="Funding, dependencies, remarks…"
+              />
             </div>
 
             <div>

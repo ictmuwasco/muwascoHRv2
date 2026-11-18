@@ -127,20 +127,42 @@ export default function SupervisorAppraisals() {
       })),
     [workspace],
   );
-  const employeeScopeHint =
+  // The backend workspace() already runs every employee through canSuperviseTarget(),
+  // so workspace.employees only contains people the current user is authorised to appraise.
+  // No additional front-end filtering is needed — just expose the full list.
+  const subsectionId = workspace?.scope?.subsection;
+  const filteredEmployeeOptions = employeeOptions;
+
+  // Hint shown in the assignment modal describing employee selection scope.
+  const employeeScopeHint = useMemo(() => {
+    if (!workspace) return '';
+    switch (workspace.scope?.role) {
+      case 'dept_head':
+        return 'Department heads can assign any employee in the organization.';
+      case 'section_head':
+        return 'Select subsection heads and direct section employees (not assigned to any subsection). Subsection employees are appraised by their subsection head.';
+      case 'sub_section_head':
+        return 'Subsection heads can assign employees only within their subsection.';
+      default:
+        return '';
+    }
+  }, [workspace]);
+  const cycleOptionsInfo = useMemo(() =>
     workspace?.scope.role === 'dept_head'
       ? 'Department heads can appraise section heads only. Section heads handle appraisals for subsection heads and staff.'
       : workspace?.scope.role === 'section_head'
-        ? 'Select direct employees in your section. Subsection heads handle appraisals for their own subsection employees.'
+        ? 'Select subsection heads and direct section employees (without a subsection). Subsection employees are managed by their subsection head.'
         : workspace?.scope.role === 'sub_section_head'
           ? 'Select employees assigned to your subsection.'
-          : '';
+          : '',
+    [workspace]
+  );
   const cycleOptions = useMemo(
     () =>
       (workspace?.cycles ?? []).map((c) => ({
         value: c.id,
         label: c.name,
-        description: `${formatAppraisalDate(c.start_date)} – ${formatAppraisalDate(c.end_date)}`,
+        description: `${formatAppraisalDate(c.start_date)} - ${formatAppraisalDate(c.end_date)}`,
       })),
     [workspace],
   );
@@ -279,8 +301,10 @@ export default function SupervisorAppraisals() {
 
       {(error || notice) && (
         <div
-          className={`rounded-lg px-4 py-3 text-sm ${
-            error ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'
+          className={`rounded-lg px-4 py-3 text-sm flex items-start gap-2 ${
+            error
+              ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+              : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
           }`}
         >
           <span className="flex-1">{error || notice}</span>
@@ -289,9 +313,9 @@ export default function SupervisorAppraisals() {
               setError('');
               setNotice('');
             }}
-            className="float-right font-bold"
+            className="font-bold"
           >
-            ×
+            Dismiss
           </button>
         </div>
       )}
@@ -440,7 +464,7 @@ export default function SupervisorAppraisals() {
               setEmployeeId(v);
               setCreateError('');
             }}
-            options={employeeOptions}
+            options={filteredEmployeeOptions}
             placeholder="Search employees by name, number or department"
             emptyMessage="No employee matches your search."
             noOptionsMessage="No employees in your scope are available for appraisal."

@@ -430,17 +430,20 @@ class SectionalObjectiveController extends BaseController
 
     private const ACTIVITY_SELECT = '
         SELECT wo.id, wo.objective, wo.section_id, wo.subsection_id, wo.cycle_ids, wo.parent_objective_id,
-               pc.name AS contract_name, d.name AS department_name, pc.department_id,
+               pc.name AS contract_name, COALESCE(d.name, pd.name) AS department_name,
+               COALESCE(pc.department_id, ppc.department_id) AS department_id,
                s.name AS section_name, ss.name AS subsection_name,
                po.objective AS parent_objective';
 
     private const ACTIVITY_JOINS = '
         FROM workplan_objectives wo
-        JOIN performance_contracts pc ON wo.performance_contract_id = pc.id
-        JOIN departments d            ON pc.department_id = d.id
-        LEFT JOIN sections s          ON wo.section_id = s.id
-        LEFT JOIN subsections ss      ON wo.subsection_id = ss.id
-        LEFT JOIN workplan_objectives po ON wo.parent_objective_id = po.id';
+        LEFT JOIN performance_contracts pc ON wo.performance_contract_id = pc.id
+        LEFT JOIN departments d            ON pc.department_id = d.id
+        LEFT JOIN sections s               ON wo.section_id = s.id
+        LEFT JOIN subsections ss           ON wo.subsection_id = ss.id
+        LEFT JOIN workplan_objectives po   ON wo.parent_objective_id = po.id
+        LEFT JOIN performance_contracts ppc ON po.performance_contract_id = ppc.id
+        LEFT JOIN departments pd           ON ppc.department_id = pd.id';
 
     private function scopedActivities(array $scope): array
     {
@@ -448,6 +451,7 @@ class SectionalObjectiveController extends BaseController
 
         if ($this->isApex($scope) || $scope['role'] === 'managing_director') {
             $res = $this->db->query(self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . '
+                WHERE wo.soft_deleted = 0
                 ORDER BY d.name, pc.name, wo.objective');
             if ($res) {
                 while ($r = $res->fetch_assoc()) $activities[] = $r;
@@ -455,9 +459,12 @@ class SectionalObjectiveController extends BaseController
             return $activities;
         }
 
+        // Subsection head: all activities in their subsection (cascaded OR
+        // directly assigned — parent_objective_id filter removed so activities
+        // placed directly into the subsection by the section head are included).
         if ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null) {
             $sql = self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . '
-                WHERE wo.subsection_id = ? AND wo.parent_objective_id IS NOT NULL
+                WHERE wo.subsection_id = ? AND wo.soft_deleted = 0
                 ORDER BY pc.name, wo.objective';
             $stmt = $this->db->prepare($sql);
             $sub = (int) $scope['subsection_id'];
@@ -468,10 +475,13 @@ class SectionalObjectiveController extends BaseController
             return $activities;
         }
 
+        // Section head: all section-level activities (no subsection) in their
+        // section — parent_objective_id filter removed so activities created
+        // directly by the dept_head for this section are also visible.
         if ($scope['is_section_head'] && $scope['section_id'] !== null) {
             $sql = self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . '
                 WHERE wo.section_id = ? AND COALESCE(wo.subsection_id, 0) = 0
-                  AND wo.parent_objective_id IS NOT NULL
+                  AND wo.soft_deleted = 0
                 ORDER BY pc.name, wo.objective';
             $stmt = $this->db->prepare($sql);
             $sec = (int) $scope['section_id'];
@@ -482,17 +492,16 @@ class SectionalObjectiveController extends BaseController
             return $activities;
         }
 
+        // Dept head / HR manager: ALL activities in their department across all
+        // levels (department, section, subsection) — the level filter is removed
+        // so cascaded-to-section and cascaded-to-subsection activities are
+        // visible for KPI assignment. The activity-to-employee matching logic
+        // ensures only correctly-scoped activities can be linked to each employee.
+        // Uses COALESCE to find dept via direct contract OR parent's contract
+        // (child activities created via TierAddWorkplan inherit the contract).
         if (($scope['is_dept_head'] || $scope['role'] === 'hr_manager') && $scope['department_id'] !== null) {
             $sql = self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . '
-                WHERE pc.department_id = ?
-                  AND COALESCE(
-                      NULLIF(wo.level, \'\'),
-                      CASE
-                          WHEN wo.subsection_id IS NOT NULL THEN \'subsection\'
-                          WHEN wo.section_id IS NOT NULL THEN \'section\'
-                          ELSE \'department\'
-                      END
-                  ) IN (\'department\', \'section\')
+                WHERE COALESCE(pc.department_id, ppc.department_id) = ?
                   AND wo.soft_deleted = 0
                 ORDER BY pc.name, wo.objective';
             $stmt = $this->db->prepare($sql);
