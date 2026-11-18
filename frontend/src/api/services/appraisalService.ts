@@ -64,11 +64,20 @@ export interface AppraisalWorkspace {
     employee_type: string;
     department_name?: string | null;
     section_name?: string | null;
+    /** Numeric FK returned by backend – used for supervisor scope filtering. */
+    section_id?: number | null;
+    subsection_id?: number | null;
   }>;
   cycles: Array<{ id: number; name: string; start_date: string; end_date: string; status: string }>;
   counts: { regular: number; pending: number; escalated: number; rejected: number };
   permissions: { supervise: boolean; score: boolean; approve: boolean };
-  scope: { role: string };
+  scope: {
+    role: string;
+    /** Numeric IDs for the actor's own unit – returned by backend workspace endpoint. */
+    id?: number | null;
+    section?: number | null;
+    subsection?: number | null;
+  };
 }
 
 export const appraisalService = {

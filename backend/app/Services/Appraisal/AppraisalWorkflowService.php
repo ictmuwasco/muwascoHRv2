@@ -164,15 +164,21 @@ class AppraisalWorkflowService
         $targetLevel = $this->roleLevel((string) ($target['employee_type'] ?? ''));
         $actorRole = $this->currentRole();
         $targetRole = strtolower((string) ($target['employee_type'] ?? ''));
-        if (
-            in_array($actorRole, ['section_head', 'section_manager'], true)
-            && (
-                !empty($target['subsection_id'])
-                || in_array($targetRole, ['sub_section_head', 'subsection_head'], true)
-            )
-        ) {
-            return false;
+        // Section heads appraise:
+        //   (a) subsection heads within their section, AND
+        //   (b) direct section employees (no subsection) within their section.
+        // They do NOT appraise regular staff who belong to a subsection — those are
+        // the subsection head's responsibility.
+        if (in_array($actorRole, ['section_head', 'section_manager'], true)) {
+            $targetHasSubsection = !empty($target['subsection_id']);
+            $targetIsSubsectionHead = in_array($targetRole, ['sub_section_head', 'subsection_head'], true);
+            if ($targetHasSubsection && !$targetIsSubsectionHead) {
+                // Target is a regular employee inside a subsection — belongs to subsection head
+                return false;
+            }
+            // Allow: subsection heads in this section, or direct section staff (no subsection)
         }
+        // Department heads appraise section heads / section managers only.
         if (
             in_array($actorRole, ['dept_head', 'head_of_department', 'department_head'], true)
             && !in_array($targetRole, ['section_head', 'section_manager'], true)
