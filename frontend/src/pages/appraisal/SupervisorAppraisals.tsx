@@ -130,7 +130,6 @@ export default function SupervisorAppraisals() {
   // The backend workspace() already runs every employee through canSuperviseTarget(),
   // so workspace.employees only contains people the current user is authorised to appraise.
   // No additional front-end filtering is needed — just expose the full list.
-  const subsectionId = workspace?.scope?.subsection;
   const filteredEmployeeOptions = employeeOptions;
 
   // Hint shown in the assignment modal describing employee selection scope.
@@ -147,17 +146,6 @@ export default function SupervisorAppraisals() {
         return '';
     }
   }, [workspace]);
-  const cycleOptionsInfo = useMemo(
-    () =>
-      workspace?.scope.role === 'dept_head'
-        ? 'Department heads can appraise section heads only. Section heads handle appraisals for subsection heads and staff.'
-        : workspace?.scope.role === 'section_head'
-          ? 'Select subsection heads and direct section employees (without a subsection). Subsection employees are managed by their subsection head.'
-          : workspace?.scope.role === 'sub_section_head'
-            ? 'Select employees assigned to your subsection.'
-            : '',
-    [workspace],
-  );
   const cycleOptions = useMemo(
     () =>
       (workspace?.cycles ?? []).map((c) => ({
