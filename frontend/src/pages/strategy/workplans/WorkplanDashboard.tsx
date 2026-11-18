@@ -47,7 +47,7 @@ export default function WorkplanDashboard({ summary }: { summary: WorkplanSummar
           <span className="text-gray-500 dark:text-gray-400">
             Workplan period:{' '}
             <strong className="text-gray-700 dark:text-gray-200">{fy.year_name}</strong> (
-            {fmtDate(fy.start_date)} â€“ {fmtDate(fy.end_date)})
+            {fmtDate(fy.start_date)} —“ {fmtDate(fy.end_date)})
           </span>
         )}
       </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw, Search, Pencil, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
@@ -12,22 +12,19 @@ import {
   type KpiListPayload,
 } from '../../api/services/kpiService';
 
-/**
- * Sectional Objectives / KPIs — the scoring units consumed by the appraisal
- * workflow (emulates the legacy kpi.php on the modern API).
- *
- * Scoping is decided entirely by the backend (hr_manager is the apex role and
- * sees everything; heads are scoped to their own unit). This page renders
- * whatever the API allows the caller to see and do.
- */
-
 const parseIds = (raw: string | null | undefined): number[] =>
   (raw || '')
     .split(',')
     .map((s) => parseInt(s.trim(), 10))
     .filter((n) => !Number.isNaN(n) && n > 0);
 
-/** Match an activity to an employee's assignable organizational unit. */
+/** Match an activity to an employee's assignable organizational unit.
+ * Mirrors backend SectionalObjectiveController::activityMatchesEmployee:
+ * - department must agree when both sides are resolved
+ * - section heads only see section-level activities (no subsection) in their own section
+ * - everyone else: activity section_id/subsection_id (when present on the activity)
+ *   must match the employee's unit
+ */
 function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
   if (
     act.department_id &&
@@ -35,26 +32,24 @@ function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
     Number(act.department_id) !== Number(emp.department_id)
   )
     return false;
+
   const employeeType = (emp.employee_type || '').toLowerCase();
   const isSectionHead = employeeType === 'section_head' || employeeType === 'section_manager';
-  const isSubSectionHead =
-    employeeType === 'sub_section_head' || employeeType === 'subsection_head';
+
+  // Section heads: department-level activities (no section) are assignable to
+  // section heads in the same department. Section-level activities must match.
   if (isSectionHead) {
-    // Section heads see section-level activities only (no subsection_id filter).
-    if (!act.section_id || Number(act.section_id) !== Number(emp.section_id || 0)) return false;
-    if (act.subsection_id) return false;
-  }
-  if (isSubSectionHead) {
-    // Subsection heads see activities scoped to their own section AND subsection.
-    if (!act.section_id || Number(act.section_id) !== Number(emp.section_id || 0)) return false;
-    if (!act.subsection_id || Number(act.subsection_id) !== Number(emp.subsection_id || 0))
-      return false;
-  } else {
-    // Regular employees match on section and subsection (when present).
     if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0)) return false;
-    if (act.subsection_id && Number(act.subsection_id) !== Number(emp.subsection_id || 0))
-      return false;
+    if (act.subsection_id) return false;
+    return true;
   }
+
+  // Subsection heads and regular employees: section (if present) must match,
+  // subsection (if present) must match. Department-level activities (no
+  // section/subsection) match anyone in the same department.
+  if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0)) return false;
+  if (act.subsection_id && Number(act.subsection_id) !== Number(emp.subsection_id || 0))
+    return false;
   return true;
 }
 
@@ -109,14 +104,16 @@ export default function Kpis() {
   const activities = data?.activities ?? [];
   const linkedActivities = data?.linked_activities ?? [];
   const cycles = data?.cycles ?? [];
-  const objectives = data?.objectives ?? [];
+  const objectives =
+    (data?.objectives ?? []).filter((k, i, self) => self.findIndex((x) => x.id === k.id) === i) ||
+    null;
   const canManage = !!data?.can_manage;
   const role = data?.scope.role || '';
   const employeeScopeHint =
     role === 'dept_head' || role === 'hr_manager'
       ? 'Department heads can assign KPIs to section heads only. Section heads manage KPI assignments for subsection heads and staff.'
       : role === 'section_head'
-        ? 'Select direct employees in your section. Subsection heads assign KPIs to employees in their own subsection.'
+        ? 'Select direct employees and subsection heads in your section. Subsection heads assign KPIs to employees in their own subsection.'
         : role === 'sub_section_head'
           ? 'Select employees assigned to your subsection.'
           : '';
@@ -190,29 +187,70 @@ export default function Kpis() {
     [formEmpIds, employees],
   );
 
-  // Activities shown in the modal: those matching ANY selected employee, plus
-  // already-linked ones (kept visible in edit mode so they can be unlinked).
+  // Activities shown in the modal: filtered by the *actor's* (current user) organisational
+  // scope, not the selected employee's scope. This fixes the case where a subsection-head
+  // assigned to billing sees no activities because their employees' scope is narrower.
+  // Already-linked activities are always kept visible so they can be unlinked in edit mode.
   const modalActivities = useMemo(() => {
-    if (!modal.open || selectedEmployees.length === 0) return [];
+    if (!modal.open) return [];
+    // Always keep already-linked activities visible so they can be unlinked in edit mode
+    const alreadyLinked = new Set(formActIds);
     const linkedActivityIds = new Set(formActIds);
     const activityMap = new Map<number, KpiActivity>();
     [
       ...activities,
       ...linkedActivities.filter((activity) => linkedActivityIds.has(Number(activity.id))),
     ].forEach((activity) => activityMap.set(Number(activity.id), activity));
-    return Array.from(activityMap.values()).filter(
-      (a) =>
-        formActIds.includes(Number(a.id)) ||
-        selectedEmployees.some((emp) => activityMatchesEmployee(a, emp)),
-    );
-  }, [modal.open, formActIds, selectedEmployees, activities, linkedActivities]);
+
+    // Match activity against the current user's (actor's) organisational scope.
+    // Note: data.scope uses { department, section, subsection } (numeric IDs, no _id suffix).
+    const actorScope = data?.scope ?? {
+      role: '',
+      department: null,
+      section: null,
+      subsection: null,
+    };
+    const actorRole = (actorScope.role || '').toLowerCase();
+    const activityMatchesActorScope = (act: KpiActivity): boolean => {
+      if (actorRole === 'dept_head' || actorRole === 'hr_manager')
+        return !act.department_id || Number(act.department_id) === Number(actorScope.department);
+      if (actorRole === 'section_head' || actorRole === 'section_manager')
+        return (
+          (!act.department_id || Number(act.department_id) === Number(actorScope.department)) &&
+          Number(act.section_id) === Number(actorScope.section) &&
+          !act.subsection_id
+        );
+      if (actorRole === 'sub_section_head' || actorRole === 'subsection_head')
+        return (
+          (!act.department_id || Number(act.department_id) === Number(actorScope.department)) &&
+          (!act.section_id || Number(act.section_id) === Number(actorScope.section)) &&
+          Number(act.subsection_id) === Number(actorScope.subsection)
+        );
+      // Default: match within department
+      return Number(act.department_id) === Number(actorScope.department);
+    };
+
+    return Array.from(activityMap.values()).filter((a) => {
+      const id = Number(a.id);
+      // 1. Keep already-linked activities (edit mode) - always visible
+      if (alreadyLinked.has(id)) return true;
+      // 2. Show if it matches the actor's own scope (fixes sub-section-head blank list)
+      if (activityMatchesActorScope(a)) return true;
+      // 3. Also show if it matches any selected employee (e.g. dept-head -> section-head)
+      //    But only if we have selected employees to check against
+      if (selectedEmployees.length > 0) {
+        if (selectedEmployees.some((emp) => activityMatchesEmployee(a, emp))) return true;
+      }
+      return false;
+    });
+  }, [modal.open, formActIds, selectedEmployees, activities, linkedActivities, data]);
   const activityScopeHint =
     role === 'dept_head' || role === 'hr_manager'
-      ? 'Only activities assigned to the selected section(s) are shown. Department-wide activities must be cascaded to a section before they can be linked to a section head KPI.'
+      ? 'Activities from your department workplan are shown. Select employees first to narrow the list to their unit.'
       : "Objectives shown are scoped to the selected employees' unit.";
   const noMatchingActivitiesMessage =
     role === 'dept_head' || role === 'hr_manager'
-      ? 'No section-specific workplan activities match the selected section head(s). Create or cascade activities to those section(s) first.'
+      ? 'No workplan activities found in your department. Create or cascade activities first.'
       : 'No matching workplan activities.';
 
   const openAdd = () => {
@@ -366,7 +404,7 @@ export default function Kpis() {
         </div>
       </div>
 
-      {/* Strategy & Performance module tabs (shared — includes KPIs link) */}
+      {/* Strategy & Performance module tabs (shared  —  includes KPIs link) */}
       <StrategyTabs />
 
       {(error || notice) && (
@@ -377,9 +415,9 @@ export default function Kpis() {
               : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
           }`}
         >
-          {error ? '⚠' : '✓'} <span className="flex-1">{error || notice}</span>
+          {error ? 'Error' : 'Notice'} <span className="flex-1">{error || notice}</span>
           <button onClick={() => (error ? setError('') : setNotice(''))} className="font-bold">
-            ×
+            Dismiss
           </button>
         </div>
       )}
@@ -429,7 +467,7 @@ export default function Kpis() {
 
         {filtered.length === 0 ? (
           <div className="p-10 text-center text-gray-500 dark:text-gray-400">
-            <p className="text-3xl mb-2">📊</p>
+            <p className="text-3xl mb-2">No KPIs Found </p>
             <h3 className="font-semibold text-gray-900 dark:text-gray-100">No KPIs Found</h3>
             <p className="text-sm mt-1">
               {canManage
@@ -479,7 +517,7 @@ export default function Kpis() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-xs">
                         <div className="space-y-1">
-                          {actIds.length === 0 && <span className="text-gray-400">—</span>}
+                          {actIds.length === 0 && <span className="text-gray-400"> — </span>}
                           {actIds.map((id) => {
                             const act = activityById.get(id);
                             return (
@@ -500,13 +538,13 @@ export default function Kpis() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                        {k.department_name || '—'}
+                        {k.department_name || ' — '}
                       </td>
                       <td
                         className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-[220px]"
                         title={empNamesLabel}
                       >
-                        {empNamesLabel || '—'}
+                        {empNamesLabel || ' — '}
                       </td>
                       <td className="px-4 py-3 text-sm text-center font-bold text-gray-900 dark:text-gray-100">
                         {k.max_score}
@@ -671,7 +709,7 @@ export default function Kpis() {
                       {(e.employee_type || '').replace(/_/g, ' ')}
                     </span>
                     <span className="text-xs text-gray-400 ml-auto hidden md:inline truncate max-w-[200px]">
-                      {[e.department_name, e.section_name].filter(Boolean).join(' · ')}
+                      {[e.department_name, e.section_name].filter(Boolean).join('  · ')}
                     </span>
                   </label>
                 ))}
