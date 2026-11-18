@@ -137,8 +137,6 @@ export default function TierWorkplanPage({
   // (responsible officer) instead, so the per-row cascade action is hidden.
   const cascadeEnabled = view !== 'subsection';
 
-  const visibleRows = rows;
-
   // Pin reference data (contracts) and the create flows to the caller's own
   // department so a department head never sees a neighbour's workplan options.
   //
@@ -207,6 +205,16 @@ export default function TierWorkplanPage({
       alive = false;
     };
   }, [view, sourcesVersion]);
+
+  // For section/subsection views, management-cascaded source (parent) activities
+  // are NOT shown directly in the table. They act as parent activities and are
+  // only available in the Add Workplan modal's "Source Activity" picker. Users
+  // create their own child activities under a source, and those children are
+  // what appear in this table.
+  const sourceIds = new Set(sectionSources.map((s) => s.id));
+  const visibleRows = rows.filter(
+    (row) => !((view === 'section' || view === 'subsection') && sourceIds.has(row.id)),
+  );
 
   if (tier.loading && !tier.list) {
     return (

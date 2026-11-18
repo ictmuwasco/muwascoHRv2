@@ -90,10 +90,28 @@ export default function WorkplanActivityFormModal({
   const [integrated, setIntegrated] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Reset the entire form whenever the modal closes so stale Add-mode data
+  // never leaks into a subsequent Edit-mode open (and vice versa). Each open
+  // starts from a clean slate: edit mode populates from `record`, add mode
+  // starts empty (except for the optional preset contract).
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setObjective('');
+      setContractId(presetContractId ? String(presetContractId) : '');
+      setGoalId('');
+      setTargetId('');
+      setSectionId('');
+      setSubsectionId('');
+      setPStart('');
+      setPEnd('');
+      setBudget('');
+      setNotes('');
+      setCycleIds([]);
+      setIntegrated(false);
+      return;
+    }
     if (mode === 'edit' && record) {
-      setObjective(record.objective);
+      setObjective(record.objective ?? '');
       setContractId(record.performance_contract_id ? String(record.performance_contract_id) : '');
       setGoalId(record.goal_id ? String(record.goal_id) : '');
       setTargetId(record.strategic_target_id ? String(record.strategic_target_id) : '');
@@ -165,7 +183,7 @@ export default function WorkplanActivityFormModal({
       onError('Select the Goal Perspective AND the Organisational Goal.');
       return;
     }
-    if (!contractId && !allowContractless) {
+    if (!contractId && !allowContractless && !(mode === 'edit' && record?.parent_objective_id)) {
       onError('Please select the source performance contract.');
       return;
     }
@@ -176,15 +194,25 @@ export default function WorkplanActivityFormModal({
         performance_contract_id: contractId ? Number(contractId) : null,
         goal_id: goalId ? Number(goalId) : null,
         strategic_target_id: targetId ? Number(targetId) : null,
-        section_id: showSection && sectionId ? Number(sectionId) : null,
-        subsection_id: showSubsection && subsectionId ? Number(subsectionId) : null,
         planned_start_date: pStart || null,
         planned_end_date: pEnd || null,
         budget_amount: budget === '' ? 0 : Number(budget),
         resource_notes: notes.trim() || null,
         cycle_ids: cycleIds.join(','),
       };
+      // Only send section/subsection when the form actually manages them for
+      // this view. In edit mode the API uses PUT (full replacement), so
+      // sending null here would wipe out the existing section/subsection
+      // assignment and make the activity disappear from the table.
+      if (showSection) payload.section_id = sectionId ? Number(sectionId) : null;
+      if (showSubsection) payload.subsection_id = subsectionId ? Number(subsectionId) : null;
+
       if (showIntegratedFlag) payload.is_integrated = integrated ? 1 : 0;
+
+      // Preserve the parent linkage when editing a cascaded activity
+      if (mode === 'edit' && record?.parent_objective_id) {
+        payload.parent_objective_id = record.parent_objective_id;
+      }
 
       // An appraisal cycle is what pulls KPIs into a review. Saving a
       // non-organisation-level activity with no cycle is allowed, but the KPIs
@@ -232,6 +260,13 @@ export default function WorkplanActivityFormModal({
           />
         </div>
 
+        {mode === 'edit' && record?.parent_objective && (
+          <div>
+            <label className={labelCls}>Source (Parent) Activity</label>
+            <input className={inputCls} value={record.parent_objective} readOnly />
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className={labelCls}>Target Date</label>
@@ -253,7 +288,9 @@ export default function WorkplanActivityFormModal({
               <input
                 className={inputCls}
                 value={
-                  visibleContracts.find((c) => Number(c.id) === Number(contractId))?.name || '—'
+                  visibleContracts.find((c) => Number(c.id) === Number(contractId))?.name ??
+                  record?.contract_name ??
+                  '—'
                 }
                 readOnly
               />
