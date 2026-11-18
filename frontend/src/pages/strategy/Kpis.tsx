@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw, Search, Pencil, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
@@ -204,7 +204,12 @@ export default function Kpis() {
 
     // Match activity against the current user's (actor's) organisational scope.
     // Note: data.scope uses { department, section, subsection } (numeric IDs, no _id suffix).
-    const actorScope = data?.scope ?? {};
+    const actorScope = data?.scope ?? {
+      role: '',
+      department: null,
+      section: null,
+      subsection: null,
+    };
     const actorRole = (actorScope.role || '').toLowerCase();
     const activityMatchesActorScope = (act: KpiActivity): boolean => {
       if (actorRole === 'dept_head' || actorRole === 'hr_manager')
@@ -404,11 +409,10 @@ export default function Kpis() {
 
       {(error || notice) && (
         <div
-          className={`rounded-lg px-4 py-3 text-sm flex items-start gap-2 ${
-            error
+          className={`rounded-lg px-4 py-3 text-sm flex items-start gap-2 ${error
               ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300'
               : 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-          }`}
+            }`}
         >
           {error ? 'Error' : 'Notice'} <span className="flex-1">{error || notice}</span>
           <button onClick={() => (error ? setError('') : setNotice(''))} className="font-bold">
@@ -557,11 +561,10 @@ export default function Kpis() {
                           </label>
                         ) : (
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              k.is_active
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${k.is_active
                                 ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200'
                                 : 'bg-gray-100 text-gray-800 dark:bg-slate-700 dark:text-gray-200'
-                            }`}
+                              }`}
                           >
                             {k.is_active ? 'Yes' : 'No'}
                           </span>
@@ -580,11 +583,10 @@ export default function Kpis() {
                           </label>
                         ) : (
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                              k.is_recurrent
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${k.is_recurrent
                                 ? 'bg-primary-100 text-primary-800 dark:bg-primary-900/40 dark:text-primary-200'
                                 : 'bg-gray-100 text-gray-800 dark:bg-slate-700 dark:text-gray-200'
-                            }`}
+                              }`}
                           >
                             {k.is_recurrent ? 'Yes' : 'No'}
                           </span>
