@@ -12,7 +12,6 @@ import {
   type KpiListPayload,
 } from '../../api/services/kpiService';
 
-
 const parseIds = (raw: string | null | undefined): number[] =>
   (raw || '')
     .split(',')
@@ -35,14 +34,12 @@ function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
     return false;
 
   const employeeType = (emp.employee_type || '').toLowerCase();
-  const isSectionHead =
-    employeeType === 'section_head' || employeeType === 'section_manager';
+  const isSectionHead = employeeType === 'section_head' || employeeType === 'section_manager';
 
   // Section heads: department-level activities (no section) are assignable to
   // section heads in the same department. Section-level activities must match.
   if (isSectionHead) {
-    if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0))
-      return false;
+    if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0)) return false;
     if (act.subsection_id) return false;
     return true;
   }
@@ -50,8 +47,7 @@ function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
   // Subsection heads and regular employees: section (if present) must match,
   // subsection (if present) must match. Department-level activities (no
   // section/subsection) match anyone in the same department.
-  if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0))
-    return false;
+  if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0)) return false;
   if (act.subsection_id && Number(act.subsection_id) !== Number(emp.subsection_id || 0))
     return false;
   return true;
@@ -108,14 +104,16 @@ export default function Kpis() {
   const activities = data?.activities ?? [];
   const linkedActivities = data?.linked_activities ?? [];
   const cycles = data?.cycles ?? [];
-  const objectives = (data?.objectives ?? []).filter((k, i, self) => self.findIndex((x) => x.id === k.id) === i) || null;
+  const objectives =
+    (data?.objectives ?? []).filter((k, i, self) => self.findIndex((x) => x.id === k.id) === i) ||
+    null;
   const canManage = !!data?.can_manage;
   const role = data?.scope.role || '';
   const employeeScopeHint =
     role === 'dept_head' || role === 'hr_manager'
       ? 'Department heads can assign KPIs to section heads only. Section heads manage KPI assignments for subsection heads and staff.'
       : role === 'section_head'
-          ? 'Select direct employees and subsection heads in your section. Subsection heads assign KPIs to employees in their own subsection.'
+        ? 'Select direct employees and subsection heads in your section. Subsection heads assign KPIs to employees in their own subsection.'
         : role === 'sub_section_head'
           ? 'Select employees assigned to your subsection.'
           : '';
@@ -227,21 +225,19 @@ export default function Kpis() {
       return Number(act.department_id) === Number(actorScope.department);
     };
 
-    return Array.from(activityMap.values()).filter(
-      (a) => {
-        const id = Number(a.id);
-        // 1. Keep already-linked activities (edit mode) - always visible
-        if (alreadyLinked.has(id)) return true;
-        // 2. Show if it matches the actor's own scope (fixes sub-section-head blank list)
-        if (activityMatchesActorScope(a)) return true;
-        // 3. Also show if it matches any selected employee (e.g. dept-head -> section-head)
-        //    But only if we have selected employees to check against
-        if (selectedEmployees.length > 0) {
-          if (selectedEmployees.some((emp) => activityMatchesEmployee(a, emp))) return true;
-        }
-        return false;
+    return Array.from(activityMap.values()).filter((a) => {
+      const id = Number(a.id);
+      // 1. Keep already-linked activities (edit mode) - always visible
+      if (alreadyLinked.has(id)) return true;
+      // 2. Show if it matches the actor's own scope (fixes sub-section-head blank list)
+      if (activityMatchesActorScope(a)) return true;
+      // 3. Also show if it matches any selected employee (e.g. dept-head -> section-head)
+      //    But only if we have selected employees to check against
+      if (selectedEmployees.length > 0) {
+        if (selectedEmployees.some((emp) => activityMatchesEmployee(a, emp))) return true;
       }
-    );
+      return false;
+    });
   }, [modal.open, formActIds, selectedEmployees, activities, linkedActivities, data]);
   const activityScopeHint =
     role === 'dept_head' || role === 'hr_manager'
@@ -386,7 +382,7 @@ export default function Kpis() {
             Key Performance Indicators
           </h1>
           <p className="text-gray-500 dark:text-gray-400">
-            Create and manage KPIs linked to workplan activities  —  the scoring units for appraisals.
+            Create and manage KPIs linked to workplan activities — the scoring units for appraisals.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -395,7 +391,7 @@ export default function Kpis() {
             Refresh
           </Button>
           {canManage && (
-            <Button onClick={openAdd}>  
+            <Button onClick={openAdd}>
               <Plus className="h-4 w-4 mr-2" />
               Add KPI
             </Button>
@@ -779,7 +775,7 @@ export default function Kpis() {
                           {formActIds.includes(Number(a.id)) &&
                             !selectedEmployees.some((emp) => activityMatchesEmployee(a, emp)) && (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                                Existing link is outside the selected unit  —  unselect to remove
+                                Existing link is outside the selected unit — unselect to remove
                               </span>
                             )}
                           {(a.contract_name || a.department_name) && (
@@ -839,7 +835,7 @@ export default function Kpis() {
                   onChange={(e) => setFormActive(e.target.checked)}
                   className="h-4 w-4 accent-primary-600"
                 />
-                Active  —  included in current appraisal cycles
+                Active — included in current appraisal cycles
               </label>
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
                 <input
@@ -848,7 +844,7 @@ export default function Kpis() {
                   onChange={(e) => setFormRecurrent(e.target.checked)}
                   className="h-4 w-4 accent-primary-600"
                 />
-                Recurrent  —  auto-added to future cycles
+                Recurrent — auto-added to future cycles
               </label>
             </div>
 
