@@ -127,29 +127,43 @@ export default function SupervisorAppraisals() {
       })),
     [workspace],
   );
-  // Subsection heads may only select employees in their own subsection.
+  // The backend workspace() already runs every employee through canSuperviseTarget(),
+  // so workspace.employees only contains people the current user is authorised to appraise.
+  // No additional front-end filtering is needed — just expose the full list.
   const subsectionId = workspace?.scope?.subsection;
-  const filteredEmployeeOptions =
-    workspace?.scope.role === 'sub_section_head' && subsectionId !== null
-      ? employeeOptions.filter((opt) => {
-          const emp = workspace?.employees?.find((e) => Number(e.id) === Number(opt.value));
-          return emp && Number(emp.subsection_id || 0) === Number(subsectionId);
-        })
-      : employeeOptions;
-  const cycleOptions = useMemo(
-    workspace?.scope.role === 'dept_head'
-      ? 'Department heads can appraise section heads only. Section heads handle appraisals for subsection heads and staff.'
-      : workspace?.scope.role === 'section_head'
-        ? 'Select direct employees in your section. Subsection heads handle appraisals for their own subsection employees.'
-        : workspace?.scope.role === 'sub_section_head'
-          ? 'Select employees assigned to your subsection.'
-          : '';
+  const filteredEmployeeOptions = employeeOptions;
+
+  // Hint shown in the assignment modal describing employee selection scope.
+  const employeeScopeHint = useMemo(() => {
+    if (!workspace) return '';
+    switch (workspace.scope?.role) {
+      case 'dept_head':
+        return 'Department heads can assign any employee in the organization.';
+      case 'section_head':
+        return 'Select subsection heads and direct section employees (not assigned to any subsection). Subsection employees are appraised by their subsection head.';
+      case 'sub_section_head':
+        return 'Subsection heads can assign employees only within their subsection.';
+      default:
+        return '';
+    }
+  }, [workspace]);
+  const cycleOptionsInfo = useMemo(
+    () =>
+      workspace?.scope.role === 'dept_head'
+        ? 'Department heads can appraise section heads only. Section heads handle appraisals for subsection heads and staff.'
+        : workspace?.scope.role === 'section_head'
+          ? 'Select subsection heads and direct section employees (without a subsection). Subsection employees are managed by their subsection head.'
+          : workspace?.scope.role === 'sub_section_head'
+            ? 'Select employees assigned to your subsection.'
+            : '',
+    [workspace],
+  );
   const cycleOptions = useMemo(
     () =>
       (workspace?.cycles ?? []).map((c) => ({
         value: c.id,
         label: c.name,
-        description: `${formatAppraisalDate(c.start_date)} – ${formatAppraisalDate(c.end_date)}`,
+        description: `${formatAppraisalDate(c.start_date)} - ${formatAppraisalDate(c.end_date)}`,
       })),
     [workspace],
   );
