@@ -67,54 +67,60 @@ class LeaveApprovalService
         $stmt->close();
 
         if (!$currentUser) {
-            return ['success' => false, 'message' => 'User not found', 'data' => ['counts' => ['pending' => 0, 'approved' => 0, 'rejected' => 0], 'role' => '']];
+            return ['success' => false, 'message' => 'User not found', 'data' => ['counts' => ['pending' => 0, 'approved' => 0, 'rejected' => 0, 'invalidated' => 0], 'role' => '']];
         }
 
         $role = $currentUser['user_role'] ?? 'officer';
         $employeeId = $this->getEmployeeIdFromUserId($userId);
         if (!$employeeId) {
-            return ['success' => false, 'message' => 'User not found', 'data' => ['counts' => ['pending' => 0, 'approved' => 0, 'rejected' => 0], 'role' => $role]];
+            return ['success' => false, 'message' => 'User not found', 'data' => ['counts' => ['pending' => 0, 'approved' => 0, 'rejected' => 0, 'invalidated' => 0], 'role' => $role]];
         }
 
-        $pendingOffset  = (int) ($pagination['pending_offset'] ?? 0);
-        $approvedOffset = (int) ($pagination['approved_offset'] ?? 0);
-        $rejectedOffset = (int) ($pagination['rejected_offset'] ?? 0);
+        $pendingOffset     = (int) ($pagination['pending_offset'] ?? 0);
+        $approvedOffset    = (int) ($pagination['approved_offset'] ?? 0);
+        $rejectedOffset    = (int) ($pagination['rejected_offset'] ?? 0);
+        $invalidatedOffset = (int) ($pagination['invalidated_offset'] ?? 0);
 
         // Determine which applications this user can see based on their role
-        $pendingApps = $this->getPendingForApprover($userId, $role, $currentUser, $limit, $pendingOffset);
-        $approvedApps = $this->getApprovedForApprover($userId, $role, $currentUser, $limit, $approvedOffset);
-        $rejectedApps = $this->getRejectedForApprover($userId, $role, $currentUser, $limit, $rejectedOffset);
+        $pendingApps     = $this->getPendingForApprover($userId, $role, $currentUser, $limit, $pendingOffset);
+        $approvedApps    = $this->getApprovedForApprover($userId, $role, $currentUser, $limit, $approvedOffset);
+        $rejectedApps    = $this->getRejectedForApprover($userId, $role, $currentUser, $limit, $rejectedOffset);
+        $invalidatedApps = $this->getInvalidatedForApprover($userId, $role, $currentUser, $limit, $invalidatedOffset);
 
         // Enrich rows with approver names / employee codes so the UI does not
         // fall back to "System" / "Not Assigned".  Pending rows resolve their
         // *next* approver from the org-hierarchy *_emp_id columns; approved and
         // rejected rows resolve their *actual decider* from the per-stage
         // *_approved_by columns (see resolveDeciders()).
-        $pendingApps  = $this->attachPendingApprovers($pendingApps);
-        $approvedApps = $this->resolveDeciders($approvedApps);
-        $rejectedApps = $this->resolveDeciders($rejectedApps);
+        $pendingApps     = $this->attachPendingApprovers($pendingApps);
+        $approvedApps    = $this->resolveDeciders($approvedApps);
+        $rejectedApps    = $this->resolveDeciders($rejectedApps);
+        $invalidatedApps = $this->resolveDeciders($invalidatedApps);
 
         // Counts must be the true total, independent of the LIMIT, otherwise a
         // limit=1 request would always report 1/1/1.
 
         // Counts must reflect the true total, independent of the applied LIMIT,
         // otherwise a limit=1 counts request would always report 1/1/1.
-        $pendingTotal  = $this->countForApprover($role, $employeeId, $currentUser, 'pending', $userId);
-        $approvedTotal = $this->countForApprover($role, $employeeId, $currentUser, 'approved', $userId);
-        $rejectedTotal = $this->countForApprover($role, $employeeId, $currentUser, 'rejected', $userId);
+        $pendingTotal     = $this->countForApprover($role, $employeeId, $currentUser, 'pending', $userId);
+        $approvedTotal    = $this->countForApprover($role, $employeeId, $currentUser, 'approved', $userId);
+        $rejectedTotal    = $this->countForApprover($role, $employeeId, $currentUser, 'rejected', $userId);
+        $invalidatedTotal = $this->countForApprover($role, $employeeId, $currentUser, 'invalidated', $userId);
 
         return [
             'success' => true,
             'data' => [
                 'counts' => [
-                    'pending'  => $pendingTotal,
-                    'approved' => $approvedTotal,
-                    'rejected' => $rejectedTotal,
+                    'pending'     => $pendingTotal,
+                    'approved'    => $approvedTotal,
+                    'rejected'    => $rejectedTotal,
+                    'invalidated' => $invalidatedTotal,
                 ],
                 'role' => $role,
-                'pending'  => $pendingApps,
-                'approved' => $approvedApps,
-                'rejected' => $rejectedApps,
+                'pending'     => $pendingApps,
+                'approved'    => $approvedApps,
+                'rejected'    => $rejectedApps,
+                'invalidated' => $invalidatedApps,
             ],
         ];
     }
@@ -1150,6 +1156,52 @@ class LeaveApprovalService
         return $apps;
     }
 
+    private function getInvalidatedForApprover(int $userId, string $role, array $currentUser, int $limit, int $offset = 0): array
+    {
+        $employeeId = $this->getEmployeeIdFromUserId($userId);
+        if (!$employeeId) {
+            return [];
+        }
+
+        $where = $this->wrapWithDelegatedScopes(
+            $this->buildApproverWhereClause($role, $employeeId, $currentUser, 'invalidated'),
+            $userId
+        );
+
+        $sql = "
+            SELECT la.*, lt.name as leave_type_name,
+                   e.first_name, e.last_name, e.employee_id as emp_no,
+                   lh_del.delegation_id AS delegate_delegation_id,
+                   lh_del.acted_for_user_id AS acted_for_user_id,
+                   lh_inv.performed_by AS invalidated_by_user_id,
+                   lh_inv.performed_at AS invalidated_at,
+                   COALESCE(lh_inv.comments, la.rejection_reason) AS invalidation_reason
+            FROM leave_applications la
+            JOIN leave_types lt ON la.leave_type_id = lt.id
+            JOIN employees e ON la.employee_id = e.id
+            LEFT JOIN leave_history lh_del ON lh_del.id = (
+                SELECT MAX(x.id) FROM leave_history x
+                WHERE x.leave_application_id = la.id AND x.delegation_id IS NOT NULL
+            )
+            LEFT JOIN leave_history lh_inv ON lh_inv.id = (
+                SELECT MAX(x.id) FROM leave_history x
+                WHERE x.leave_application_id = la.id AND x.action = 'invalidated'
+            )
+            WHERE la.status = 'invalidated'
+              AND {$where}
+            ORDER BY la.applied_at DESC, la.id DESC
+            LIMIT ?, ?
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bind_param('ii', $offset, $limit);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $apps = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+        $stmt->close();
+        return $apps;
+    }
+
     /**
      * Build the WHERE clause that determines which applications an
      * approver can see, based on their role and organisational scope.
@@ -1327,6 +1379,7 @@ class LeaveApprovalService
         // workflow on BOTH approve() and reject(), so it outranks the legacy per-stage
         // columns below.
         $priority = [
+            ['id' => 'invalidated_by_user_id',          'date' => 'invalidated_at'],
             ['id' => 'approved_by',                     'date' => 'approved_at'],
             ['id' => 'managing_director_approved_by', 'date' => 'managing_director_approved_at'],
             ['id' => 'hr_approved_by',               'date' => 'hr_approved_at'],
@@ -1445,6 +1498,9 @@ class LeaveApprovalService
                 break;
             case 'rejected':
                 $statusCondition = "la.status = 'rejected'";
+                break;
+            case 'invalidated':
+                $statusCondition = "la.status = 'invalidated'";
                 break;
             case 'pending':
             default:

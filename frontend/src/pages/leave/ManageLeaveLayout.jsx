@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import api from '../../utils/api';
 import Card from '../../components/ui/Card';
 import Button from '../../components/ui/Button';
-import { AlertTriangle, CheckCircle, X, Clock } from 'lucide-react';
+import { AlertTriangle, CheckCircle, FileX, X, Clock } from 'lucide-react';
 
 const TABS = [
   {
@@ -25,13 +25,24 @@ const TABS = [
     icon: <X className="h-4 w-4" />,
     href: '/leave/manage/rejected',
   },
+  {
+    id: 'invalidated',
+    name: 'Invalidated',
+    icon: <FileX className="h-4 w-4" />,
+    href: '/leave/manage/invalidated',
+  },
 ];
 
 const fetchCounts = async () => {
   try {
     const response = await api.get('/leave/manage', { params: { limit: 1 } });
     return {
-      counts: response.data?.data?.counts || { pending: 0, approved: 0, rejected: 0 },
+      counts: response.data?.data?.counts || {
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        invalidated: 0,
+      },
       role: response.data?.data?.role || '',
     };
   } catch {
@@ -44,7 +55,7 @@ const ManageLeaveLayout = () => {
   const { can } = useAuth();
   const isManagerRole = can('leave', 'manage');
 
-  const [counts, setCounts] = useState({ pending: 0, approved: 0, rejected: 0 });
+  const [counts, setCounts] = useState({ pending: 0, approved: 0, rejected: 0, invalidated: 0 });
   const [pageRole, setPageRole] = useState('');
   const [loadFailed, setLoadFailed] = useState(false);
 
@@ -110,6 +121,11 @@ const ManageLeaveLayout = () => {
             {counts.rejected}
           </span>{' '}
           rejected
+          {' · '}
+          <span className="font-medium text-gray-900 dark:text-gray-100">
+            {counts.invalidated}
+          </span>{' '}
+          invalidated
         </div>
       </div>
 
