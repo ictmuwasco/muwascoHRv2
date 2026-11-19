@@ -146,7 +146,7 @@ export default function AppraisalCycles() {
       <Card
         title={`Quarterly Cycles — ${
           fyFilter
-            ? (financialYears.find((f) => String(f.id) === fyFilter)?.year_name ?? 'Selected FY')
+            ? financialYears.find((f) => String(f.id) === fyFilter)?.year_name ?? 'Selected FY'
             : 'All Financial Years'
         }`}
       >
