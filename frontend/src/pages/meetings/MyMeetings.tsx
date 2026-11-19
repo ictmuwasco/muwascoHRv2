@@ -154,8 +154,7 @@ const MyMeetings = () => {
         `/meetings/${meetingId}/confirm`,
       );
       const invitation = response.data?.data as
-        | { response_status: string; responded_at: string | null }
-        | undefined;
+        { response_status: string; responded_at: string | null } | undefined;
       if (invitation && invitation.response_status === 'accepted') {
         // Update local state with the persisted response from the backend
         setMeetings((prev) =>
@@ -195,8 +194,7 @@ const MyMeetings = () => {
         `/meetings/${meetingId}/decline`,
       );
       const invitation = response.data?.data as
-        | { response_status: string; responded_at: string | null }
-        | undefined;
+        { response_status: string; responded_at: string | null } | undefined;
       if (invitation && invitation.response_status === 'declined') {
         // Update local state with the persisted response from the backend
         setMeetings((prev) =>

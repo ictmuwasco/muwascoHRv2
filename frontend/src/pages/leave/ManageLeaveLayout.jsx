@@ -37,7 +37,12 @@ const fetchCounts = async () => {
   try {
     const response = await api.get('/leave/manage', { params: { limit: 1 } });
     return {
-      counts: response.data?.data?.counts || { pending: 0, approved: 0, rejected: 0, invalidated: 0 },
+      counts: response.data?.data?.counts || {
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        invalidated: 0,
+      },
       role: response.data?.data?.role || '',
     };
   } catch {
@@ -116,7 +121,7 @@ const ManageLeaveLayout = () => {
             {counts.rejected}
           </span>{' '}
           rejected
-{' · '}
+          {' · '}
           <span className="font-medium text-gray-900 dark:text-gray-100">
             {counts.invalidated}
           </span>{' '}

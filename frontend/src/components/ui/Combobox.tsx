@@ -150,7 +150,7 @@ const Combobox = ({
             aria-autocomplete="list"
             aria-required={required}
             disabled={disabled || loading}
-            value={open ? query : selected?.label ?? ''}
+            value={open ? query : (selected?.label ?? '')}
             placeholder={selected ? selected.label : placeholder}
             onFocus={() => !disabled && setOpen(true)}
             onChange={(e) => {
