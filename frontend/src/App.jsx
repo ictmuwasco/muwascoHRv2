@@ -37,6 +37,7 @@ const ManageLeaveLayout = lazy(() => import('./pages/leave/ManageLeaveLayout'));
 const ManageLeavePendingTab = lazy(() => import('./pages/leave/ManageLeavePendingTab'));
 const ManageLeaveApprovedTab = lazy(() => import('./pages/leave/ManageLeaveApprovedTab'));
 const ManageLeaveRejectedTab = lazy(() => import('./pages/leave/ManageLeaveRejectedTab'));
+const ManageLeaveInvalidatedTab = lazy(() => import('./pages/leave/ManageLeaveInvalidatedTab'));
 const Delegations = lazy(() => import('./pages/delegations/Delegations'));
 
 // Lazy loaded - HR Admin pages
@@ -399,6 +400,14 @@ function App() {
                 element={
                   <Suspense fallback={<PageLoader />}>
                     <ManageLeaveRejectedTab />
+                  </Suspense>
+                }
+              />
+              <Route
+                path="invalidated"
+                element={
+                  <Suspense fallback={<PageLoader />}>
+                    <ManageLeaveInvalidatedTab />
                   </Suspense>
                 }
               />

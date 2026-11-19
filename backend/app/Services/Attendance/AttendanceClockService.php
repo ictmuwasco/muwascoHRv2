@@ -142,7 +142,7 @@ class AttendanceClockService
 
         $leaveType = $this->approvedLeaveTypeFor($employeeDbId, $today);
 
-        $now = date('Y-m-d H:i:s');
+        $now = \App\Helpers\AppTime::now()->format('Y-m-d H:i:s');
         $late = $this->resolveLateStatus($now);
 
         // Privacy-safe device identity. The raw client value is hashed with
@@ -618,17 +618,22 @@ class AttendanceClockService
      */
     public function resolveLateStatus(?string $now = null): array
     {
+        $tz = \App\Helpers\AppTime::timezone();
         $cutoffRaw = (string) env('ATTENDANCE_LATE_CUTOFF', self::LATE_CUTOFF_DEFAULT);
-        $cutoff = \DateTime::createFromFormat('H:i', $cutoffRaw)
-            ?: \DateTime::createFromFormat('H:i', self::LATE_CUTOFF_DEFAULT);
+        $cutoff = \DateTimeImmutable::createFromFormat('H:i', $cutoffRaw, $tz)
+            ?: \DateTimeImmutable::createFromFormat('H:i', self::LATE_CUTOFF_DEFAULT, $tz);
 
         $nowTime = $now !== null
-            ? (\DateTime::createFromFormat('Y-m-d H:i:s', $now) ?: new \DateTime('now'))
-            : new \DateTime('now');
+            ? (\DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $now, $tz) ?: \App\Helpers\AppTime::now())
+            : \App\Helpers\AppTime::now();
 
-        $isLate = ((int) $nowTime->format('H') > (int) $cutoff->format('H'))
-            || ((int) $nowTime->format('H') === (int) $cutoff->format('H')
-                && (int) $nowTime->format('i') > (int) $cutoff->format('i'));
+        $nowH = (int) $nowTime->format('H');
+        $nowM = (int) $nowTime->format('i');
+        $cutoffH = (int) $cutoff->format('H');
+        $cutoffM = (int) $cutoff->format('i');
+
+        // Clocking in at the cutoff time and anytime thereafter flags as late (e.g. 08:10 and after).
+        $isLate = ($nowH > $cutoffH) || ($nowH === $cutoffH && $nowM >= $cutoffM);
 
         return ['is_late' => $isLate, 'status' => $isLate ? 'late' : 'clocked_in'];
     }
