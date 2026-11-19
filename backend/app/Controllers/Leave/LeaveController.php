@@ -903,10 +903,11 @@ class LeaveController extends BaseController
         }
 
         $pagination = [
-            'limit'           => (int) ($_GET['limit'] ?? 15),
-            'pending_offset'  => (int) ($_GET['pending_offset']  ?? 0),
-            'approved_offset' => (int) ($_GET['approved_offset'] ?? 0),
-            'rejected_offset' => (int) ($_GET['rejected_offset'] ?? 0),
+            'limit'              => (int) ($_GET['limit'] ?? 15),
+            'pending_offset'     => (int) ($_GET['pending_offset']  ?? 0),
+            'approved_offset'    => (int) ($_GET['approved_offset'] ?? 0),
+            'rejected_offset'    => (int) ($_GET['rejected_offset'] ?? 0),
+            'invalidated_offset' => (int) ($_GET['invalidated_offset'] ?? 0),
         ];
 
         $result = $this->approvalService->listForApprover($userId, $pagination);

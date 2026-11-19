@@ -171,6 +171,9 @@ if (!function_exists('env')) {
     }
 }
 
+// Ensure the application timezone matches the organisation timezone (default Africa/Nairobi)
+date_default_timezone_set((string) env('APP_TIMEZONE', 'Africa/Nairobi'));
+
 // Log errors but never display them
 if (env('APP_DEBUG', false)) {
     error_reporting(E_ALL);
