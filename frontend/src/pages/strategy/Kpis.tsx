@@ -105,8 +105,9 @@ export default function Kpis() {
   const linkedActivities = data?.linked_activities ?? [];
   const cycles = data?.cycles ?? [];
   const objectives =
-    (data?.objectives ?? []).filter((k, i, self) => self.findIndex((x) => Number(x.id) === Number(k.id)) === i) ||
-    null;
+    (data?.objectives ?? []).filter(
+      (k, i, self) => self.findIndex((x) => Number(x.id) === Number(k.id)) === i,
+    ) || null;
   const canManage = !!data?.can_manage;
   const role = data?.scope.role || '';
   const employeeScopeHint =
@@ -286,7 +287,15 @@ export default function Kpis() {
       const recurrent = k.is_recurrent ? 'Yes' : 'No';
       const dept = k.department_name || '';
       const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
-      return [esc(k.name), esc(linked), esc(dept), esc(empNames), k.max_score, active, recurrent].join(',');
+      return [
+        esc(k.name),
+        esc(linked),
+        esc(dept),
+        esc(empNames),
+        k.max_score,
+        active,
+        recurrent,
+      ].join(',');
     });
     const csvContent = [roleRow, header, ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -439,7 +448,13 @@ export default function Kpis() {
                 Add KPI
               </Button>
             )}
-            {['section_head', 'section_manager', 'dept_head', 'hr_manager', 'sub_section_head'].includes(role) && (
+            {[
+              'section_head',
+              'section_manager',
+              'dept_head',
+              'hr_manager',
+              'sub_section_head',
+            ].includes(role) && (
               <Button variant="outline" onClick={exportKpis}>
                 Export
               </Button>
@@ -565,7 +580,10 @@ export default function Kpis() {
                           {actIds.map((id, actIdx) => {
                             const act = activityById.get(id);
                             return (
-                              <div key={`r${rowIndex}-act${actIdx}-${id}`} className="flex flex-wrap items-center gap-1">
+                              <div
+                                key={`r${rowIndex}-act${actIdx}-${id}`}
+                                className="flex flex-wrap items-center gap-1"
+                              >
                                 <span>{activityLabel(id) || `#${id}`}</span>
                                 {act &&
                                   parseIds(act.cycle_ids).map((cid, cidIdx) => (
