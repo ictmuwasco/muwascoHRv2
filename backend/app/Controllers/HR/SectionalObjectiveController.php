@@ -24,12 +24,6 @@ class SectionalObjectiveController extends BaseController
 {
     private \mysqli $db;
 
-    /**
-     * Apex role: organisation-wide visibility and management only. The
-     * hr_manager role is the department head of the HR and Admin department
-     * (role-based, never a hardcoded department id) and follows the same
-     * unit-scoped workflow as every other department head.
-     */
     private const APEX_ROLES = ['super_admin'];
 
     public function __construct()

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, RefreshCw, Search, Pencil, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import Button from '../../components/ui/Button';
@@ -105,7 +105,7 @@ export default function Kpis() {
   const linkedActivities = data?.linked_activities ?? [];
   const cycles = data?.cycles ?? [];
   const objectives =
-    (data?.objectives ?? []).filter((k, i, self) => self.findIndex((x) => x.id === k.id) === i) ||
+    (data?.objectives ?? []).filter((k, i, self) => self.findIndex((x) => Number(x.id) === Number(k.id)) === i) ||
     null;
   const canManage = !!data?.can_manage;
   const role = data?.scope.role || '';
@@ -264,6 +264,42 @@ export default function Kpis() {
     setModal({ open: true, mode: 'add' });
   };
 
+  // Export KPIs for the current role view as CSV
+  const exportKpis = () => {
+    const header = [
+      'KPI Name',
+      'Linked Objectives',
+      'Department',
+      'Assigned Employees',
+      'Max Score',
+      'Active',
+      'Recurrent',
+    ].join(',');
+    // Include role info as first row for reference
+    const role = data?.scope.role || '';
+    const roleRow = `Role,${role}`;
+    const rows = filtered.map((k) => {
+      const actIds = parseIds(k.activity_ids);
+      const linked = actIds.map((id) => activityLabel(id) || `#${id}`).join('; ');
+      const empNames = assignedEmployeeNames(k).join('; ');
+      const active = k.is_active ? 'Yes' : 'No';
+      const recurrent = k.is_recurrent ? 'Yes' : 'No';
+      const dept = k.department_name || '';
+      const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+      return [esc(k.name), esc(linked), esc(dept), esc(empNames), k.max_score, active, recurrent].join(',');
+    });
+    const csvContent = [roleRow, header, ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'kpis_export.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const openEdit = (k: Kpi) => {
     setFormName(k.name);
     setFormEmpIds(parseIds(k.assigned_to_employee_ids));
@@ -395,12 +431,20 @@ export default function Kpis() {
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          {canManage && (
-            <Button onClick={openAdd}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add KPI
-            </Button>
-          )}
+          {/* Buttons: Add KPI gated by canManage, Export visible for section heads and above */}
+          <>
+            {canManage && (
+              <Button onClick={openAdd}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add KPI
+              </Button>
+            )}
+            {['section_head', 'section_manager', 'dept_head', 'hr_manager', 'sub_section_head'].includes(role) && (
+              <Button variant="outline" onClick={exportKpis}>
+                Export
+              </Button>
+            )}
+          </>
         </div>
       </div>
 
@@ -502,14 +546,14 @@ export default function Kpis() {
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-                {filtered.map((k) => {
+                {filtered.map((k, rowIndex) => {
                   const actIds = parseIds(k.activity_ids);
                   const empNames = assignedEmployeeNames(k);
                   const empNamesLabel = empNames.join(', ');
                   const edit = canEditRow(k);
                   return (
                     <tr
-                      key={k.id}
+                      key={`kpi-${k.id}-${rowIndex}`}
                       className="hover:bg-gray-50 dark:hover:bg-slate-700/50 align-top"
                     >
                       <td className="px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
@@ -518,15 +562,15 @@ export default function Kpis() {
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300 max-w-xs">
                         <div className="space-y-1">
                           {actIds.length === 0 && <span className="text-gray-400"> — </span>}
-                          {actIds.map((id) => {
+                          {actIds.map((id, actIdx) => {
                             const act = activityById.get(id);
                             return (
-                              <div key={id} className="flex flex-wrap items-center gap-1">
+                              <div key={`r${rowIndex}-act${actIdx}-${id}`} className="flex flex-wrap items-center gap-1">
                                 <span>{activityLabel(id) || `#${id}`}</span>
                                 {act &&
-                                  parseIds(act.cycle_ids).map((cid) => (
+                                  parseIds(act.cycle_ids).map((cid, cidIdx) => (
                                     <span
-                                      key={cid}
+                                      key={`r${rowIndex}-a${actIdx}-c${cidIdx}-${cid}`}
                                       className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
                                     >
                                       {cycleNames.get(cid) || `Q${cid}`}
@@ -793,9 +837,9 @@ export default function Kpis() {
                               {a.section_name}
                             </span>
                           )}
-                          {parseIds(a.cycle_ids).map((cid) => (
+                          {parseIds(a.cycle_ids).map((cid, cidIdx) => (
                             <span
-                              key={cid}
+                              key={`modal-${a.id}-c${cidIdx}-${cid}`}
                               className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
                             >
                               {cycleNames.get(cid) || `Q${cid}`}
