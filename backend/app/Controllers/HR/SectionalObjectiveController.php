@@ -68,20 +68,24 @@ class SectionalObjectiveController extends BaseController
             )";
             $params[] = (int) $dept;
         } elseif ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null) {
-            $clauses[] = 'pi.subsection_id = ?';
-            $params[]  = (int) $scope['subsection_id'];
-        } elseif ($scope['is_section_head'] && $scope['section_id'] !== null) {
-            $clauses[] = 'pi.section_id = ?';
-            $params[]  = (int) $scope['section_id'];
             $clauses[] = "EXISTS (
-                SELECT 1
-                FROM employees assigned_employee
-                WHERE FIND_IN_SET(assigned_employee.id, pi.assigned_to_employee_ids) > 0
-                  AND assigned_employee.section_id = ?
-                  AND COALESCE(assigned_employee.subsection_id, 0) = 0
-                  AND LOWER(COALESCE(assigned_employee.employee_type, '')) NOT IN (
-                      'dept_head', 'head_of_department', 'department_head', 'manager',
-                      'section_head', 'section_manager', 'sub_section_head', 'subsection_head'
+                SELECT 1 FROM employees ae
+                WHERE FIND_IN_SET(ae.id, pi.assigned_to_employee_ids) > 0
+                  AND ae.subsection_id = ?
+            )";
+            $params[] = (int) $scope['subsection_id'];
+        } elseif ($scope['is_section_head'] && $scope['section_id'] !== null) {
+            $clauses[] = "EXISTS (
+                SELECT 1 FROM employees ae
+                WHERE FIND_IN_SET(ae.id, pi.assigned_to_employee_ids) > 0
+                  AND ae.section_id = ?
+                  AND (
+                        COALESCE(ae.subsection_id, 0) = 0
+                     OR LOWER(COALESCE(ae.employee_type, '')) IN ('sub_section_head', 'subsection_head')
+                  )
+                  AND LOWER(COALESCE(ae.employee_type, '')) NOT IN (
+                      'dept_head', 'head_of_department', 'department_head',
+                      'manager', 'section_head', 'section_manager'
                   )
             )";
             $params[] = (int) $scope['section_id'];
