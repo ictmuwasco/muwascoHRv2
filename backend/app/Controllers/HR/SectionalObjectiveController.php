@@ -68,25 +68,58 @@ class SectionalObjectiveController extends BaseController
             )";
             $params[] = (int) $dept;
         } elseif ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null) {
-            $clauses[] = 'pi.subsection_id = ?';
-            $params[]  = (int) $scope['subsection_id'];
-        } elseif ($scope['is_section_head'] && $scope['section_id'] !== null) {
-            $clauses[] = 'pi.section_id = ?';
-            $params[]  = (int) $scope['section_id'];
             $clauses[] = "EXISTS (
-                SELECT 1
-                FROM employees assigned_employee
-                WHERE FIND_IN_SET(assigned_employee.id, pi.assigned_to_employee_ids) > 0
-                  AND assigned_employee.section_id = ?
-                  AND COALESCE(assigned_employee.subsection_id, 0) = 0
-                  AND LOWER(COALESCE(assigned_employee.employee_type, '')) NOT IN (
-                      'dept_head', 'head_of_department', 'department_head', 'manager',
-                      'section_head', 'section_manager', 'sub_section_head', 'subsection_head'
+                SELECT 1 FROM employees ae
+                WHERE FIND_IN_SET(ae.id, pi.assigned_to_employee_ids) > 0
+                  AND ae.subsection_id = ?
+            )";
+            $params[] = (int) $scope['subsection_id'];
+        } elseif ($scope['is_section_head'] && $scope['section_id'] !== null) {
+            $clauses[] = "EXISTS (
+                SELECT 1 FROM employees ae
+                WHERE FIND_IN_SET(ae.id, pi.assigned_to_employee_ids) > 0
+                  AND ae.section_id = ?
+                  AND (
+                        COALESCE(ae.subsection_id, 0) = 0
+                     OR LOWER(COALESCE(ae.employee_type, '')) IN ('sub_section_head', 'subsection_head')
+                  )
+                  AND LOWER(COALESCE(ae.employee_type, '')) NOT IN (
+                      'dept_head', 'head_of_department', 'department_head',
+                      'manager', 'section_head', 'section_manager'
                   )
             )";
             $params[] = (int) $scope['section_id'];
         }
         return [implode(' AND ', $clauses), $params];
+    }
+
+    /**
+     * Department / section / subsection shared by EVERY assignee (NULL where they differ).
+     * @return array{0:?int,1:?int,2:?int}
+     */
+    private function deriveUnit(array $employeeIds): array
+    {
+        $ids = array_values(array_unique(array_map('intval', $employeeIds)));
+        if ($ids === []) {
+            return [null, null, null];
+        }
+        $ph   = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->db->prepare(
+            "SELECT department_id, section_id, subsection_id FROM employees WHERE id IN ($ph)"
+        );
+        $stmt->bind_param(str_repeat('i', count($ids)), ...$ids);
+        $stmt->execute();
+        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+
+        $pick = static function (string $col) use ($rows): ?int {
+            $vals = array_unique(
+                array_map(static fn ($r) => $r[$col] === null ? null : (int) $r[$col], $rows),
+                SORT_REGULAR
+            );
+            return count($vals) === 1 ? (array_values($vals)[0]) : null;
+        };
+        return [$pick('department_id'), $pick('section_id'), $pick('subsection_id')];
     }
 
     // =====================================================================
@@ -476,12 +509,20 @@ class SectionalObjectiveController extends BaseController
         }
 
         // Section head: all section-level activities (no subsection) in their
-        // section — parent_objective_id filter removed so activities created
-        // directly by the dept_head for this section are also visible.
+        // section that have no non-deleted own-section child. Parents that were
+        // cascaded down to a subsection are still selectable; only parents that
+        // were broken down inside the same section are hidden.
         if ($scope['is_section_head'] && $scope['section_id'] !== null) {
             $sql = self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . '
                 WHERE wo.section_id = ? AND COALESCE(wo.subsection_id, 0) = 0
                   AND wo.soft_deleted = 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM workplan_objectives ch
+                      WHERE ch.parent_objective_id = wo.id
+                        AND ch.soft_deleted = 0
+                        AND ch.section_id = wo.section_id
+                        AND COALESCE(ch.subsection_id, 0) = 0
+                  )
                 ORDER BY pc.name, wo.objective';
             $stmt = $this->db->prepare($sql);
             $sec = (int) $scope['section_id'];
@@ -492,21 +533,21 @@ class SectionalObjectiveController extends BaseController
             return $activities;
         }
 
-        // Dept head / HR manager: ALL activities in their department across all
-        // levels (department, section, subsection) — the level filter is removed
-        // so cascaded-to-section and cascaded-to-subsection activities are
-        // visible for KPI assignment. The activity-to-employee matching logic
-        // ensures only correctly-scoped activities can be linked to each employee.
-        // Uses COALESCE to find dept via direct contract OR parent's contract
-        // (child activities created via TierAddWorkplan inherit the contract).
-        if (($scope['is_dept_head'] || $scope['role'] === 'hr_manager') && $scope['department_id'] !== null) {
+        // Subsection head: subsection-level activities in their subsection that
+        // have no non-deleted own-subsection child.
+        if ($scope['is_sub_section_head'] && $scope['subsection_id'] !== null) {
             $sql = self::ACTIVITY_SELECT . self::ACTIVITY_JOINS . '
-                WHERE COALESCE(pc.department_id, ppc.department_id) = ?
-                  AND wo.soft_deleted = 0
+                WHERE wo.subsection_id = ? AND wo.soft_deleted = 0
+                  AND NOT EXISTS (
+                      SELECT 1 FROM workplan_objectives ch
+                      WHERE ch.parent_objective_id = wo.id
+                        AND ch.soft_deleted = 0
+                        AND ch.subsection_id = wo.subsection_id
+                  )
                 ORDER BY pc.name, wo.objective';
             $stmt = $this->db->prepare($sql);
-            $dept = (int) $scope['department_id'];
-            $stmt->bind_param('i', $dept);
+            $sub = (int) $scope['subsection_id'];
+            $stmt->bind_param('i', $sub);
             $stmt->execute();
             $activities = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
             $stmt->close();
@@ -818,9 +859,7 @@ class SectionalObjectiveController extends BaseController
         }
         $activityIdsStr = implode(',', $validActivities);
         $assignedStr    = implode(',', $validEmployees);
-        $departmentId   = $firstEmp['department_id'] !== null ? (int) $firstEmp['department_id'] : null;
-        $sectionId      = $firstEmp['section_id'] !== null ? (int) $firstEmp['section_id'] : null;
-        $subsectionId   = $firstEmp['subsection_id'] !== null ? (int) $firstEmp['subsection_id'] : null;
+        [$departmentId, $sectionId, $subsectionId] = $this->deriveUnit($validEmployees);
 
         $stmt = $this->db->prepare(
             "INSERT INTO performance_indicators
@@ -967,15 +1006,20 @@ class SectionalObjectiveController extends BaseController
             $fields[] = 'assigned_to_employee_ids = ?';
             $params[] = implode(',', $validEmployees);
             $types   .= 's';
-            if ($firstEmp) {
+            [$departmentId, $sectionId, $subsectionId] = $this->deriveUnit($validEmployees);
+            if ($departmentId !== null) {
                 $fields[] = 'department_id = ?';
-                $params[] = $firstEmp['department_id'] !== null ? (int) $firstEmp['department_id'] : null;
+                $params[] = $departmentId;
                 $types   .= 'i';
+            }
+            if ($sectionId !== null) {
                 $fields[] = 'section_id = ?';
-                $params[] = $firstEmp['section_id'] !== null ? (int) $firstEmp['section_id'] : null;
+                $params[] = $sectionId;
                 $types   .= 'i';
+            }
+            if ($subsectionId !== null) {
                 $fields[] = 'subsection_id = ?';
-                $params[] = $firstEmp['subsection_id'] !== null ? (int) $firstEmp['subsection_id'] : null;
+                $params[] = $subsectionId;
                 $types   .= 'i';
             }
         }

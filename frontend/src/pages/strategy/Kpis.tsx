@@ -36,10 +36,11 @@ function activityMatchesEmployee(act: KpiActivity, emp: KpiEmployee): boolean {
   const employeeType = (emp.employee_type || '').toLowerCase();
   const isSectionHead = employeeType === 'section_head' || employeeType === 'section_manager';
 
-  // Section heads: department-level activities (no section) are assignable to
-  // section heads in the same department. Section-level activities must match.
+  // Section heads: only activities cascaded to THEIR section (matches backend).
+  // A department-level row (no section_id) is NOT assignable to a section head here.
   if (isSectionHead) {
-    if (act.section_id && Number(act.section_id) !== Number(emp.section_id || 0)) return false;
+    if (!act.section_id) return false;
+    if (Number(act.section_id) !== Number(emp.section_id || 0)) return false;
     if (act.subsection_id) return false;
     return true;
   }
@@ -187,63 +188,29 @@ export default function Kpis() {
     [formEmpIds, employees],
   );
 
-  // Activities shown in the modal: filtered by the *actor's* (current user) organisational
-  // scope, not the selected employee's scope. This fixes the case where a subsection-head
-  // assigned to billing sees no activities because their employees' scope is narrower.
-  // Already-linked activities are always kept visible so they can be unlinked in edit mode.
+  // Activities shown in the modal: nothing is offered until at least one
+  // employee is selected, and then only activities that match a selected
+  // employee (plus anything already linked, so edit mode can still unlink it).
+  // The activityMatchesActorScope shortcut is removed on purpose: it was what
+  // listed activities before an employee was picked.
   const modalActivities = useMemo(() => {
     if (!modal.open) return [];
-    // Always keep already-linked activities visible so they can be unlinked in edit mode
+    // Nothing is offered until an employee is chosen.
+    if (selectedEmployees.length === 0) return [];
+
     const alreadyLinked = new Set(formActIds);
-    const linkedActivityIds = new Set(formActIds);
-    const activityMap = new Map<number, KpiActivity>();
+    const pool = new Map<number, KpiActivity>();
     [
       ...activities,
-      ...linkedActivities.filter((activity) => linkedActivityIds.has(Number(activity.id))),
-    ].forEach((activity) => activityMap.set(Number(activity.id), activity));
+      ...linkedActivities.filter((a) => alreadyLinked.has(Number(a.id))),
+    ].forEach((a) => pool.set(Number(a.id), a));
 
-    // Match activity against the current user's (actor's) organisational scope.
-    // Note: data.scope uses { department, section, subsection } (numeric IDs, no _id suffix).
-    const actorScope = data?.scope ?? {
-      role: '',
-      department: null,
-      section: null,
-      subsection: null,
-    };
-    const actorRole = (actorScope.role || '').toLowerCase();
-    const activityMatchesActorScope = (act: KpiActivity): boolean => {
-      if (actorRole === 'dept_head' || actorRole === 'hr_manager')
-        return !act.department_id || Number(act.department_id) === Number(actorScope.department);
-      if (actorRole === 'section_head' || actorRole === 'section_manager')
-        return (
-          (!act.department_id || Number(act.department_id) === Number(actorScope.department)) &&
-          Number(act.section_id) === Number(actorScope.section) &&
-          !act.subsection_id
-        );
-      if (actorRole === 'sub_section_head' || actorRole === 'subsection_head')
-        return (
-          (!act.department_id || Number(act.department_id) === Number(actorScope.department)) &&
-          (!act.section_id || Number(act.section_id) === Number(actorScope.section)) &&
-          Number(act.subsection_id) === Number(actorScope.subsection)
-        );
-      // Default: match within department
-      return Number(act.department_id) === Number(actorScope.department);
-    };
-
-    return Array.from(activityMap.values()).filter((a) => {
-      const id = Number(a.id);
-      // 1. Keep already-linked activities (edit mode) - always visible
-      if (alreadyLinked.has(id)) return true;
-      // 2. Show if it matches the actor's own scope (fixes sub-section-head blank list)
-      if (activityMatchesActorScope(a)) return true;
-      // 3. Also show if it matches any selected employee (e.g. dept-head -> section-head)
-      //    But only if we have selected employees to check against
-      if (selectedEmployees.length > 0) {
-        if (selectedEmployees.some((emp) => activityMatchesEmployee(a, emp))) return true;
-      }
-      return false;
-    });
-  }, [modal.open, formActIds, selectedEmployees, activities, linkedActivities, data]);
+    return Array.from(pool.values()).filter(
+      (a) =>
+        alreadyLinked.has(Number(a.id)) ||
+        selectedEmployees.some((emp) => activityMatchesEmployee(a, emp)),
+    );
+  }, [modal.open, formActIds, selectedEmployees, activities, linkedActivities]);
   const activityScopeHint =
     role === 'dept_head' || role === 'hr_manager'
       ? 'Activities from your department workplan are shown. Select employees first to narrow the list to their unit.'
@@ -286,8 +253,26 @@ export default function Kpis() {
     setModal({ open: true, mode: 'edit', record: k });
   };
 
-  const toggleEmp = (id: number) =>
-    setFormEmpIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  const toggleEmp = (id: number) => {
+    const next = formEmpIds.includes(id)
+      ? formEmpIds.filter((x) => x !== id)
+      : [...formEmpIds, id];
+    setFormEmpIds(next);
+
+    if (modal.open && modal.mode === 'add') {
+      const emps = next
+        .map((i) => employees.find((e) => Number(e.id) === i))
+        .filter((e): e is KpiEmployee => !!e);
+      const keep = formActIds.filter((aid) => {
+        const a = activityById.get(aid);
+        return !!a && emps.some((e) => activityMatchesEmployee(a, e));
+      });
+      setFormActIds(keep);
+      setFormObjectiveMarks((m) =>
+        Object.fromEntries(Object.entries(m).filter(([k]) => keep.includes(Number(k)))),
+      );
+    }
+  };
   const toggleAct = (id: number) => {
     setFormActIds((ids) =>
       ids.includes(id) ? ids.filter((activityId) => activityId !== id) : [...ids, id],
@@ -502,14 +487,17 @@ export default function Kpis() {
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-slate-800 divide-y divide-gray-200 dark:divide-slate-700">
-                {filtered.map((k) => {
+                {filtered.map((k, index) => {
                   const actIds = parseIds(k.activity_ids);
                   const empNames = assignedEmployeeNames(k);
                   const empNamesLabel = empNames.join(', ');
                   const edit = canEditRow(k);
+                  // Use a combination of id and index to ensure unique keys
+                  // in case the backend returns duplicate KPI IDs
+                  const rowKey = k.id != null ? `${k.id}-${index}` : `kpis-${index}`;
                   return (
                     <tr
-                      key={k.id}
+                      key={rowKey}
                       className="hover:bg-gray-50 dark:hover:bg-slate-700/50 align-top"
                     >
                       <td className="px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">

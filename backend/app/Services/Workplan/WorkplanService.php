@@ -6,68 +6,31 @@ namespace App\Services\Workplan;
 
 use App\Helpers\OrgScope;
 
-/**
- * Workplan Service
- *
- * Owns workplan domain logic: role-based view scoping, cascade lineage,
- * objective scope/parent validation, and shared workplan queries.
- * Extracted verbatim from WorkplanController (Phase 3, behavior-preserving).
- */
 class WorkplanService
 {
     public function __construct(private \mysqli $db)
     {
     }
 
-    /**
-     * True when the caller has organisation-wide workplan visibility
-     * (legacy MD workplan behaviour: the managing director sees all four
-     * departmental workplans unified under the organisation's goals).
-     * 
-     * PME and Audit department heads are NOT broad workplan viewers -
-     * they are department heads scoped to their own department's workplans.
-     * Only managing_director, super_admin, and hr_manager (as dept head of
-     * HR/Admin) have broad visibility through other mechanisms.
-     */
+
     public function isBroadWorkplan(array $scope): bool
     {
         return $scope['is_super_admin'] || $scope['role'] === 'managing_director';
     }
 
-    /**
-     * The hr_manager role is the DEPARTMENT HEAD of the HR and Admin department
-     * (role-based only, never a hardcoded department id): it follows the exact
-     * same unit-scoped workplan workflow as every other department head and
-     * must never receive organisation-wide (broad) treatment.
-     */
+
     private function isHrDeptHead(array $scope): bool
     {
-        // Cast defensively: if OrgScope ever omits the key, this must still
-        // return a bool (the declared return type), never trigger a
-        // "Return value must be of type bool, none returned" TypeError.
         return (bool) ($scope['is_hr'] ?? false);
     }
 
 
-    /**
-     * The workplan tier the caller lands on by default, mirroring the legacy
-     * four pages: MD -> managing director page, section_head -> section page,
-     * sub_section_head -> subsection page, everything else -> department page.
-     */
-
-    /**
-     * The workplan tier the caller lands on by default, mirroring the legacy
-     * four pages: MD -> managing director page, section_head -> section page,
-     * sub_section_head -> subsection page, everything else -> department page.
-     */
     public function defaultView(array $scope): string
     {
         if ($this->isBroadWorkplan($scope) && !$this->isHrDeptHead($scope)) {
             return 'md';
         }
-        // The HR manager (department head of HR/Admin) lands on the Managing
-        // Director tier — the first tab they are allowed to open.
-        if ($this->isHrDeptHead($scope)) {
+       if ($this->isHrDeptHead($scope)) {
             return 'md';
         }
         if ($scope['is_section_head']) {
@@ -725,6 +688,16 @@ class WorkplanService
         if ($tooHigh) {
             return sprintf(
                 'A %s-level activity cannot be nested under another %s-level activity.',
+                str_replace('_', ' ', $childLevel),
+                str_replace('_', ' ', (string) ($parent['level'] ?? 'organisation'))
+            );
+        }
+
+        // Cascade one level at a time: department -> section -> subsection.
+        if (($childRank - $parentRank) > 1) {
+            return sprintf(
+                'A %s-level activity cannot be placed directly under a %s-level activity. '
+                . 'Ask the parent\'s owner to cascade it to the intermediate level first.',
                 str_replace('_', ' ', $childLevel),
                 str_replace('_', ' ', (string) ($parent['level'] ?? 'organisation'))
             );

@@ -111,7 +111,6 @@ const Departments = () => {
       const subsectionData = {
         name: subsectionName,
         section_id: subsectionSectionId,
-        department_id: subsectionDepartmentId || null,
       };
 
       if (editingSubsection) {

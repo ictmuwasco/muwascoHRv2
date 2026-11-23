@@ -7,6 +7,7 @@ namespace Tests\Unit\Services;
 use App\Services\Workplan\WorkplanService;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use ReflectionMethod;
 
 final class WorkplanServiceScopeTest extends TestCase
 {
@@ -65,6 +66,35 @@ final class WorkplanServiceScopeTest extends TestCase
             $where
         );
         self::assertSame([1, 7], $params);
+    }
+
+    public function testNoLevelSkippingRejectsSectionChildUnderDepartmentParent(): void
+    {
+        $err = $this->invokeLevelGapTest(1, 2); // department (1) -> section (2)
+        self::assertNull($err);
+    }
+
+    public function testNoLevelSkippingRejectsSubsectionChildUnderDepartmentParent(): void
+    {
+        $err = $this->invokeLevelGapTest(1, 3); // department (1) -> subsection (3)
+
+        self::assertNotNull($err);
+        self::assertStringContainsString('cascade', $err);
+        self::assertStringContainsString('intermediate level', $err);
+    }
+
+    public function testNoLevelSkippingAllowsSubsectionChildUnderSectionParent(): void
+    {
+        $err = $this->invokeLevelGapTest(2, 3); // section (2) -> subsection (3)
+        self::assertNull($err);
+    }
+
+    private function invokeLevelGapTest(int $parentRank, int $childRank): ?string
+    {
+        $method = new ReflectionMethod(WorkplanService::class, 'validateLevelGap');
+        $method->setAccessible(true);
+
+        return $method->invoke(null, $parentRank, $childRank);
     }
 
     public function testSectionHeadSubsectionViewKeepsDescendantSubsectionConstraint(): void
