@@ -40,11 +40,20 @@ final class LeaveReportExportService
                    la.status                                AS status,
                    la.applied_at                            AS applied_at,
                    la.approved_at                           AS approved_at,
-                   la.rejection_reason                      AS rejection_reason
+                   la.rejection_reason                      AS rejection_reason,
+                   invalidation_history.comments            AS invalidation_reason
             FROM leave_applications la
             JOIN employees e ON la.employee_id = e.id
             JOIN leave_types lt ON la.leave_type_id = lt.id
             LEFT JOIN departments d ON e.department_id = d.id
+            LEFT JOIN (
+                SELECT leave_application_id, MAX(id) AS id
+                FROM leave_history
+                WHERE action = 'invalidated'
+                GROUP BY leave_application_id
+            ) latest_invalidation ON latest_invalidation.leave_application_id = la.id
+            LEFT JOIN leave_history invalidation_history
+                ON invalidation_history.id = latest_invalidation.id
             {$where}
             ORDER BY la.applied_at DESC
         ";
@@ -63,7 +72,8 @@ final class LeaveReportExportService
         $stmt->close();
 
         $headers = ['Employee Number', 'Employee Name', 'Department', 'Leave Type',
-            'Start Date', 'End Date', 'Days', 'Status', 'Applied At', 'Approved At'];
+            'Start Date', 'End Date', 'Days', 'Status', 'Applied At', 'Approved At',
+            'Rejection Reason', 'Invalidation Reason'];
 
         $data = [];
         foreach ($rows as $row) {
@@ -78,6 +88,8 @@ final class LeaveReportExportService
                 $this->formatStatus((string) ($row['status'] ?? '')),
                 $row['applied_at'] ?? '',
                 $row['approved_at'] ?? '',
+                $row['rejection_reason'] ?? '',
+                $row['invalidation_reason'] ?? '',
             ];
         }
 
